@@ -1,0 +1,237 @@
+prog: ^^__ @:Block=(statements) __ [@:ParseError=(+(./\n)=>"Invalid code")]$$
+
+term: (
+    As / Cast
+    / Bool / Nil
+    / Fail / Return / Skip / Stop / Use / TypeOf / SizeOf
+    / Lambda
+    / unaryOp
+    / Var !(_`(,{)
+    / Percent / Measure / Float / Int
+    / String / DSL
+    / List / Table
+    / Struct / FnCall
+    / `(__extended-expr__`)
+)
+IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
+  @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
+maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term
+expr: Range / ButWith / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
+extended-expr: And / Or / Xor / If / Do / When / comparison / splatFnCall / splatMethodCall / expr
+unaryOp: Negative / Len / Not
+Negative:: `- !`0-9,. @value=maybe-index-term
+Len:: `# _ @value=maybe-index-term
+Not:: \b"not"\b _ @value=(comparison / expr)
+Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub / MulDiv / Pow / maybe-index-term)
+AddSub:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ @op=`+,- _ @rhs=(MulDiv / Pow / maybe-index-term)
+MulDiv:: @lhs=(MulDiv / Pow / maybe-index-term) _ @op=`*,/ _ @rhs=(Pow / maybe-index-term)
+Pow:: @base=maybe-index-term _ @op=`^ _ @exponent=maybe-index-term
+ButWith:: (@base=maybe-index-term _ `& _
+  *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
+     _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
+In:: @needle=(Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / As / Cast / term) _\b"in"\b_ @haystack=(expr / @:ParseError=(=> "Expected an expression here"))
+And:: 2+(comparison / expr) % (__\b"and"\b_)
+Or:: 2+(comparison / expr) % (__\b"or"\b_)
+Xor:: @lhs=(comparison / expr) __\b"xor"\b_ @rhs=(Xor / comparison / expr)
+Less:: @lhs=expr _ "<" _ @rhs=expr
+LessEq:: @lhs=expr _ "<=" _ @rhs=expr
+Greater:: @lhs=expr _ ">" _ @rhs=expr
+GreaterEq:: @lhs=expr _ ">=" _ @rhs=expr
+Equal:: @lhs=expr _ "==" _ @rhs=expr
+NotEqual:: @lhs=expr _ "!=" _ @rhs=expr
+comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
+Bool:: \b("yes"/"no")\b
+Nil:: \b"nil"\b
+String:: (
+  `" @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
+  / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `' @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent `')
+  / @:ParseError=(`'$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `` @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent ``)
+  / @:ParseError=(``$ .. % \n $$ => "Failed to find closing backtick with the right indentation")
+  / `" @content=..%(Escape/Interp) `"
+  / `` @content=..%Interp ``
+  / `' @content=.. `'
+  / @:ParseError=(`",'..$ => "Missing closing quote")
+  )
+DSL:: `% [@name=TypeVar] (
+  `" @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
+  / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `' @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent `')
+  / @:ParseError=(`'$ .. % \n $$ => "Failed to find closing quote with the right indentation")
+  / `` @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent ``)
+  / @:ParseError=(``$ .. % \n $$ => "Failed to find closing backtick with the right indentation")
+  / `" @content=..%(Escape/Interp) `"
+  / `` @content=..%Interp ``
+  / `' @content=.. `'
+  / `[ @content=..%(Escape/Interp) `] / @:ParseError=(`[..$ =>"Missing closing ]")
+  / `< @content=..%(Escape/Interp) `> / @:ParseError=(`<..$ =>"Missing closing >")
+  / `( @content=..%Interp `) / @:ParseError=(`(..$ =>"Missing closing )")
+  / `{ @content=.. `} / @:ParseError=(`{..$ =>"Missing closing }")
+  / `: _ @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) >(+\n !strdent . / $$$)
+  / `> _ @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / AtInterp) >(+\n !strdent . / $$$)
+  / `:,  _ @content=..%(Escape/Interp) $
+  / `> _ @content=..%AtInterp $
+  / @delim:. @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent delim)
+  / @delm:. @content=..%(Escape/Interp) delim / @:ParseError=(..$ =>"This string has no closing delimiter")
+  / @:ParseError=(=> "No DSL string content found"))
+List:: `[__`:__@type=@:ListType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
+listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
+Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] *tableEntry % (__`,__) __ [`,__] `}
+tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
+TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName) / @key=String) __`= __ @value=required-extended-expr
+postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
+Cast:: @expr=(Cast / methodCall / IndexedTerm / term)_`:_@type=type
+As:: @expr=(Cast / methodCall / IndexedTerm / term)_\b"as"\b_@type=type
+Interp:: `$ @value=(Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation") / @:String=@content=`$)
+AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`@))
+Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-7 / .)
+Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
+Measure:: @amount=(Float/Int) @units=MeasureType
+MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
+Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
+Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
+Struct:: [@name=TypeVar] _ `{ __ *@:StructField=([`. @name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
+FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
+KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
+methodCall: @:FnCall=((methodCall / IndexedTerm / As / Cast / term) _ `| _
+  (@fn=(Var / `(__required-extended-expr__`)) _ [`( __ *(KeywordArg/expr) % (__`,__) __ [`,__] `)]) [_`:_@type=type])
+splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t))
+splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / As / Cast / term) _ `| _
+  (@fn=(Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
+Var:: (id !~ keyword)
+TypeVar:: id !~ keyword
+FieldName:: id !~ keyword
+id: \b(\I *\i)
+statements: @curdent:\C +(
+    comment
+  / @statement _ [comment] [@:ParseError=(+. => "Cannot parse this code")]
+  / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
+indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
+statement: (
+    Declaration / FnDef / ConvertDef / Extern / Macro / If / Do / When / For / While / Repeat
+  / TypeDef / StructDeclaration / UnionDeclaration / UnitDeclaration / EnumDeclaration
+  / PostfixIf / PostfixFor / PostfixWhile
+  / Return / Skip / Stop / Export / Use
+  / line-statement
+  ) _ [comment]
+Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
+Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
+line-statement: (
+    @:Pass=(\b"pass"\b _ [comment]) / Fail / >'[' TableEntry
+  / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / ButWithUpdate / MethodCallUpdate
+  / extended-expr) _ [comment]
+Fail:: \b"fail"\b _ [@message=extended-expr]
+Declaration:: @var=Var _":=" _ @value=required-extended-expr
+TypeDef:: \b"deftype"\b _ @name=TypeVar _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
+UnitDeclaration:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
+StructDeclaration:: \b"struct"\b _ @name=TypeVar __ `{__ *(StructField / methodDef / FnDef / Declaration) % __ __`}
+StructField:: @names=@*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
+UnionDeclaration:: \b"union"\b _ @name=TypeVar __ `{__ *(UnionField / methodDef / FnDef / Declaration) % __ __`}
+UnionField:: @names=@+(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
+EnumDeclaration:: \b"enum"\b _ @name=TypeVar _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int])) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
+Macro:: @curdent:\C \b"macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
+FnDef:: @curdent:\C \b"def"\b _ @name=Var _ (
+  `( __ @args=@(*((@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
+  [`: _ [@returnType=type]]_ [comment]
+  ((`= _ @body=(@:Block=(
+      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
+      / @:Return=(@value=required-extended-expr) _ [comment])))
+   / @body=maybeIndentedBlock))
+methodDef: @:FnDef=(@curdent:\C \b"def"\b _ @selfVar=Var _`._ @name=Var _ (
+  `( __ @args=@(*((@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
+  [`: _ @returnType=type]_ [comment]
+  ((`= _ @body=(@:Block=(
+      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
+      / @:Return=(@value=required-extended-expr) _ [comment])))
+   / @body=maybeIndentedBlock)))
+ConvertDef:: @curdent:\C \b"def"\b _ (
+  `( __ @args=@(@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type") / @:ParseError=(=>"Expected an argument here"))__`)_
+  (`: _ @returnType=type / @:ParseError(=>"Expected a return type here"))_ [comment]
+  ((`= _ @body=(@:Block=(
+      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
+      / @:Return=(@value=required-extended-expr) _ [comment])))
+   / @body=maybeIndentedBlock))
+Extern:: \b"extern"\b _ @name=Var _ (
+  @type=@:FnType=(`( __ @args=@(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(FieldName =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
+  `: _ @returnType=type)
+  / (`: _ @type=type)
+)
+Lambda:: (@curdent:\C
+  @args=@[`(__*@:FnArg=(@name=Var__`:__@type=type)%(__`,__)__[`,__]`)]
+  _"=>"_ (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))
+)
+Assignment:: @lhs=@(1+(IndexedTerm / Var) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
+AddUpdate:: @lhs=Var _ "+=" _ @rhs=required-extended-expr
+SubUpdate:: @lhs=Var _ "-=" _ @rhs=required-extended-expr
+MulUpdate:: @lhs=Var _ "*=" _ @rhs=required-extended-expr
+DivUpdate:: @lhs=Var _ "/=" _ @rhs=required-extended-expr
+AndUpdate:: @lhs=Var _ "and=" _ @rhs=required-extended-expr
+OrUpdate:: @lhs=Var _ "or=" _ @rhs=required-extended-expr
+MethodCallUpdate:: (Var _ "|=" _
+  (@fn=(Var / `(__required-extended-expr__`)) _
+   [`( __ *expr % (__`,__) __ [`,__] `) / +(KeywordArg/expr) % +(` ,,/\t)] / @:ParseError=(=>"Not a valid method call")) [_`:_@type=type])
+ButWithUpdate:: (@base=Var _ "&=" _
+  *@:ButWithField=((`. @field=FieldName / `[__@index=required-extended-expr__`]) _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
+required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
+type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
+nonoptional-type: (
+    @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
+  / MeasureType
+  / TupleType
+  / TypeVar
+  / @:ListType=(`[@itemType=type`])
+  / @:FnType=(`(__ @args=@(*@:FnArg=([@name=FieldName __`:__] @type=type) % (__`,__)) __ `) _ "=>" __ @returnType=type)
+)
+TupleType:: `{(__
+  @members=@(*@:StructField=([@names=@*([@inline=".."_] FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,]
+__)`}
+If:: \b"if"\b @curdent:\C _ (
+    @:Clause=(@condition=(Declaration / required-extended-expr) @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock))
+    *@:Clause=((nl curdent/_) \b"elseif"\b _ @condition=(Declaration / required-extended-expr) @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock))
+    [(nl curdent/_) \b"else"\b @elseBody=maybeIndentedBlock]
+)
+Do:: \b"do"\b @curdent:\C _ maybeIndentedBlock *(nl curdent \b"else"\b maybeIndentedBlock)
+PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement / extended-expr) _ postfixConditional _ [comment]))
+PostfixFor: @:For=(@body=@:Block=@(line-statement / extended-expr) _
+  \b"for"\b _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [@filter=loopFilter] _ [comment])
+PostfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
+  \b"while"\b _ @condition=extended-expr _ [@filter=loopFilter] _ [comment])
+When:: ( \b"when"\b @curdent:\C _
+  @what=required-extended-expr _ [[comment] nl curdent]
+  +@:WhenClause=("is"\b _ @cases=@+required-extended-expr%(_`,_) _ @body=indentedBlock)%(nl curdent)
+  [nl curdent "else" _ @elseBody=maybeIndentedBlock]
+)
+For:: (
+  \b"for"\b @curdent:\C _ [@index=Var_`,_] @val=Var _ "in" _ @iterable=required-extended-expr _ [@filter=loopFilter] _ [comment]
+  @body=indentedBlock
+  [between]
+)
+While:: (
+  \b"while"\b @curdent:\C _ @condition=(Declaration/required-extended-expr) _ [@filter=loopFilter]
+  @body=indentedBlock
+  [between]
+)
+Repeat:: \b"repeat"\b [@filter=loopFilter] @curdent:\C _ @body=maybeIndentedBlock [between]
+loopFilter: @:If=(@:Clause=(
+  (@body=@:Block=@@:Skip=("") _ (\b"if"\b _ @condition=@:Not=(@value=required-extended-expr) / \b"unless"\b_ @condition=required-extended-expr))
+  / @body=@:Block=@(Skip/Stop) _ postfixConditional))
+maybeIndentedBlock: indentedBlock / @:Block=@(_line-statement_)
+between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:ParseError=(..$ => "Invalid 'between' body"))
+Return:: \b"return"\b _ [@value=extended-expr]
+Use:: \b"use"\b _ `" @name=.. `"
+Export:: \b"export"\b _ +Var %(_`,__)
+TypeOf:: \b"typeof"\b _ @expression=(expr)
+SizeOf:: \b"sizeof"\b _ @expression=(expr)
+Range:: (
+  @first=maybe-index-term [`,@next=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
+  / ".." [@last=maybe-index-term]) # ..5 ..
+comment: "//" *.
+
+# Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"then"/"struct"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
+  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
+hex: `0-9,a-f,A-F
+nl: +\n % (*(` /\t) [comment])
+__: *(` /\t/\n/\r/comment)
+_:  *(` /\t)
