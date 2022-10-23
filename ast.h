@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "datastructures/list.h"
+
 typedef enum {
     Unknown = 0,
     Nil, Bool, Var,
@@ -35,24 +37,19 @@ typedef struct ast_s {
         double n;
         const char *str;
         struct ast_s *child;
-        struct {
-            size_t nchildren;
-            struct ast_s **children;
-        };
+        List(struct ast_s*) children;
         struct { // Infix
             struct ast_s *lhs, *rhs;
         };
         struct { // Function def/lambda
-            size_t nargs;
-            const char **arg_names;
-            struct ast_s **arg_types;
+            List(const char*) arg_names;
+            List(struct ast_s*) arg_types;
             struct ast_s *ret_type;
             struct ast_s *body;
         } fn;
         struct { // Function
             struct ast_s *fn;
-            size_t nargs;
-            struct ast_s **args;
+            List(struct ast_s*) args;
         } call;
         struct {
             const char *name;

@@ -30,8 +30,8 @@ ButWith:: (@base=maybe-index-term _ `& _
   *@:ButWithAssign=((`. @field=FieldName / `[__@index=required-extended-expr__`])
      _`=_ @value=required-extended-expr) % (_`,,|_) [_`,])
 In:: @needle=(Range / ButWith / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / As / Cast / term) _\b"in"\b_ @haystack=(expr / @:ParseError=(=> "Expected an expression here"))
-And:: 2+(comparison / expr) % (__\b"and"\b_)
-Or:: 2+(comparison / expr) % (__\b"or"\b_)
+And:: @lhs=(comparison / expr) (__\b"and"\b_) @rhs=(And / comparison / expr)
+Or:: @lhs=(comparison / expr) (__\b"or"\b_) @rhs=(Or / comparison / expr)
 Xor:: @lhs=(comparison / expr) __\b"xor"\b_ @rhs=(Xor / comparison / expr)
 Less:: @lhs=expr _ "<" _ @rhs=expr
 LessEq:: @lhs=expr _ "<=" _ @rhs=expr

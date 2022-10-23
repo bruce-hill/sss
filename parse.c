@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "ast.h"
+#include "datastructures/list.h"
 
 #ifndef streq
 #define streq(a,b) (strcmp(a,b) == 0)
@@ -146,7 +147,7 @@ static inline ast_t *new_ast(ast_t init) {
     *ret = init;
     return ret;
 }
-#define AST(mykind, ...) new_ast((ast_t){.kind=mykind, __VA_ARGS__})
+#define AST(mykind, ...) (new_ast((ast_t){.kind=mykind, __VA_ARGS__}))
 
 const char *kind_tags[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
@@ -192,16 +193,6 @@ static astkind_e get_kind(match_t *m)
 
 
 //
-// Append an AST node to a list of AST nodes
-//
-static inline void append(size_t *len, ast_t ***list, ast_t *ast)
-{
-    *len += 1;
-    *list = GC_realloc(*list, sizeof(ast_t*)*(*len));
-    (*list)[*len - 1] = ast;
-}
-
-//
 // Convert a match to a CORD
 //
 static const char *match_to_cord(match_t *m)
@@ -238,44 +229,44 @@ ast_t *match_to_ast(match_t *m)
         }
         case StringJoin: {
             match_t *content = get_named_capture(m, "content", -1);
-            size_t len = 0; ast_t **chunks = NULL;
+            List(ast_t*) chunks = EMPTY_LIST(ast_t*);
             const char *prev = content->start;
             for (int i = 1; ; i++) { // index 1 == text content
                 match_t *cm = get_numbered_capture(content, i);
                 if (!cm) break;
                 if (cm->start > prev) {
-                    append(&len, &chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(cm->start - prev))));
+                    APPEND(chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(cm->start - prev))));
                 }
-                append(&len, &chunks, match_to_ast(cm));
+                APPEND(chunks, match_to_ast(cm));
                 prev = cm->end;
             }
             if (content->end > prev) {
-                append(&len, &chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(content->end - prev))));
+                APPEND(chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(content->end - prev))));
             }
-            return AST(StringJoin, .nchildren=len, .children=chunks);
+            return AST(StringJoin, .children=chunks);
         }
         case Interp: {
             return match_to_ast(get_named_capture(m, "value", -1));
         }
         case Block: {
-            size_t len = 0; ast_t **stmts = NULL;
+            NEW_LIST(ast_t*, stmts);
             for (int i = 1; ; i++) {
                 ast_t *stmt = match_to_ast(get_numbered_capture(m, i));
                 if (!stmt) break;
-                append(&len, &stmts, stmt);
+                APPEND(stmts, stmt);
             }
-            return AST(Block, .nchildren=len, .children=stmts);
+            return AST(Block, .children=stmts);
         }
         case FunctionCall: {
             match_t *fn_m = get_named_capture(m, "fn", -1);
             ast_t *fn = match_to_ast(fn_m);
-            size_t len = 0; ast_t **args = NULL;
+            NEW_LIST(ast_t*, args);
             for (int i = 1; ; i++) {
                 ast_t *arg = match_to_ast(get_numbered_capture(m, i));
                 if (!arg) break;
-                append(&len, &args, arg);
+                APPEND(args, arg);
             }
-            return AST(FunctionCall, .call.fn=fn, .call.nargs=len, .call.args=args);
+            return AST(FunctionCall, .call.fn=fn, .call.args=args);
         }
         case KeywordArg: {
             match_t *name_m = get_named_capture(m, "name", -1);
@@ -347,10 +338,10 @@ void print_ast(ast_t *ast) {
     case FunctionCall: {
         print_ast(ast->call.fn);
         printf("(");
-        for (size_t i = 0; i < ast->call.nargs; i++) {
+        for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
             if (i > 0)
                 printf(", ");
-            print_ast(ast->call.args[i]);
+            print_ast(LIST_ITEM(ast->call.args, i));
         }
         printf(")");
         break;
@@ -361,17 +352,17 @@ void print_ast(ast_t *ast) {
         break;
     }
     case StringJoin: {
-        for (size_t i = 0; i < ast->nchildren; i++) {
+        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
             if (i > 0) printf("..");
-            print_ast(ast->children[i]);
+            print_ast(LIST_ITEM(ast->children, i));
         }
         break;
     }
     case StringLiteral: printf("\x1b[35m\"%s\"\x1b[m", ast->str); break;
     case Block: {
-        for (size_t i = 0; i < ast->nchildren; i++) {
+        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
             printf("\x1b[2m%ld |\x1b[m ", i+1);
-            print_ast(ast->children[i]);
+            print_ast(LIST_ITEM(ast->children, i));
             printf("\n");
         }
         break;

@@ -13,6 +13,14 @@ list_t *list_new(size_t item_size, size_t min_items) {
     return list;
 }
 
+list_t *list_new_items(size_t item_size, size_t len, void *items) {
+    list_t *list = GC_MALLOC(sizeof(list_t));
+    list->items = GC_MALLOC(item_size * len);
+    list->len = len;
+    memcpy(list->items, items, item_size * len);
+    return list;
+}
+
 void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
     if (index == INT_NIL) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
