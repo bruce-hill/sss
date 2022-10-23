@@ -1,3 +1,4 @@
 #pragma once
+#include <bp/files.h>
 #include "ast.h"
-ast_t *parse(const char *filename);
+ast_t *parse(file_t *f);

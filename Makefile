@@ -20,12 +20,12 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lbp -lcord
+LIBS=-lgc -lbp -lcord -lbhash -lintern
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
-CFILES=parse.c typecheck.c compile.c datastructures/list.c datastructures/range.c
-HFILES=parse.h typecheck.h compile.h datastructures/list.h datastructures/range.h ast.h types.h util.h
+CFILES=ast.c parse.c typecheck.c compile.c util.c datastructures/list.c datastructures/range.c
+HFILES=ast.h parse.h typecheck.h compile.h util.h datastructures/list.h datastructures/range.h types.h
 OBJFILES=$(CFILES:.c=.o)
 
 all: $(NAME)

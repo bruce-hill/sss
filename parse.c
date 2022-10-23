@@ -80,40 +80,6 @@ static void load_grammar(void)
 }
 
 //
-// Print a match highlighted in red with context lines
-//
-static void highlight_match(file_t *f, match_t *m) {
-    size_t firstline = get_line_number(f, m->start);
-    size_t lastline = get_line_number(f, m->end);
-    fprintf(stderr, "\x1b[1;4m%s\x1b[m\n", f->filename);
-    for (size_t i = firstline - 1; i <= lastline + 1; i++) {
-        const char *line = get_line(f, i);
-        if (!line) continue;
-        const char *eol = strchrnul(line, '\n');
-        if (line >= f->end - 1 && line == eol) break;
-        fprintf(stderr, "\x1b[2m% 4ld| \x1b[m", i);
-        if (i == firstline) {
-            fprintf(stderr, "\x1b[m%.*s", (int)(m->start - line), line);
-            if (i == lastline) {
-                fprintf(stderr, "\x1b[0;31;1m%.*s\x1b[m", (int)(m->end - m->start), m->start);
-                fprintf(stderr, "\x1b[m%.*s", (int)(eol - m->end), m->end);
-            } else {
-                fprintf(stderr, "\x1b[0;31;1m%.*s\x1b[m", (int)(eol - m->start), m->start);
-            }
-        } else if (i == lastline) {
-            fprintf(stderr, "\x1b[0;31;1m%.*s\x1b[m", (int)(m->end - line), line);
-            fprintf(stderr, "\x1b[m%.*s", (int)(eol - m->end), m->end);
-        } else if (i < firstline || i > lastline) {
-            fprintf(stderr, "\x1b[m%.*s", (int)(eol - line), line);
-        } else {
-            fprintf(stderr, "\x1b[0;31;1m%.*s", (int)(eol - line), line);
-        }
-        fprintf(stderr, "\x1b[m\n");
-    }
-    fprintf(stderr, "\x1b[m\n");
-}
-
-//
 // Print error information from a match
 //
 static void print_err(file_t *f, match_t *m) {
@@ -148,7 +114,7 @@ static inline ast_t *new_ast(ast_t init) {
     *ret = init;
     return ret;
 }
-#define AST(mykind, ...) (new_ast((ast_t){.kind=mykind, __VA_ARGS__}))
+#define AST(m, mykind, ...) (new_ast((ast_t){.kind=mykind, .match=m, __VA_ARGS__}))
 
 const char *kind_tags[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
@@ -194,14 +160,15 @@ static astkind_e get_kind(match_t *m)
 
 
 //
-// Convert a match to a CORD
+// Convert a match to an interned string
 //
-static const char *match_to_cord(match_t *m)
+static istr_t match_to_istr(match_t *m)
 {
     FILE *f = fmemopen(NULL, 0, "rw");
     fprint_match(f, m->start, m, NULL);
     fseek(f, 0, SEEK_SET);
-    return CORD_from_file_eager(f);
+    CORD c = CORD_from_file_eager(f);
+    return intern_str(CORD_to_const_char_star(c));
 }
 
 //
@@ -214,19 +181,19 @@ ast_t *match_to_ast(match_t *m)
     if (pat->type == BP_TAGGED) {
         astkind_e kind = get_kind(m);
         switch (kind) {
-        case Nil: return AST(Nil);
-        case Bool: return AST(Bool, .b=strncmp(m->start, "no", 2) != 0);
+        case Nil: return AST(m, Nil);
+        case Bool: return AST(m, Bool, .b=strncmp(m->start, "no", 2) != 0);
         case Var: {
-            const char *v = CORD_substr(m->start, 0, (size_t)(m->end - m->start));
-            return AST(Var, .str=v);
+            istr_t v = intern_strn(m->start, (size_t)(m->end - m->start));
+            return AST(m, Var, .str=v);
         }
         case Int: {
             int64_t i = strtol(m->start, NULL, 10);
-            return AST(Int, .i=i);
+            return AST(m, Int, .i=i);
         }
         case Num: {
             double n = strtod(m->start, NULL);
-            return AST(Num, .n=n);
+            return AST(m, Num, .n=n);
         }
         case StringJoin: {
             match_t *content = get_named_capture(m, "content", -1);
@@ -236,15 +203,15 @@ ast_t *match_to_ast(match_t *m)
                 match_t *cm = get_numbered_capture(content, i);
                 if (!cm) break;
                 if (cm->start > prev) {
-                    APPEND(chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(cm->start - prev))));
+                    APPEND(chunks, AST(m, StringLiteral, .str=intern_strn(prev, (size_t)(cm->start - prev))));
                 }
                 APPEND(chunks, match_to_ast(cm));
                 prev = cm->end;
             }
             if (content->end > prev) {
-                APPEND(chunks, AST(StringLiteral, .str=CORD_substr(prev, 0, (size_t)(content->end - prev))));
+                APPEND(chunks, AST(m, StringLiteral, .str=intern_strn(prev, (size_t)(content->end - prev))));
             }
-            return AST(StringJoin, .children=chunks);
+            return AST(m, StringJoin, .children=chunks);
         }
         case Interp: {
             return match_to_ast(get_named_capture(m, "value", -1));
@@ -256,7 +223,7 @@ ast_t *match_to_ast(match_t *m)
                 if (!stmt) break;
                 APPEND(stmts, stmt);
             }
-            return AST(Block, .children=stmts);
+            return AST(m, Block, .children=stmts);
         }
         case FunctionCall: {
             match_t *fn_m = get_named_capture(m, "fn", -1);
@@ -267,13 +234,14 @@ ast_t *match_to_ast(match_t *m)
                 if (!arg) break;
                 APPEND(args, arg);
             }
-            return AST(FunctionCall, .call.fn=fn, .call.args=args);
+            return AST(m, FunctionCall, .call.fn=fn, .call.args=args);
         }
         case KeywordArg: {
             match_t *name_m = get_named_capture(m, "name", -1);
-            const char *name = CORD_substr(name_m->start, 0, (size_t)(name_m->end - name_m->start));
+            CORD c = CORD_substr(name_m->start, 0, (size_t)(name_m->end - name_m->start));
+            istr_t name = intern_str(CORD_to_char_star(c));
             ast_t *value = match_to_ast(get_named_capture(m, "value", -1));
-            return AST(KeywordArg, .named.name=name, .named.value=value);
+            return AST(m, KeywordArg, .named.name=name, .named.value=value);
         }
         case Add: case Subtract: case Multiply: case Divide: case Power:
         case And: case Or: case Xor:
@@ -281,12 +249,12 @@ ast_t *match_to_ast(match_t *m)
         {
             ast_t *lhs = match_to_ast(get_named_capture(m, "lhs", -1));
             ast_t *rhs = match_to_ast(get_named_capture(m, "rhs", -1));
-            return AST(kind, .lhs=lhs, .rhs=rhs);
+            return AST(m, kind, .lhs=lhs, .rhs=rhs);
         }
         case Not: case Negative: case Len:
         {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
-            return AST(kind, .child=child);
+            return AST(m, kind, .child=child);
         }
         default: break;
         }
@@ -294,21 +262,23 @@ ast_t *match_to_ast(match_t *m)
         const char *tag = m->pat->args.capture.name;
         size_t taglen = m->pat->args.capture.namelen;
         if (strneq(tag, "Newline", taglen)) {
-            return AST(StringLiteral, .str="\n");
+            return AST(m, StringLiteral, .str=intern_str("\n"));
         } else if (strneq(tag, "Escape", taglen)) {
             static const char *unescapes[255] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
             if (unescapes[(int)m->start[1]]) {
-                return AST(StringLiteral, .str=unescapes[(int)m->start[1]]);
+                return AST(m, StringLiteral, .str=intern_str(unescapes[(int)m->start[1]]));
             } else if (m->start[1] == 'x') {
                 char *endptr = (char*)(m->start + 4);
-                return AST(StringLiteral, .str=CORD_cat_char(NULL, (char)strtol(m->start+2, &endptr, 16)));
+                CORD c = CORD_cat_char(NULL, (char)strtol(m->start+2, &endptr, 16));
+                return AST(m, StringLiteral, .str=intern_str(CORD_to_char_star(c)));
             } else if ('0' <= m->start[1] && m->start[1] <= '7') {
                 char *endptr = (char*)(m->start + 4);
-                return AST(StringLiteral, .str=CORD_cat_char(NULL, (char)strtol(m->start+2, &endptr, 8)));
+                CORD c = CORD_cat_char(NULL, (char)strtol(m->start+2, &endptr, 8));
+                return AST(m, StringLiteral, .str=intern_str(CORD_to_char_star(c)));
             } else {
-                return AST(StringLiteral, .str=CORD_substr(m->start, 0, 1));
+                return AST(m, StringLiteral, .str=intern_strn(m->start, 1));
             }
-            return AST(StringLiteral, .str=match_to_cord(m));
+            return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
             fprintf(stderr, "\x1b[31;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
             highlight_match(parsing, m);
@@ -372,10 +342,9 @@ void print_ast(ast_t *ast) {
     }
 }
 
-ast_t *parse(const char *filename)
+ast_t *parse(file_t *f)
 {
     if (grammar == NULL) load_grammar();
-    file_t *f = load_file(NULL, filename);
     parsing = f;
     match_t *m = NULL;
     ast_t *ast = NULL;
@@ -393,7 +362,6 @@ ast_t *parse(const char *filename)
         }
     }
     parsing = NULL;
-    stop_matching(&m);
     return ast;
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

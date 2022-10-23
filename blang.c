@@ -3,6 +3,7 @@
 #include <bp/pattern.h>
 #include <bp/match.h>
 #include <bp/files.h>
+#include <bhash.h>
 
 #include "parse.h"
 #include "typecheck.h"
@@ -12,14 +13,18 @@
 
 int main(int argc, char *argv[])
 {
+    GC_INIT();
+    hashmap_set_allocator(GC_malloc, NULL);
     for (int i = 1; i < argc; i++) {
-        ast_t *ast = parse(argv[i]);
-        const char *dest;
-        if (i + 2 < argc && streq(argv[i+1], "-o"))
-            dest = argv[i+2];
-        else
-            dest = CORD_cat(argv[i], ".o");
-        compile(ast, dest);
+        file_t *f = load_file(NULL, argv[i]);
+
+        ast_t *ast = parse(f);
+
+        const char *code = compile_file(f, ast);
+        puts(code);
+
+        recycle_all_matches();
+        destroy_file(&f);
     }
 
     return 0;
