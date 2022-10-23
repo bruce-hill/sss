@@ -5,36 +5,22 @@
 
 #include "types.h"
 #include "ast.h"
+#include "util.h"
 
-static inline bl_type_t *new_type(typekind_e kind, ...) {
-    va_list argp;
-    va_start(argp, kind);
-    bl_type_t *ret = GC_MALLOC(sizeof(bl_type_t));
-    ret->kind = kind;
-    switch (kind) {
-    case NamedType: ret->name = va_arg(argp, const char*); break;
-    case ListType: ret->item_type = va_arg(argp, bl_type_t*); break;
-    case OptionalType: ret->nonnil = va_arg(argp, bl_type_t*); break;
-    case TableType: {
-        ret->key = va_arg(argp, bl_type_t*);
-        ret->value = va_arg(argp, bl_type_t*);
-        break;
-    }
-    case FunctionType: {
-        ret->nargs = va_arg(argp, size_t);
-        ret->args = va_arg(argp, bl_type_t**);
-        ret->ret = va_arg(argp, bl_type_t*);
-        break;
-    }
-    default: return NULL;
-    }
+static inline bl_type_t *new_type(bl_type_t init) {
+    bl_type_t *ret = new(bl_type_t);
+    *ret = init;
     return ret;
 }
+#define TYPE(mykind, ...) (new_type((bl_type_t){.kind=mykind, __VA_ARGS__}))
 
 bl_type_t *get_type(ast_t *ast)
 {
     switch (ast->kind) {
-        case Int: return new_type(NamedType, "Int");
+        case Nil: return TYPE(NamedType, .name="Nil");
+        case Bool: return TYPE(NamedType, .name="Bool");
+        case Int: return TYPE(NamedType, .name="Int");
+        case Num: return TYPE(NamedType, .name="Num");
         default: break;
     }
     return NULL;

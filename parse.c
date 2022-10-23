@@ -15,6 +15,7 @@
 
 #include "ast.h"
 #include "datastructures/list.h"
+#include "util.h"
 
 #ifndef streq
 #define streq(a,b) (strcmp(a,b) == 0)
@@ -143,7 +144,7 @@ static void report_errors(file_t *f, match_t *m, bool stop_on_first)
 // Helper functions for instantiating AST tagged union nodes with some type checking
 //
 static inline ast_t *new_ast(ast_t init) {
-    ast_t *ret = GC_MALLOC(sizeof(ast_t));
+    ast_t *ret = new(ast_t);
     *ret = init;
     return ret;
 }
