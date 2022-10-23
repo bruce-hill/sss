@@ -24,8 +24,8 @@ LIBS=-lgc -lbp -lcord
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
-CFILES=parse.c typecheck.c compile.c
-HFILES=parse.h typecheck.h compile.h ast.h types.h
+CFILES=parse.c typecheck.c compile.c datastructures/list.c
+HFILES=parse.h typecheck.h compile.h datastructures/list.h ast.h types.h
 OBJFILES=$(CFILES:.c=.o)
 
 all: $(NAME)
