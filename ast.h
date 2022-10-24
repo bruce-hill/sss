@@ -30,6 +30,7 @@ typedef enum {
     TypeName,
     TypeList, TypeTable,
     TypeFunction, TypeOption,
+    Cast, As,
     NUM_TYPES,
 } astkind_e;
 
@@ -47,6 +48,9 @@ typedef struct ast_s {
         List(struct ast_s*) children;
         struct { // Infix
             struct ast_s *lhs, *rhs;
+        };
+        struct { // Cast/As
+            struct ast_s *expr, *type;
         };
         struct { // Multiple assignment
             List(struct ast_s*) lhs;

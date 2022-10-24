@@ -63,6 +63,37 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Assign: return Type(NilType);
         case Return: case Fail: return Type(AbortType);
 
+        case Cast: {
+            bl_type_t *t = get_type(f, bindings, ast->type);
+            return t->type;
+        }
+
+        case TypeName: {
+            binding_t *binding = hashmap_get(bindings, ast->str);
+            if (!binding) {
+                TYPE_ERR(f, ast, "This type name is not defined");
+            }
+            if (binding->type->kind != TypeType)
+                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(binding->type));
+            return binding->type;
+        }
+
+        case TypeList: {
+            bl_type_t *item_t = get_type(f, bindings, ast->child);
+            if (!item_t) TYPE_ERR(f, ast->child, "This item type is not defined");
+            if (item_t->kind != TypeType)
+                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(item_t));
+            return Type(TypeType, .type=Type(ListType, .item_type=item_t->type));
+        }
+
+        case TypeOption: {
+            bl_type_t *item_t = get_type(f, bindings, ast->child);
+            if (!item_t) TYPE_ERR(f, ast->child, "This option type is not defined");
+            if (item_t->kind != TypeType)
+                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(item_t));
+            return Type(TypeType, .type=Type(OptionalType, .nonnil=item_t->type));
+        }
+
         default: break;
     }
     TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));
@@ -75,28 +106,6 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
     bl_type_t *t = get_type(f, bindings, ast);
     if (!(t->kind == NilType || t->kind == AbortType)) {
         TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
-    }
-}
-
-const char *base_type_for(bl_type_t *t)
-{
-    switch (t->kind) {
-    case NilType: case BoolType: case Int8Type: case Int16Type: case Int32Type: return "w";
-    case NumType: return "d";
-    case Num32Type: return "s";
-    default: return "l";
-    }
-}
-
-const char *abi_type_for(bl_type_t *t)
-{
-    switch (t->kind) {
-    case NilType: case BoolType: case Int8Type: return "b";
-    case Int16Type: return "h";
-    case Int32Type: return "w";
-    case NumType: return "d";
-    case Num32Type: return "s";
-    default: return "l";
     }
 }
 

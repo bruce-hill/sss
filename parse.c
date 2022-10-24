@@ -135,9 +135,10 @@ const char *kind_tags[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
-    [TypeName]="TypeName",
-    [TypeList]="TypeList", [TypeTable]="TypeTable",
-    [TypeFunction]="TypeFunction", [TypeOption]="TypeOption",
+    [TypeName]="TypeVar",
+    [TypeList]="ListType", [TypeTable]="TableType",
+    [TypeFunction]="FnType", [TypeOption]="OptionalType",
+    [Cast]="Cast", [As]="As",
 };
 
 static astkind_e get_kind(match_t *m)
@@ -165,8 +166,10 @@ static astkind_e get_kind(match_t *m)
 //
 static istr_t match_to_istr(match_t *m)
 {
-    FILE *f = fmemopen(NULL, 0, "rw");
+    // Rough estimate of size
+    FILE *f = fmemopen(NULL, 2*(size_t)(m->end - m->start) + 1, "r+");
     fprint_match(f, m->start, m, NULL);
+    fputc('\0', f);
     fseek(f, 0, SEEK_SET);
     CORD c = CORD_from_file_eager(f);
     return intern_str(CORD_to_const_char_star(c));
@@ -253,6 +256,11 @@ ast_t *match_to_ast(match_t *m)
             ast_t *rhs = match_to_ast(get_named_capture(m, "rhs", -1));
             return AST(m, kind, .lhs=lhs, .rhs=rhs);
         }
+        case Cast: case As: {
+            ast_t *expr = match_to_ast(get_named_capture(m, "expr", -1));
+            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
+            return AST(m, kind, .expr=expr, .type=type);
+        }
         case Not: case Negative: case Len:
         {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
@@ -291,6 +299,14 @@ ast_t *match_to_ast(match_t *m)
         case Fail: {
             ast_t *msg = match_to_ast(get_named_capture(m, "message", -1));
             return AST(m, Fail, .child=msg);
+        }
+        case TypeOption: {
+            ast_t *nonnil = match_to_ast(get_named_capture(m, "nonnil", -1));
+            return AST(m, TypeOption, .child=nonnil);
+        }
+        case TypeName: {
+            istr_t name = match_to_istr(m);
+            return AST(m, TypeName, .str=name);
         }
         default: break;
         }

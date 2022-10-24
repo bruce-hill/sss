@@ -38,14 +38,13 @@ static CORD type_to_cord(bl_type_t *t) {
             return c;
         }
         case OptionalType: return CORD_cat(type_to_cord(t->nonnil), "?");
+        default: return "?!?!?";
     }
-    return "";
 }
 
 istr_t type_to_string(bl_type_t *t) {
     return intern_str(CORD_to_char_star(type_to_cord(t)));
 }
-
 
 bool type_is_a(bl_type_t *t, bl_type_t *req)
 {
@@ -54,3 +53,59 @@ bool type_is_a(bl_type_t *t, bl_type_t *req)
         return true;
     return false;
 }
+
+char base_type_for(bl_type_t *t)
+{
+    switch (t->kind) {
+    case NilType: case BoolType: case Int8Type: case Int16Type: case Int32Type: return 'w';
+    case NumType: return 'd';
+    case Num32Type: return 's';
+    case OptionalType: {
+        switch (t->nonnil->kind) {
+        case Int16Type: case Int8Type: return 'w';
+        case BoolType: return 'w';
+        case NumType: return 'd';
+        case Num32Type: return 's';
+        default: return 'l';
+        }
+    }
+    default: return 'l';
+    }
+}
+
+char abi_type_for(bl_type_t *t)
+{
+    switch (t->kind) {
+    case NilType: case BoolType: case Int8Type: return 'b';
+    case Int16Type: return 'h';
+    case Int32Type: return 'w';
+    case NumType: return 'd';
+    case Num32Type: return 's';
+    case OptionalType: {
+        switch (t->nonnil->kind) {
+        case Int32Type: case Int16Type: return 'w';
+        case Int8Type: return 'h';
+        case BoolType: return 'b';
+        case NumType: return 'd';
+        case Num32Type: return 's';
+        default: return 'l';
+        }
+    }
+    default: return 'l';
+    }
+}
+
+const char* nil_value(bl_type_t *t)
+{
+    switch (t->kind) {
+    case OptionalType: return nil_value(t->nonnil);
+    case IntType: return "0x7FFFFFFFFFFFFFFFF";
+    case Int16Type: case Int8Type: return "0x7FFFFFFFF";
+    case BoolType: return "0x7F";
+    case NumType: return "d_0x8000000000000.p7ff";
+    case Num32Type: return "s_0x800000.pff";
+    default: return "0";
+    }
+}
+
+// vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

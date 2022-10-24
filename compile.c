@@ -46,7 +46,7 @@ code_t *with_var(code_t *code, istr_t varname, CORD reg, bl_type_t *type) {
         }
         hashmap_set(merged, varname, binding);
         code_t *copy = new(code_t);
-        *copy = *code;
+        memcpy(copy, code, sizeof(code_t));
         copy->bindings = merged;
         return copy;
     } else {
@@ -54,7 +54,7 @@ code_t *with_var(code_t *code, istr_t varname, CORD reg, bl_type_t *type) {
         chained->fallback = code->bindings;
         hashmap_set(chained, varname, binding);
         code_t *copy = new(code_t);
-        *copy = *code;
+        memcpy(copy, code, sizeof(code_t));
         copy->bindings = chained;
         return copy;
     }
@@ -102,13 +102,13 @@ static CORD add_fncall(code_t *code, ast_t *ast, bool give_register)
     }
     CORD ret = give_register ? fresh_local(code, "ret") : NULL;
     if (give_register)
-        addf(code->code, "%r =%r ", ret, base_type_for(ret_type));
+        addf(code->code, "%r =%c ", ret, base_type_for(ret_type));
     addf(code->code, "call %r(", fn_reg);
     for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
         if (i > 0) addf(code->code, ", ");
         ast_t *arg = LIST_ITEM(ast->call.args, i);
         bl_type_t *arg_type = get_type(file, code->bindings, arg);
-        addf(code->code, "%s %r", base_type_for(arg_type), LIST_ITEM(arg_regs, i));
+        addf(code->code, "%c %r", base_type_for(arg_type), LIST_ITEM(arg_regs, i));
     }
     // TODO: default args
     addf(code->code, ")\n");
@@ -142,6 +142,34 @@ CORD get_string_reg(code_t *code, const char *str)
     return reg;
 }
 
+static void check_nil(code_t *code, CORD *which, bl_type_t *t, CORD val_reg, CORD nil_label, CORD nonnil_label)
+{
+    if (t->kind != OptionalType) {
+        add_line(which, "jmp %r", nonnil_label);
+        return;
+    }
+    
+    CORD is_nil = fresh_local(code, "is_nil");
+    CORD nil_reg = fresh_local(code, "nil");
+    char base = base_type_for(t);
+    add_line(which, "%r =%c copy %s", nil_reg, base, nil_value(t));
+    switch (base) {
+    case 'd': case 's': {
+        CORD nil_bits = fresh_local(code, "nil_bits"), val_bits = fresh_local(code, "optional_bits");
+        add_line(which, "%r =l cast %r", val_bits, val_reg);
+        add_line(which, "%r =l cast %r", nil_bits, nil_reg);
+        add_line(which, "%r =w ceql %r, %r", is_nil, base, val_bits, nil_bits);
+        add_line(which, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
+        return;
+    }
+    default: {
+        add_line(which, "%r =w ceq%c %r, %r", is_nil, base, val_reg, nil_reg);
+        add_line(which, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
+        return;
+    }
+    }
+}
+
 CORD get_tostring_reg(code_t *code, bl_type_t *t)
 {
     CORD fn_reg = hashmap_get(code->tostring_regs, t);
@@ -149,9 +177,23 @@ CORD get_tostring_reg(code_t *code, bl_type_t *t)
     fn_reg = fresh_global(code, "tostring");
     CORD val = fresh_local(code, "val");
     CORD rec = fresh_local(code, "rec");
-    add_line(code->fn_code, "function l %r(%s %r, l %r) {", fn_reg, base_type_for(t), val, rec);
+    add_line(code->fn_code, "function l %r(%c %r, l %r) {", fn_reg, base_type_for(t), val, rec);
     add_line(code->fn_code, "@start");
     switch (t->kind) {
+    case NilType: {
+        add_line(code->fn_code, "ret %r", get_string_reg(code, "(nil)"));
+        break;
+    }
+    case BoolType: {
+        CORD yes_label = fresh_label(code, "yes");
+        CORD no_label = fresh_label(code, "no");
+        add_line(code->fn_code, "jnz %r, %r, %r", val, yes_label, no_label);
+        add_line(code->fn_code, "%r", yes_label);
+        add_line(code->fn_code, "ret %r", get_string_reg(code, "yes"));
+        add_line(code->fn_code, "%r", no_label);
+        add_line(code->fn_code, "ret %r", get_string_reg(code, "no"));
+        break;
+    }
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
         const char *fmt;
         switch (t->kind) {
@@ -161,9 +203,32 @@ CORD get_tostring_reg(code_t *code, bl_type_t *t)
         }
         CORD ret = fresh_local(code, "str");
         add_line(code->fn_code, "%r =l alloc8 8", ret);
-        add_line(code->fn_code, "call $CORD_sprintf(l %r, l %r, %s %r, ...)", ret, get_string_reg(code, fmt), base_type_for(t), val);
+        add_line(code->fn_code, "call $CORD_sprintf(l %r, l %r, %c %r, ...)", ret, get_string_reg(code, fmt), base_type_for(t), val);
         add_line(code->fn_code, "%r =l loadl %r", ret, ret);
         add_line(code->fn_code, "ret %r", ret);
+        break;
+    }
+    case OptionalType: {
+        CORD ifnil = fresh_label(code, "is_nil"), ifnonnil = fresh_label(code, "is_not_nil");
+        check_nil(code, code->fn_code, t, val, ifnil, ifnonnil);
+        add_line(code->fn_code, "%r", ifnil);
+        add_line(code->fn_code, "ret %r", get_string_reg(code, "(nil)"));
+        add_line(code->fn_code, "%r", ifnonnil);
+        CORD ret = fresh_local(code, "ret");
+        char nonnil_base = base_type_for(t->nonnil);
+        CORD val2;
+        if (base_type_for(t) == nonnil_base) {
+            val2 = val;
+        } else {
+            val2 = fresh_local(code, "nonnil");
+            add_line(code->fn_code, "%r =%c stosi %r", val2, nonnil_base, val);
+        }
+        if (t->nonnil->kind == StringType) {
+            add_line(code->fn_code, "ret %r", val2);
+        } else {
+            add_line(code->fn_code, "%r =l call %r(%c %r, l 0)", ret, get_tostring_reg(code, t->nonnil), nonnil_base, val2);
+            add_line(code->fn_code, "ret %r", ret);
+        }
         break;
     }
     default: {
@@ -195,7 +260,7 @@ CORD add_value(code_t *code, ast_t *ast) {
         binding_t *binding = hashmap_get(code->bindings, ast->lhs->str);
         if (!binding) errx(1, "Failed to find declaration binding");
         CORD val_reg = add_value(code, ast->rhs);
-        add_line(code->code, "%s =%s copy %s", binding->reg, base_type_for(binding->type), val_reg);
+        add_line(code->code, "%s =%c copy %s", binding->reg, base_type_for(binding->type), val_reg);
         return binding->reg;
     }
     case Assign: {
@@ -213,7 +278,7 @@ CORD add_value(code_t *code, ast_t *ast) {
                 ERROR(LIST_ITEM(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
-            add_line(code->code, "%s =%s copy %s", LIST_ITEM(lhs_regs, i), base_type_for(t_lhs), val_reg);
+            add_line(code->code, "%s =%c copy %s", LIST_ITEM(lhs_regs, i), base_type_for(t_lhs), val_reg);
         }
         return "0";
     }
@@ -222,7 +287,8 @@ CORD add_value(code_t *code, ast_t *ast) {
             ast_t *stmt = LIST_ITEM(ast->children, i);
             if (stmt->kind == Declare) {
                 CORD reg = fresh_local(code, stmt->lhs->str);
-                code = with_var(code, stmt->lhs->str, reg, get_type(file, code->bindings, stmt->rhs));
+                bl_type_t *t = get_type(file, code->bindings, stmt->rhs);
+                code = with_var(code, stmt->lhs->str, reg, t);
             }
             if (i == LIST_LEN(ast->children)-1)
                 return add_value(code, stmt);
@@ -253,7 +319,7 @@ CORD add_value(code_t *code, ast_t *ast) {
                 add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
             } else {
                 CORD chunk_str = fresh_local(code, "str");
-                add_line(code->code, "%r =l call %r(%s %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), base_type_for(chunk_t), chunk_reg);
+                add_line(code->code, "%r =l call %r(%c %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), base_type_for(chunk_t), chunk_reg);
                 add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_str);
             }
         }
@@ -266,6 +332,33 @@ CORD add_value(code_t *code, ast_t *ast) {
     }
     case Bool: {
         return ast->b ? "1" : "0";
+    }
+    case Cast: {
+        bl_type_t *raw_t = get_type(file, code->bindings, ast->expr);
+        bl_type_t *cast_t = get_type(file, code->bindings, ast->type);
+        CORD raw_reg = add_value(code, ast->expr);
+        char raw_base = base_type_for(raw_t);
+        char cast_base = base_type_for(cast_t);
+        if (raw_base == cast_base)
+            return raw_reg;
+        CORD cast_reg = fresh_local(code, "cast");
+        if (raw_base == 's' && cast_base == 'd')
+            add_line(code->code, "%r =d exts %r", cast_reg, raw_reg);
+        else if (raw_base == 'd' && cast_base == 's')
+            add_line(code->code, "%r =s truncd %r", cast_reg, raw_reg);
+        else if (raw_base == 's' || raw_base == 'd')
+            add_line(code->code, "%r =%c %ctosi %r", cast_reg, cast_base, raw_base, raw_reg);
+        else if (cast_base == 's' || cast_base == 'd')
+            add_line(code->code, "%r =%c s%ctof %r", cast_reg, cast_base, raw_base, raw_reg);
+        else if (raw_base == 'w' && cast_base == 'l')
+            add_line(code->code, "%r =%c exts%c %r", cast_reg, cast_base, abi_type_for(raw_t), raw_reg);
+        else if (raw_base == 'l' && cast_base == 'w')
+            add_line(code->code, "%r =%c copy %r", cast_reg, cast_base, raw_reg);
+        return cast_reg;
+    }
+    case Nil: {
+        // TODO: different nil type values
+        return "0";
     }
     default: {
         ERROR(ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
@@ -308,6 +401,14 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .ret=nil_type);
 
     codes = *with_var(&codes, intern_str("say"), "$puts", say_type);
+#define DEFTYPE(t) codes = *with_var(&codes, intern_str(#t), get_string_reg(&codes, #t), Type(TypeType, .type=Type(t##Type)))
+    // Primitive types:
+    DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);
+    DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
+    DEFTYPE(Num); DEFTYPE(Num32);
+    DEFTYPE(String);
+#undef DEFTYPE
+
     add_line(codes.code, "export function w $main() {");
     add_line(codes.code, "@start");
     assert(ast->kind == Block);
