@@ -129,6 +129,8 @@ CORD add_value(code_t *code, ast_t *ast) {
         return ret;
     }
     case FunctionCall: {
+        // Check type:
+        (void)get_type(code->f, code->bindings, ast);
         CORD fn_reg = add_value(code, ast->call.fn);
         NEW_LIST(CORD, arg_regs);
         for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
@@ -139,7 +141,7 @@ CORD add_value(code_t *code, ast_t *ast) {
         addf(code, "%s =%s call %s(", ret, "l", fn_reg);
         for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
             if (i > 0) addf(code, ", ");
-            addf(code, "%s %s", get_base_type(code->bindings, LIST_ITEM(ast->call.args, i)), LIST_ITEM(arg_regs, i));
+            addf(code, "%s %s", get_base_type(code->f, code->bindings, LIST_ITEM(ast->call.args, i)), LIST_ITEM(arg_regs, i));
         }
         addf(code, ")\n");
         return ret;
@@ -178,20 +180,12 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .bindings=hashmap_new(),
     };
     
-    bl_type_t *string_type = new(bl_type_t);
-    string_type->kind = NamedType;
-    string_type->name = intern_str("String");
-    string_type = (bl_type_t*)intern_bytes(string_type, sizeof(bl_type_t));
-
-    bl_type_t *nil_type = new(bl_type_t);
-    nil_type->kind = NamedType;
-    nil_type->name = intern_str("Nil");
-    nil_type = (bl_type_t*)intern_bytes(nil_type, sizeof(bl_type_t));
-
-    bl_type_t *say_type = new(bl_type_t);
-    say_type->kind = FunctionType;
-    say_type->args = LIST(bl_type_t*, string_type);
-    say_type->ret = nil_type;
+    bl_type_t *string_type = Type(StringType);
+    bl_type_t *nil_type = Type(NilType);
+    bl_type_t *say_type = Type(
+        FunctionType,
+        .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
+        .ret=nil_type);
 
     main_code.bindings = with_var(main_code.bindings, intern_str("say"), "$puts", say_type);
     add_line(&main_code, "export function w $main() {");
