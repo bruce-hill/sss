@@ -63,6 +63,11 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             }
             return fn_type->ret;
         }
+        case Block: {
+            ast_t *last = LIST_ITEM(ast->children, LIST_LEN(ast->children)-1);
+            return get_type(f, bindings, last);
+        }
+        case Return: case Fail: return Type(AbortType);
 
         default: break;
     }

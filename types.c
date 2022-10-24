@@ -6,6 +6,7 @@
 static CORD type_to_cord(bl_type_t *t) {
     switch (t->kind) {
         case UnknownType: return "???";
+        case AbortType: return "Abort";
         case NilType: return "Nil";
         case BoolType: return "Bool";
         case IntType: return "Int";

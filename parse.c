@@ -134,6 +134,7 @@ const char *kind_tags[] = {
     [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
+    [Fail]="Fail",
     [TypeName]="TypeName",
     [TypeList]="TypeList", [TypeTable]="TypeTable",
     [TypeFunction]="TypeFunction", [TypeOption]="TypeOption",

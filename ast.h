@@ -26,6 +26,7 @@ typedef enum {
     If, For, While, Repeat,
     Skip, Stop,
     Return,
+    Fail,
     TypeName,
     TypeList, TypeTable,
     TypeFunction, TypeOption,

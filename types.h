@@ -6,6 +6,7 @@
 
 typedef enum {
     UnknownType,
+    AbortType,
     NilType, BoolType,
     IntType, Int32Type, Int16Type, Int8Type,
     NumType, Num32Type,
