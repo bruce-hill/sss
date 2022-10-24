@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
     bool verbose = false;
     bool stop_at_qbe = false;
     bool stop_at_asm = false;
+    bool run_program = false;
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             verbose = true;
@@ -31,6 +32,9 @@ int main(int argc, char *argv[])
             continue;
         } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
             stop_at_asm = true;
+            continue;
+        } else if (streq(argv[i], "-r") || streq(argv[i], "--run")) {
+            run_program = true;
             continue;
         }
         file_t *f = load_file(NULL, argv[i]);
@@ -123,19 +127,21 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
-        if (verbose)
-            printf("Running program %s...\n", binary_name);
+        if (run_program) {
+            if (verbose)
+                printf("Running program %s...\n", binary_name);
 
-        child = fork();
-        if (child == 0) {
-            execlp(binary_name, binary_name, NULL);
-            exit(1);
-        }
-        waitpid(child, &status, 0);
+            child = fork();
+            if (child == 0) {
+                execlp(binary_name, binary_name, NULL);
+                exit(1);
+            }
+            waitpid(child, &status, 0);
 
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "\x1b[31;1mProgram failed.\x1b[m\n");
-            exit(1);
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                fprintf(stderr, "\x1b[31;1mProgram failed.\x1b[m\n");
+                exit(1);
+            }
         }
 
         recycle_all_matches();
