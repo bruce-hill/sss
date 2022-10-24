@@ -97,11 +97,23 @@ int main(int argc, char *argv[])
 
         if (stop_at_asm) continue;
 
-        const char *binary_name = "./a.out";
+        CORD binary_name;
         if (i+2 < argc && streq(argv[i+1], "-o")) {
-            binary_name = argv[i+2];
+            binary_name = CORD_from_char_star(argv[i+2]);
             i += 2;
+        } else {
+            binary_name = CORD_from_char_star(argv[i]);
+            size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
+            if (i == CORD_NOT_FOUND) binary_name = CORD_cat(binary_name, ".o");
+            else binary_name = CORD_substr(binary_name, 0, i);
         }
+
+        if (CORD_ncmp(binary_name, 0, "/", 0, 1) != 0
+            && CORD_ncmp(binary_name, 0, "./", 0, 2) != 0
+            && CORD_ncmp(binary_name, 0, "~/", 0, 2) != 0)
+            binary_name = CORD_cat("./", binary_name);
+
+        binary_name = CORD_to_char_star(binary_name);
 
         if (verbose) {
             child = fork();
