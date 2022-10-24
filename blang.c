@@ -14,6 +14,7 @@
 #include "compile.h"
 
 #define streq(a,b) (strcmp(a,b) == 0)
+#define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
 int main(int argc, char *argv[])
 {
@@ -22,7 +23,7 @@ int main(int argc, char *argv[])
     bool verbose = false;
     bool stop_at_qbe = false;
     bool stop_at_asm = false;
-    bool run_program = false;
+    bool run_program = endswith(argv[0], "blang");
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             verbose = true;

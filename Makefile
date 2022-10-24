@@ -28,10 +28,13 @@ CFILES=ast.c parse.c types.c typecheck.c compile.c util.c datastructures/list.c 
 HFILES=ast.h parse.h types.h typecheck.h compile.h util.h datastructures/list.h datastructures/range.h
 OBJFILES=$(CFILES:.c=.o)
 
-all: $(NAME)
+all: blang blangc
 
-$(NAME): $(OBJFILES) $(HFILES) blang.c
+blang: $(OBJFILES) $(HFILES) blang.c
 	$(CC) $(ALL_FLAGS) -o $@ $(OBJFILES) blang.c
+
+blangc:
+	ln -sv -T blang blangc
 
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
