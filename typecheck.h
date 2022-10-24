@@ -9,7 +9,7 @@
 #include "ast.h"
 
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast);
-
+void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast);
 const char *get_base_type(file_t *f, hashmap_t *bindings, ast_t *ast);
 const char *get_abi_type(file_t *f, hashmap_t *bindings, ast_t *ast);
 

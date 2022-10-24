@@ -74,11 +74,19 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));
 }
 
+void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
+{
+    bl_type_t *t = get_type(f, bindings, ast);
+    if (!(t->kind == NilType || t->kind == AbortType)) {
+        TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
+    }
+}
+
 const char *get_base_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     bl_type_t *t = get_type(f, bindings, ast);
     switch (t->kind) {
-    case BoolType: case Int8Type: case Int16Type: case Int32Type: return "w";
+    case NilType: case BoolType: case Int8Type: case Int16Type: case Int32Type: return "w";
     case NumType: return "d";
     case Num32Type: return "s";
     default: return "l";
@@ -89,7 +97,7 @@ const char *get_abi_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     bl_type_t *t = get_type(f, bindings, ast);
     switch (t->kind) {
-    case BoolType: case Int8Type: return "b";
+    case NilType: case BoolType: case Int8Type: return "b";
     case Int16Type: return "h";
     case Int32Type: return "w";
     case NumType: return "d";

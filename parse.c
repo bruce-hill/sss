@@ -257,6 +257,10 @@ ast_t *match_to_ast(match_t *m)
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, kind, .child=child);
         }
+        case Fail: {
+            ast_t *msg = match_to_ast(get_named_capture(m, "message", -1));
+            return AST(m, Fail, .child=msg);
+        }
         default: break;
         }
 
@@ -359,7 +363,7 @@ ast_t *parse(file_t *f)
         } else {
             report_errors(f, m, true);
             ast = match_to_ast(m);
-            print_ast(ast);
+            // print_ast(ast);
         }
     }
     parsing = NULL;
