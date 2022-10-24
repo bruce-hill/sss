@@ -23,7 +23,9 @@ int main(int argc, char *argv[])
     bool verbose = false;
     bool stop_at_qbe = false;
     bool stop_at_asm = false;
-    bool run_program = endswith(argv[0], "blang");
+    char *prog_name = strrchr(argv[0], '/');
+    prog_name = prog_name ? prog_name + 1 : argv[0];
+    bool run_program = !strstr(prog_name, "blangc");
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             verbose = true;
