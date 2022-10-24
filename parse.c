@@ -46,7 +46,7 @@ static inline pat_t *assert_pat(file_t *f, maybe_pat_t maybe_pat)
         const char *eol = nl ? nl : f->end;
         if (eol < err_end) err_end = eol;
 
-        fprintf(stderr, "\033[31;1m%s\033[0m\n", err_msg);
+        fprintf(stderr, "\033[31;7;1m%s\033[0m\n", err_msg);
         fprintf(stderr, "%.*s\033[41;30m%.*s\033[m%.*s\n",
                 (int)(err_start - sol), sol,
                 (int)(err_end - err_start), err_start,
@@ -263,10 +263,10 @@ ast_t *match_to_ast(match_t *m)
             NEW_LIST(ast_t*, rhs);
             match_t *lhses = get_named_capture(m, "lhs", -1);
             match_t *rhses = get_named_capture(m, "rhs", -1);
-            for (int64_t i = 0; ; i++) {
+            for (int64_t i = 1; ; i++) {
                 ast_t *var = match_to_ast(get_numbered_capture(lhses, i));
                 if (var && var->kind != Var) {
-                    fprintf(stderr, "\x1b[31;1mOnly variables can be declared\x1b[m\n\n");
+                    fprintf(stderr, "\x1b[31;7;1mOnly variables can be declared\x1b[m\n\n");
                     highlight_match(parsing, var->match);
                     exit(1);
                 }
@@ -274,11 +274,11 @@ ast_t *match_to_ast(match_t *m)
                 if (!var && !val) {
                     break;
                 } else if (var && !val) {
-                    fprintf(stderr, "\x1b[31;1mThis term is missing a value to assign it\x1b[m\n\n");
+                    fprintf(stderr, "\x1b[31;7;1mThis term is missing a value to assign it\x1b[m\n\n");
                     highlight_match(parsing, var->match);
                     exit(1);
                 } else if (val && !var) {
-                    fprintf(stderr, "\x1b[31;1mThis value doesn't have a corresponding term to assign to\x1b[m\n\n");
+                    fprintf(stderr, "\x1b[31;7;1mThis value doesn't have a corresponding term to assign to\x1b[m\n\n");
                     highlight_match(parsing, val->match);
                     exit(1);
                 }
@@ -316,7 +316,7 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
-            fprintf(stderr, "\x1b[31;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
+            fprintf(stderr, "\x1b[31;7;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
             highlight_match(parsing, m);
             exit(1);
         }

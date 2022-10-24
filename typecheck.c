@@ -78,9 +78,8 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
 }
 
-const char *get_base_type(file_t *f, hashmap_t *bindings, ast_t *ast)
+const char *base_type_for(bl_type_t *t)
 {
-    bl_type_t *t = get_type(f, bindings, ast);
     switch (t->kind) {
     case NilType: case BoolType: case Int8Type: case Int16Type: case Int32Type: return "w";
     case NumType: return "d";
@@ -89,9 +88,8 @@ const char *get_base_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
 }
 
-const char *get_abi_type(file_t *f, hashmap_t *bindings, ast_t *ast)
+const char *abi_type_for(bl_type_t *t)
 {
-    bl_type_t *t = get_type(f, bindings, ast);
     switch (t->kind) {
     case NilType: case BoolType: case Int8Type: return "b";
     case Int16Type: return "h";

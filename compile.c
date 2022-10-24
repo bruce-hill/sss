@@ -25,7 +25,7 @@ typedef struct {
     hashmap_t *var_types;
 } code_t;
 
-#define ERROR(m, fmt, ...) { fprintf(stderr, "\x1b[31;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
+#define ERROR(m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
             highlight_match(file, m); \
             exit(1); }
 
@@ -93,8 +93,7 @@ CORD fresh_label(code_t *code, const char *suggestion) {
 
 static CORD add_fncall(code_t *code, ast_t *ast, bool give_register)
 {
-    // Check type:
-    (void)get_type(file, code->bindings, ast);
+    bl_type_t *ret_type = get_type(file, code->bindings, ast);
     CORD fn_reg = add_value(code, ast->call.fn);
     NEW_LIST(CORD, arg_regs);
     for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
@@ -103,11 +102,13 @@ static CORD add_fncall(code_t *code, ast_t *ast, bool give_register)
     }
     CORD ret = give_register ? fresh_local(code, "ret") : NULL;
     if (give_register)
-        addf(code->code, "%r =%r ", ret, get_base_type(file, code->bindings, ast));
+        addf(code->code, "%r =%r ", ret, base_type_for(ret_type));
     addf(code->code, "call %r(", fn_reg);
     for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
         if (i > 0) addf(code->code, ", ");
-        addf(code->code, "%s %r", get_base_type(file, code->bindings, LIST_ITEM(ast->call.args, i)), LIST_ITEM(arg_regs, i));
+        ast_t *arg = LIST_ITEM(ast->call.args, i);
+        bl_type_t *arg_type = get_type(file, code->bindings, arg);
+        addf(code->code, "%s %r", base_type_for(arg_type), LIST_ITEM(arg_regs, i));
     }
     // TODO: default args
     addf(code->code, ")\n");
@@ -148,13 +149,19 @@ CORD get_tostring_reg(code_t *code, bl_type_t *t)
     fn_reg = fresh_global(code, "tostring");
     CORD val = fresh_local(code, "val");
     CORD rec = fresh_local(code, "rec");
-    add_line(code->fn_code, "function l %r(l %r, l %r) {", fn_reg, val, rec);
+    add_line(code->fn_code, "function l %r(%s %r, l %r) {", fn_reg, base_type_for(t), val, rec);
     add_line(code->fn_code, "@start");
     switch (t->kind) {
-    case Int: {
+    case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
+        const char *fmt;
+        switch (t->kind) {
+        case Int32Type: case Int16Type: case Int8Type: fmt = "%d"; break;
+        case NumType: case Num32Type: fmt = "%g"; break;
+        default: fmt = "%ld"; break;
+        }
         CORD ret = fresh_local(code, "str");
         add_line(code->fn_code, "%r =l alloc8 8", ret);
-        add_line(code->fn_code, "call $CORD_sprintf(l %r, l %r, l %r, ...)", ret, get_string_reg(code, "%ld"), val);
+        add_line(code->fn_code, "call $CORD_sprintf(l %r, l %r, %s %r, ...)", ret, get_string_reg(code, fmt), base_type_for(t), val);
         add_line(code->fn_code, "%r =l loadl %r", ret, ret);
         add_line(code->fn_code, "ret %r", ret);
         break;
@@ -188,7 +195,7 @@ CORD add_value(code_t *code, ast_t *ast) {
         binding_t *binding = hashmap_get(code->bindings, ast->lhs->str);
         if (!binding) errx(1, "Failed to find declaration binding");
         CORD val_reg = add_value(code, ast->rhs);
-        add_line(code->code, "%s =%s copy %s", binding->reg, get_base_type(file, code->bindings, ast->lhs), val_reg);
+        add_line(code->code, "%s =%s copy %s", binding->reg, base_type_for(binding->type), val_reg);
         return binding->reg;
     }
     case Assign: {
@@ -197,18 +204,16 @@ CORD add_value(code_t *code, ast_t *ast) {
         for (int64_t i = 0; i < len; i++) {
             CORD reg = add_value(code, LIST_ITEM(ast->multiassign.lhs, i));
             APPEND(lhs_regs, reg);
-
-            bl_type_t *t_lhs = get_type(file, code->bindings, LIST_ITEM(ast->multiassign.lhs, i));
-            bl_type_t *t_rhs = get_type(file, code->bindings, LIST_ITEM(ast->multiassign.rhs, i));
-            if (!type_is_a(t_rhs, t_lhs)) {
-                ERROR(LIST_ITEM(ast->multiassign.rhs, i)->match, "This value needs to be a %s but it is a %s",
-                      type_to_string(t_lhs), type_to_string(t_rhs));
-            }
-
         }
         for (int64_t i = 0; i < len; i++) {
             CORD val_reg = add_value(code, LIST_ITEM(ast->multiassign.rhs, i));
-            add_line(code->code, "%s =%s copy %s", LIST_ITEM(lhs_regs, i), get_base_type(file, code->bindings, LIST_ITEM(ast->multiassign.lhs, i)), val_reg);
+            bl_type_t *t_lhs = get_type(file, code->bindings, LIST_ITEM(ast->multiassign.lhs, i));
+            bl_type_t *t_rhs = get_type(file, code->bindings, LIST_ITEM(ast->multiassign.rhs, i));
+            if (!type_is_a(t_rhs, t_lhs)) {
+                ERROR(LIST_ITEM(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
+                      type_to_string(t_rhs), type_to_string(t_lhs));
+            }
+            add_line(code->code, "%s =%s copy %s", LIST_ITEM(lhs_regs, i), base_type_for(t_lhs), val_reg);
         }
         return "0";
     }
@@ -248,7 +253,7 @@ CORD add_value(code_t *code, ast_t *ast) {
                 add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
             } else {
                 CORD chunk_str = fresh_local(code, "str");
-                add_line(code->code, "%r =l call %r(l %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), chunk_reg);
+                add_line(code->code, "%r =l call %r(%s %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), base_type_for(chunk_t), chunk_reg);
                 add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_str);
             }
         }

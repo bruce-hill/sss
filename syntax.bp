@@ -7,7 +7,7 @@ term: (
     / Lambda
     / unaryOp
     / Var !(_`(,{)
-    / Percent / Measure / Float / Int
+    / Percent / Measure / Num / Int
     / String / DSL
     / List / Table
     / Struct / FnCall
@@ -86,8 +86,8 @@ As:: @expr=(Cast / methodCall / IndexedTerm / term)_\b"as"\b_@type=type
 Interp:: `$ @value=(Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation") / @:String=@content=`$)
 AtInterp: @:Interp=(`@ @value=(Var / `(__ required-extended-expr __`) / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-7 / .)
-Float:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
-Measure:: @amount=(Float/Int) @units=MeasureType
+Num:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_]
+Measure:: @amount=(Num/Int) @units=MeasureType
 MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: "0x" +`0-9,a-f,A-F,_ / [`-,+] `0-9 *`0-9,_
