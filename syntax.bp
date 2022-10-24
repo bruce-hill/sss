@@ -122,7 +122,7 @@ line-statement: (
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate / ButWithUpdate / MethodCallUpdate
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
-Declaration:: @var=Var _":=" _ @value=required-extended-expr
+Declaration:: @lhs=Var _":=" _ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=TypeVar _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
 StructDeclaration:: \b"struct"\b _ @name=TypeVar __ `{__ *(StructField / methodDef / FnDef / Declaration) % __ __`}

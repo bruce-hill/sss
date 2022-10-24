@@ -16,7 +16,7 @@ typedef struct {
     CORD *data_code;
     CORD *fn_code;
     CORD *init_code;
-    CORD code;
+    CORD *code;
     hashmap_t *string_regs;
     hashmap_t *tostring_regs;
     hashmap_t *function_regs;
@@ -24,9 +24,13 @@ typedef struct {
     hashmap_t *var_types;
 } code_t;
 
-hashmap_t *with_var(hashmap_t *bindings, istr_t varname, CORD reg, bl_type_t *type) {
+#define ERROR(f, m, fmt, ...) { fprintf(stderr, "\x1b[31;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
+            highlight_match(f, m); \
+            exit(1); }
+
+code_t *with_var(code_t *code, istr_t varname, CORD reg, bl_type_t *type) {
     size_t depth = 0;
-    for (hashmap_t *h = bindings; h; h = h->fallback)
+    for (hashmap_t *h = code->bindings; h; h = h->fallback)
         ++depth;
 
     binding_t *binding = new(binding_t);
@@ -34,18 +38,24 @@ hashmap_t *with_var(hashmap_t *bindings, istr_t varname, CORD reg, bl_type_t *ty
     binding->type = type;
     if (depth > 10) {
         hashmap_t *merged = hashmap_new();
-        for (hashmap_t *h = bindings; h; h = h->fallback) {
+        for (hashmap_t *h = code->bindings; h; h = h->fallback) {
             for (const istr_t *key = hashmap_next(h, NULL); key; key = hashmap_next(h, key)) {
                 hashmap_set(merged, key, hashmap_get(h, key));
             }
         }
         hashmap_set(merged, varname, binding);
-        return merged;
+        code_t *copy = new(code_t);
+        *copy = *code;
+        copy->bindings = merged;
+        return copy;
     } else {
         hashmap_t *chained = hashmap_new();
-        chained->fallback = bindings;
+        chained->fallback = code->bindings;
         hashmap_set(chained, varname, binding);
-        return chained;
+        code_t *copy = new(code_t);
+        *copy = *code;
+        copy->bindings = chained;
+        return copy;
     }
 }
 
@@ -92,14 +102,14 @@ static CORD add_fncall(code_t *code, ast_t *ast, bool give_register)
     }
     CORD ret = give_register ? fresh_local(code, "ret") : NULL;
     if (give_register)
-        addf(&code->code, "%r =%r ", ret, get_base_type(code->f, code->bindings, ast));
-    addf(&code->code, "call %r(", fn_reg);
+        addf(code->code, "%r =%r ", ret, get_base_type(code->f, code->bindings, ast));
+    addf(code->code, "call %r(", fn_reg);
     for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
-        if (i > 0) addf(&code->code, ", ");
-        addf(&code->code, "%s %r", get_base_type(code->f, code->bindings, LIST_ITEM(ast->call.args, i)), LIST_ITEM(arg_regs, i));
+        if (i > 0) addf(code->code, ", ");
+        addf(code->code, "%s %r", get_base_type(code->f, code->bindings, LIST_ITEM(ast->call.args, i)), LIST_ITEM(arg_regs, i));
     }
     // TODO: default args
-    addf(&code->code, ")\n");
+    addf(code->code, ")\n");
     return ret;
 }
 
@@ -164,20 +174,50 @@ CORD add_value(code_t *code, ast_t *ast) {
         if (binding) {
             if (binding->reg[0] == '*') {
                 CORD tmp = fresh_local(code, ast->str);
-                add_line(&code->code, "%r =%r load%s %r", tmp, "l", "l", CORD_substr(binding->reg, 1, -1));
+                add_line(code->code, "%r =%r load%s %r", tmp, "l", "l", CORD_substr(binding->reg, 1, -1));
                 return tmp;
             } else {
                 return binding->reg;
             }
         } else {
-            fprintf(stderr, "\x1b[31;7;1mError: variable is not defined\x1b[m\n\n"); 
-            highlight_match(code->f, ast->match);
-            exit(1);
+            ERROR(code->f, ast->match, "Error: variable is not defined"); 
         }
+    }
+    case Declare: {
+        binding_t *binding = hashmap_get(code->bindings, ast->lhs->str);
+        if (!binding) errx(1, "Failed to find declaration binding");
+        CORD val_reg = add_value(code, ast->rhs);
+        add_line(code->code, "%s =%s copy %s", binding->reg, get_base_type(code->f, code->bindings, ast->lhs), val_reg);
+        return binding->reg;
+    }
+    case Assign: {
+        int64_t len = LIST_LEN(ast->multiassign.lhs);
+        NEW_LIST(CORD, lhs_regs);
+        for (int64_t i = 0; i < len; i++) {
+            CORD reg = add_value(code, LIST_ITEM(ast->multiassign.lhs, i));
+            APPEND(lhs_regs, reg);
+
+            bl_type_t *t_lhs = get_type(code->f, code->bindings, LIST_ITEM(ast->multiassign.lhs, i));
+            bl_type_t *t_rhs = get_type(code->f, code->bindings, LIST_ITEM(ast->multiassign.rhs, i));
+            if (!type_is_a(t_rhs, t_lhs)) {
+                ERROR(code->f, LIST_ITEM(ast->multiassign.rhs, i)->match, "This value needs to be a %s but it is a %s",
+                      type_to_string(t_lhs), type_to_string(t_rhs));
+            }
+
+        }
+        for (int64_t i = 0; i < len; i++) {
+            CORD val_reg = add_value(code, LIST_ITEM(ast->multiassign.rhs, i));
+            add_line(code->code, "%s =%s copy %s", LIST_ITEM(lhs_regs, i), get_base_type(code->f, code->bindings, LIST_ITEM(ast->multiassign.lhs, i)), val_reg);
+        }
+        return "0";
     }
     case Block: {
         for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
             ast_t *stmt = LIST_ITEM(ast->children, i);
+            if (stmt->kind == Declare) {
+                CORD reg = fresh_local(code, stmt->lhs->str);
+                code = with_var(code, stmt->lhs->str, reg, get_type(code->f, code->bindings, stmt->rhs));
+            }
             if (i == LIST_LEN(ast->children)-1)
                 return add_value(code, stmt);
             else
@@ -198,20 +238,20 @@ CORD add_value(code_t *code, ast_t *ast) {
     case StringLiteral: return get_string_reg(code, ast->str);
     case StringJoin: {
         CORD ret = fresh_local(code, "str");
-        add_line(&code->code, "%r =l copy 0", ret);
+        add_line(code->code, "%r =l copy 0", ret);
         for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
             ast_t *chunk = LIST_ITEM(ast->children, i);
             CORD chunk_reg = add_value(code, chunk);
             bl_type_t *chunk_t = get_type(code->f, code->bindings, chunk);
             if (chunk_t == Type(StringType)) {
-                add_line(&code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
+                add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
             } else {
                 CORD chunk_str = fresh_local(code, "str");
-                add_line(&code->code, "%r =l call %r(l %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), chunk_reg);
-                add_line(&code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_str);
+                add_line(code->code, "%r =l call %r(l %r, l 0)", chunk_str, get_tostring_reg(code, chunk_t), chunk_reg);
+                add_line(code->code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_str);
             }
         }
-        add_line(&code->code, "%r =l call $intern_str(l %r)", ret, ret);
+        add_line(code->code, "%r =l call $intern_str(l %r)", ret, ret);
         return ret;
     }
     case FunctionCall: return add_fncall(code, ast, true);
@@ -222,9 +262,7 @@ CORD add_value(code_t *code, ast_t *ast) {
         return ast->b ? "1" : "0";
     }
     default: {
-        fprintf(stderr, "\x1b[31;7;1mError: compiling is not yet implemented for %s\x1b[m\n\n", get_ast_kind_name(ast->kind)); 
-        highlight_match(code->f, ast->match);
-        exit(1);
+        ERROR(code->f, ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
     }
     }
 }
@@ -242,13 +280,14 @@ const char *compile_file(file_t *f, ast_t *ast) {
     CORD data_code = NULL;
     CORD fn_code = NULL;
     CORD init_code = NULL;
-    code_t main_code = {
+    CORD main_code = NULL;
+    code_t codes = {
         .f=f,
         .next_id=&next_id,
         .data_code=&data_code,
         .fn_code=&fn_code,
         .init_code=&init_code,
-        .code=NULL,
+        .code=&main_code,
         .string_regs=hashmap_new(),
         .tostring_regs=hashmap_new(),
         .function_regs=hashmap_new(),
@@ -262,18 +301,19 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
         .ret=nil_type);
 
-    main_code.bindings = with_var(main_code.bindings, intern_str("say"), "$puts", say_type);
-    add_line(&main_code.code, "export function w $main() {");
-    add_line(&main_code.code, "@start");
+    codes = *with_var(&codes, intern_str("say"), "$puts", say_type);
+    add_line(codes.code, "export function w $main() {");
+    add_line(codes.code, "@start");
     assert(ast->kind == Block);
-    for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
-        ast_t *stmt = LIST_ITEM(ast->children, i);
-        add_statement(&main_code, stmt);
-    }
-    add_line(&main_code.code, "  ret 0");
-    add_line(&main_code.code, "}");
+    add_statement(&codes, ast);
+    // for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
+    //     ast_t *stmt = LIST_ITEM(ast->children, i);
+    //     add_statement(&codes, stmt);
+    // }
+    add_line(codes.code, "  ret 0");
+    add_line(codes.code, "}");
     CORD all_code = CORD_cat(data_code, fn_code);
-    all_code = CORD_cat(all_code, main_code.code);
+    all_code = CORD_cat(all_code, main_code);
     return CORD_to_char_star(all_code);
 }
 

@@ -120,7 +120,7 @@ const char *kind_tags[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
     [Int]="Int", [Num]="Num",
     [StringLiteral]=NULL, [StringJoin]="String", [DSL]="DSL", [Interp]="Interp",
-    [Declare]="Declare", [Assign]="Assign",
+    [Declare]="Declaration", [Assign]="Assignment",
     [AddUpdate]="AddUpdate", [SubtractUpdate]="SubtractUpdate", [MultiplyUpdate]="MultiplyUpdate", [DivideUpdate]="DivideUpdate",
     [AndUpdate]="AndUpdate", [OrUpdate]="OrUpdate",
     [Add]="Add", [Subtract]="Subtract", [Multiply]="Multiply", [Divide]="Divide", [Power]="Power", [Modulus]="Mod",
@@ -247,6 +247,7 @@ ast_t *match_to_ast(match_t *m)
         case Add: case Subtract: case Multiply: case Divide: case Power:
         case And: case Or: case Xor:
         case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
+        case Declare:
         {
             ast_t *lhs = match_to_ast(get_named_capture(m, "lhs", -1));
             ast_t *rhs = match_to_ast(get_named_capture(m, "rhs", -1));
@@ -256,6 +257,36 @@ ast_t *match_to_ast(match_t *m)
         {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, kind, .child=child);
+        }
+        case Assign: {
+            NEW_LIST(ast_t*, lhs);
+            NEW_LIST(ast_t*, rhs);
+            match_t *lhses = get_named_capture(m, "lhs", -1);
+            match_t *rhses = get_named_capture(m, "rhs", -1);
+            for (int64_t i = 0; ; i++) {
+                ast_t *var = match_to_ast(get_numbered_capture(lhses, i));
+                if (var && var->kind != Var) {
+                    fprintf(stderr, "\x1b[31;1mOnly variables can be declared\x1b[m\n\n");
+                    highlight_match(parsing, var->match);
+                    exit(1);
+                }
+                ast_t *val = match_to_ast(get_numbered_capture(rhses, i));
+                if (!var && !val) {
+                    break;
+                } else if (var && !val) {
+                    fprintf(stderr, "\x1b[31;1mThis term is missing a value to assign it\x1b[m\n\n");
+                    highlight_match(parsing, var->match);
+                    exit(1);
+                } else if (val && !var) {
+                    fprintf(stderr, "\x1b[31;1mThis value doesn't have a corresponding term to assign to\x1b[m\n\n");
+                    highlight_match(parsing, val->match);
+                    exit(1);
+                }
+
+                APPEND(lhs, var);
+                APPEND(rhs, val);
+            }
+            return AST(m, kind, .multiassign.lhs=lhs, .multiassign.rhs=rhs);
         }
         case Fail: {
             ast_t *msg = match_to_ast(get_named_capture(m, "message", -1));

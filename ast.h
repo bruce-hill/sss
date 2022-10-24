@@ -48,6 +48,10 @@ typedef struct ast_s {
         struct { // Infix
             struct ast_s *lhs, *rhs;
         };
+        struct { // Multiple assignment
+            List(struct ast_s*) lhs;
+            List(struct ast_s*) rhs;
+        } multiassign;
         struct { // Function def/lambda
             List(istr_t) arg_names;
             List(struct ast_s*) arg_types;

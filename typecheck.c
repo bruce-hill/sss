@@ -14,14 +14,6 @@
     highlight_match(f, (ast)->match); \
     exit(1); } while (0)
 
-static inline bool type_is_a(bl_type_t *t, bl_type_t *req)
-{
-    if (t == req) return true;
-    if (req->kind == OptionalType && (t->kind == NilType || type_is_a(t, req->nonnil)))
-        return true;
-    return false;
-}
-
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
@@ -67,6 +59,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             ast_t *last = LIST_ITEM(ast->children, LIST_LEN(ast->children)-1);
             return get_type(f, bindings, last);
         }
+        case Declare: return get_type(f, bindings, ast->rhs);
+        case Assign: return Type(NilType);
         case Return: case Fail: return Type(AbortType);
 
         default: break;
@@ -76,6 +70,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
 void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
+    if (ast->kind == Declare || ast->kind == Block)
+        return;
     bl_type_t *t = get_type(f, bindings, ast);
     if (!(t->kind == NilType || t->kind == AbortType)) {
         TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));

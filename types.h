@@ -44,5 +44,6 @@ typedef struct {
 #define Type(mykind, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.kind=mykind, __VA_ARGS__}, sizeof(bl_type_t)))
 
 istr_t type_to_string(bl_type_t *t);
+bool type_is_a(bl_type_t *t, bl_type_t *req);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

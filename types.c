@@ -45,3 +45,12 @@ static CORD type_to_cord(bl_type_t *t) {
 istr_t type_to_string(bl_type_t *t) {
     return intern_str(CORD_to_char_star(type_to_cord(t)));
 }
+
+
+bool type_is_a(bl_type_t *t, bl_type_t *req)
+{
+    if (t == req) return true;
+    if (req->kind == OptionalType && (t->kind == NilType || type_is_a(t, req->nonnil)))
+        return true;
+    return false;
+}
