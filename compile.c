@@ -10,9 +10,8 @@
 #include "types.h"
 #include "util.h"
 
-file_t *file = NULL;
-
 typedef struct {
+    file_t *file;
     int64_t *next_id;
     CORD *data_code;
     CORD *fn_code;
@@ -24,8 +23,8 @@ typedef struct {
     hashmap_t *var_types;
 } env_t;
 
-#define ERROR(m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-            highlight_match(file, m); \
+#define ERROR(env, m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
+            highlight_match(env->file, m); \
             exit(1); }
 
 env_t *with_var(env_t *env, istr_t varname, CORD reg, bl_type_t *type) {
@@ -33,9 +32,7 @@ env_t *with_var(env_t *env, istr_t varname, CORD reg, bl_type_t *type) {
     for (hashmap_t *h = env->bindings; h; h = h->fallback)
         ++depth;
 
-    binding_t *binding = new(binding_t);
-    binding->reg = reg;
-    binding->type = type;
+    binding_t *binding = new(binding_t, .reg=reg, .type=type);
     if (depth > 10) {
         hashmap_t *merged = hashmap_new();
         for (hashmap_t *h = env->bindings; h; h = h->fallback) {
@@ -92,7 +89,7 @@ CORD fresh_label(env_t *env, const char *suggestion) {
 
 static CORD add_fncall(env_t *env, CORD *code, ast_t *ast, bool give_register)
 {
-    bl_type_t *ret_type = get_type(file, env->bindings, ast);
+    bl_type_t *ret_type = get_type(env->file, env->bindings, ast);
     CORD fn_reg = add_value(env, code, ast->call.fn);
     NEW_LIST(CORD, arg_regs);
     for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
@@ -106,7 +103,7 @@ static CORD add_fncall(env_t *env, CORD *code, ast_t *ast, bool give_register)
     for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
         if (i > 0) addf(code, ", ");
         ast_t *arg = LIST_ITEM(ast->call.args, i);
-        bl_type_t *arg_type = get_type(file, env->bindings, arg);
+        bl_type_t *arg_type = get_type(env->file, env->bindings, arg);
         addf(code, "%c %r", base_type_for(arg_type), LIST_ITEM(arg_regs, i));
     }
     // TODO: default args
@@ -252,7 +249,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
                 return binding->reg;
             }
         } else {
-            ERROR(ast->match, "Error: variable is not defined"); 
+            ERROR(env, ast->match, "Error: variable is not defined"); 
         }
     }
     case Declare: {
@@ -271,10 +268,10 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         }
         for (int64_t i = 0; i < len; i++) {
             CORD val_reg = add_value(env, code, LIST_ITEM(ast->multiassign.rhs, i));
-            bl_type_t *t_lhs = get_type(file, env->bindings, LIST_ITEM(ast->multiassign.lhs, i));
-            bl_type_t *t_rhs = get_type(file, env->bindings, LIST_ITEM(ast->multiassign.rhs, i));
+            bl_type_t *t_lhs = get_type(env->file, env->bindings, LIST_ITEM(ast->multiassign.lhs, i));
+            bl_type_t *t_rhs = get_type(env->file, env->bindings, LIST_ITEM(ast->multiassign.rhs, i));
             if (!type_is_a(t_rhs, t_lhs)) {
-                ERROR(LIST_ITEM(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
+                ERROR(env, LIST_ITEM(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
             add_line(code, "%s =%c copy %s", LIST_ITEM(lhs_regs, i), base_type_for(t_lhs), val_reg);
@@ -286,7 +283,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
             ast_t *stmt = LIST_ITEM(ast->children, i);
             if (stmt->kind == Declare) {
                 CORD reg = fresh_local(env, stmt->lhs->str);
-                bl_type_t *t = get_type(file, env->bindings, stmt->rhs);
+                bl_type_t *t = get_type(env->file, env->bindings, stmt->rhs);
                 env = with_var(env, stmt->lhs->str, reg, t);
             }
             if (i == LIST_LEN(ast->children)-1)
@@ -313,7 +310,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
             ast_t *chunk = LIST_ITEM(ast->children, i);
             CORD chunk_reg = add_value(env, code, chunk);
-            bl_type_t *chunk_t = get_type(file, env->bindings, chunk);
+            bl_type_t *chunk_t = get_type(env->file, env->bindings, chunk);
             if (chunk_t == Type(StringType)) {
                 add_line(code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
             } else {
@@ -333,8 +330,8 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         return ast->b ? "1" : "0";
     }
     case Cast: {
-        bl_type_t *raw_t = get_type(file, env->bindings, ast->expr);
-        bl_type_t *cast_t = get_type(file, env->bindings, ast->type);
+        bl_type_t *raw_t = get_type(env->file, env->bindings, ast->expr);
+        bl_type_t *cast_t = get_type(env->file, env->bindings, ast->type);
         CORD raw_reg = add_value(env, code, ast->expr);
         char raw_base = base_type_for(raw_t);
         char cast_base = base_type_for(cast_t);
@@ -360,13 +357,13 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         return "0";
     }
     default: {
-        ERROR(ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
+        ERROR(env, ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
     }
     }
 }
 
 void add_statement(env_t *env, CORD *code, ast_t *ast) {
-    check_discardable(file, env->bindings, ast);
+    check_discardable(env->file, env->bindings, ast);
     if (ast->kind == FunctionCall)
         (void)add_fncall(env, code, ast, false);
     else
@@ -374,20 +371,21 @@ void add_statement(env_t *env, CORD *code, ast_t *ast) {
 }
 
 const char *compile_file(file_t *f, ast_t *ast) {
-    file = f;
     int64_t next_id = 0;
     CORD data_code = NULL;
     CORD fn_code = NULL;
     CORD init_code = NULL;
-    env_t *env = new(env_t);
-    env->next_id = &next_id;
-    env->data_code = &data_code;
-    env->fn_code = &fn_code;
-    env->init_code = &init_code;
-    env->string_regs = hashmap_new();
-    env->tostring_regs = hashmap_new();
-    env->function_regs = hashmap_new();
-    env->bindings = hashmap_new();
+    env_t *env = new(env_t,
+        .file = f,
+        .next_id = &next_id,
+        .data_code = &data_code,
+        .fn_code = &fn_code,
+        .init_code = &init_code,
+        .string_regs = hashmap_new(),
+        .tostring_regs = hashmap_new(),
+        .function_regs = hashmap_new(),
+        .bindings = hashmap_new()
+    );
     
     bl_type_t *string_type = Type(StringType);
     bl_type_t *nil_type = Type(NilType);
@@ -414,7 +412,6 @@ const char *compile_file(file_t *f, ast_t *ast) {
     add_line(&main_code, "}");
     CORD all_code = CORD_cat(data_code, fn_code);
     all_code = CORD_cat(all_code, main_code);
-    file = NULL;
     return CORD_to_char_star(all_code);
 }
 

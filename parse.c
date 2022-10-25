@@ -25,6 +25,8 @@
 #define strneq(a,b,n) (strncmp(a,b,n) == 0)
 #endif
 
+#define AST(m, mykind, ...) (new(ast_t, .kind=mykind, .match=m __VA_OPT__(,) __VA_ARGS__))
+
 static pat_t *grammar = NULL;
 static file_t *loaded_files = NULL;
 
@@ -105,16 +107,6 @@ static void report_errors(file_t *f, match_t *m, bool stop_on_first)
             report_errors(f, m->children[i], stop_on_first);
     }
 }
-
-//
-// Helper functions for instantiating AST tagged union nodes with some type checking
-//
-static inline ast_t *new_ast(ast_t init) {
-    ast_t *ret = new(ast_t);
-    *ret = init;
-    return ret;
-}
-#define AST(m, mykind, ...) (new_ast((ast_t){.kind=mykind, .match=m, __VA_ARGS__}))
 
 const char *kind_tags[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
