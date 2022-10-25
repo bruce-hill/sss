@@ -4,19 +4,16 @@
 #include <stdlib.h>
 #include <err.h>
 #include <gc.h>
+
+#include "../util.h"
 #include "list.h"
 
 list_t *list_new(size_t item_size, size_t min_items) {
-    list_t *list = GC_MALLOC(sizeof(list_t));
-    list->items = GC_MALLOC(item_size * min_items);
-    list->slack = (uint8_t)min_items;
-    return list;
+    return new(list_t, .items=GC_MALLOC(item_size * min_items), .slack=(uint8_t)min_items);
 }
 
 list_t *list_new_items(size_t item_size, size_t len, void *items) {
-    list_t *list = GC_MALLOC(sizeof(list_t));
-    list->items = GC_MALLOC(item_size * len);
-    list->len = len;
+    list_t *list = new(list_t, .items=GC_MALLOC(item_size * len), .len=len);
     memcpy(list->items, items, item_size * len);
     return list;
 }
@@ -92,8 +89,7 @@ bool list_equal(list_t *a, list_t *b, size_t item_size) {
 }
 
 list_t *list_copy(list_t *l, size_t item_size) {
-    list_t *copy = GC_MALLOC(sizeof(list_t));
-    copy->len = l->len;
+    list_t *copy = new(list_t, .len=l->len);
     if (l->len > 0) {
         copy->items = GC_MALLOC(item_size*l->len);
         memcpy(copy->items, l->items, item_size*l->len);
@@ -107,7 +103,7 @@ void list_clear(list_t *l) {
 }
 
 list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size_t list_item_size, bool allow_aliasing) {
-    list_t *slice = GC_MALLOC(sizeof(list_t));
+    list_t *slice = new(list_t);
     if (step > 0) {
         if (first > list->len) return slice;
         if (first < 1) {

@@ -1,37 +1,26 @@
 #include <stdint.h>
 #include <gc.h>
 
+#include "../util.h"
 #include "range.h"
 
 int64_t RANGE_MIN = -999999999999999999;
 int64_t RANGE_MAX = +999999999999999999;
 
 range_t *range_new(int64_t first, int64_t next, int64_t last) {
-    range_t *r = GC_MALLOC(sizeof(range_t));
-    r->first = first;
-    r->next = next;
     if (next != first && last != first) {
         int64_t len = (last - first) / (next - first);
         last = first + len * (next - first);
     }
-    r->last = last;
-    return r;
+    return new(range_t, .first=first, .next=next, .last=last);
 }
 
 range_t *range_new_first_last(int64_t first, int64_t last) {
-    range_t *r = GC_MALLOC(sizeof(range_t));
-    r->first = first;
-    r->next = first <= last ? first+1 : first-1;
-    r->last = last;
-    return r;
+    return new(range_t, .first=first, .next=first <= last ? first+1 : first-1, .last=last);
 }
 
 range_t *range_new_first_next(int64_t first, int64_t next) {
-    range_t *r = GC_MALLOC(sizeof(range_t));
-    r->first = first;
-    r->next = next;
-    r->last = next >= first ? RANGE_MAX : RANGE_MIN;
-    return r;
+    return new(range_t, .first=first, .next=next, .last=next >= first ? RANGE_MAX : RANGE_MIN);
 }
 
 int64_t range_len(range_t *r) {
