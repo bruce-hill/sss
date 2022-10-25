@@ -36,8 +36,9 @@ env_t *with_var(env_t *env, istr_t varname, CORD reg, bl_type_t *type) {
     if (depth > 10) {
         hashmap_t *merged = hashmap_new();
         for (hashmap_t *h = env->bindings; h; h = h->fallback) {
-            for (const istr_t *key = hashmap_next(h, NULL); key; key = hashmap_next(h, key)) {
-                hashmap_set(merged, key, hashmap_get(h, key));
+            for (const istr_t *key = NULL; (key = hashmap_next(h, key)); ) {
+                if (!hashmap_get(merged, key))
+                    hashmap_set(merged, key, hashmap_get(h, key));
             }
         }
         hashmap_set(merged, varname, binding);
@@ -395,7 +396,7 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .ret=nil_type);
 
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .reg="$puts", .type=say_type));
-#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(t##Type)));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
