@@ -375,7 +375,7 @@ const char *compile_file(file_t *f, ast_t *ast) {
     CORD data_code = NULL;
     CORD fn_code = NULL;
     CORD init_code = NULL;
-    env_t *env = new(env_t,
+    env_t env = {
         .file = f,
         .next_id = &next_id,
         .data_code = &data_code,
@@ -385,7 +385,7 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .tostring_regs = hashmap_new(),
         .function_regs = hashmap_new(),
         .bindings = hashmap_new()
-    );
+    };
     
     bl_type_t *string_type = Type(StringType);
     bl_type_t *nil_type = Type(NilType);
@@ -394,8 +394,8 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
         .ret=nil_type);
 
-    env = with_var(env, intern_str("say"), "$puts", say_type);
-#define DEFTYPE(t) env = with_var(env, intern_str(#t), get_string_reg(env, #t), Type(TypeType, .type=Type(t##Type)))
+    hashmap_set(env.bindings, intern_str("say"), new(binding_t, .reg="$puts", .type=say_type));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
@@ -407,7 +407,7 @@ const char *compile_file(file_t *f, ast_t *ast) {
     add_line(&main_code, "export function w $main() {");
     add_line(&main_code, "@start");
     assert(ast->kind == Block);
-    add_statement(env, &main_code, ast);
+    add_statement(&env, &main_code, ast);
     add_line(&main_code, "  ret 0");
     add_line(&main_code, "}");
     CORD all_code = CORD_cat(data_code, fn_code);
