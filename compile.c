@@ -27,6 +27,11 @@ typedef struct {
             highlight_match(env->file, m); \
             exit(1); }
 
+#define foreach LIST_FOR
+#define length LIST_LEN
+#define ith LIST_ITEM
+#define append APPEND
+
 env_t *with_var(env_t *env, istr_t varname, CORD reg, bl_type_t *type) {
     size_t depth = 0;
     for (hashmap_t *h = env->bindings; h; h = h->fallback)
@@ -93,19 +98,19 @@ static CORD add_fncall(env_t *env, CORD *code, ast_t *ast, bool give_register)
     bl_type_t *ret_type = get_type(env->file, env->bindings, ast);
     CORD fn_reg = add_value(env, code, ast->call.fn);
     NEW_LIST(CORD, arg_regs);
-    LIST_FOR(ast->call.args, arg, _) {
+    foreach (ast->call.args, arg, _) {
         CORD reg = add_value(env, code, *arg);
-        APPEND(arg_regs, reg);
+        append(arg_regs, reg);
     }
     CORD ret = give_register ? fresh_local(env, "ret") : NULL;
     if (give_register)
         addf(code, "%r =%c ", ret, base_type_for(ret_type));
     addf(code, "call %r(", fn_reg);
-    for (int64_t i = 0; i < LIST_LEN(arg_regs); i++) {
+    for (int64_t i = 0; i < length(arg_regs); i++) {
         if (i > 0) addf(code, ", ");
-        ast_t *arg = LIST_ITEM(ast->call.args, i);
+        ast_t *arg = ith(ast->call.args, i);
         bl_type_t *arg_type = get_type(env->file, env->bindings, arg);
-        addf(code, "%c %r", base_type_for(arg_type), LIST_ITEM(arg_regs, i));
+        addf(code, "%c %r", base_type_for(arg_type), ith(arg_regs, i));
     }
     // TODO: default args
     addf(code, ")\n");
@@ -261,26 +266,26 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         return binding->reg;
     }
     case Assign: {
-        int64_t len = LIST_LEN(ast->multiassign.lhs);
+        int64_t len = length(ast->multiassign.lhs);
         NEW_LIST(CORD, lhs_regs);
         for (int64_t i = 0; i < len; i++) {
-            CORD reg = add_value(env, code, LIST_ITEM(ast->multiassign.lhs, i));
-            APPEND(lhs_regs, reg);
+            CORD reg = add_value(env, code, ith(ast->multiassign.lhs, i));
+            append(lhs_regs, reg);
         }
         for (int64_t i = 0; i < len; i++) {
-            CORD val_reg = add_value(env, code, LIST_ITEM(ast->multiassign.rhs, i));
-            bl_type_t *t_lhs = get_type(env->file, env->bindings, LIST_ITEM(ast->multiassign.lhs, i));
-            bl_type_t *t_rhs = get_type(env->file, env->bindings, LIST_ITEM(ast->multiassign.rhs, i));
+            CORD val_reg = add_value(env, code, ith(ast->multiassign.rhs, i));
+            bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
+            bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
             if (!type_is_a(t_rhs, t_lhs)) {
-                ERROR(env, LIST_ITEM(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
+                ERROR(env, ith(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
-            add_line(code, "%s =%c copy %s", LIST_ITEM(lhs_regs, i), base_type_for(t_lhs), val_reg);
+            add_line(code, "%s =%c copy %s", ith(lhs_regs, i), base_type_for(t_lhs), val_reg);
         }
         return "0";
     }
     case Block: {
-        LIST_FOR(ast->children, stmt, last_stmt) {
+        foreach (ast->children, stmt, last_stmt) {
             if ((*stmt)->kind == Declare) {
                 CORD reg = fresh_local(env, (*stmt)->lhs->str);
                 bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
@@ -307,7 +312,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
     case StringJoin: {
         CORD ret = fresh_local(env, "str");
         add_line(code, "%r =l copy 0", ret);
-        LIST_FOR(ast->children, chunk, _) {
+        foreach (ast->children, chunk, _) {
             CORD chunk_reg = add_value(env, code, *chunk);
             bl_type_t *chunk_t = get_type(env->file, env->bindings, *chunk);
             if (chunk_t == Type(StringType)) {
