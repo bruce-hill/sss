@@ -93,8 +93,8 @@ static CORD add_fncall(env_t *env, CORD *code, ast_t *ast, bool give_register)
     bl_type_t *ret_type = get_type(env->file, env->bindings, ast);
     CORD fn_reg = add_value(env, code, ast->call.fn);
     NEW_LIST(CORD, arg_regs);
-    for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
-        CORD reg = add_value(env, code, LIST_ITEM(ast->call.args, i));
+    LIST_FOR(ast->call.args, arg, _) {
+        CORD reg = add_value(env, code, *arg);
         APPEND(arg_regs, reg);
     }
     CORD ret = give_register ? fresh_local(env, "ret") : NULL;
@@ -280,17 +280,16 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         return "0";
     }
     case Block: {
-        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
-            ast_t *stmt = LIST_ITEM(ast->children, i);
-            if (stmt->kind == Declare) {
-                CORD reg = fresh_local(env, stmt->lhs->str);
-                bl_type_t *t = get_type(env->file, env->bindings, stmt->rhs);
-                env = with_var(env, stmt->lhs->str, reg, t);
+        LIST_FOR(ast->children, stmt, last_stmt) {
+            if ((*stmt)->kind == Declare) {
+                CORD reg = fresh_local(env, (*stmt)->lhs->str);
+                bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
+                env = with_var(env, (*stmt)->lhs->str, reg, t);
             }
-            if (i == LIST_LEN(ast->children)-1)
-                return add_value(env, code, stmt);
+            if (stmt == last_stmt)
+                return add_value(env, code, *stmt);
             else
-                add_statement(env, code, stmt);
+                add_statement(env, code, *stmt);
         }
         errx(1, "Unreachable");
     }
@@ -308,10 +307,9 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
     case StringJoin: {
         CORD ret = fresh_local(env, "str");
         add_line(code, "%r =l copy 0", ret);
-        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
-            ast_t *chunk = LIST_ITEM(ast->children, i);
-            CORD chunk_reg = add_value(env, code, chunk);
-            bl_type_t *chunk_t = get_type(env->file, env->bindings, chunk);
+        LIST_FOR(ast->children, chunk, _) {
+            CORD chunk_reg = add_value(env, code, *chunk);
+            bl_type_t *chunk_t = get_type(env->file, env->bindings, *chunk);
             if (chunk_t == Type(StringType)) {
                 add_line(code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_reg);
             } else {
