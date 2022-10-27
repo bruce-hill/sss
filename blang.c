@@ -159,7 +159,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        recycle_all_matches();
         destroy_file(&f);
     }
 

@@ -386,26 +386,36 @@ void print_ast(ast_t *ast) {
     }
 }
 
+typedef struct {
+    file_t *f;
+    ast_t *ast;
+} match_info_t;
+
+bp_match_behavior handle_match(match_t *m, int matchnum, void *data)
+{
+    (void)matchnum;
+    match_info_t *info = data;
+    if (m->start > info->f->start) {
+        fprintf(stderr, "File contains junk at the front\n");
+        exit(1);
+    } else if (m->end < info->f->end) {
+        fprintf(stderr, "File contains junk at the end\n");
+        exit(1);
+    } else {
+        report_errors(info->f, m, true);
+        info->ast = match_to_ast(m);
+        // print_ast(ast);
+    }
+    return BP_STOP;
+}
+
 ast_t *parse(file_t *f)
 {
     if (grammar == NULL) load_grammar();
     parsing = f;
-    match_t *m = NULL;
-    ast_t *ast = NULL;
-    if (next_match(&m, f->start, f->end, grammar, grammar, NULL, false)) {
-        if (m->start > f->start) {
-            fprintf(stderr, "File contains junk at the front\n");
-            exit(1);
-        } else if (m->end < f->end) {
-            fprintf(stderr, "File contains junk at the end\n");
-            exit(1);
-        } else {
-            report_errors(f, m, true);
-            ast = match_to_ast(m);
-            // print_ast(ast);
-        }
-    }
+    match_info_t info = {.f=f, .ast=NULL};
+    each_match(handle_match, &info, f->start, f->end, grammar, grammar, NULL, false);
     parsing = NULL;
-    return ast;
+    return info.ast;
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
