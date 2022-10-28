@@ -430,6 +430,18 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         // TODO: different nil type values
         return "0";
     }
+    case Equal: case NotEqual: {
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        if (!(type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t)))
+            ERROR(env, ast->match, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        CORD lhs_reg = add_value(env, code, ast->lhs);
+        CORD rhs_reg = add_value(env, code, ast->rhs);
+        CORD result = fresh_local(env, "comparison");
+        char b = base_type_for(lhs_t);
+        add_line(code, "%r =w c%s%c %r, %r", result, ast->kind == Equal ? "eq" : "ne", b, lhs_reg, rhs_reg);
+        return result;
+    }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
