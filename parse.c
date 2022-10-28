@@ -239,7 +239,7 @@ ast_t *match_to_ast(match_t *m)
             ast_t *value = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, KeywordArg, .named.name=name, .named.value=value);
         }
-        case Add: case Subtract: case Multiply: case Divide: case Power:
+        case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
         case And: case Or: case Xor:
         case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
         case Declare:

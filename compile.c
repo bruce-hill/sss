@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <bhash.h>
+#include <bp/files.h>
 #include <ctype.h>
 #include <err.h>
 #include <gc/cord.h>
@@ -365,17 +366,50 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         // TODO: different nil type values
         return "0";
     }
-    case Add: {
+    case Add: case Subtract: case Divide: case Multiply: case Modulus: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *t2 = get_type(env->file, env->bindings, ast->rhs);
+        const char *math_op = NULL, *description = "math";
+        switch (ast->kind) {
+            case Add: math_op = "add", description = "Addition"; break;
+            case Subtract: math_op = "sub", description = "Subtraction"; break;
+            case Divide: math_op = "div", description = "Division"; break;
+            case Multiply: math_op = "mul", description = "Multiplication"; break;
+            case Modulus: math_op = "urem", description = "Modulus"; break;
+            default: ERROR(env, ast->match, "Unknown math operation"); break;
+        }
+        if (t == t2 && is_numeric(t)) {
+            CORD lhs_reg = add_value(env, code, ast->lhs);
+            CORD rhs_reg = add_value(env, code, ast->rhs);
+            CORD result = fresh_local(env, "result");
+            if (ast->kind == Modulus) {
+                switch (base_type_for(t)) {
+                case 'l': case 'w': break;
+                default: ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(t));
+                }
+            }
+            add_line(code, "%r =%c %s %r, %r", result, base_type_for(t), math_op, lhs_reg, rhs_reg);
+            return result;
+        } else {
+            ERROR(env, ast->match, "%s for %s and %s is not implemented", description, type_to_string(t), type_to_string(t2));
+        }
+        break;
+    }
+    case Power: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *t2 = get_type(env->file, env->bindings, ast->rhs);
         CORD lhs_reg = add_value(env, code, ast->lhs);
         CORD rhs_reg = add_value(env, code, ast->rhs);
-        if (t == t2 && is_numeric(t)) {
-            CORD sum = fresh_local(env, "sum");
-            add_line(code, "%r =%c add %r, %r", sum, base_type_for(t), lhs_reg, rhs_reg);
-            return sum;
+        CORD result = fresh_local(env, "result");
+        if (t == t2 && base_type_for(t) == 'd') {
+            add_line(code, "%r =d pow(d %r, d %r)", result, lhs_reg, rhs_reg);
+            return result;
+        } else if (t == t2 && base_type_for(t) == 's') {
+            add_line(code, "%r =s powf(s %r, s %r)", result, lhs_reg, rhs_reg);
+            return result;
         }
-        ERROR(env, ast->match, "Addition for %s + %s is not implemented", type_to_string(t), type_to_string(t2));
+        ERROR(env, ast->match, "Exponentiation is not supported for %s and %s", type_to_string(t), type_to_string(t2));
+        break;
     }
     case Fail: {
         CORD reg = fresh_local(env, "fail_msg");
