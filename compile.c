@@ -430,62 +430,58 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         // TODO: different nil type values
         return "0";
     }
-    // Infix binary ops:
-    case Less: case LessEqual: case Greater: case GreaterEqual:
-    case Add: case Subtract: case Divide: case Multiply: case Modulus: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
-        char t_base = base_type_for(t);
+    case Less: case LessEqual: case Greater: case GreaterEqual: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        CORD op = NULL, description = "math";
+        CORD lhs_reg = add_value(env, code, ast->lhs);
+        CORD rhs_reg = add_value(env, code, ast->rhs);
+        CORD result = fresh_local(env, "comparison");
+        const char *cmp = NULL;
         switch (ast->kind) {
-            case Add: op = "add", description = "Addition"; break;
-            case Subtract: op = "sub", description = "Subtraction"; break;
-            case Divide: op = "div", description = "Division"; break;
-            case Multiply: op = "mul", description = "Multiplication"; break;
-            case Modulus: op = "urem", description = "Modulus"; break;
-            case Less: {
-                description = "Comparison";
-                CORD_sprintf(&op, "c%slt%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
-                break;
-            }
-            case LessEqual: {
-                description = "Comparison";
-                CORD_sprintf(&op, "c%sle%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
-                break;
-            }
-            case Greater: {
-                description = "Comparison";
-                CORD_sprintf(&op, "c%sgt%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
-                break;
-            }
-            case GreaterEqual: {
-                description = "Comparison";
-                CORD_sprintf(&op, "c%sge%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
-                break;
-            }
-            default: ERROR(env, ast->match, "Unknown math operation"); break;
+        case Less: cmp = "lt"; break;
+        case LessEqual: cmp = "le"; break;
+        case Greater: cmp = "gt"; break;
+        case GreaterEqual: cmp = "ge"; break;
+        default: break;
         }
-
-        if (!op)
-            ERROR(env, ast->match, "Unsupported %s operation", description);
-
-        if (lhs_t == rhs_t && is_numeric(lhs_t)) {
-            CORD lhs_reg = add_value(env, code, ast->lhs);
-            CORD rhs_reg = add_value(env, code, ast->rhs);
-            CORD result = fresh_local(env, "result");
-            if (ast->kind == Modulus) {
-                switch (base_type_for(lhs_t)) {
-                case 'l': case 'w': break;
-                default: ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(lhs_t));
-                }
-            }
-            add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
+        if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType)) {
+            add_line(code, "%r =w call $strcmp(l %r, l %r)", result, lhs_reg, rhs_reg);
+            add_line(code, "%r =w cs%sw %r, 0", result, cmp, result);
             return result;
-        } else {
-            ERROR(env, ast->match, "%s for %s and %s is not implemented", description, type_to_string(lhs_t), type_to_string(rhs_t));
+        } else if (lhs_t == rhs_t && is_numeric(lhs_t)) {
+            char b = base_type_for(lhs_t);
+            const char *sign = (b == 's' || b == 'd') ? "" : "s";
+            add_line(code, "%r =w c%s%s%c %r, %r", result, sign, cmp, b, lhs_reg, rhs_reg);
+            return result;
         }
-        break;
+        ERROR(env, ast->match, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+    }
+    case Add: case Subtract: case Divide: case Multiply: case Modulus: {
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        // TODO: support percentages and measures
+        if (lhs_t != rhs_t || !is_numeric(lhs_t))
+            ERROR(env, ast->match, "Math operatings between %s and %s are not supported", type_to_string(lhs_t), type_to_string(rhs_t));
+
+        bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
+        char t_base = base_type_for(t);
+        const char *ops[NUM_TYPES] = {[Add]="add", [Subtract]="sub", [Divide]="div", [Multiply]="mul", [Modulus]="urem"};
+        CORD op = ops[ast->kind];
+        if (!op) ERROR(env, ast->match, "Unsupported math operation");
+
+        CORD lhs_reg = add_value(env, code, ast->lhs);
+        CORD rhs_reg = add_value(env, code, ast->rhs);
+        CORD result = fresh_local(env, "result");
+        if (ast->kind == Modulus) {
+            if (t_base == 'l' || t_base == 'w') {
+                add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
+                return result;
+            } else {
+                ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(lhs_t));
+            }
+        }
+        add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
+        return result;
     }
     case Power: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
