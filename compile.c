@@ -365,12 +365,24 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
         // TODO: different nil type values
         return "0";
     }
+    case Add: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *t2 = get_type(env->file, env->bindings, ast->rhs);
+        CORD lhs_reg = add_value(env, code, ast->lhs);
+        CORD rhs_reg = add_value(env, code, ast->rhs);
+        if (t == t2 && is_numeric(t)) {
+            CORD sum = fresh_local(env, "sum");
+            add_line(code, "%r =%c add %r, %r", sum, base_type_for(t), lhs_reg, rhs_reg);
+            return sum;
+        }
+        ERROR(env, ast->match, "Addition for %s + %s is not implemented", type_to_string(t), type_to_string(t2));
+    }
     case Fail: {
         CORD reg = fresh_local(env, "fail_msg");
         if (ast->child) {
             add_line(code, "%r =l copy %r", reg, get_string_reg(env, intern_str("\x1b[31;7m")));
             CORD msg_reg = add_value(env, code, ast->child);
-            add_line(code, "%r =l call $CORD_cat(l %r, l %r) // Value here", reg, reg, msg_reg);
+            add_line(code, "%r =l call $CORD_cat(l %r, l %r)", reg, reg, msg_reg);
             add_line(code, "%r =l call $CORD_cat(l %r, l %r)", reg, reg, get_string_reg(env, intern_str("\x1b[m\n\n")));
         } else {
             add_line(code, "%r =l copy %r", get_string_reg(env, intern_str("\x1b[31;7mA failure occurred\x1b[m\n\n")));

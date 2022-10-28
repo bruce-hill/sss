@@ -94,6 +94,25 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return Type(TypeType, .type=Type(OptionalType, .nonnil=item_t->type));
         }
 
+        case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
+            bl_type_t *t1 = get_type(f, bindings, ast->lhs);
+            bl_type_t *t2 = get_type(f, bindings, ast->rhs);
+            if (t1 == t2) {
+                if (is_numeric(t1))
+                    return t1;
+                else if (t1->kind == DSLType || t1->kind == StringType)
+                    return t1;
+            } else if (is_numeric(t1)) {
+                TYPE_ERR(f, ast->rhs, "This value is type %s, which can't be added to something with type %s",
+                         type_to_string(t2), type_to_string(t1));
+            } else if (is_numeric(t2)) {
+                TYPE_ERR(f, ast->lhs, "This value is type %s, which can't be added to something with type %s",
+                         type_to_string(t1), type_to_string(t2));
+            }
+            TYPE_ERR(f, ast, "Math operations are not supported between %s and %s",
+                     type_to_string(t1), type_to_string(t2));
+        }
+
         default: break;
     }
     TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));

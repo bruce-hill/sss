@@ -108,4 +108,15 @@ const char* nil_value(bl_type_t *t)
     }
 }
 
+bool is_numeric(bl_type_t *t)
+{
+    switch (t->kind) {
+    case IntType: case Int16Type: case Int8Type:
+    case NumType: case Num32Type:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -10,7 +10,7 @@ typedef enum {
     NilType, BoolType,
     IntType, Int32Type, Int16Type, Int8Type,
     NumType, Num32Type,
-    StringType,
+    StringType, DSLType,
     NamedType,
     TypeType,
     ListType,
@@ -48,5 +48,6 @@ bool type_is_a(bl_type_t *t, bl_type_t *req);
 const char* nil_value(bl_type_t *t);
 char base_type_for(bl_type_t *t);
 char abi_type_for(bl_type_t *t);
+bool is_numeric(bl_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
