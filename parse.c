@@ -382,6 +382,11 @@ void print_ast(ast_t *ast) {
         }
         break;
     }
+    case Fail: {
+        printf("\x1b[33mfail\x1b[m ");
+        print_ast(ast->child);
+        break;
+    }
     default: printf("???");
     }
 }
@@ -402,7 +407,6 @@ ast_t *parse(file_t *f)
         } else {
             report_errors(f, m, true);
             ast = match_to_ast(m);
-            // print_ast(ast);
         }
     }
     parsing = NULL;

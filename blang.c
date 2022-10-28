@@ -51,6 +51,9 @@ int main(int argc, char *argv[])
         ast_t *ast = parse(f);
 
         if (verbose)
+            print_ast(ast);
+
+        if (verbose)
             printf("Compiling %s...\n", argv[i]);
         const char *code = compile_file(f, ast);
         if (verbose) {
