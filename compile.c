@@ -249,26 +249,38 @@ CORD get_tostring_reg(env_t *env, bl_type_t *t)
     return fn_reg;
 }
 
-static CORD compile_function(env_t *env, ast_t *def)
+static CORD compile_function(env_t *env, CORD *code, ast_t *def)
 {
     binding_t *binding = hashmap_get(env->bindings, def->fn.name);
-    assert(binding);
-    bl_type_t *t = binding->type;
-    CORD fn_code = NULL;
-    addf(&fn_code, "function %c %r(", base_type_for(t->ret), binding->reg);
+
+    env_t body_env = *env;
+    // Use a set of bindings that don't include any closures
+    // TODO: include globals though
+    body_env.bindings = hashmap_new();
+
+    bl_type_t *t;
+    CORD fn_reg;
+    if (binding) {
+        hashmap_set(body_env.bindings, def->fn.name, binding);
+        fn_reg = binding->reg;
+        t = binding->type;
+    } else {
+        fn_reg = fresh_global(&body_env, "lambda");
+        t = get_type(body_env.file, body_env.bindings, def);
+    }
+    addf(code, "function %c %r(", base_type_for(t->ret), fn_reg);
     for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
-        if (i > 0) addf(&fn_code, ", ");
+        if (i > 0) addf(code, ", ");
         istr_t argname = ith(def->fn.arg_names, i);
         bl_type_t *argtype = ith(t->args, i);
-        CORD argreg = fresh_local(env, argname);
-        addf(&fn_code, "%c %s", base_type_for(argtype), argreg);
-        env = with_var(env, argname, argreg, argtype);
+        CORD argreg = fresh_local(&body_env, argname);
+        addf(code, "%c %s", base_type_for(argtype), argreg);
+        hashmap_set(body_env.bindings, argname, new(binding_t, .reg=argreg, .type=argtype));
     }
-    addf(&fn_code, ") {\n@start\n");
-    CORD ret = add_value(env, &fn_code, def->fn.body);
-    add_line(&fn_code, "ret %r", ret);
-    add_line(&fn_code, "}");
-    return fn_code;
+    addf(code, ") {\n@start\n");
+    add_statement(&body_env, code, def->fn.body);
+    add_line(code, "}");
+    return fn_reg;
 }
 
 CORD add_value(env_t *env, CORD *code, ast_t *ast)
@@ -342,10 +354,19 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         errx(1, "Unreachable");
     }
     case FunctionDef: {
-        CORD fn_code = compile_function(env, ast);
+        CORD fn_code = NULL;
+        CORD fn_reg = compile_function(env, &fn_code, ast);
         addf(env->fn_code, "\n%r\n", fn_code);
-        binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
-        return binding->reg;
+        return fn_reg;
+    }
+    case Return: {
+        if (ast->child) {
+            CORD ret = add_value(env, code, ast->child);
+            add_line(code, "ret %r", ret);
+        } else {
+            add_line(code, "ret");
+        }
+        return "0";
     }
     case Int: {
         CORD ret;

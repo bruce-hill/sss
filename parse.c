@@ -237,7 +237,11 @@ ast_t *match_to_ast(match_t *m)
             }
             match_t *ret_m = get_named_capture(m, "returnType", -1);
             ast_t *ret_type = ret_m ? match_to_ast(ret_m) : NULL;
-            ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
+            match_t *body_m = get_named_capture(m, "body", -1);
+            ast_t *body = match_to_ast(body_m);
+
+            if (kind == Lambda)
+                body = AST(body_m, Return, .child=body);
 
             return AST(m, FunctionDef, .fn.name=name,
                        .fn.arg_names=arg_names, .fn.arg_types=arg_types,
@@ -260,6 +264,9 @@ ast_t *match_to_ast(match_t *m)
             istr_t name = intern_str(CORD_to_char_star(c));
             ast_t *value = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, KeywordArg, .named.name=name, .named.value=value);
+        }
+        case Return: {
+            return AST(m, Return, .child=match_to_ast(get_named_capture(m, "value", -1)));
         }
         case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
         case And: case Or: case Xor:

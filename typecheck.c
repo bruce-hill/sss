@@ -131,7 +131,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 }
             } else {
                 hashmap_t *body_bindings = hashmap_new();
-                body_bindings->fallback = bindings;
+                // TODO: strip closure bindings, but allow globals
+                // body_bindings->fallback = bindings;
                 for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
                     hashmap_set(body_bindings, LIST_ITEM(ast->fn.arg_names, i), new(binding_t, .type=LIST_ITEM(args, i)));
                 }

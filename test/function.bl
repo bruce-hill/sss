@@ -1,4 +1,4 @@
 def add_one(x:Int):Int
-    x + 1
+    return x + 1
 
 say "$(add_one 5)"
