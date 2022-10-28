@@ -143,6 +143,29 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             break;
         }
 
+        case If: {
+            bl_type_t *t = NULL;
+            LIST_FOR (ast->clauses, clause, _) {
+                bl_type_t *clause_t = get_type(f, bindings, clause->body);
+                t = type_or_type(t, clause_t);
+                if (!t)
+                    TYPE_ERR(f, clause->body,
+                             "This block has a type %s, which is incompatible with earlier blocks of type %s",
+                             type_to_string(clause_t), type_to_string(t));
+            }
+            if (ast->else_body) {
+                bl_type_t *else_type = get_type(f, bindings, ast->else_body);
+                t = type_or_type(t, else_type);
+                if (!t)
+                    TYPE_ERR(f, ast->else_body,
+                             "This block has a type %s, which is incompatible with earlier blocks of type %s",
+                             type_to_string(else_type), type_to_string(t));
+            } else {
+                t = type_or_type(t, Type(NilType));
+            }
+            return t;
+        }
+
         default: break;
     }
     TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));

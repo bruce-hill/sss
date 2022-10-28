@@ -430,32 +430,60 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         // TODO: different nil type values
         return "0";
     }
+    // Infix binary ops:
+    case Less: case LessEqual: case Greater: case GreaterEqual:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *t2 = get_type(env->file, env->bindings, ast->rhs);
-        const char *math_op = NULL, *description = "math";
+        char t_base = base_type_for(t);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        CORD op = NULL, description = "math";
         switch (ast->kind) {
-            case Add: math_op = "add", description = "Addition"; break;
-            case Subtract: math_op = "sub", description = "Subtraction"; break;
-            case Divide: math_op = "div", description = "Division"; break;
-            case Multiply: math_op = "mul", description = "Multiplication"; break;
-            case Modulus: math_op = "urem", description = "Modulus"; break;
+            case Add: op = "add", description = "Addition"; break;
+            case Subtract: op = "sub", description = "Subtraction"; break;
+            case Divide: op = "div", description = "Division"; break;
+            case Multiply: op = "mul", description = "Multiplication"; break;
+            case Modulus: op = "urem", description = "Modulus"; break;
+            case Less: {
+                description = "Comparison";
+                CORD_sprintf(&op, "c%slt%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
+                break;
+            }
+            case LessEqual: {
+                description = "Comparison";
+                CORD_sprintf(&op, "c%sle%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
+                break;
+            }
+            case Greater: {
+                description = "Comparison";
+                CORD_sprintf(&op, "c%sgt%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
+                break;
+            }
+            case GreaterEqual: {
+                description = "Comparison";
+                CORD_sprintf(&op, "c%sge%c", (t_base == 's' || t_base == 'd') ? "" : "s", t_base);
+                break;
+            }
             default: ERROR(env, ast->match, "Unknown math operation"); break;
         }
-        if (t == t2 && is_numeric(t)) {
+
+        if (!op)
+            ERROR(env, ast->match, "Unsupported %s operation", description);
+
+        if (lhs_t == rhs_t && is_numeric(lhs_t)) {
             CORD lhs_reg = add_value(env, code, ast->lhs);
             CORD rhs_reg = add_value(env, code, ast->rhs);
             CORD result = fresh_local(env, "result");
             if (ast->kind == Modulus) {
-                switch (base_type_for(t)) {
+                switch (base_type_for(lhs_t)) {
                 case 'l': case 'w': break;
-                default: ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(t));
+                default: ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(lhs_t));
                 }
             }
-            add_line(code, "%r =%c %s %r, %r", result, base_type_for(t), math_op, lhs_reg, rhs_reg);
+            add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
             return result;
         } else {
-            ERROR(env, ast->match, "%s for %s and %s is not implemented", description, type_to_string(t), type_to_string(t2));
+            ERROR(env, ast->match, "%s for %s and %s is not implemented", description, type_to_string(lhs_t), type_to_string(rhs_t));
         }
         break;
     }
@@ -474,6 +502,30 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         }
         ERROR(env, ast->match, "Exponentiation is not supported for %s and %s", type_to_string(t), type_to_string(t2));
         break;
+    }
+    case If: {
+        CORD if_ret = fresh_local(env, "if_result");
+        CORD endif = fresh_label(env, "endif");
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        foreach (ast->clauses, clause, last_clause) {
+            CORD iftrue = fresh_label(env, "if_true");
+            CORD iffalse = (clause < last_clause || ast->else_body) ? fresh_label(env, "if_false") : endif;
+            CORD cond = add_value(env, code, clause->condition);
+            // TODO: support non-bool types
+            add_line(code, "jnz %r, %r, %r", cond, iftrue, iffalse);
+            add_line(code, "%r", iftrue);
+            CORD branch_val = add_value(env, code, clause->body);
+            add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
+            add_line(code, "jmp %r", endif);
+            if (iffalse != endif)
+                add_line(code, "%r", iffalse);
+        }
+        if (ast->else_body) {
+            CORD branch_val = add_value(env, code, ast->else_body);
+            add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
+            add_line(code, "%r", endif);
+        }
+        return if_ret;
     }
     case Fail: {
         CORD reg = fresh_local(env, "fail_msg");
@@ -498,10 +550,9 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         fclose(f);
         return "0";
     }
-    default: {
-        ERROR(env, ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
+    default: break;
     }
-    }
+    ERROR(env, ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
 }
 
 void add_statement(env_t *env, CORD *code, ast_t *ast) {

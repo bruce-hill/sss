@@ -1,0 +1,23 @@
+
+x := if 1 < 2
+    "Right"
+else
+    "Wrong"
+
+say "Result: $x"
+
+y := if 1 > 2
+    "Wrong"
+else
+    "Right"
+
+say "Result: $y"
+
+z := if 1 > 2
+    "Wrong"
+elseif 1 < 99
+    "Right"
+else
+    "Wrong"
+
+say "Result: $z"

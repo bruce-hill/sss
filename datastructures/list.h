@@ -27,7 +27,7 @@ list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size
 #define LIST(t, ...) ((t**)list_new_items(sizeof(t), sizeof((t[]){__VA_ARGS__})/sizeof(t), (t[]){__VA_ARGS__}))
 #define NEW_LIST(t, x) t** x = (t**)list_new(sizeof(t), 8)
 #define stringify(x) #x
-#define APPEND(list, item) list_insert((list_t*)list, sizeof(list[0][0]), INT_NIL, &(__typeof__ (list[0][0])){(item)}, "Invalid list index: %ld")
+#define APPEND(list, item) list_insert((list_t*)list, sizeof(list[0][0]), INT_NIL, &(__typeof__ (list[0][0])){item}, "Invalid list index: %ld")
 #define LIST_LEN(list) (((list_t*)(list))->len)
 #define LIST_ITEM(list, i) (assert(/* Check list index */ i >= 0 && i < LIST_LEN(list)), (list)[0][i])
 #define LIST_FIRST(list) ((list)[0])

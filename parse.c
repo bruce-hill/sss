@@ -268,6 +268,26 @@ ast_t *match_to_ast(match_t *m)
         case Return: {
             return AST(m, Return, .child=match_to_ast(get_named_capture(m, "value", -1)));
         }
+        case If: {
+            NEW_LIST(ast_clause_t, clauses);
+            for (int i = 1; ; i++) {
+                match_t *clause_m = get_numbered_capture(m, i);
+                if (!clause_m) break;
+                match_t *condition_m = get_named_capture(clause_m, "condition", -1);
+                match_t *body_m = get_named_capture(clause_m, "body", -1);
+                assert(condition_m && body_m);
+                ast_clause_t clause = {
+                    .condition=match_to_ast(condition_m),
+                    .body=match_to_ast(body_m),
+                };
+                list_insert((list_t*)clauses, sizeof(ast_clause_t), INT_NIL, &clause, "Invalid list index: %ld");
+            }
+            ast_t *else_block = NULL;
+            match_t *else_m = get_named_capture(m, "elseBody", -1);
+            if (else_m)
+                else_block = match_to_ast(else_m);
+            return AST(m, If, .clauses=clauses, .else_body=else_block);
+        }
         case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
         case And: case Or: case Xor:
         case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:

@@ -36,6 +36,10 @@ typedef enum {
 
 const char *get_ast_kind_name(astkind_e kind);
 
+typedef struct {
+    struct ast_s *condition, *body;
+} ast_clause_t;
+
 typedef struct ast_s {
     astkind_e kind;
     match_t *match;
@@ -75,5 +79,9 @@ typedef struct ast_s {
             istr_t name;
             struct ast_s *value;
         } named;
+        struct {
+            List(ast_clause_t) clauses;
+            struct ast_s *else_body;
+        };
     };
 } ast_t;
