@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 
         if (verbose)
             printf("Compiling %s...\n", argv[i]);
-        const char *code = compile_file(f, ast);
+        const char *code = compile_file(f, ast, true);
         if (verbose) {
             printf("\x1b[36;1m");
             puts(code);

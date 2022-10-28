@@ -23,6 +23,7 @@ typedef struct {
     hashmap_t *function_regs;
     hashmap_t *bindings;
     hashmap_t *var_types;
+    bool debug;
 } env_t;
 
 #define ERROR(env, m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
@@ -441,6 +442,8 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
 }
 
 void add_statement(env_t *env, CORD *code, ast_t *ast) {
+    if (env->debug)
+        add_line(code, "loc %d, %d", 1, get_line_number(env->file, ast->match->start));
     check_discardable(env->file, env->bindings, ast);
     if (ast->kind == FunctionCall)
         (void)add_fncall(env, code, ast, false);
@@ -448,7 +451,7 @@ void add_statement(env_t *env, CORD *code, ast_t *ast) {
         (void)add_value(env, code, ast);
 }
 
-const char *compile_file(file_t *f, ast_t *ast) {
+const char *compile_file(file_t *f, ast_t *ast, bool debug) {
     int64_t next_id = 0;
     CORD data_code = NULL;
     CORD fn_code = NULL;
@@ -462,8 +465,11 @@ const char *compile_file(file_t *f, ast_t *ast) {
         .string_regs = hashmap_new(),
         .tostring_regs = hashmap_new(),
         .function_regs = hashmap_new(),
-        .bindings = hashmap_new()
+        .bindings = hashmap_new(),
+        .debug = debug,
     };
+    if (debug)
+        add_line(&data_code, "file %d \"%s\"", 1, f->filename);
     
     bl_type_t *string_type = Type(StringType);
     bl_type_t *nil_type = Type(NilType);
