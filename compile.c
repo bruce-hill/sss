@@ -35,34 +35,18 @@ typedef struct {
 #define ith LIST_ITEM
 #define append APPEND
 
-env_t *with_var(env_t *env, istr_t varname, CORD reg, bl_type_t *type) {
-    size_t depth = 0;
-    for (hashmap_t *h = env->bindings; h; h = h->fallback)
-        ++depth;
-
-    binding_t *binding = new(binding_t, .reg=reg, .type=type);
-    if (depth > 10) {
-        hashmap_t *merged = hashmap_new();
-        for (hashmap_t *h = env->bindings; h; h = h->fallback) {
-            for (const istr_t *key = NULL; (key = hashmap_next(h, key)); ) {
-                if (!hashmap_get(merged, key))
-                    hashmap_set(merged, key, hashmap_get(h, key));
-            }
+hashmap_t *global_bindings(hashmap_t *bindings)
+{
+    hashmap_t *globals = hashmap_new();
+    for (hashmap_t *h = bindings; h; h = h->fallback) {
+        for (istr_t key = NULL; (key = hashmap_next(h, key)); ) {
+            binding_t *val = hashmap_get_raw(h, key);
+            assert(val);
+            if (val->is_global)
+                hashmap_set(globals, key, val);
         }
-        hashmap_set(merged, varname, binding);
-        env_t *copy = new(env_t);
-        memcpy(copy, env, sizeof(env_t));
-        copy->bindings = merged;
-        return copy;
-    } else {
-        hashmap_t *chained = hashmap_new();
-        chained->fallback = env->bindings;
-        hashmap_set(chained, varname, binding);
-        env_t *copy = new(env_t);
-        memcpy(copy, env, sizeof(env_t));
-        copy->bindings = chained;
-        return copy;
     }
+    return globals;
 }
 
 static CORD add_value(env_t *env, CORD *code, ast_t *ast);
@@ -186,6 +170,7 @@ CORD get_tostring_reg(env_t *env, bl_type_t *t)
     fn_reg = fresh_global(env, "tostring");
     CORD val = fresh_local(env, "val");
     CORD rec = fresh_local(env, "rec");
+    add_line(env->fn_code, "# %s", type_to_string(t));
     add_line(env->fn_code, "function l %r(%c %r, l %r) {", fn_reg, base_type_for(t), val, rec);
     add_line(env->fn_code, "@start");
     switch (t->kind) {
@@ -255,8 +240,7 @@ static CORD compile_function(env_t *env, CORD *code, ast_t *def)
 
     env_t body_env = *env;
     // Use a set of bindings that don't include any closures
-    // TODO: include globals though
-    body_env.bindings = hashmap_new();
+    body_env.bindings = global_bindings(env->bindings);
 
     bl_type_t *t;
     CORD fn_reg;
@@ -268,6 +252,7 @@ static CORD compile_function(env_t *env, CORD *code, ast_t *def)
         fn_reg = fresh_global(&body_env, "lambda");
         t = get_type(body_env.file, body_env.bindings, def);
     }
+    add_line(code, "# %s", type_to_string(t));
     addf(code, "function %c %r(", base_type_for(t->ret), fn_reg);
     for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
         if (i > 0) addf(code, ", ");
@@ -327,33 +312,37 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         return "0";
     }
     case Block: {
+        env_t block_env = *env;
+        block_env.bindings = hashmap_new();
+        block_env.bindings->fallback = env->bindings;
+
+        // Function defs are visible in the entire block (allowing corecursive funcs)
         foreach (ast->children, stmt, last_stmt) {
-            switch ((*stmt)->kind) {
-            case Declare: {
-                CORD reg = fresh_local(env, (*stmt)->lhs->str);
-                bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
-                env = with_var(env, (*stmt)->lhs->str, reg, t);
-                break;
-            }
-            case FunctionDef: {
+            if ((*stmt)->kind == FunctionDef) {
                 CORD reg = fresh_global(env, (*stmt)->fn.name);
-                bl_type_t *t = get_type(env->file, env->bindings, *stmt);
-                env = with_var(env, (*stmt)->fn.name, reg, t);
-                break;
+                bl_type_t *t = get_type(env->file, block_env.bindings, *stmt);
+                hashmap_set(block_env.bindings, (*stmt)->fn.name, new(binding_t, .reg=reg, .type=t, .is_global=true));
             }
-            default: break;
+        }
+
+        foreach (ast->children, stmt, last_stmt) {
+            // Declarations are visible from here onwards:
+            if ((*stmt)->kind == Declare) {
+                CORD reg = fresh_local(&block_env, (*stmt)->lhs->str);
+                bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
+                hashmap_set(block_env.bindings, (*stmt)->lhs->str, new(binding_t, .reg=reg, .type=t));
             }
             if (stmt == last_stmt) {
-                if (env->debug)
-                    add_line(code, "loc %d, %d", 1, get_line_number(env->file, (*stmt)->match->start));
-                return add_value(env, code, *stmt);
+                if (block_env.debug)
+                    add_line(code, "loc %d, %d", 1, get_line_number(block_env.file, (*stmt)->match->start));
+                return add_value(&block_env, code, *stmt);
             } else {
-                add_statement(env, code, *stmt);
+                add_statement(&block_env, code, *stmt);
             }
         }
         errx(1, "Unreachable");
     }
-    case FunctionDef: {
+    case FunctionDef: case Lambda: {
         CORD fn_code = NULL;
         CORD fn_reg = compile_function(env, &fn_code, ast);
         addf(env->fn_code, "\n%r\n", fn_code);
@@ -601,7 +590,7 @@ const char *compile_file(file_t *f, ast_t *ast, bool debug) {
         .ret=nil_type);
 
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .reg="$puts", .type=say_type));
-#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(TypeType, .type=Type(t##Type))));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);

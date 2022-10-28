@@ -39,6 +39,7 @@ typedef struct bl_type_s {
 typedef struct {
     istr_t reg;
     bl_type_t *type;
+    bool is_global;
 } binding_t;
 
 #define Type(mykind, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.kind=mykind, __VA_ARGS__}, sizeof(bl_type_t)))

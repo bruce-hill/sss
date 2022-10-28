@@ -243,7 +243,7 @@ ast_t *match_to_ast(match_t *m)
             if (kind == Lambda)
                 body = AST(body_m, Return, .child=body);
 
-            return AST(m, FunctionDef, .fn.name=name,
+            return AST(m, kind, .fn.name=name,
                        .fn.arg_names=arg_names, .fn.arg_types=arg_types,
                        .fn.ret_type=ret_type, .fn.body=body);
         }

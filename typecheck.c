@@ -136,11 +136,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
                     hashmap_set(body_bindings, LIST_ITEM(ast->fn.arg_names, i), new(binding_t, .type=LIST_ITEM(args, i)));
                 }
-                ret = get_type(f, body_bindings, ast->fn.body);
+                ret = get_type(f, body_bindings, ast->fn.body->child);
             }
             if (ret == NULL) ret = Type(NilType);
             return Type(FunctionType, .args=args, .ret=ret);
-            break;
         }
 
         case If: {
