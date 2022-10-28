@@ -298,10 +298,13 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
                 bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
                 env = with_var(env, (*stmt)->lhs->str, reg, t);
             }
-            if (stmt == last_stmt)
+            if (stmt == last_stmt) {
+                if (env->debug)
+                    add_line(code, "loc %d, %d", 1, get_line_number(env->file, (*stmt)->match->start));
                 return add_value(env, code, *stmt);
-            else
+            } else {
                 add_statement(env, code, *stmt);
+            }
         }
         errx(1, "Unreachable");
     }
