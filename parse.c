@@ -221,6 +221,28 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, Block, .children=stmts);
         }
+        case FunctionDef: case Lambda: {
+            istr_t name = kind == FunctionDef ? match_to_istr(get_named_capture(m, "name", -1)) : NULL;
+            NEW_LIST(istr_t, arg_names);
+            NEW_LIST(ast_t*, arg_types);
+            match_t *args_m = get_named_capture(m, "args", -1);
+            for (int i = 1; ; i++) {
+                match_t *arg_m = get_numbered_capture(args_m, i);
+                if (!arg_m) break;
+                match_t *arg_name = get_named_capture(arg_m, "name", -1);
+                match_t *arg_type = get_named_capture(arg_m, "type", -1);
+                assert(arg_name != NULL && arg_type != NULL);
+                APPEND(arg_names, match_to_istr(arg_name));
+                APPEND(arg_types, match_to_ast(arg_type));
+            }
+            match_t *ret_m = get_named_capture(m, "returnType", -1);
+            ast_t *ret_type = ret_m ? match_to_ast(ret_m) : NULL;
+            ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
+
+            return AST(m, FunctionDef, .fn.name=name,
+                       .fn.arg_names=arg_names, .fn.arg_types=arg_types,
+                       .fn.ret_type=ret_type, .fn.body=body);
+        }
         case FunctionCall: {
             match_t *fn_m = get_named_capture(m, "fn", -1);
             ast_t *fn = match_to_ast(fn_m);

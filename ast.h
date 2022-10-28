@@ -57,6 +57,7 @@ typedef struct ast_s {
             List(struct ast_s*) rhs;
         } multiassign;
         struct { // Function def/lambda
+            istr_t name;
             List(istr_t) arg_names;
             List(struct ast_s*) arg_types;
             struct ast_s *ret_type;

@@ -249,7 +249,30 @@ CORD get_tostring_reg(env_t *env, bl_type_t *t)
     return fn_reg;
 }
 
-CORD add_value(env_t *env, CORD *code, ast_t *ast) {
+static CORD compile_function(env_t *env, ast_t *def)
+{
+    binding_t *binding = hashmap_get(env->bindings, def->fn.name);
+    assert(binding);
+    bl_type_t *t = binding->type;
+    CORD fn_code = NULL;
+    addf(&fn_code, "function %c %r(", base_type_for(t->ret), binding->reg);
+    for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
+        if (i > 0) addf(&fn_code, ", ");
+        istr_t argname = ith(def->fn.arg_names, i);
+        bl_type_t *argtype = ith(t->args, i);
+        CORD argreg = fresh_local(env, argname);
+        addf(&fn_code, "%c %s", base_type_for(argtype), argreg);
+        env = with_var(env, argname, argreg, argtype);
+    }
+    addf(&fn_code, ") {\n@start\n");
+    CORD ret = add_value(env, &fn_code, def->fn.body);
+    add_line(&fn_code, "ret %r", ret);
+    add_line(&fn_code, "}");
+    return fn_code;
+}
+
+CORD add_value(env_t *env, CORD *code, ast_t *ast)
+{
     switch (ast->kind) {
     case Var: {
         binding_t *binding = hashmap_get(env->bindings, ast->str);
@@ -293,10 +316,20 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
     }
     case Block: {
         foreach (ast->children, stmt, last_stmt) {
-            if ((*stmt)->kind == Declare) {
+            switch ((*stmt)->kind) {
+            case Declare: {
                 CORD reg = fresh_local(env, (*stmt)->lhs->str);
                 bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
                 env = with_var(env, (*stmt)->lhs->str, reg, t);
+                break;
+            }
+            case FunctionDef: {
+                CORD reg = fresh_global(env, (*stmt)->fn.name);
+                bl_type_t *t = get_type(env->file, env->bindings, *stmt);
+                env = with_var(env, (*stmt)->fn.name, reg, t);
+                break;
+            }
+            default: break;
             }
             if (stmt == last_stmt) {
                 if (env->debug)
@@ -307,6 +340,12 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
             }
         }
         errx(1, "Unreachable");
+    }
+    case FunctionDef: {
+        CORD fn_code = compile_function(env, ast);
+        addf(env->fn_code, "\n%r\n", fn_code);
+        binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
+        return binding->reg;
     }
     case Int: {
         CORD ret;

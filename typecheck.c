@@ -27,7 +27,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             if (binding) {
                 return binding->type;
             } else {
-                return Type(UnknownType);
+                TYPE_ERR(f, ast, "Couldn't figure out what type %s refers to", ast->str);
             }
         }
         case KeywordArg: return get_type(f, bindings, ast->named.value);
@@ -113,6 +113,35 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                      type_to_string(t1), type_to_string(t2));
         }
 
+        case FunctionDef: case Lambda: {
+            NEW_LIST(bl_type_t*, args);
+            for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
+                ast_t *arg_def = LIST_ITEM(ast->fn.arg_types, i);
+                bl_type_t *t = get_type(f, bindings, arg_def);
+                if (t->kind != TypeType) TYPE_ERR(f, arg_def, "Expected a type here, not %s", type_to_string(t));
+                APPEND(args, t->type);
+            }
+
+            bl_type_t *ret = NULL;
+            if (ast->kind == FunctionDef) {
+                if (ast->fn.ret_type) {
+                    ret = get_type(f, bindings, ast->fn.ret_type);
+                    if (ret->kind != TypeType) TYPE_ERR(f, ast->fn.ret_type, "Expected a type here");
+                    ret = ret->type;
+                }
+            } else {
+                hashmap_t *body_bindings = hashmap_new();
+                body_bindings->fallback = bindings;
+                for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
+                    hashmap_set(body_bindings, LIST_ITEM(ast->fn.arg_names, i), new(binding_t, .type=LIST_ITEM(args, i)));
+                }
+                ret = get_type(f, body_bindings, ast->fn.body);
+            }
+            if (ret == NULL) ret = Type(NilType);
+            return Type(FunctionType, .args=args, .ret=ret);
+            break;
+        }
+
         default: break;
     }
     TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));
@@ -120,7 +149,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
 void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
-    if (ast->kind == Declare || ast->kind == Block)
+    if (ast->kind == Declare || ast->kind == Block || ast->kind == FunctionDef)
         return;
     bl_type_t *t = get_type(f, bindings, ast);
     if (!(t->kind == NilType || t->kind == AbortType)) {

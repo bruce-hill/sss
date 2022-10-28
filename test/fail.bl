@@ -1,0 +1,2 @@
+//say "Hello"
+fail "goodbye $(1 + 2)"

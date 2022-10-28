@@ -1,0 +1,4 @@
+name := (nil):String?
+name = "Jack"
+say "hi $(name)!"
+say "Goodbye", end="!\n"
