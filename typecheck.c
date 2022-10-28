@@ -11,7 +11,7 @@
 
 #define TYPE_ERR(f, ast, fmt, ...) do { \
     fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-    highlight_match(f, (ast)->match); \
+    highlight_match(stderr, f, (ast)->match); \
     exit(1); } while (0)
 
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)

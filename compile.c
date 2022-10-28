@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <bhash.h>
+#include <ctype.h>
 #include <err.h>
 #include <gc/cord.h>
 #include <stdarg.h>
@@ -24,7 +25,7 @@ typedef struct {
 } env_t;
 
 #define ERROR(env, m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-            highlight_match(env->file, m); \
+            highlight_match(stderr, env->file, m); \
             exit(1); }
 
 #define foreach LIST_FOR
@@ -127,16 +128,20 @@ CORD get_string_reg(env_t *env, const char *str)
     addf(env->data_code, "data %r = {", reg);
     bool needs_comma = false;
     for (const char *p = str; *p; ) {
-        size_t span_len = strcspn(p, "\"\\\n");
-        if (needs_comma) addf(env->data_code, ", ");
-        if (span_len > 0) {
-            addf(env->data_code, "b\"%.*s\"", (int)span_len, p);
-            p += span_len;
+        if (isprint(*p) && *p != '\n' && *p != '"' && *p != '\\') {
+            if (needs_comma) addf(env->data_code, ", ");
+            addf(env->data_code, "b\"");
+            for ( ; *p && isprint(*p) && *p != '\n' && *p != '"' && *p != '\\'; p++)
+                addf(env->data_code, "%c", *p);
+            addf(env->data_code, "\"");
+            needs_comma = true;
         } else {
-            addf(env->data_code, "b %d", (int)*p);
-            ++p;
+            for (; *p && !(isprint(*p) && *p != '\n' && *p != '"' && *p != '\\'); p++) {
+                if (needs_comma) addf(env->data_code, ", ");
+                addf(env->data_code, "b %d", *p);
+                needs_comma = true;
+            }
         }
-        needs_comma = true;
     }
     addf(env->data_code, ", b 0}\n");
     hashmap_set(env->string_regs, str, reg);
@@ -358,6 +363,29 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast) {
     }
     case Nil: {
         // TODO: different nil type values
+        return "0";
+    }
+    case Fail: {
+        CORD reg = fresh_local(env, "fail_msg");
+        if (ast->child) {
+            add_line(code, "%r =l copy %r", reg, get_string_reg(env, intern_str("\x1b[31;7m")));
+            CORD msg_reg = add_value(env, code, ast->child);
+            add_line(code, "%r =l call $CORD_cat(l %r, l %r) // Value here", reg, reg, msg_reg);
+            add_line(code, "%r =l call $CORD_cat(l %r, l %r)", reg, reg, get_string_reg(env, intern_str("\x1b[m\n\n")));
+        } else {
+            add_line(code, "%r =l copy %r", get_string_reg(env, intern_str("\x1b[31;7mA failure occurred\x1b[m\n\n")));
+        }
+
+        char *info = NULL;
+        size_t size = 0;
+        FILE *f = open_memstream(&info, &size);
+        highlight_match(f, env->file, ast->match);
+        fputc('\0', f);
+        fflush(f);
+        add_line(code, "%r =l call $CORD_cat(l %r, l %r)", reg, reg, get_string_reg(env, intern_str(info)));
+        add_line(code, "%r =l call $CORD_to_char_star(l %r)", reg, reg);
+        add_line(code, "call $fail(l %r)", reg, reg);
+        fclose(f);
         return "0";
     }
     default: {

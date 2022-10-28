@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
 
         child = fork();
         if (child == 0) {
-            execlp("cc", "cc", asm_filename, "-lgc", "-lc", "-lintern", "-lcord", "-lbp", "-o", binary_name, NULL);
+            execlp("cc", "cc", asm_filename, "-lgc", "-lc", "-lintern", "-lcord", "-lbp", "-lbhash", "-o", binary_name, "lib/utils.o", NULL);
             exit(1);
         }
         waitpid(child, &status, 0);
@@ -159,6 +159,7 @@ int main(int argc, char *argv[])
             }
         }
 
+        recycle_all_matches();
         destroy_file(&f);
     }
 

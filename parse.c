@@ -88,7 +88,7 @@ static void print_err(file_t *f, match_t *m) {
     fprintf(stderr, "\x1b[31;7;1mSyntax Error: ");
     fprint_match(stderr, f->start, m, NULL);
     fprintf(stderr, "\x1b[m\n\n");
-    highlight_match(f, m);
+    highlight_match(stderr, f, m);
 }
 
 //
@@ -267,7 +267,7 @@ ast_t *match_to_ast(match_t *m)
                 ast_t *var = match_to_ast(get_numbered_capture(lhses, i));
                 if (var && var->kind != Var) {
                     fprintf(stderr, "\x1b[31;7;1mOnly variables can be declared\x1b[m\n\n");
-                    highlight_match(parsing, var->match);
+                    highlight_match(stderr, parsing, var->match);
                     exit(1);
                 }
                 ast_t *val = match_to_ast(get_numbered_capture(rhses, i));
@@ -275,11 +275,11 @@ ast_t *match_to_ast(match_t *m)
                     break;
                 } else if (var && !val) {
                     fprintf(stderr, "\x1b[31;7;1mThis term is missing a value to assign it\x1b[m\n\n");
-                    highlight_match(parsing, var->match);
+                    highlight_match(stderr, parsing, var->match);
                     exit(1);
                 } else if (val && !var) {
                     fprintf(stderr, "\x1b[31;7;1mThis value doesn't have a corresponding term to assign to\x1b[m\n\n");
-                    highlight_match(parsing, val->match);
+                    highlight_match(stderr, parsing, val->match);
                     exit(1);
                 }
 
@@ -325,7 +325,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
             fprintf(stderr, "\x1b[31;7;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
-            highlight_match(parsing, m);
+            highlight_match(stderr, parsing, m);
             exit(1);
         }
     } else if (m->children) {
@@ -386,36 +386,26 @@ void print_ast(ast_t *ast) {
     }
 }
 
-typedef struct {
-    file_t *f;
-    ast_t *ast;
-} match_info_t;
-
-bp_match_behavior handle_match(match_t *m, int matchnum, void *data)
-{
-    (void)matchnum;
-    match_info_t *info = data;
-    if (m->start > info->f->start) {
-        fprintf(stderr, "File contains junk at the front\n");
-        exit(1);
-    } else if (m->end < info->f->end) {
-        fprintf(stderr, "File contains junk at the end\n");
-        exit(1);
-    } else {
-        report_errors(info->f, m, true);
-        info->ast = match_to_ast(m);
-        // print_ast(ast);
-    }
-    return BP_STOP;
-}
-
 ast_t *parse(file_t *f)
 {
     if (grammar == NULL) load_grammar();
     parsing = f;
-    match_info_t info = {.f=f, .ast=NULL};
-    each_match(handle_match, &info, f->start, f->end, grammar, grammar, NULL, false);
+    match_t *m = NULL;
+    ast_t *ast = NULL;
+    if (next_match(&m, f->start, f->end, grammar, grammar, NULL, false)) {
+        if (m->start > f->start) {
+            fprintf(stderr, "File contains junk at the front\n");
+            exit(1);
+        } else if (m->end < f->end) {
+            fprintf(stderr, "File contains junk at the end\n");
+            exit(1);
+        } else {
+            report_errors(f, m, true);
+            ast = match_to_ast(m);
+            // print_ast(ast);
+        }
+    }
     parsing = NULL;
-    return info.ast;
+    return ast;
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
