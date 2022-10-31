@@ -450,6 +450,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
                 add_line(code, "%r =l call $CORD_cat(l %r, l %r)", ret, ret, chunk_str);
             }
         }
+        add_line(code, "%r =l call $CORD_to_char_star(l %r)", ret, ret);
         add_line(code, "%r =l call $intern_str(l %r)", ret, ret);
         return ret;
     }
