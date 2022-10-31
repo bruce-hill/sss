@@ -192,6 +192,7 @@ CORD get_tostring_reg(env_t *env, bl_type_t *t)
     CORD fn_reg = hashmap_get(env->tostring_regs, t);
     if (fn_reg) return fn_reg;
     fn_reg = fresh_global(env, "tostring");
+    hashmap_set(env->tostring_regs, t, fn_reg);
     CORD val = fresh_local(env, "val");
     CORD rec = fresh_local(env, "rec");
     add_line(env->fn_code, "# %s", type_to_string(t));
