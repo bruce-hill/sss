@@ -597,7 +597,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         env_t env2 = *env;
         env2.loop_label = &(loop_label_t){
             .enclosing = env->loop_label,
-            .name = intern_str("while"),
+            .name = intern_str(ast->kind == While ? "while" : "repeat"),
             .skip_label = loop_label,
             .stop_label = end_label,
         };
