@@ -60,7 +60,13 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (!b) return a;
     if (type_is_a(b, a)) return a;
     if (type_is_a(a, b)) return b;
-    return NULL;
+    if (a->kind == AbortType && b->kind == OptionalType) return b->nonnil;
+    if (b->kind == AbortType && a->kind == OptionalType) return a->nonnil;
+    if (a->kind == AbortType) return b;
+    if (b->kind == AbortType) return a;
+    if (a->kind == NilType) return Type(OptionalType, .nonnil=b);
+    if (b->kind == NilType) return Type(OptionalType, .nonnil=a);
+    assert(false);
 }
 
 char base_type_for(bl_type_t *t)

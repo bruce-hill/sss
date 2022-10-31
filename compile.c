@@ -576,7 +576,8 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             CORD iffalse = (clause < last_clause || ast->else_body) ? fresh_label(env, "if_false") : endif;
             CORD branch_val = add_clause(env, code, clause->condition, clause->body, iffalse);
             if (!ends_with_jump(code)) {
-                add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
+                if (t->kind != AbortType)
+                    add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
                 add_line(code, "jmp %r", endif);
             }
             if (iffalse != endif)
@@ -584,12 +585,13 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         }
         if (ast->else_body) {
             CORD branch_val = add_value(env, code, ast->else_body);
-            add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
+            if (t->kind != AbortType)
+                add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
         }
         add_line(code, "%r", endif);
-        return if_ret;
+        return t->kind == AbortType ? "0" : if_ret;
     }
-    case While: {
+    case While: case Repeat: {
         CORD loop_label = fresh_label(env, "loop");
         CORD end_label = fresh_label(env, "end_loop");
         env_t env2 = *env;
@@ -623,13 +625,18 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         add_line(code, "%r", end_label);
         return ret_reg ? ret_reg : "0";
     }
-    case Skip: {
+    case Skip: case Stop: {
         CORD label = NULL;
-        for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
-            if (lbl->name == ast->str) {
-                label = lbl->skip_label;
-                break;
+        if (ast->str) {
+            for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
+                if (lbl->name == ast->str) {
+                    label = ast->kind == Skip ? lbl->skip_label : lbl->stop_label;
+                    break;
+                }
             }
+        } else {
+            if (env->loop_label)
+                label = ast->kind == Skip ? env->loop_label->skip_label : env->loop_label->stop_label;
         }
         if (!label) ERROR(env, ast, "I'm not sure what %s is referring to", ast->str);
         add_line(code, "jmp %r", label);

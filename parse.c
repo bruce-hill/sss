@@ -292,13 +292,13 @@ ast_t *match_to_ast(match_t *m)
                 else_block = match_to_ast(else_m);
             return AST(m, If, .clauses=clauses, .else_body=else_block);
         }
-        case While: {
+        case While: case Repeat: {
             ast_t *condition = match_to_ast(get_named_capture(m, "condition", -1));
             ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
             ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
             if (filter)
                 body = AST(m, Block, .children=LIST(ast_t*, body, filter));
-            return AST(m, While, .loop.condition=condition, .loop.body=body);
+            return AST(m, kind, .loop.condition=condition, .loop.body=body);
         }
         case Skip: case Stop: {
             istr_t target = match_to_istr(get_named_capture(m, "target", -1));

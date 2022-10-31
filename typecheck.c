@@ -16,7 +16,7 @@
 
 static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *condition, ast_t *body)
 {
-    if (condition->kind == Declare) {
+    if (condition && condition->kind == Declare) {
         hashmap_t *body_bindings = hashmap_new();
         body_bindings->fallback = bindings;
         bl_type_t *t = get_type(f, bindings, condition);
@@ -32,11 +32,21 @@ static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *conditi
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
-        case Nil: return Type(NilType);
-        case Bool: return Type(BoolType);
-        case Int: return Type(IntType);
-        case Num: return Type(NumType);
-        case StringJoin: case StringLiteral: return Type(StringType);
+        case Nil: {
+            return Type(NilType);
+        }
+        case Bool: {
+            return Type(BoolType);
+        }
+        case Int: {
+            return Type(IntType);
+        }
+        case Num: {
+            return Type(NumType);
+        }
+        case StringJoin: case StringLiteral: {
+            return Type(StringType);
+        }
         case Var: {
             binding_t *binding = hashmap_get(bindings, ast->str);
             if (binding) {
@@ -45,7 +55,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 TYPE_ERR(f, ast, "Couldn't figure out what type %s refers to", ast->str);
             }
         }
-        case KeywordArg: return get_type(f, bindings, ast->named.value);
+        case KeywordArg: {
+            return get_type(f, bindings, ast->named.value);
+        }
         case FunctionCall: {
             bl_type_t *fn_type = get_type(f, bindings, ast->call.fn);
             if (fn_type->kind != FunctionType) {
@@ -74,15 +86,19 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             ast_t *last = LIST_ITEM(ast->children, LIST_LEN(ast->children)-1);
             return get_type(f, bindings, last);
         }
-        case Declare: return get_type(f, bindings, ast->rhs);
-        case Assign: return Type(NilType);
-        case Return: case Fail: case Stop: case Skip: return Type(AbortType);
-
+        case Declare: {
+            return get_type(f, bindings, ast->rhs);
+        }
+        case Assign: {
+            return Type(NilType);
+        }
+        case Return: case Fail: case Stop: case Skip: {
+            return Type(AbortType);
+        }
         case Cast: {
             bl_type_t *t = get_type(f, bindings, ast->type);
             return t->type;
         }
-
         case TypeName: {
             binding_t *binding = hashmap_get(bindings, ast->str);
             if (!binding) {
@@ -200,9 +216,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return t;
         }
 
-        case While: {
+        case While: case Repeat: {
             bl_type_t *t = get_clause_type(f, bindings, ast->loop.condition, ast->loop.body);
-            assert(t);
+            assert(t); // Loop body has no type
             if (t->kind == OptionalType || t->kind == NilType) return t;
             else return Type(OptionalType, .nonnil=t);
         }
