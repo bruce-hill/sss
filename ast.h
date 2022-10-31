@@ -84,7 +84,7 @@ typedef struct ast_s {
             struct ast_s *else_body;
         };
         struct { // While/Repeat
-            struct ast_s *condition, *body;
+            struct ast_s *condition, *body, *between;
         } loop;
     };
 } ast_t;

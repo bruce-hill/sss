@@ -19,19 +19,19 @@ typedef enum {
     OptionalType,
 } typekind_e;
 
-typedef struct bl_type_s {
+typedef const struct bl_type_s {
     typekind_e kind;
     union {
         istr_t name;
-        struct bl_type_s *item_type;
-        struct bl_type_s *nonnil;
-        struct bl_type_s *type;
+        const struct bl_type_s *item_type;
+        const struct bl_type_s *nonnil;
+        const struct bl_type_s *type;
         struct {
-            struct bl_type_s *key, *value;
+            const struct bl_type_s *key, *value;
         };
         struct {
-            List(struct bl_type_s*) args;
-            struct bl_type_s *ret;
+            List(const struct bl_type_s*) args;
+            const struct bl_type_s *ret;
         };
     };
 } bl_type_t;

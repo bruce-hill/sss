@@ -310,28 +310,6 @@ static void set_nil(CORD *code, bl_type_t *t, CORD reg)
     add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
 }
 
-CORD add_clause(env_t *env, CORD *code, ast_t *condition, ast_t *body, CORD falsey_label)
-{
-    CORD truthy_label = fresh_label(env, "if_true");
-    if (condition->kind == Declare) {
-        env_t branch_env = *env;
-        branch_env.bindings = hashmap_new();
-        branch_env.bindings->fallback = env->bindings;
-        bl_type_t *t = get_type(env->file, env->bindings, condition);
-        assert(t);
-        CORD cond_reg = fresh_local(&branch_env, condition->lhs->str);
-        binding_t b = {.reg=cond_reg, .type=t};
-        hashmap_set(branch_env.bindings, condition->lhs->str, &b);
-        check_truthiness(&branch_env, code, condition, truthy_label, falsey_label);
-        add_line(code, "%r", truthy_label);
-        return add_value(&branch_env, code, body);
-    } else {
-        (void)check_truthiness(env, code, condition, truthy_label, falsey_label);
-        add_line(code, "%r", truthy_label);
-        return add_value(env, code, body);
-    }
-}
-
 CORD add_value(env_t *env, CORD *code, ast_t *ast)
 {
     switch (ast->kind) {
@@ -576,7 +554,28 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         foreach (ast->clauses, clause, last_clause) {
             CORD iffalse = (clause < last_clause || ast->else_body) ? fresh_label(env, "if_false") : endif;
-            CORD branch_val = add_clause(env, code, clause->condition, clause->body, iffalse);
+
+            CORD truthy_label = fresh_label(env, "if_true");
+            ast_t *condition = clause->condition, *body = clause->body;
+            CORD branch_val;
+            if (condition->kind == Declare) {
+                env_t branch_env = *env;
+                branch_env.bindings = hashmap_new();
+                branch_env.bindings->fallback = env->bindings;
+                bl_type_t *t = get_type(env->file, env->bindings, condition);
+                assert(t);
+                CORD cond_reg = fresh_local(&branch_env, condition->lhs->str);
+                binding_t b = {.reg=cond_reg, .type=t};
+                hashmap_set(branch_env.bindings, condition->lhs->str, &b);
+                check_truthiness(&branch_env, code, condition, truthy_label, iffalse);
+                add_line(code, "%r", truthy_label);
+                branch_val = add_value(&branch_env, code, body);
+            } else {
+                (void)check_truthiness(env, code, condition, truthy_label, iffalse);
+                add_line(code, "%r", truthy_label);
+                branch_val = add_value(env, code, body);
+            }
+
             if (!ends_with_jump(code)) {
                 if (t->kind != AbortType)
                     add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
@@ -594,37 +593,88 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         return t->kind == AbortType ? "0" : if_ret;
     }
     case While: case Repeat: {
-        CORD loop_label = fresh_label(env, "loop");
-        CORD end_label = fresh_label(env, "end_loop");
-        env_t env2 = *env;
-        env2.loop_label = &(loop_label_t){
-            .enclosing = env->loop_label,
-            .name = intern_str(ast->kind == While ? "while" : "repeat"),
-            .skip_label = loop_label,
-            .stop_label = end_label,
-        };
+        add_line(code, "\n# Loop");
+        CORD loop_top = fresh_label(env, "loop_top");
+        CORD loop_body = fresh_label(env, "loop_body");
+        CORD loop_between = ast->loop.between ? fresh_label(env, "between") : NULL;
+        CORD loop_end = fresh_label(env, "end_loop");
 
-        bl_type_t *t = get_type(env2.file, env2.bindings, ast);
-        CORD ret_reg = (t->kind == NilType) ? NULL : fresh_local(&env2, "while_value");
+        add_line(code, "%r", loop_top);
+
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        CORD ret_reg = (t->kind == NilType || t->kind == AbortType) ? NULL : fresh_local(env, "loop_value");
         if (ret_reg)
             set_nil(code, t, ret_reg);
 
-        add_line(code, "jmp %r", loop_label);
-        add_line(code, "%r", loop_label);
-        CORD body_reg;
-        if (ast->loop.condition)
-            body_reg = add_clause(&env2, code, ast->loop.condition, ast->loop.body, end_label);
-        else
-            body_reg = add_value(&env2, code, ast->loop.body);
+        env_t loop_env = *env;
+        loop_env.bindings = hashmap_new();
+        loop_env.bindings->fallback = env->bindings;
+        loop_env.loop_label = &(loop_label_t){
+            .enclosing = env->loop_label,
+            .name = intern_str(ast->kind == While ? "while" : "repeat"),
+            .skip_label = loop_top,
+            .stop_label = loop_end,
+        };
 
-        if (!ends_with_jump(code)) {
-            if (ret_reg)
-                add_line(code, "%r =%c copy %r", ret_reg, base_type_for(t), body_reg);
-            
-            // TODO: support `between`
-            add_line(code, "jmp %r", loop_label);
+        ast_t *cond = ast->loop.condition;
+        binding_t cond_binding;
+        if (cond && cond->kind == Declare) {
+            bl_type_t *t = get_type(env->file, env->bindings, cond);
+            assert(t);
+            CORD cond_reg = fresh_local(&loop_env, cond->lhs->str);
+            cond_binding = (binding_t){.reg=cond_reg, .type=t};
+            hashmap_set(loop_env.bindings, cond->lhs->str, &cond_binding);
+            check_truthiness(&loop_env, code, cond, loop_body, loop_end);
+        } else if (cond) {
+            (void)check_truthiness(&loop_env, code, cond, loop_body, loop_end);
+        } else {
+            add_line(code, "jmp %r", loop_body);
         }
-        add_line(code, "%r", end_label);
+
+        add_line(code, "%r", loop_body);
+        ast_t *body = ast->loop.body;
+        // Function defs are visible in the entire block (allowing corecursive funcs)
+        foreach (body->children, stmt, last_stmt) {
+            if ((*stmt)->kind == FunctionDef) {
+                CORD reg = fresh_global(env, (*stmt)->fn.name);
+                bl_type_t *t = get_type(env->file, loop_env.bindings, *stmt);
+                assert(t);
+                hashmap_set(loop_env.bindings, (*stmt)->fn.name, new(binding_t, .reg=reg, .type=t, .is_global=true));
+            }
+        }
+
+        foreach (body->children, stmt, last_stmt) {
+            // Declarations are visible from here onwards:
+            if ((*stmt)->kind == Declare) {
+                CORD reg = fresh_local(&loop_env, (*stmt)->lhs->str);
+                bl_type_t *t = get_type(loop_env.file, loop_env.bindings, (*stmt)->rhs);
+                assert(t);
+                hashmap_set(loop_env.bindings, (*stmt)->lhs->str, new(binding_t, .reg=reg, .type=t));
+            }
+            if (stmt == last_stmt) {
+                if (loop_env.debug)
+                    add_line(code, "loc %d, %d", 1, get_line_number(loop_env.file, (*stmt)->match->start));
+                CORD block_val = add_value(&loop_env, code, *stmt);
+                if (ret_reg)
+                    add_line(code, "%r =%c copy %r", ret_reg, base_type_for(t), block_val);
+            } else {
+                add_statement(&loop_env, code, *stmt);
+            }
+        }
+
+        if (loop_between) {
+            if (cond)
+                (void)check_truthiness(&loop_env, code, cond, loop_between, loop_end);
+            else
+                add_line(code, "jmp %r", loop_between);
+
+            add_line(code, "%r", loop_between);
+            add_statement(&loop_env, code, ast->loop.between);
+            add_line(code, "jmp %r", loop_body);
+        } else {
+            add_line(code, "jmp %r", loop_top);
+        }
+        add_line(code, "%r", loop_end);
         return ret_reg ? ret_reg : "0";
     }
     case Skip: case Stop: {
