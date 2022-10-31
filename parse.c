@@ -15,6 +15,7 @@
 
 #include "ast.h"
 #include "datastructures/list.h"
+#include "parse.h"
 #include "util.h"
 
 #ifndef streq
@@ -158,6 +159,7 @@ static astkind_e get_kind(match_t *m)
 //
 static istr_t match_to_istr(match_t *m)
 {
+    if (!m) return NULL;
     // Rough estimate of size
     FILE *f = fmemopen(NULL, 2*(size_t)(m->end - m->start) + 1, "r+");
     fprint_match(f, m->start, m, NULL);
@@ -197,10 +199,12 @@ ast_t *match_to_ast(match_t *m)
             const char *prev = content->start;
             for (int i = 1; ; i++) { // index 1 == text content
                 match_t *cm = get_numbered_capture(content, i);
+                assert(cm != content);
                 if (!cm) break;
                 if (cm->start > prev) {
                     APPEND(chunks, AST(m, StringLiteral, .str=intern_strn(prev, (size_t)(cm->start - prev))));
                 }
+                assert(match_to_ast(cm));
                 APPEND(chunks, match_to_ast(cm));
                 prev = cm->end;
             }
@@ -287,6 +291,18 @@ ast_t *match_to_ast(match_t *m)
             if (else_m)
                 else_block = match_to_ast(else_m);
             return AST(m, If, .clauses=clauses, .else_body=else_block);
+        }
+        case While: {
+            ast_t *condition = match_to_ast(get_named_capture(m, "condition", -1));
+            ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
+            ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
+            if (filter)
+                body = AST(m, Block, .children=LIST(ast_t*, body, filter));
+            return AST(m, While, .loop.condition=condition, .loop.body=body);
+        }
+        case Skip: case Stop: {
+            istr_t target = match_to_istr(get_named_capture(m, "target", -1));
+            return AST(m, kind, .str=target);
         }
         case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
         case And: case Or: case Xor:
@@ -431,6 +447,28 @@ void print_ast(ast_t *ast) {
         }
         break;
     }
+
+    case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
+    case And: case Or: case Xor:
+    case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
+    case Declare: case Cast: case As: {
+        printf("%s(", get_ast_kind_name(ast->kind));
+        print_ast(ast->lhs);
+        printf(",");
+        print_ast(ast->rhs);
+        printf(")");
+        break;
+    }
+
+    case While: {
+        printf("While(");
+        print_ast(ast->loop.condition);
+        printf(",");
+        print_ast(ast->loop.body);
+        printf(")");
+        break;
+    }
+
     case Fail: {
         printf("\x1b[33mfail\x1b[m ");
         print_ast(ast->child);

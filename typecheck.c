@@ -14,6 +14,21 @@
     highlight_match(stderr, f, (ast)->match); \
     exit(1); } while (0)
 
+static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *condition, ast_t *body)
+{
+    if (condition->kind == Declare) {
+        hashmap_t *body_bindings = hashmap_new();
+        body_bindings->fallback = bindings;
+        bl_type_t *t = get_type(f, bindings, condition);
+        assert(t);
+        binding_t b = {.type=t};
+        hashmap_set(body_bindings, condition->lhs->str, &b);
+        return get_type(f, body_bindings, body);
+    } else {
+        return get_type(f, bindings, body);
+    }
+}
+
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
@@ -61,7 +76,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         case Declare: return get_type(f, bindings, ast->rhs);
         case Assign: return Type(NilType);
-        case Return: case Fail: return Type(AbortType);
+        case Return: case Fail: case Stop: case Skip: return Type(AbortType);
 
         case Cast: {
             bl_type_t *t = get_type(f, bindings, ast->type);
@@ -113,6 +128,26 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                      type_to_string(t1), type_to_string(t2));
         }
 
+        case Less: case LessEqual: case Greater: case GreaterEqual: {
+            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs);
+            bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
+            if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType))
+                return Type(BoolType);
+            else if (lhs_t == rhs_t && is_numeric(lhs_t))
+                return Type(BoolType);
+            else
+                TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        }
+
+        case Equal: case NotEqual: {
+            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs);
+            bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
+            if (type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t))
+                return Type(BoolType);
+            else
+                TYPE_ERR(f, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        }
+
         case FunctionDef: case Lambda: {
             NEW_LIST(bl_type_t*, args);
             for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
@@ -145,7 +180,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case If: {
             bl_type_t *t = NULL;
             LIST_FOR (ast->clauses, clause, _) {
-                bl_type_t *clause_t = get_type(f, bindings, clause->body);
+                bl_type_t *clause_t = get_clause_type(f, bindings, clause->condition, clause->body);
                 t = type_or_type(t, clause_t);
                 if (!t)
                     TYPE_ERR(f, clause->body,
@@ -165,9 +200,16 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return t;
         }
 
+        case While: {
+            bl_type_t *t = get_clause_type(f, bindings, ast->loop.condition, ast->loop.body);
+            assert(t);
+            if (t->kind == OptionalType || t->kind == NilType) return t;
+            else return Type(OptionalType, .nonnil=t);
+        }
+
         default: break;
     }
-    TYPE_ERR(f, ast, "Couldn't figure out type for %s:", get_ast_kind_name(ast->kind));
+    TYPE_ERR(f, ast, "Couldn't figure out type for %s", get_ast_kind_name(ast->kind));
 }
 
 void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)

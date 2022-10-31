@@ -12,6 +12,12 @@
 #include "types.h"
 #include "util.h"
 
+typedef struct loop_label_s {
+    struct loop_label_s *enclosing;
+    CORD skip_label, stop_label;
+    istr_t name;
+} loop_label_t;
+
 typedef struct {
     file_t *file;
     int64_t *next_id;
@@ -23,11 +29,12 @@ typedef struct {
     hashmap_t *function_regs;
     hashmap_t *bindings;
     hashmap_t *var_types;
+    loop_label_t *loop_label;
     bool debug;
 } env_t;
 
-#define ERROR(env, m, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-            highlight_match(stderr, env->file, m); \
+#define ERROR(env, ast, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
+            highlight_match(stderr, env->file, (ast)->match); \
             exit(1); }
 
 #define foreach LIST_FOR
@@ -135,32 +142,49 @@ CORD get_string_reg(env_t *env, const char *str)
     return reg;
 }
 
-static void check_nil(env_t *env, CORD *which, bl_type_t *t, CORD val_reg, CORD nil_label, CORD nonnil_label)
+static void check_nil(env_t *env, CORD *code, bl_type_t *t, CORD val_reg, CORD nil_label, CORD nonnil_label)
 {
     if (t->kind != OptionalType) {
-        add_line(which, "jmp %r", nonnil_label);
+        add_line(code, "jmp %r", nonnil_label);
         return;
     }
     
     CORD is_nil = fresh_local(env, "is_nil");
     CORD nil_reg = fresh_local(env, "nil");
     char base = base_type_for(t);
-    add_line(which, "%r =%c copy %s", nil_reg, base, nil_value(t));
+    add_line(code, "%r =%c copy %s", nil_reg, base, nil_value(t));
     switch (base) {
     case 'd': case 's': {
         CORD nil_bits = fresh_local(env, "nil_bits"), val_bits = fresh_local(env, "optional_bits");
-        add_line(which, "%r =l cast %r", val_bits, val_reg);
-        add_line(which, "%r =l cast %r", nil_bits, nil_reg);
-        add_line(which, "%r =w ceql %r, %r", is_nil, base, val_bits, nil_bits);
-        add_line(which, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
+        add_line(code, "%r =l cast %r", val_bits, val_reg);
+        add_line(code, "%r =l cast %r", nil_bits, nil_reg);
+        add_line(code, "%r =w ceql %r, %r", is_nil, base, val_bits, nil_bits);
+        add_line(code, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
         return;
     }
     default: {
-        add_line(which, "%r =w ceq%c %r, %r", is_nil, base, val_reg, nil_reg);
-        add_line(which, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
+        add_line(code, "%r =w ceq%c %r, %r", is_nil, base, val_reg, nil_reg);
+        add_line(code, "jnz %r, %r, %r", is_nil, nil_label, nonnil_label);
         return;
     }
     }
+}
+
+static CORD check_truthiness(env_t *env, CORD *code, ast_t *val, CORD truthy_label, CORD falsey_label)
+{
+    bl_type_t *t = get_type(env->file, env->bindings, val);
+    add_line(code, "# Check truthiness of:");
+    CORD val_reg = add_value(env, code, val);
+    if (t->kind == OptionalType) {
+        check_nil(env, code, t, val_reg, falsey_label, truthy_label);
+        return val_reg;
+    }
+
+    if (t->kind != BoolType)
+        ERROR(env, val, "This value has type %s, which means it will always be truthy", type_to_string(t)); 
+    
+    add_line(code, "jnz %r, %r, %r", val_reg, truthy_label, falsey_label);
+    return val_reg;
 }
 
 CORD get_tostring_reg(env_t *env, bl_type_t *t)
@@ -234,6 +258,15 @@ CORD get_tostring_reg(env_t *env, bl_type_t *t)
     return fn_reg;
 }
 
+static bool ends_with_jump(CORD *code)
+{
+    size_t len = CORD_len(*code);
+    size_t nl_index = CORD_rchr(*code, len-2, '\n');
+    return CORD_ncmp(*code, nl_index+1, "ret", 0, 3) == 0
+        || CORD_ncmp(*code, nl_index+1, "jmp", 0, 3) == 0
+        || CORD_ncmp(*code, nl_index+1, "jnz", 0, 3) == 0;
+}
+
 static CORD compile_function(env_t *env, CORD *code, ast_t *def)
 {
     binding_t *binding = hashmap_get(env->bindings, def->fn.name);
@@ -260,12 +293,42 @@ static CORD compile_function(env_t *env, CORD *code, ast_t *def)
         bl_type_t *argtype = ith(t->args, i);
         CORD argreg = fresh_local(&body_env, argname);
         addf(code, "%c %s", base_type_for(argtype), argreg);
+        assert(argtype);
         hashmap_set(body_env.bindings, argname, new(binding_t, .reg=argreg, .type=argtype));
     }
     addf(code, ") {\n@start\n");
     add_statement(&body_env, code, def->fn.body);
+    if (!ends_with_jump(code))
+        add_line(code, "ret 0");
     add_line(code, "}");
     return fn_reg;
+}
+
+static void set_nil(CORD *code, bl_type_t *t, CORD reg)
+{
+    add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
+}
+
+CORD add_clause(env_t *env, CORD *code, ast_t *condition, ast_t *body, CORD falsey_label)
+{
+    CORD truthy_label = fresh_label(env, "if_true");
+    if (condition->kind == Declare) {
+        env_t branch_env = *env;
+        branch_env.bindings = hashmap_new();
+        branch_env.bindings->fallback = env->bindings;
+        bl_type_t *t = get_type(env->file, env->bindings, condition);
+        assert(t);
+        CORD cond_reg = fresh_local(&branch_env, condition->lhs->str);
+        binding_t b = {.reg=cond_reg, .type=t};
+        hashmap_set(branch_env.bindings, condition->lhs->str, &b);
+        check_truthiness(&branch_env, code, condition, truthy_label, falsey_label);
+        add_line(code, "%r", truthy_label);
+        return add_value(&branch_env, code, body);
+    } else {
+        (void)check_truthiness(env, code, condition, truthy_label, falsey_label);
+        add_line(code, "%r", truthy_label);
+        return add_value(env, code, body);
+    }
 }
 
 CORD add_value(env_t *env, CORD *code, ast_t *ast)
@@ -282,11 +345,12 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
                 return binding->reg;
             }
         } else {
-            ERROR(env, ast->match, "Error: variable is not defined"); 
+            ERROR(env, ast, "Error: variable is not defined"); 
         }
     }
     case Declare: {
         binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
+        assert(binding);
         if (!binding) errx(1, "Failed to find declaration binding");
         CORD val_reg = add_value(env, code, ast->rhs);
         add_line(code, "%s =%c copy %s", binding->reg, base_type_for(binding->type), val_reg);
@@ -304,7 +368,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
             bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
             if (!type_is_a(t_rhs, t_lhs)) {
-                ERROR(env, ith(ast->multiassign.rhs, i)->match, "This value is a %s, but it needs to be a %s",
+                ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
             add_line(code, "%s =%c copy %s", ith(lhs_regs, i), base_type_for(t_lhs), val_reg);
@@ -321,6 +385,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             if ((*stmt)->kind == FunctionDef) {
                 CORD reg = fresh_global(env, (*stmt)->fn.name);
                 bl_type_t *t = get_type(env->file, block_env.bindings, *stmt);
+                assert(t);
                 hashmap_set(block_env.bindings, (*stmt)->fn.name, new(binding_t, .reg=reg, .type=t, .is_global=true));
             }
         }
@@ -330,6 +395,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             if ((*stmt)->kind == Declare) {
                 CORD reg = fresh_local(&block_env, (*stmt)->lhs->str);
                 bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
+                assert(t);
                 hashmap_set(block_env.bindings, (*stmt)->lhs->str, new(binding_t, .reg=reg, .type=t));
             }
             if (stmt == last_stmt) {
@@ -355,6 +421,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         } else {
             add_line(code, "ret");
         }
+        add_line(code, "%r", fresh_label(env, "unreachable_after_ret"));
         return "0";
     }
     case Int: {
@@ -423,9 +490,10 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         if (!(type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t)))
-            ERROR(env, ast->match, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+            ERROR(env, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
         CORD lhs_reg = add_value(env, code, ast->lhs);
         CORD rhs_reg = add_value(env, code, ast->rhs);
+        add_line(code, "# Not Equals RHS: %r", rhs_reg);
         CORD result = fresh_local(env, "comparison");
         char b = base_type_for(lhs_t);
         add_line(code, "%r =w c%s%c %r, %r", result, ast->kind == Equal ? "eq" : "ne", b, lhs_reg, rhs_reg);
@@ -455,20 +523,20 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             add_line(code, "%r =w c%s%s%c %r, %r", result, sign, cmp, b, lhs_reg, rhs_reg);
             return result;
         }
-        ERROR(env, ast->match, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         // TODO: support percentages and measures
         if (lhs_t != rhs_t || !is_numeric(lhs_t))
-            ERROR(env, ast->match, "Math operatings between %s and %s are not supported", type_to_string(lhs_t), type_to_string(rhs_t));
+            ERROR(env, ast, "Math operatings between %s and %s are not supported", type_to_string(lhs_t), type_to_string(rhs_t));
 
         bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
         char t_base = base_type_for(t);
         const char *ops[NUM_TYPES] = {[Add]="add", [Subtract]="sub", [Divide]="div", [Multiply]="mul", [Modulus]="urem"};
         CORD op = ops[ast->kind];
-        if (!op) ERROR(env, ast->match, "Unsupported math operation");
+        if (!op) ERROR(env, ast, "Unsupported math operation");
 
         CORD lhs_reg = add_value(env, code, ast->lhs);
         CORD rhs_reg = add_value(env, code, ast->rhs);
@@ -478,7 +546,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
                 add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
                 return result;
             } else {
-                ERROR(env, ast->match, "Modulus is only supported for integer types, not %s", type_to_string(lhs_t));
+                ERROR(env, ast, "Modulus is only supported for integer types, not %s", type_to_string(lhs_t));
             }
         }
         add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
@@ -497,7 +565,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
             add_line(code, "%r =s powf(s %r, s %r)", result, lhs_reg, rhs_reg);
             return result;
         }
-        ERROR(env, ast->match, "Exponentiation is not supported for %s and %s", type_to_string(t), type_to_string(t2));
+        ERROR(env, ast, "Exponentiation is not supported for %s and %s", type_to_string(t), type_to_string(t2));
         break;
     }
     case If: {
@@ -505,24 +573,67 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         CORD endif = fresh_label(env, "endif");
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         foreach (ast->clauses, clause, last_clause) {
-            CORD iftrue = fresh_label(env, "if_true");
             CORD iffalse = (clause < last_clause || ast->else_body) ? fresh_label(env, "if_false") : endif;
-            CORD cond = add_value(env, code, clause->condition);
-            // TODO: support non-bool types
-            add_line(code, "jnz %r, %r, %r", cond, iftrue, iffalse);
-            add_line(code, "%r", iftrue);
-            CORD branch_val = add_value(env, code, clause->body);
-            add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
-            add_line(code, "jmp %r", endif);
+            CORD branch_val = add_clause(env, code, clause->condition, clause->body, iffalse);
+            if (!ends_with_jump(code)) {
+                add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
+                add_line(code, "jmp %r", endif);
+            }
             if (iffalse != endif)
                 add_line(code, "%r", iffalse);
         }
         if (ast->else_body) {
             CORD branch_val = add_value(env, code, ast->else_body);
             add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
-            add_line(code, "%r", endif);
         }
+        add_line(code, "%r", endif);
         return if_ret;
+    }
+    case While: {
+        CORD loop_label = fresh_label(env, "loop");
+        CORD end_label = fresh_label(env, "end_loop");
+        env_t env2 = *env;
+        env2.loop_label = &(loop_label_t){
+            .enclosing = env->loop_label,
+            .name = intern_str("while"),
+            .skip_label = loop_label,
+            .stop_label = end_label,
+        };
+
+        bl_type_t *t = get_type(env2.file, env2.bindings, ast);
+        CORD ret_reg = (t->kind == NilType) ? NULL : fresh_local(&env2, "while_value");
+        if (ret_reg)
+            set_nil(code, t, ret_reg);
+
+        add_line(code, "jmp %r", loop_label);
+        add_line(code, "%r", loop_label);
+        CORD body_reg;
+        if (ast->loop.condition)
+            body_reg = add_clause(&env2, code, ast->loop.condition, ast->loop.body, end_label);
+        else
+            body_reg = add_value(&env2, code, ast->loop.body);
+
+        if (!ends_with_jump(code)) {
+            if (ret_reg)
+                add_line(code, "%r =%c copy %r", ret_reg, base_type_for(t), body_reg);
+            
+            // TODO: support `between`
+            add_line(code, "jmp %r", loop_label);
+        }
+        add_line(code, "%r", end_label);
+        return ret_reg ? ret_reg : "0";
+    }
+    case Skip: {
+        CORD label = NULL;
+        for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
+            if (lbl->name == ast->str) {
+                label = lbl->skip_label;
+                break;
+            }
+        }
+        if (!label) ERROR(env, ast, "I'm not sure what %s is referring to", ast->str);
+        add_line(code, "jmp %r", label);
+        return "0";
     }
     case Fail: {
         CORD reg = fresh_local(env, "fail_msg");
@@ -549,7 +660,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
     }
     default: break;
     }
-    ERROR(env, ast->match, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
+    ERROR(env, ast, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
 }
 
 void add_statement(env_t *env, CORD *code, ast_t *ast) {
@@ -590,6 +701,7 @@ const char *compile_file(file_t *f, ast_t *ast, bool debug) {
         .ret=nil_type);
 
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .reg="$puts", .type=say_type));
+    hashmap_set(env.bindings, intern_str("random"), new(binding_t, .reg="$random", .type=Type(FunctionType, .args=LIST(bl_type_t*), .ret=Type(IntType))));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .reg=get_string_reg(&env, intern_str(#t)), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);

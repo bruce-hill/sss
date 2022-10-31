@@ -79,9 +79,12 @@ typedef struct ast_s {
             istr_t name;
             struct ast_s *value;
         } named;
-        struct {
+        struct { // If
             List(ast_clause_t) clauses;
             struct ast_s *else_body;
         };
+        struct { // While/Repeat
+            struct ast_s *condition, *body;
+        } loop;
     };
 } ast_t;
