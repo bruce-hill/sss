@@ -114,7 +114,7 @@ const char *kind_tags[] = {
     [Int]="Int", [Num]="Num",
     [StringLiteral]=NULL, [StringJoin]="String", [DSL]="DSL", [Interp]="Interp",
     [Declare]="Declaration", [Assign]="Assignment",
-    [AddUpdate]="AddUpdate", [SubtractUpdate]="SubtractUpdate", [MultiplyUpdate]="MultiplyUpdate", [DivideUpdate]="DivideUpdate",
+    [AddUpdate]="AddUpdate", [SubtractUpdate]="SubUpdate", [MultiplyUpdate]="MulUpdate", [DivideUpdate]="DivUpdate",
     [AndUpdate]="AndUpdate", [OrUpdate]="OrUpdate",
     [Add]="Add", [Subtract]="Subtract", [Multiply]="Multiply", [Divide]="Divide", [Power]="Power", [Modulus]="Mod",
     [And]="And", [Or]="Or", [Xor]="Xor",
@@ -306,6 +306,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, kind, .str=target);
         }
         case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
+        case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate:
         case And: case Or: case Xor:
         case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
         case Declare:

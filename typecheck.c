@@ -125,6 +125,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return Type(TypeType, .type=Type(OptionalType, .nonnil=item_t->type));
         }
 
+        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
         case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
             bl_type_t *t1 = get_type(f, bindings, ast->lhs);
             bl_type_t *t2 = get_type(f, bindings, ast->rhs);
@@ -230,11 +231,16 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
 void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
-    if (ast->kind == Declare || ast->kind == Block || ast->kind == FunctionDef)
+    switch (ast->kind) {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+    case Assign: case Declare: case Block: case FunctionDef:
         return;
-    bl_type_t *t = get_type(f, bindings, ast);
-    if (!(t->kind == NilType || t->kind == AbortType)) {
-        TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
+    default: {
+        bl_type_t *t = get_type(f, bindings, ast);
+        if (!(t->kind == NilType || t->kind == AbortType)) {
+            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
+        }
+    }
     }
 }
 

@@ -505,6 +505,7 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         }
         ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
     }
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
@@ -514,13 +515,21 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
 
         bl_type_t *t = get_type(env->file, env->bindings, ast->lhs);
         char t_base = base_type_for(t);
-        const char *ops[NUM_TYPES] = {[Add]="add", [Subtract]="sub", [Divide]="div", [Multiply]="mul", [Modulus]="urem"};
+        const char *ops[NUM_TYPES] = {
+            [Add]="add", [AddUpdate]="add", [Subtract]="sub", [SubtractUpdate]="sub", [Divide]="div", [DivideUpdate]="div",
+            [Multiply]="mul", [MultiplyUpdate]="mul", [Modulus]="urem"};
         CORD op = ops[ast->kind];
         if (!op) ERROR(env, ast, "Unsupported math operation");
 
         CORD lhs_reg = add_value(env, code, ast->lhs);
         CORD rhs_reg = add_value(env, code, ast->rhs);
-        CORD result = fresh_local(env, "result");
+        CORD result;
+        switch (ast->kind) {
+        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+            result = lhs_reg; break;
+        default:
+            result = fresh_local(env, "result"); break;
+        }
         if (ast->kind == Modulus) {
             if (t_base == 'l' || t_base == 'w') {
                 add_line(code, "%r =%c %r %r, %r", result, base_type_for(t), op, lhs_reg, rhs_reg);
