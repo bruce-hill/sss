@@ -1,6 +1,7 @@
 #pragma once
-#include <stdlib.h>
 #include <intern.h>
+#include <libgccjit.h>
+#include <stdlib.h>
 
 #include "datastructures/list.h"
 
@@ -37,7 +38,8 @@ typedef const struct bl_type_s {
 } bl_type_t;
 
 typedef struct {
-    istr_t reg;
+    gcc_jit_rvalue *rval;
+    gcc_jit_lvalue *lval;
     bl_type_t *type;
     bool is_global;
 } binding_t;
