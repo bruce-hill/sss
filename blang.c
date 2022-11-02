@@ -59,14 +59,35 @@ int main(int argc, char *argv[])
 
         // Extract the generated code from "result".   
         typedef void (*fn_type)(void);
-        fn_type run = (fn_type)gcc_jit_result_get_code(result, "run");
+        fn_type run = (fn_type)gcc_jit_result_get_code(result, "main");
         if (!run) {
             fprintf(stderr, "NULL run func");
             exit(1);
         }
 
-        if (run_program)
+        if (run_program) {
             run();
+        } else {
+            CORD binary_name;
+            if (i+2 < argc && streq(argv[i+1], "-o")) {
+                binary_name = CORD_from_char_star(argv[i+2]);
+                i += 2;
+            } else {
+                binary_name = CORD_from_char_star(argv[i]);
+                size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
+                if (i == CORD_NOT_FOUND) binary_name = CORD_cat(binary_name, ".o");
+                else binary_name = CORD_substr(binary_name, 0, i);
+            }
+
+            if (CORD_ncmp(binary_name, 0, "/", 0, 1) != 0
+                && CORD_ncmp(binary_name, 0, "./", 0, 2) != 0
+                && CORD_ncmp(binary_name, 0, "~/", 0, 2) != 0)
+                binary_name = CORD_cat("./", binary_name);
+
+            binary_name = CORD_to_char_star(binary_name);
+            gcc_jit_context_compile_to_file(ctx, GCC_JIT_OUTPUT_KIND_EXECUTABLE, binary_name);
+            printf("Successfully compiled %s to %s\n", argv[i], binary_name);
+        }
         gcc_jit_result_release(result);
 
         recycle_all_matches();

@@ -707,7 +707,7 @@ gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool d
 
     gcc_jit_function *main_func = gcc_jit_context_new_function(
         ctx, NULL, GCC_JIT_FUNCTION_EXPORTED, void_type,
-        "run", 0, NULL, 0);
+        "main", 0, NULL, 0);
 
     gcc_jit_block *block = gcc_jit_function_new_block(main_func, NULL);
     add_statement(&env, block, ast);
