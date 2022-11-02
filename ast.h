@@ -50,6 +50,10 @@ typedef struct ast_s {
         istr_t str;
         struct ast_s *child;
         List(struct ast_s*) children;
+        // struct {
+        //     List(struct ast_s*) items;
+        //     struct ast_s *type;
+        // } list;
         struct { // Infix
             struct ast_s *lhs, *rhs;
         };

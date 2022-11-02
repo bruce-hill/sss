@@ -432,6 +432,36 @@ CORD add_value(env_t *env, CORD *code, ast_t *ast)
         add_line(code, "%r =l call $intern_str(l %r)", ret, ret);
         return ret;
     }
+    // case List: {
+    //     CORD list = fresh_local(env, "list");
+    //     bl_type_t *t = get_type(env->f, env->bindings, ast);
+    //     size_t item_size;
+    //     switch (abi_type_for(t->item_type)) {
+    //     case 'd': case 'l': item_size = 8; break;
+    //     case 's': case 'w': item_size = 4; break;
+    //     case 'h': item_size = 2; break;
+    //     case 'b': item_size = 1; break;
+    //     default: errx(1, "Unknown abi type: %c", abi_type_for(t->item_type));
+    //     }
+    //     add_line(code, "%r =l call $GC_malloc(l %ld) # Allocate list", list, sizeof(list_t));
+    //     if (!ast->list.items)
+    //         return list;
+
+    //     CORD item_addr = fresh_local(env, "item_addr");
+    //     foreach (ast->list.items, item, _) {
+    //         switch (item->kind) {
+    //         case For: case While: case Repeat: case If: {
+    //             errx(1, "Comprehensions not yet implemented");
+    //         }
+    //         default: {
+    //             CORD item_reg = add_value(env, code, item);
+    //             add_line(code, "call $list_insert(l %r, l %ld, l %ld, l %r, l 0)",
+    //                      list, item_size, INT_NIL, item_loc);
+    //         }
+    //         }
+    //     }
+    //     return list;
+    // }
     case FunctionCall: return add_fncall(env, code, ast, true);
     case KeywordArg: {
         return add_value(env, code, ast->named.value);
