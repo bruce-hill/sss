@@ -33,6 +33,14 @@ typedef struct {
             highlight_match(stderr, env->file, (ast)->match); \
             exit(1); }
 
+static inline gcc_loc_t *ast_loc(env_t *env, ast_t *ast)
+{
+    return gcc_new_location(
+        env->ctx, env->file->filename,
+        (int)get_line_number(env->file, ast->match->start),
+        (int)get_line_column(env->file, ast->match->start));
+}
+
 #define foreach LIST_FOR
 #define length LIST_LEN
 #define ith LIST_ITEM
@@ -66,7 +74,7 @@ static gcc_rvalue_t *add_fncall(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *val = add_value(env, block, *arg);
         append(arg_vals, val);
     }
-    gcc_rvalue_t *call = gcc_call_ptr(env->ctx, NULL, fn, length(arg_vals), arg_vals[0]);
+    gcc_rvalue_t *call = gcc_call_ptr(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
     return call;
 }
 
@@ -261,7 +269,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
         assert(binding);
         gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
-        gcc_assign(*block, NULL, binding->lval, rval);
+        gcc_assign(*block, ast_loc(env, ast), binding->lval, rval);
         return gcc_lvalue_as_rvalue(binding->lval);
     }
     case Assign: {
@@ -291,7 +299,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             }
         }
         for (int64_t i = 0; i < len; i++)
-            gcc_assign(*block, NULL, ith(lvals, i), ith(rvals, i));
+            gcc_assign(*block, ast_loc(env, ast), ith(lvals, i), ith(rvals, i));
         return ith(rvals, length(rvals)-1);
     }
     case Block: {
@@ -317,7 +325,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_type_t *gcc_t = bl_type_to_gcc(env->ctx, t);
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *lval = gcc_local(
-                    func, NULL, gcc_t, (*stmt)->lhs->str);
+                    func, ast_loc(env, (*stmt)->lhs), gcc_t, (*stmt)->lhs->str);
                 hashmap_set(block_env.bindings, (*stmt)->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
             }
@@ -381,12 +389,12 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                     add_value(env, block, *chunk),
                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                 };
-                val = gcc_call(env->ctx, NULL, tostring, 2, args);
+                val = gcc_call(env->ctx, ast_loc(env, *chunk), tostring, 2, args);
             }
-            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
+            str = gcc_call(env->ctx, ast_loc(env, *chunk), CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
         }
-        str = gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, &str);
-        str = gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
+        str = gcc_call(env->ctx, ast_loc(env, ast), CORD_to_char_star_func, 1, &str);
+        str = gcc_call(env->ctx, ast_loc(env, ast), intern_str_func, 1, &str);
         return str;
     }
     // case List: {
@@ -514,12 +522,12 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
             gcc_lvalue_t *lval = get_lvalue(env, block, ast->lhs);
             gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
-            gcc_update(*block, NULL, lval, op, rval);
+            gcc_update(*block, ast_loc(env, ast), lval, op, rval);
             return gcc_lvalue_as_rvalue(lval);
         } else {
             gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
             gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
-            return gcc_binary_op(env->ctx, NULL, op, bl_type_to_gcc(env->ctx, t), lhs_val, rhs_val);
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env->ctx, t), lhs_val, rhs_val);
         }
     }
     // case Power: {
@@ -715,7 +723,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 void add_statement(env_t *env, gcc_block_t **block, ast_t *ast) {
     check_discardable(env->file, env->bindings, ast);
     gcc_rvalue_t *val = add_value(env, block, ast);
-    gcc_eval(*block, NULL, val);
+    gcc_eval(*block, ast_loc(env, ast), val);
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {

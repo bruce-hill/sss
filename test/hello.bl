@@ -1,2 +1,7 @@
+
+// hi
 name := "world"
+
 say "Hello $name"
+
+say "done"

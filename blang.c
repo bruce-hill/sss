@@ -29,6 +29,8 @@ int main(int argc, char *argv[])
     gcc_jit_context *ctx = gcc_jit_context_acquire();
     assert(ctx != NULL);
 
+    gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DEBUGINFO, 1);
+
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
@@ -36,6 +38,10 @@ int main(int argc, char *argv[])
             continue;
         } else if (streq(argv[i], "-r") || streq(argv[i], "--run")) {
             run_program = true;
+            continue;
+        } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
+            gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE, 1);
+            verbose = true;
             continue;
         }
         file_t *f = load_file(NULL, argv[i]);
