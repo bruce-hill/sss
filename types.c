@@ -1,6 +1,8 @@
 #include <gc/cord.h>
 #include <intern.h>
 #include <libgccjit.h>
+#include <limits.h>
+#include <math.h>
 
 #include "types.h"
 
@@ -70,19 +72,6 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     assert(false);
 }
 
-const char* nil_value(bl_type_t *t)
-{
-    switch (t->kind) {
-    case OptionalType: return nil_value(t->nonnil);
-    case IntType: return "0x7FFFFFFFFFFFFFFFF";
-    case Int16Type: case Int8Type: return "0x7FFFFFFFF";
-    case BoolType: return "0x7F";
-    case NumType: return "d_0x8000000000000.p7ff";
-    case Num32Type: return "s_0x800000.pff";
-    default: return "0";
-    }
-}
-
 bool is_numeric(bl_type_t *t)
 {
     switch (t->kind) {
@@ -91,6 +80,21 @@ bool is_numeric(bl_type_t *t)
         return true;
     default:
         return false;
+    }
+}
+
+gcc_jit_rvalue *nil_value(gcc_jit_context *ctx, bl_type_t *t)
+{
+    gcc_jit_type *gcc_t = bl_type_to_gcc(ctx, t);
+    switch (t->kind) {
+    case OptionalType: return nil_value(ctx, t->nonnil);
+    case IntType: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, LONG_MIN);
+    case Int16Type: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, INT_MIN);
+    case Int8Type: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, SHRT_MIN);
+    case BoolType: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, 0x7F);
+    case NumType: return gcc_jit_context_new_rvalue_from_double(ctx, gcc_t, nan("nil"));
+    case Num32Type: return gcc_jit_context_new_rvalue_from_double(ctx, gcc_t, nan("nil"));
+    default: return gcc_jit_context_null(ctx, gcc_t);
     }
 }
 

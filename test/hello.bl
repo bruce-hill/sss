@@ -1,3 +1,2 @@
-hi := "Hello world!!!"
-hi = "xxx"
-say hi
+name := "world"
+say "Hello $name"

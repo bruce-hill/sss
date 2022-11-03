@@ -49,8 +49,8 @@ typedef struct {
 istr_t type_to_string(bl_type_t *t);
 bool type_is_a(bl_type_t *t, bl_type_t *req);
 bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b);
-const char* nil_value(bl_type_t *t);
 bool is_numeric(bl_type_t *t);
+gcc_jit_rvalue *nil_value(gcc_jit_context *ctx, bl_type_t *t);
 gcc_jit_type *bl_type_to_gcc(gcc_jit_context *ctx, bl_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
