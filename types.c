@@ -1,9 +1,8 @@
 #include <gc/cord.h>
 #include <intern.h>
 #include <libgccjit.h>
-#include <limits.h>
-#include <math.h>
 
+#include "libgccjit_abbrev.h"
 #include "types.h"
 
 static CORD type_to_cord(bl_type_t *t) {
@@ -81,40 +80,6 @@ bool is_numeric(bl_type_t *t)
     default:
         return false;
     }
-}
-
-gcc_jit_rvalue *nil_value(gcc_jit_context *ctx, bl_type_t *t)
-{
-    gcc_jit_type *gcc_t = bl_type_to_gcc(ctx, t);
-    switch (t->kind) {
-    case OptionalType: return nil_value(ctx, t->nonnil);
-    case IntType: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, LONG_MIN);
-    case Int16Type: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, INT_MIN);
-    case Int8Type: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, SHRT_MIN);
-    case BoolType: return gcc_jit_context_new_rvalue_from_long(ctx, gcc_t, 0x7F);
-    case NumType: return gcc_jit_context_new_rvalue_from_double(ctx, gcc_t, nan("nil"));
-    case Num32Type: return gcc_jit_context_new_rvalue_from_double(ctx, gcc_t, nan("nil"));
-    default: return gcc_jit_context_null(ctx, gcc_t);
-    }
-}
-
-gcc_jit_type *bl_type_to_gcc(gcc_jit_context *ctx, bl_type_t *t)
-{
-#define gcc_type(e) gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_ ## e)
-    switch (t->kind) {
-    case IntType: return gcc_type(INT64_T);
-    case Int32Type: return gcc_type(INT32_T);
-    case Int16Type: return gcc_type(INT16_T);
-    case Int8Type: return gcc_type(INT8_T);
-    case BoolType: return gcc_type(BOOL);
-    case NumType: return gcc_type(DOUBLE);
-    case Num32Type: return gcc_type(FLOAT);
-    case StringType: return gcc_type(CONST_CHAR_PTR);
-    case OptionalType: return bl_type_to_gcc(ctx, t->nonnil);
-    case ListType: return gcc_type(VOID_PTR);
-    default: return gcc_type(VOID_PTR);
-    }
-#undef gcc_type
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
