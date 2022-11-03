@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "ast.h"
+#include "libgccjit_abbrev.h"
 #include "typecheck.h"
 #include "types.h"
 #include "util.h"
@@ -20,19 +21,13 @@ typedef struct loop_label_s {
 } loop_label_t;
 
 typedef struct {
-    gcc_jit_context *ctx;
+    gcc_ctx_t *ctx;
     file_t *file;
     hashmap_t *tostring_funcs;
     hashmap_t *bindings;
     loop_label_t *loop_label;
     bool debug;
 } env_t;
-
-gcc_jit_function *gcc_CORD_sprintf = NULL;
-gcc_jit_function *gcc_CORD_cat = NULL;
-gcc_jit_function *gcc_CORD_to_char_star = NULL;
-gcc_jit_function *gcc_puts = NULL;
-gcc_jit_function *gcc_intern_str = NULL;
 
 #define ERROR(env, ast, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
             highlight_match(stderr, env->file, (ast)->match); \
@@ -42,7 +37,8 @@ gcc_jit_function *gcc_intern_str = NULL;
 #define length LIST_LEN
 #define ith LIST_ITEM
 #define append APPEND
-#define gcc_type(ctx,e) gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_ ## e)
+
+#define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
 
 hashmap_t *global_bindings(hashmap_t *bindings)
 {
@@ -58,38 +54,37 @@ hashmap_t *global_bindings(hashmap_t *bindings)
     return globals;
 }
 
-static gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast);
-static void add_statement(env_t *env, gcc_jit_block **block, ast_t *ast);
+static gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast);
+static void add_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 
-static gcc_jit_rvalue *add_fncall(env_t *env, gcc_jit_block **block, ast_t *ast)
+static gcc_rvalue_t *add_fncall(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    gcc_jit_rvalue *fn = add_value(env, block, ast->call.fn);
-    NEW_LIST(gcc_jit_rvalue*, arg_vals);
+    gcc_rvalue_t *fn = add_value(env, block, ast->call.fn);
+    NEW_LIST(gcc_rvalue_t*, arg_vals);
     // TODO: keyword args
     foreach (ast->call.args, arg, _) {
-        gcc_jit_rvalue *val = add_value(env, block, *arg);
+        gcc_rvalue_t *val = add_value(env, block, *arg);
         append(arg_vals, val);
     }
-    gcc_jit_rvalue *call = gcc_jit_context_new_call_through_ptr(
-        env->ctx, NULL, fn, length(arg_vals), arg_vals[0]);
+    gcc_rvalue_t *call = gcc_call_ptr(env->ctx, NULL, fn, length(arg_vals), arg_vals[0]);
     return call;
 }
 
-static void check_nil(env_t *env, gcc_jit_block *block, bl_type_t *t, gcc_jit_rvalue *obj, gcc_jit_block *nil_block, gcc_jit_block *nonnil_block)
+static void check_nil(env_t *env, gcc_block_t *block, bl_type_t *t, gcc_rvalue_t *obj, gcc_block_t *nil_block, gcc_block_t *nonnil_block)
 {
     if (t->kind != OptionalType) {
-        gcc_jit_block_end_with_jump(block, NULL, nonnil_block);
+        gcc_jump(block, NULL, nonnil_block);
         return;
     }
 
-    gcc_jit_function *func = gcc_jit_block_get_function(block);
-    gcc_jit_lvalue *nil = gcc_jit_function_new_local(
+    gcc_func_t *func = gcc_block_func(block);
+    gcc_lvalue_t *nil = gcc_local(
         func, NULL, bl_type_to_gcc(env->ctx, t), "nil");
-    gcc_jit_block_add_assignment(block, NULL, nil, nil_value(env->ctx, t));
+    gcc_assign(block, NULL, nil, nil_value(env->ctx, t));
 
-    gcc_jit_rvalue *is_nil = gcc_jit_context_new_comparison(
-        env->ctx, NULL, GCC_JIT_COMPARISON_EQ, obj, gcc_jit_lvalue_as_rvalue(nil));
-    gcc_jit_block_end_with_conditional(block, NULL, is_nil, nil_block, nonnil_block);
+    gcc_rvalue_t *is_nil = gcc_comparison(
+        env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_lvalue_as_rvalue(nil));
+    gcc_condition(block, NULL, is_nil, nil_block, nonnil_block);
 }
 
 // static CORD check_truthiness(env_t *env, CORD *code, ast_t *val, CORD truthy_label, CORD falsey_label)
@@ -109,39 +104,36 @@ static void check_nil(env_t *env, gcc_jit_block *block, bl_type_t *t, gcc_jit_rv
 //     return val_reg;
 // }
 
-static gcc_jit_function *get_tostring_func(env_t *env, bl_type_t *t)
+static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 {
-    gcc_jit_function *func = hashmap_get(env->tostring_funcs, t);
+    gcc_func_t *func = hashmap_get(env->tostring_funcs, t);
     if (func) return func;
 
-    gcc_jit_type *gcc_t = bl_type_to_gcc(env->ctx, t);
+    gcc_type_t *gcc_t = bl_type_to_gcc(env->ctx, t);
 
-    gcc_jit_param *params[2] = {
-        gcc_jit_context_new_param(env->ctx, NULL, gcc_t, "obj"),
-        gcc_jit_context_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "stack"),
+    gcc_param_t *params[2] = {
+        gcc_new_param(env->ctx, NULL, gcc_t, "obj"),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "stack"),
     };
-    func = gcc_jit_context_new_function(
-        env->ctx, NULL, GCC_JIT_FUNCTION_INTERNAL, gcc_type(env->ctx, CONST_CHAR_PTR),
+    func = gcc_new_func(
+        env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, STRING),
         "tostring", 2, params, 0);
     hashmap_set(env->tostring_funcs, t, func);
 
-    gcc_jit_block *block = gcc_jit_function_new_block(func, NULL);
-    gcc_jit_rvalue *obj = gcc_jit_param_as_rvalue(params[0]);
+    gcc_block_t *block = gcc_new_block(func, NULL);
+    gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
     
     switch (t->kind) {
     case NilType: {
-        gcc_jit_block_end_with_return(block, NULL,
-            gcc_jit_context_new_string_literal(env->ctx, "(nil)"));
+        gcc_return(block, NULL, gcc_new_string(env->ctx, "(nil)"));
         break;
     }
     case BoolType: {
-        gcc_jit_block *yes_block = gcc_jit_function_new_block(func, NULL);
-        gcc_jit_block *no_block = gcc_jit_function_new_block(func, NULL);
-        gcc_jit_block_end_with_conditional(block, NULL, obj, yes_block, no_block);
-        gcc_jit_block_end_with_return(yes_block, NULL,
-            gcc_jit_context_new_string_literal(env->ctx, "yes"));
-        gcc_jit_block_end_with_return(no_block, NULL,
-            gcc_jit_context_new_string_literal(env->ctx, "no"));
+        gcc_block_t *yes_block = gcc_new_block(func, NULL);
+        gcc_block_t *no_block = gcc_new_block(func, NULL);
+        gcc_condition(block, NULL, obj, yes_block, no_block);
+        gcc_return(yes_block, NULL, gcc_new_string(env->ctx, "yes"));
+        gcc_return(no_block, NULL, gcc_new_string(env->ctx, "no"));
         break;
     }
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
@@ -152,32 +144,39 @@ static gcc_jit_function *get_tostring_func(env_t *env, bl_type_t *t)
         default: fmt = "%ld"; break;
         }
 
-        gcc_jit_lvalue *str = gcc_jit_function_new_local(
-            func, NULL, gcc_type(env->ctx, CONST_CHAR_PTR), "str");
-        gcc_jit_rvalue *args[] = {
-            gcc_jit_lvalue_get_address(str, NULL),
-            gcc_jit_context_new_string_literal(env->ctx, fmt),
+        gcc_lvalue_t *str = gcc_local(
+            func, NULL, gcc_type(env->ctx, STRING), "str");
+        gcc_rvalue_t *args[] = {
+            gcc_lvalue_address(str, NULL),
+            gcc_new_string(env->ctx, fmt),
             obj,
         };
-        (void)gcc_jit_context_new_call(env->ctx, NULL, gcc_CORD_sprintf, 3, args);
-        gcc_jit_block_end_with_return(block, NULL, gcc_jit_lvalue_as_rvalue(str));
+        gcc_type_t *str_t = gcc_type(env->ctx, STRING);
+        gcc_type_t *str_ptr_t = gcc_get_ptr_type(str_t);
+        gcc_param_t *sprintf_args[] = {
+            gcc_new_param(env->ctx, NULL, str_ptr_t, "cord"),
+            gcc_new_param(env->ctx, NULL, str_t, "fmt"),
+        };
+        gcc_func_t *cord_sprintf = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, INT), "CORD_sprintf", 2, sprintf_args, 1);
+        (void)gcc_call(env->ctx, NULL, cord_sprintf, 3, args);
+        gcc_return(block, NULL, gcc_lvalue_as_rvalue(str));
         break;
     }
     case OptionalType: {
-        gcc_jit_block *nil_block = gcc_jit_function_new_block(func, NULL);
-        gcc_jit_block *nonnil_block = gcc_jit_function_new_block(func, NULL);
+        gcc_block_t *nil_block = gcc_new_block(func, NULL);
+        gcc_block_t *nonnil_block = gcc_new_block(func, NULL);
         check_nil(env, block, t, obj, nil_block, nonnil_block);
 
 
-        gcc_jit_block_end_with_return(nil_block, NULL,
-            gcc_jit_context_new_string_literal(env->ctx, "(nil)"));
+        gcc_return(nil_block, NULL, gcc_new_string(env->ctx, "(nil)"));
 
-        gcc_jit_rvalue *args[] = {
+        gcc_rvalue_t *args[] = {
             obj,
-            gcc_jit_param_as_rvalue(params[1]),
+            gcc_param_as_rvalue(params[1]),
         };
-        gcc_jit_rvalue *ret = gcc_jit_context_new_call(env->ctx, NULL, get_tostring_func(env, t->nonnil), 2, args);
-        gcc_jit_block_end_with_return(nonnil_block, NULL, ret);
+        gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, get_tostring_func(env, t->nonnil), 2, args);
+        gcc_return(nonnil_block, NULL, ret);
         break;
     }
     default: {
@@ -230,7 +229,7 @@ static gcc_jit_function *get_tostring_func(env_t *env, bl_type_t *t)
 //     add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
 // }
 
-static gcc_jit_lvalue *get_lvalue(env_t *env, gcc_jit_block **block, ast_t *ast)
+static gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     (void)block;
     switch (ast->kind) {
@@ -247,7 +246,7 @@ static gcc_jit_lvalue *get_lvalue(env_t *env, gcc_jit_block **block, ast_t *ast)
     }
 }
 
-gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
+gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     switch (ast->kind) {
     case Var: {
@@ -261,17 +260,17 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
     case Declare: {
         binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
         assert(binding);
-        gcc_jit_rvalue *rval = add_value(env, block, ast->rhs);
-        gcc_jit_block_add_assignment(*block, NULL, binding->lval, rval);
-        return gcc_jit_lvalue_as_rvalue(binding->lval);
+        gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
+        gcc_assign(*block, NULL, binding->lval, rval);
+        return gcc_lvalue_as_rvalue(binding->lval);
     }
     case Assign: {
         int64_t len = length(ast->multiassign.lhs);
-        NEW_LIST(gcc_jit_lvalue*, lvals);
+        NEW_LIST(gcc_lvalue_t*, lvals);
         foreach (ast->multiassign.lhs, lhs, _) {
             append(lvals, get_lvalue(env, block, *lhs));
         }
-        NEW_LIST(gcc_jit_rvalue*, rvals);
+        NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
             bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
@@ -280,19 +279,19 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
 
-            gcc_jit_rvalue *rval = add_value(env, block, ith(ast->multiassign.rhs, i));
+            gcc_rvalue_t *rval = add_value(env, block, ith(ast->multiassign.rhs, i));
             if (len > 1) {
-                gcc_jit_function *func = gcc_jit_block_get_function(*block);
-                gcc_jit_lvalue *tmp = gcc_jit_function_new_local(
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *tmp = gcc_local(
                     func, NULL, bl_type_to_gcc(env->ctx, t_rhs), "tmp");
-                gcc_jit_block_add_assignment(*block, NULL, tmp, rval);
-                append(rvals, gcc_jit_lvalue_as_rvalue(tmp));
+                gcc_assign(*block, NULL, tmp, rval);
+                append(rvals, gcc_lvalue_as_rvalue(tmp));
             } else {
                 append(rvals, rval);
             }
         }
         for (int64_t i = 0; i < len; i++)
-            gcc_jit_block_add_assignment(*block, NULL, ith(lvals, i), ith(rvals, i));
+            gcc_assign(*block, NULL, ith(lvals, i), ith(rvals, i));
         return ith(rvals, length(rvals)-1);
     }
     case Block: {
@@ -315,12 +314,12 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
             if ((*stmt)->kind == Declare) {
                 bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
                 assert(t);
-                gcc_jit_type *gcc_t = bl_type_to_gcc(env->ctx, t);
-                gcc_jit_function *func = gcc_jit_block_get_function(*block);
-                gcc_jit_lvalue *lval = gcc_jit_function_new_local(
+                gcc_type_t *gcc_t = bl_type_to_gcc(env->ctx, t);
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *lval = gcc_local(
                     func, NULL, gcc_t, (*stmt)->lhs->str);
                 hashmap_set(block_env.bindings, (*stmt)->lhs->str,
-                            new(binding_t, .lval=lval, .rval=gcc_jit_lvalue_as_rvalue(lval), .type=t));
+                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
             }
             if (stmt == last_stmt) {
                 return add_value(&block_env, block, *stmt);
@@ -347,41 +346,55 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
     //     return "0";
     // }
     case Int: {
-        return gcc_jit_context_new_rvalue_from_long(
-            env->ctx, gcc_type(env->ctx, INT64_T), ast->i);
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), ast->i);
     }
     case Num: {
-        return gcc_jit_context_new_rvalue_from_long(
-            env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
     }
     case StringLiteral: {
-        return gcc_jit_context_new_string_literal(env->ctx, ast->str);
+        return gcc_new_string(env->ctx, ast->str);
     }
     case StringJoin: {
-        gcc_jit_rvalue *str = gcc_jit_context_null(env->ctx, gcc_type(env->ctx, CONST_CHAR_PTR));
+        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+        gcc_param_t *params[2] = {
+            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "str"),
+            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "str2"),
+        };
+        gcc_func_t *CORD_cat_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, STRING),
+            "CORD_cat", 2, params, 0);
+        gcc_func_t *CORD_to_char_star_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, STRING),
+            "CORD_to_char_star", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "str")}, 0);
+        gcc_func_t *intern_str_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, STRING),
+            "intern_str", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "str")}, 0);
+
         foreach (ast->children, chunk, _) {
-            gcc_jit_rvalue *val;
+            gcc_rvalue_t *val;
             bl_type_t *t = get_type(env->file, env->bindings, *chunk);
             if (t->kind == StringType) {
                 val = add_value(env, block, *chunk);
             } else {
-                gcc_jit_function *tostring = get_tostring_func(env, t);
-                gcc_jit_rvalue *args[] = {
+                gcc_func_t *tostring = get_tostring_func(env, t);
+                gcc_rvalue_t *args[] = {
                     add_value(env, block, *chunk),
-                    gcc_jit_context_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                    gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                 };
-                val = gcc_jit_context_new_call(env->ctx, NULL, tostring, 2, args);
+                val = gcc_call(env->ctx, NULL, tostring, 2, args);
             }
-            str = gcc_jit_context_new_call(
-                env->ctx, NULL, gcc_CORD_cat, 2, (gcc_jit_rvalue*[]){str, val});
+            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
         }
-        str = gcc_jit_context_new_call(
-            env->ctx, NULL, gcc_CORD_to_char_star, 1, &str);
-        str = gcc_jit_context_new_call(
-            env->ctx, NULL, gcc_intern_str, 1, &str);
+        str = gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, &str);
+        str = gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
         return str;
     }
     // case List: {
+    //     gcc_lvalue *list = gcc_local(
+    //         func, NULL, bl_type_to_gcc(env->ctx, t), "list");
+    //     gcc_assign(block, NULL, list,
+    //                gcc_call(gc_malloc)
+    //                );
     //     CORD list = fresh_local(env, "list");
     //     bl_type_t *t = get_type(env->f, env->bindings, ast);
     //     size_t item_size;
@@ -489,24 +502,24 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        static enum gcc_jit_binary_op ops[NUM_TYPES] = {
-#define OP(bl,gcc) [bl]=GCC_JIT_BINARY_OP_ ## gcc
+        static gcc_binary_op_e ops[NUM_TYPES] = {
+#define OP(bl,gcc) [bl]=GCC_BINARY_OP_ ## gcc
             OP(Add,PLUS), OP(Subtract,MINUS), OP(Multiply,MULT), OP(Divide,DIVIDE), OP(Modulus,MODULO),
             OP(AddUpdate,PLUS), OP(SubtractUpdate,MINUS), OP(MultiplyUpdate,MULT), OP(DivideUpdate,DIVIDE),
 #undef OP
         };
-        enum gcc_jit_binary_op op = ops[ast->kind];
+        gcc_binary_op_e op = ops[ast->kind];
         if (!op) ERROR(env, ast, "Unsupported math operation");
 
         if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
-            gcc_jit_lvalue *lval = get_lvalue(env, block, ast->lhs);
-            gcc_jit_rvalue *rval = add_value(env, block, ast->rhs);
-            gcc_jit_block_add_assignment_op(*block, NULL, lval, op, rval);
-            return gcc_jit_lvalue_as_rvalue(lval);
+            gcc_lvalue_t *lval = get_lvalue(env, block, ast->lhs);
+            gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
+            gcc_update(*block, NULL, lval, op, rval);
+            return gcc_lvalue_as_rvalue(lval);
         } else {
-            gcc_jit_rvalue *lhs_val = add_value(env, block, ast->lhs);
-            gcc_jit_rvalue *rhs_val = add_value(env, block, ast->rhs);
-            return gcc_jit_context_new_binary_op(env->ctx, NULL, op, bl_type_to_gcc(env->ctx, t), lhs_val, rhs_val);
+            gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
+            gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
+            return gcc_binary_op(env->ctx, NULL, op, bl_type_to_gcc(env->ctx, t), lhs_val, rhs_val);
         }
     }
     // case Power: {
@@ -699,13 +712,13 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
     ERROR(env, ast, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
 }
 
-void add_statement(env_t *env, gcc_jit_block **block, ast_t *ast) {
+void add_statement(env_t *env, gcc_block_t **block, ast_t *ast) {
     check_discardable(env->file, env->bindings, ast);
-    gcc_jit_rvalue *val = add_value(env, block, ast);
-    gcc_jit_block_add_eval(*block, NULL, val);
+    gcc_rvalue_t *val = add_value(env, block, ast);
+    gcc_eval(*block, NULL, val);
 }
 
-gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug) {
+gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     env_t env = {
         .ctx = ctx,
         .file = f,
@@ -720,58 +733,9 @@ gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool d
         .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
         .ret=nil_type);
 
-
-    if (!gcc_CORD_sprintf) {
-        gcc_jit_param *params[] = {
-            gcc_jit_context_new_param(ctx, NULL, gcc_jit_type_get_pointer(gcc_type(ctx, CONST_CHAR_PTR)), "cord"),
-            gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "fmt"),
-        };
-        gcc_CORD_sprintf = gcc_jit_context_new_function(
-            ctx, NULL, GCC_JIT_FUNCTION_IMPORTED,
-            gcc_type(ctx, INT),
-            "CORD_sprintf", 2, params, 1);
-    }
-
-    if (!gcc_CORD_cat) {
-        gcc_jit_param *params[] = {
-            gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "a"),
-            gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "b"),
-        };
-        gcc_CORD_cat = gcc_jit_context_new_function(
-            ctx, NULL, GCC_JIT_FUNCTION_IMPORTED,
-            gcc_type(ctx, CONST_CHAR_PTR),
-            "CORD_cat", 2, params, 0);
-    }
-
-    if (!gcc_CORD_to_char_star) {
-        gcc_jit_param *params[] = {
-            gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "cord"),
-        };
-        gcc_CORD_to_char_star = gcc_jit_context_new_function(
-            ctx, NULL, GCC_JIT_FUNCTION_IMPORTED,
-            gcc_type(ctx, CONST_CHAR_PTR),
-            "CORD_to_char_star", 1, params, 0);
-    }
-
-    if (!gcc_intern_str) {
-        gcc_jit_param *params[] = {
-            gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "str"),
-        };
-        gcc_intern_str = gcc_jit_context_new_function(
-            ctx, NULL, GCC_JIT_FUNCTION_IMPORTED,
-            gcc_type(ctx, CONST_CHAR_PTR),
-            "intern_str", 1, params, 0);
-    }
-
-    if (!gcc_puts) {
-        gcc_jit_param *param_str = gcc_jit_context_new_param(ctx, NULL, gcc_type(ctx, CONST_CHAR_PTR), "str");
-        gcc_puts = gcc_jit_context_new_function(
-            ctx, NULL, GCC_JIT_FUNCTION_IMPORTED,
-            gcc_type(ctx, INT),
-            "puts", 1, &param_str, 1);
-    }
-
-    gcc_jit_rvalue *puts_rvalue = gcc_jit_function_get_address(gcc_puts, NULL);
+    gcc_param_t *gcc_str_param = gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str");
+    gcc_func_t *puts_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "puts", 1, &gcc_str_param, 0);
+    gcc_rvalue_t *puts_rvalue = gcc_get_func_address(puts_func, NULL);
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_jit_context_new_string_literal(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
@@ -781,15 +745,15 @@ gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool d
     DEFTYPE(String);
 #undef DEFTYPE
 
-    gcc_jit_function *main_func = gcc_jit_context_new_function(
-        ctx, NULL, GCC_JIT_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
+    gcc_func_t *main_func = gcc_new_func(
+        ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
         "main", 0, NULL, 0);
 
-    gcc_jit_block *block = gcc_jit_function_new_block(main_func, NULL);
+    gcc_block_t *block = gcc_new_block(main_func, NULL);
     add_statement(&env, &block, ast);
-    gcc_jit_block_end_with_void_return(block, NULL);
+    gcc_return_void(block, NULL);
 
-    return gcc_jit_context_compile(ctx);
+    return gcc_compile(ctx);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
