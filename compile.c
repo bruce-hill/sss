@@ -50,10 +50,10 @@ hashmap_t *global_bindings(hashmap_t *bindings)
     return globals;
 }
 
-static gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block *block, ast_t *ast);
-static void add_statement(env_t *env, gcc_jit_block *block, ast_t *ast);
+static gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast);
+static void add_statement(env_t *env, gcc_jit_block **block, ast_t *ast);
 
-static gcc_jit_rvalue *add_fncall(env_t *env, gcc_jit_block *block, ast_t *ast)
+static gcc_jit_rvalue *add_fncall(env_t *env, gcc_jit_block **block, ast_t *ast)
 {
     gcc_jit_rvalue *fn = add_value(env, block, ast->call.fn);
     NEW_LIST(gcc_jit_rvalue*, arg_vals);
@@ -226,7 +226,7 @@ static gcc_jit_rvalue *add_fncall(env_t *env, gcc_jit_block *block, ast_t *ast)
 //     add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
 // }
 
-gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block *block, ast_t *ast)
+gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block **block, ast_t *ast)
 {
     switch (ast->kind) {
     case Var: {
@@ -237,33 +237,49 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block *block, ast_t *ast)
             ERROR(env, ast, "Error: variable is not defined"); 
         }
     }
-    // case Declare: {
-    //     binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
-    //     assert(binding);
-    //     if (!binding) errx(1, "Failed to find declaration binding");
-    //     CORD val_reg = add_value(env, code, ast->rhs);
-    //     add_line(code, "%s =%c copy %s", binding->reg, base_type_for(binding->type), val_reg);
-    //     return binding->reg;
-    // }
-    // case Assign: {
-    //     int64_t len = length(ast->multiassign.lhs);
-    //     NEW_LIST(CORD, lhs_regs);
-    //     for (int64_t i = 0; i < len; i++) {
-    //         CORD reg = add_value(env, code, ith(ast->multiassign.lhs, i));
-    //         append(lhs_regs, reg);
-    //     }
-    //     for (int64_t i = 0; i < len; i++) {
-    //         CORD val_reg = add_value(env, code, ith(ast->multiassign.rhs, i));
-    //         bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
-    //         bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
-    //         if (!type_is_a(t_rhs, t_lhs)) {
-    //             ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
-    //                   type_to_string(t_rhs), type_to_string(t_lhs));
-    //         }
-    //         add_line(code, "%s =%c copy %s", ith(lhs_regs, i), base_type_for(t_lhs), val_reg);
-    //     }
-    //     return "0";
-    // }
+    case Declare: {
+        binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
+        assert(binding);
+        gcc_jit_rvalue *rval = add_value(env, block, ast->rhs);
+        gcc_jit_block_add_assignment(*block, NULL, binding->lval, rval);
+        return gcc_jit_lvalue_as_rvalue(binding->lval);
+    }
+    case Assign: {
+        int64_t len = length(ast->multiassign.lhs);
+        NEW_LIST(gcc_jit_lvalue*, lvals);
+        for (int64_t i = 0; i < len; i++) {
+            ast_t *lhs = ith(ast->multiassign.lhs, i);
+            assert(lhs->kind == Var);
+            binding_t *binding = hashmap_get(env->bindings, lhs->str);
+            if (!binding)
+                ERROR(env, lhs, "Error: variable is not defined"); 
+            append(lvals, binding->lval);
+        }
+        NEW_LIST(gcc_jit_rvalue*, rvals);
+        for (int64_t i = 0; i < len; i++) {
+            bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
+            bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
+            if (!type_is_a(t_rhs, t_lhs)) {
+                ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
+                      type_to_string(t_rhs), type_to_string(t_lhs));
+            }
+
+            gcc_jit_rvalue *rval = add_value(env, block, ith(ast->multiassign.rhs, i));
+            if (len > 1) {
+                gcc_jit_function *func = gcc_jit_block_get_function(*block);
+                gcc_jit_lvalue *tmp = gcc_jit_function_new_local(
+                    func, NULL, bl_type_to_gcc(env->ctx, t_rhs), "tmp");
+                gcc_jit_block_add_assignment(*block, NULL, tmp, rval);
+                append(rvals, gcc_jit_lvalue_as_rvalue(tmp));
+            } else {
+                append(rvals, rval);
+            }
+        }
+        for (int64_t i = 0; i < len; i++) {
+            gcc_jit_block_add_assignment(*block, NULL, ith(lvals, i), ith(rvals, i));
+        }
+        return ith(rvals, length(rvals)-1);
+    }
     case Block: {
         env_t block_env = *env;
         block_env.bindings = hashmap_new();
@@ -281,12 +297,16 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block *block, ast_t *ast)
 
         foreach (ast->children, stmt, last_stmt) {
             // Declarations are visible from here onwards:
-            // if ((*stmt)->kind == Declare) {
-            //     CORD reg = fresh_local(&block_env, (*stmt)->lhs->str);
-            //     bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
-            //     assert(t);
-            //     hashmap_set(block_env.bindings, (*stmt)->lhs->str, new(binding_t, .reg=reg, .type=t));
-            // }
+            if ((*stmt)->kind == Declare) {
+                bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
+                assert(t);
+                gcc_jit_type *gcc_t = bl_type_to_gcc(env->ctx, t);
+                gcc_jit_function *func = gcc_jit_block_get_function(*block);
+                gcc_jit_lvalue *lval = gcc_jit_function_new_local(
+                    func, NULL, gcc_t, (*stmt)->lhs->str);
+                hashmap_set(block_env.bindings, (*stmt)->lhs->str,
+                            new(binding_t, .lval=lval, .rval=gcc_jit_lvalue_as_rvalue(lval), .type=t));
+            }
             if (stmt == last_stmt) {
                 return add_value(&block_env, block, *stmt);
             } else {
@@ -666,10 +686,10 @@ gcc_jit_rvalue *add_value(env_t *env, gcc_jit_block *block, ast_t *ast)
     ERROR(env, ast, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
 }
 
-void add_statement(env_t *env, gcc_jit_block *block, ast_t *ast) {
+void add_statement(env_t *env, gcc_jit_block **block, ast_t *ast) {
     check_discardable(env->file, env->bindings, ast);
     gcc_jit_rvalue *val = add_value(env, block, ast);
-    gcc_jit_block_add_eval(block, NULL, val);
+    gcc_jit_block_add_eval(*block, NULL, val);
 }
 
 gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug) {
@@ -710,7 +730,7 @@ gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool d
         "main", 0, NULL, 0);
 
     gcc_jit_block *block = gcc_jit_function_new_block(main_func, NULL);
-    add_statement(&env, block, ast);
+    add_statement(&env, &block, ast);
     gcc_jit_block_end_with_void_return(block, NULL);
 
     return gcc_jit_context_compile(ctx);

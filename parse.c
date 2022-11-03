@@ -331,13 +331,13 @@ ast_t *match_to_ast(match_t *m)
             match_t *lhses = get_named_capture(m, "lhs", -1);
             match_t *rhses = get_named_capture(m, "rhs", -1);
             for (int64_t i = 1; ; i++) {
-                ast_t *var = match_to_ast(get_numbered_capture(lhses, i));
+                ast_t *var = match_to_ast(get_numbered_capture(get_numbered_capture(lhses, 1), i));
                 if (var && var->kind != Var) {
                     fprintf(stderr, "\x1b[31;7;1mOnly variables can be declared\x1b[m\n\n");
                     highlight_match(stderr, parsing, var->match);
                     exit(1);
                 }
-                ast_t *val = match_to_ast(get_numbered_capture(rhses, i));
+                ast_t *val = match_to_ast(get_numbered_capture(get_numbered_capture(rhses, 1), i));
                 if (!var && !val) {
                     break;
                 } else if (var && !val) {

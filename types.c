@@ -1,5 +1,6 @@
 #include <gc/cord.h>
 #include <intern.h>
+#include <libgccjit.h>
 
 #include "types.h"
 
@@ -69,47 +70,6 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     assert(false);
 }
 
-char base_type_for(bl_type_t *t)
-{
-    switch (t->kind) {
-    case NilType: case BoolType: case Int8Type: case Int16Type: case Int32Type: return 'w';
-    case NumType: return 'd';
-    case Num32Type: return 's';
-    case OptionalType: {
-        switch (t->nonnil->kind) {
-        case Int16Type: case Int8Type: return 'w';
-        case BoolType: return 'w';
-        case NumType: return 'd';
-        case Num32Type: return 's';
-        default: return 'l';
-        }
-    }
-    default: return 'l';
-    }
-}
-
-char abi_type_for(bl_type_t *t)
-{
-    switch (t->kind) {
-    case NilType: case BoolType: case Int8Type: return 'b';
-    case Int16Type: return 'h';
-    case Int32Type: return 'w';
-    case NumType: return 'd';
-    case Num32Type: return 's';
-    case OptionalType: {
-        switch (t->nonnil->kind) {
-        case Int32Type: case Int16Type: return 'w';
-        case Int8Type: return 'h';
-        case BoolType: return 'b';
-        case NumType: return 'd';
-        case Num32Type: return 's';
-        default: return 'l';
-        }
-    }
-    default: return 'l';
-    }
-}
-
 const char* nil_value(bl_type_t *t)
 {
     switch (t->kind) {
@@ -132,6 +92,28 @@ bool is_numeric(bl_type_t *t)
     default:
         return false;
     }
+}
+
+gcc_jit_type *bl_type_to_gcc(gcc_jit_context *ctx, bl_type_t *t)
+{
+#define gcc_type(e) gcc_jit_context_get_type(ctx, GCC_JIT_TYPE_ ## e)
+    switch (t->kind) {
+    case IntType: return gcc_type(INT64_T);
+    case Int32Type: return gcc_type(INT32_T);
+    case Int16Type: return gcc_type(INT16_T);
+    case Int8Type: return gcc_type(INT8_T);
+    case BoolType: return gcc_type(BOOL);
+    case NumType: return gcc_type(DOUBLE);
+    case Num32Type: return gcc_type(FLOAT);
+    case StringType: return gcc_type(CONST_CHAR_PTR);
+    case OptionalType: return bl_type_to_gcc(ctx, t->nonnil);
+    case ListType: {
+        gcc_jit_type *item_type = bl_type_to_gcc(ctx, t->item_type);
+        return gcc_jit_type_get_pointer(gcc_jit_type_get_pointer(item_type));
+    }
+    default: return gcc_type(VOID_PTR);
+    }
+#undef gcc_type
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

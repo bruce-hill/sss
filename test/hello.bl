@@ -1,1 +1,3 @@
-say "Hello world!"
+hi := "Hello world!!!"
+hi = "xxx"
+say hi
