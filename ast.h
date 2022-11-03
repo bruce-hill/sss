@@ -90,5 +90,9 @@ typedef struct ast_s {
         struct { // While/Repeat
             struct ast_s *condition, *body, *between;
         } loop;
+        struct { // Lists
+            struct ast_s *item_type;
+            List(struct ast_s*) items;
+        } list;
     };
 } ast_t;

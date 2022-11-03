@@ -2,7 +2,8 @@ NAME=blang
 CC=cc
 PREFIX=/usr/local
 SYSCONFDIR=/etc
-CFLAGS=-std=c99 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -flto
+CFLAGS=-std=c99 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -flto -fPIC
+LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 CWARN=-Wall -Wextra
   # -Wpedantic -Wsign-conversion -Wtype-limits -Wunused-result -Wnull-dereference \
 	# -Waggregate-return -Walloc-zero -Walloca -Warith-conversion -Wcast-align -Wcast-align=strict \
@@ -20,7 +21,7 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lbp -lgccjit -lcord -lbhash -lintern -lm
+LIBS=-lgc -lbp -lgccjit -lcord -lbhash -lintern -lm -L. -lblang
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
@@ -30,8 +31,11 @@ OBJFILES=$(CFILES:.c=.o)
 
 all: blang blangc
 
-blang: $(OBJFILES) $(HFILES) blang.c
-	$(CC) $(ALL_FLAGS) -o $@ $(OBJFILES) blang.c
+$(LIBFILE): datastructures/list.o datastructures/range.o
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
+
+blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
+	$(CC) $(ALL_FLAGS) $(LDFLAGS) -o $@ $(OBJFILES) blang.c
 
 blangc:
 	ln -sv -T blang blangc
@@ -43,6 +47,6 @@ tags: $(CFILES) blang.c
 	ctags *.c *.h
 
 clean:
-	rm -f $(NAME) $(OBJFILES)
+	rm -f $(NAME) $(OBJFILES) $(LIBFILE)
 
 .PHONY: all clean install uninstall test

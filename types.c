@@ -69,7 +69,7 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (b->kind == AbortType) return a;
     if (a->kind == NilType) return Type(OptionalType, .nonnil=b);
     if (b->kind == NilType) return Type(OptionalType, .nonnil=a);
-    assert(false);
+    return NULL;
 }
 
 bool is_numeric(bl_type_t *t)
@@ -111,10 +111,7 @@ gcc_jit_type *bl_type_to_gcc(gcc_jit_context *ctx, bl_type_t *t)
     case Num32Type: return gcc_type(FLOAT);
     case StringType: return gcc_type(CONST_CHAR_PTR);
     case OptionalType: return bl_type_to_gcc(ctx, t->nonnil);
-    case ListType: {
-        gcc_jit_type *item_type = bl_type_to_gcc(ctx, t->item_type);
-        return gcc_jit_type_get_pointer(gcc_jit_type_get_pointer(item_type));
-    }
+    case ListType: return gcc_type(VOID_PTR);
     default: return gcc_type(VOID_PTR);
     }
 #undef gcc_type

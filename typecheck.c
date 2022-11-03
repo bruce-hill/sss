@@ -55,6 +55,24 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 TYPE_ERR(f, ast, "Couldn't figure out what type %s refers to", ast->str);
             }
         }
+        case List: {
+            if (ast->list.item_type) {
+                bl_type_t *item_type = get_type(f, bindings, ast->list.item_type);
+                return Type(ListType, .item_type=item_type->type);
+            }
+
+            bl_type_t *item_type = get_type(f, bindings, LIST_ITEM(ast->list.items, 0));
+            for (int64_t i = 1; i < LIST_LEN(ast->list.items); i++) {
+                bl_type_t *t2 = get_type(f, bindings, LIST_ITEM(ast->list.items, i));
+                bl_type_t *merged = type_or_type(item_type, t2);
+                if (!merged)
+                    TYPE_ERR(f, LIST_ITEM(ast->list.items, i),
+                             "This list item has type %s, which is different from earlier items which have type %s",
+                             type_to_string(t2),  type_to_string(item_type));
+                item_type = merged;
+            }
+            return Type(ListType, .item_type=item_type);
+        }
         case KeywordArg: {
             return get_type(f, bindings, ast->named.value);
         }

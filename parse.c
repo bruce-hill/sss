@@ -216,6 +216,20 @@ ast_t *match_to_ast(match_t *m)
         case Interp: {
             return match_to_ast(get_named_capture(m, "value", -1));
         }
+        case List: {
+            match_t *type_m = get_named_capture(m, "type", -1);
+            if (type_m)
+                return AST(m, List, .list.item_type=match_to_ast(type_m));
+            
+            List(ast_t*) items = EMPTY_LIST(ast_t*);
+            for (int i = 1; ; i++) {
+                match_t *im = get_numbered_capture(m, i);
+                assert(im != m);
+                if (!im) break;
+                APPEND(items, match_to_ast(im));
+            }
+            return AST(m, List, .list.items=items);
+        }
         case Block: {
             NEW_LIST(ast_t*, stmts);
             for (int i = 1; ; i++) {

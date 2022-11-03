@@ -397,41 +397,58 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         str = gcc_call(env->ctx, ast_loc(env, ast), intern_str_func, 1, &str);
         return str;
     }
-    // case List: {
-    //     gcc_lvalue *list = gcc_local(
-    //         func, NULL, bl_type_to_gcc(env->ctx, t), "list");
-    //     gcc_assign(block, NULL, list,
-    //                gcc_call(gc_malloc)
-    //                );
-    //     CORD list = fresh_local(env, "list");
-    //     bl_type_t *t = get_type(env->f, env->bindings, ast);
-    //     size_t item_size;
-    //     switch (abi_type_for(t->item_type)) {
-    //     case 'd': case 'l': item_size = 8; break;
-    //     case 's': case 'w': item_size = 4; break;
-    //     case 'h': item_size = 2; break;
-    //     case 'b': item_size = 1; break;
-    //     default: errx(1, "Unknown abi type: %c", abi_type_for(t->item_type));
-    //     }
-    //     add_line(code, "%r =l call $GC_malloc(l %ld) # Allocate list", list, sizeof(list_t));
-    //     if (!ast->list.items)
-    //         return list;
+    case List: {
+        gcc_ctx_t *ctx = env->ctx;
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        gcc_lvalue_t *list = gcc_local(gcc_block_func(*block), NULL, bl_type_to_gcc(ctx, t), "list");
 
-    //     CORD item_addr = fresh_local(env, "item_addr");
-    //     foreach (ast->list.items, item, _) {
-    //         switch (item->kind) {
-    //         case For: case While: case Repeat: case If: {
-    //             errx(1, "Comprehensions not yet implemented");
-    //         }
-    //         default: {
-    //             CORD item_reg = add_value(env, code, item);
-    //             add_line(code, "call $list_insert(l %r, l %ld, l %ld, l %r, l 0)",
-    //                      list, item_size, INT_NIL, item_loc);
-    //         }
-    //         }
-    //     }
-    //     return list;
-    // }
+#define PARAM(_t, _name) gcc_new_param(ctx, NULL, gcc_type(ctx, _t), _name)
+        gcc_param_t *list_params[] = {PARAM(SIZE, "item_size"), PARAM(SIZE, "min_items")};
+        gcc_func_t *new_list_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, VOID_PTR), "list_new", 2, list_params, 0);
+
+        gcc_param_t *list_insert_params[] = {
+            PARAM(VOID_PTR,"list"), PARAM(SIZE,"item_size"), PARAM(INT64,"index"),
+            PARAM(VOID_PTR,"item"), PARAM(STRING,"err_msg"),
+        };
+        gcc_func_t *list_insert_func = gcc_new_func(
+            ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_insert", 5, list_insert_params, 0);
+#undef PARAM
+
+        gcc_type_t *item_gcc_type = bl_type_to_gcc(ctx, t->item_type);
+        ssize_t item_size = gcc_type_size(item_gcc_type);
+        gcc_rvalue_t *new_list_args[] = {
+            gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
+            gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), ast->list.items ? length(ast->list.items): 0),
+        };
+        gcc_assign(*block, ast_loc(env, ast), list, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
+
+        if (ast->list.items) {
+            gcc_lvalue_t *item = gcc_local(gcc_block_func(*block), NULL, item_gcc_type, "item");
+            gcc_rvalue_t *item_addr = gcc_lvalue_address(item, NULL);
+            foreach (ast->list.items, item_ast, _) {
+                switch ((*item_ast)->kind) {
+                case For: case While: case Repeat: case If: {
+                    errx(1, "Comprehensions not yet implemented");
+                }
+                default: {
+                    gcc_rvalue_t *val = add_value(env, block, (*item_ast));
+                    gcc_assign(*block, NULL, item, val);
+
+                    gcc_rvalue_t *insert_args[] = {
+                        gcc_lvalue_as_rvalue(list),
+                        gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
+                        gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), (long)INT_NIL),
+                        item_addr,
+                        gcc_null(ctx, gcc_type(ctx, STRING)),
+                    };
+                    gcc_call(ctx, NULL, list_insert_func, 5, insert_args);
+                }
+                }
+            }
+        }
+        return gcc_lvalue_as_rvalue(list);
+    }
     case FunctionCall: {
         return add_fncall(env, block, ast);
     }
