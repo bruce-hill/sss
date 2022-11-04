@@ -137,39 +137,40 @@ static gcc_rvalue_t *add_fncall(env_t *env, gcc_block_t **block, ast_t *ast)
     return call;
 }
 
-static void check_nil(env_t *env, gcc_block_t *block, bl_type_t *t, gcc_rvalue_t *obj, gcc_block_t *nil_block, gcc_block_t *nonnil_block)
+static void check_nil(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *obj, gcc_block_t *nil_block, gcc_block_t *nonnil_block)
 {
     if (t->kind != OptionalType) {
-        gcc_jump(block, NULL, nonnil_block);
+        gcc_jump(*block, NULL, nonnil_block);
+        *block = NULL;
         return;
     }
 
-    gcc_func_t *func = gcc_block_func(block);
-    gcc_lvalue_t *nil = gcc_local(
-        func, NULL, bl_type_to_gcc(env, t), "nil");
-    gcc_assign(block, NULL, nil, nil_value(env, t));
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *nil = gcc_local(func, NULL, bl_type_to_gcc(env, t), "nil");
+    gcc_assign(*block, NULL, nil, nil_value(env, t));
 
     gcc_rvalue_t *is_nil = gcc_comparison(
         env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_lvalue_as_rvalue(nil));
-    gcc_condition(block, NULL, is_nil, nil_block, nonnil_block);
+    gcc_condition(*block, NULL, is_nil, nil_block, nonnil_block);
+    *block = NULL;
 }
 
-// static CORD check_truthiness(env_t *env, CORD *code, ast_t *val, CORD truthy_label, CORD falsey_label)
-// {
-//     bl_type_t *t = get_type(env->file, env->bindings, val);
-//     add_line(code, "# Check truthiness of:");
-//     CORD val_reg = add_value(env, code, val);
-//     if (t->kind == OptionalType) {
-//         check_nil(env, code, t, val_reg, falsey_label, truthy_label);
-//         return val_reg;
-//     }
+static gcc_rvalue_t *check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
+{
+    bl_type_t *t = get_type(env->file, env->bindings, obj);
+    gcc_rvalue_t *rval = add_value(env, block, obj);
+    if (t->kind == OptionalType) {
+        check_nil(env, block, t, rval, if_falsey, if_truthy);
+        return rval;
+    }
 
-//     if (t->kind != BoolType)
-//         ERROR(env, val, "This value has type %s, which means it will always be truthy", type_to_string(t)); 
+    if (t->kind != BoolType)
+        ERROR(env, obj, "This value has type %s, which means it will always be truthy", type_to_string(t)); 
     
-//     add_line(code, "jnz %r, %r, %r", val_reg, truthy_label, falsey_label);
-//     return val_reg;
-// }
+    gcc_condition(*block, NULL, rval, if_truthy, if_falsey);
+    *block = NULL;
+    return rval;
+}
 
 static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 {
@@ -247,7 +248,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     case OptionalType: {
         gcc_block_t *nil_block = gcc_new_block(func, NULL);
         gcc_block_t *nonnil_block = gcc_new_block(func, NULL);
-        check_nil(env, block, t, obj, nil_block, nonnil_block);
+        check_nil(env, &block, t, obj, nil_block, nonnil_block);
 
         gcc_return(nil_block, NULL, gcc_new_string(env->ctx, "(nil)"));
 
@@ -625,45 +626,42 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     //     // TODO: different nil type values
     //     return "0";
     // }
-    // case Equal: case NotEqual: {
-    //     bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-    //     bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-    //     if (!(type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t)))
-    //         ERROR(env, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
-    //     CORD lhs_reg = add_value(env, code, ast->lhs);
-    //     CORD rhs_reg = add_value(env, code, ast->rhs);
-    //     add_line(code, "# Not Equals RHS: %r", rhs_reg);
-    //     CORD result = fresh_local(env, "comparison");
-    //     char b = base_type_for(lhs_t);
-    //     add_line(code, "%r =w c%s%c %r, %r", result, ast->kind == Equal ? "eq" : "ne", b, lhs_reg, rhs_reg);
-    //     return result;
-    // }
-    // case Less: case LessEqual: case Greater: case GreaterEqual: {
-    //     bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-    //     bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-    //     CORD lhs_reg = add_value(env, code, ast->lhs);
-    //     CORD rhs_reg = add_value(env, code, ast->rhs);
-    //     CORD result = fresh_local(env, "comparison");
-    //     const char *cmp = NULL;
-    //     switch (ast->kind) {
-    //     case Less: cmp = "lt"; break;
-    //     case LessEqual: cmp = "le"; break;
-    //     case Greater: cmp = "gt"; break;
-    //     case GreaterEqual: cmp = "ge"; break;
-    //     default: break;
-    //     }
-    //     if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType)) {
-    //         add_line(code, "%r =w call $strcmp(l %r, l %r)", result, lhs_reg, rhs_reg);
-    //         add_line(code, "%r =w cs%sw %r, 0", result, cmp, result);
-    //         return result;
-    //     } else if (lhs_t == rhs_t && is_numeric(lhs_t)) {
-    //         char b = base_type_for(lhs_t);
-    //         const char *sign = (b == 's' || b == 'd') ? "" : "s";
-    //         add_line(code, "%r =w c%s%s%c %r, %r", result, sign, cmp, b, lhs_reg, rhs_reg);
-    //         return result;
-    //     }
-    //     ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
-    // }
+    case Equal: case NotEqual: {
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        if (!(type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t)))
+            ERROR(env, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
+        gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
+        return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
+    }
+    case Less: case LessEqual: case Greater: case GreaterEqual: {
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
+        gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
+        gcc_comparison_e cmp;
+        switch (ast->kind) {
+        case Less: cmp = GCC_COMPARISON_LT; break;
+        case LessEqual: cmp = GCC_COMPARISON_LE; break;
+        case Greater: cmp = GCC_COMPARISON_GT; break;
+        case GreaterEqual: cmp = GCC_COMPARISON_GE; break;
+        default: assert(false);
+        }
+        if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType)) {
+            gcc_param_t *cmp_params[] = {
+                gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, lhs_t), "str1"),
+                gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, rhs_t), "str2"),
+            };
+            gcc_func_t *cmp_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, INT), "strcmp", 2, cmp_params, 0);
+            return gcc_comparison(env->ctx, NULL, cmp,
+                                  gcc_call(env->ctx, NULL, cmp_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val}),
+                                  gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        } else if (lhs_t == rhs_t && is_numeric(lhs_t)) {
+            return gcc_comparison(env->ctx, NULL, cmp, lhs_val, rhs_val);
+        }
+        ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+    }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
@@ -703,50 +701,54 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     //     ERROR(env, ast, "Exponentiation is not supported for %s and %s", type_to_string(t), type_to_string(t2));
     //     break;
     // }
-    // case If: {
-    //     CORD if_ret = fresh_local(env, "if_result");
-    //     CORD endif = fresh_label(env, "endif");
-    //     bl_type_t *t = get_type(env->file, env->bindings, ast);
-    //     foreach (ast->clauses, clause, last_clause) {
-    //         CORD iffalse = (clause < last_clause || ast->else_body) ? fresh_label(env, "if_false") : endif;
+    case If: {
+        bl_type_t *if_t = get_type(env->file, env->bindings, ast);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *if_ret = gcc_local(func, NULL, bl_type_to_gcc(env, if_t), "if_value");
 
-    //         CORD truthy_label = fresh_label(env, "if_true");
-    //         ast_t *condition = clause->condition, *body = clause->body;
-    //         CORD branch_val;
-    //         if (condition->kind == Declare) {
-    //             env_t branch_env = *env;
-    //             branch_env.bindings = hashmap_new();
-    //             branch_env.bindings->fallback = env->bindings;
-    //             bl_type_t *t = get_type(env->file, env->bindings, condition);
-    //             assert(t);
-    //             CORD cond_reg = fresh_local(&branch_env, condition->lhs->str);
-    //             binding_t b = {.reg=cond_reg, .type=t};
-    //             hashmap_set(branch_env.bindings, condition->lhs->str, &b);
-    //             check_truthiness(&branch_env, code, condition, truthy_label, iffalse);
-    //             add_line(code, "%r", truthy_label);
-    //             branch_val = add_value(&branch_env, code, body);
-    //         } else {
-    //             (void)check_truthiness(env, code, condition, truthy_label, iffalse);
-    //             add_line(code, "%r", truthy_label);
-    //             branch_val = add_value(env, code, body);
-    //         }
+        gcc_block_t *end_if = gcc_new_block(func, NULL);
 
-    //         if (!ends_with_jump(code)) {
-    //             if (t->kind != AbortType)
-    //                 add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
-    //             add_line(code, "jmp %r", endif);
-    //         }
-    //         if (iffalse != endif)
-    //             add_line(code, "%r", iffalse);
-    //     }
-    //     if (ast->else_body) {
-    //         CORD branch_val = add_value(env, code, ast->else_body);
-    //         if (t->kind != AbortType)
-    //             add_line(code, "%r =%c copy %r", if_ret, base_type_for(t), branch_val);
-    //     }
-    //     add_line(code, "%r", endif);
-    //     return t->kind == AbortType ? "0" : if_ret;
-    // }
+        foreach (ast->clauses, clause, last_clause) {
+            gcc_block_t *if_truthy = gcc_new_block(func, NULL);
+            gcc_block_t *if_falsey = (clause < last_clause || ast->else_body) ? gcc_new_block(func, NULL) : end_if;
+
+            ast_t *condition = clause->condition, *body = clause->body;
+            gcc_rvalue_t *branch_val;
+            if (condition->kind == Declare) {
+                env_t branch_env = *env;
+                branch_env.bindings = hashmap_new();
+                branch_env.bindings->fallback = env->bindings;
+                bl_type_t *t = get_type(env->file, env->bindings, condition);
+                assert(t);
+                gcc_lvalue_t *cond_var = gcc_local(func, NULL, bl_type_to_gcc(env, t), "condition");
+                binding_t b = {.type=t, .lval=cond_var, .rval=gcc_lvalue_as_rvalue(cond_var)};
+                hashmap_set(branch_env.bindings, condition->lhs->str, &b);
+                check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
+                branch_val = add_value(&branch_env, &if_truthy, body);
+            } else {
+                (void)check_truthiness(env, block, condition, if_truthy, if_falsey);
+                branch_val = add_value(env, &if_truthy, body);
+            }
+
+            gcc_comment(if_truthy, NULL, "Condition block");
+            if (if_t->kind != AbortType && if_t->kind != NilType)
+                gcc_assign(if_truthy, NULL, if_ret, branch_val);
+            else
+                gcc_eval(if_truthy, NULL, branch_val);
+            gcc_jump(if_truthy, NULL, end_if);
+            *block = if_falsey;
+        }
+        if (ast->else_body) {
+            gcc_rvalue_t *branch_val = add_value(env, block, ast->else_body);
+            if (if_t->kind != AbortType && if_t->kind != NilType)
+                gcc_assign(*block, NULL, if_ret, branch_val);
+            else
+                gcc_eval(*block, NULL, branch_val);
+            gcc_jump(*block, NULL, end_if);
+        }
+        *block = end_if;
+        return if_t->kind == AbortType || if_t->kind == NilType ? NULL : gcc_lvalue_as_rvalue(if_ret);
+    }
     // case While: case Repeat: {
     //     add_line(code, "\n# Loop");
     //     CORD loop_top = fresh_label(env, "loop_top");
@@ -781,7 +783,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     //         hashmap_set(loop_env.bindings, cond->lhs->str, &cond_binding);
     //         check_truthiness(&loop_env, code, cond, loop_body, loop_end);
     //     } else if (cond) {
-    //         (void)check_truthiness(&loop_env, code, cond, loop_body, loop_end);
+    //         check_truthiness(&loop_env, code, cond, loop_body, loop_end);
     //     } else {
     //         add_line(code, "jmp %r", loop_body);
     //     }
@@ -819,7 +821,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 
     //     if (loop_between) {
     //         if (cond)
-    //             (void)check_truthiness(&loop_env, code, cond, loop_between, loop_end);
+    //             check_truthiness(&loop_env, code, cond, loop_between, loop_end);
     //         else
     //             add_line(code, "jmp %r", loop_between);
 
@@ -880,7 +882,8 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 void add_statement(env_t *env, gcc_block_t **block, ast_t *ast) {
     check_discardable(env->file, env->bindings, ast);
     gcc_rvalue_t *val = add_value(env, block, ast);
-    gcc_eval(*block, ast_loc(env, ast), val);
+    if (val)
+        gcc_eval(*block, ast_loc(env, ast), val);
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
