@@ -91,7 +91,7 @@ typedef struct ast_s {
             struct ast_s *condition, *body, *between;
         } loop;
         struct { // Lists
-            struct ast_s *item_type;
+            struct ast_s *type;
             List(struct ast_s*) items;
         } list;
     };
