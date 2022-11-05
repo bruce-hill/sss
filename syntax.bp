@@ -1,4 +1,4 @@
-prog: ^^__ @:Block=(statements) __ [@:ParseError=(+(./\n)=>"Invalid code")]$$
+prog: ^^__ ["#!"..$__] @:Block=(statements) __ [@:ParseError=(+(./\n)=>"Invalid code")]$$
 
 term: (
     As / Cast
