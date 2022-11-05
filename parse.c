@@ -85,11 +85,11 @@ static void load_grammar(void)
 //
 // Print error information from a match
 //
-static void print_err(file_t *f, match_t *m) {
+static void print_err(file_t *f, match_t *m, int context) {
     fprintf(stderr, "\x1b[31;7;1mSyntax Error: ");
     fprint_match(stderr, f->start, m, NULL);
     fprintf(stderr, "\x1b[m\n\n");
-    highlight_match(stderr, f, m);
+    highlight_match(stderr, f, m, context);
 }
 
 //
@@ -99,7 +99,7 @@ static void report_errors(file_t *f, match_t *m, bool stop_on_first)
 {
     pat_t *pat = m->pat;
     if (pat->type == BP_TAGGED && strncmp(pat->args.capture.name, "ParseError", pat->args.capture.namelen) == 0) {
-        print_err(f, m);
+        print_err(f, m, 2);
         if (stop_on_first)
             exit(1);
     }
@@ -349,7 +349,7 @@ ast_t *match_to_ast(match_t *m)
                 ast_t *var = match_to_ast(get_numbered_capture(get_numbered_capture(lhses, 1), i));
                 if (var && var->kind != Var) {
                     fprintf(stderr, "\x1b[31;7;1mOnly variables can be declared\x1b[m\n\n");
-                    highlight_match(stderr, parsing, var->match);
+                    highlight_match(stderr, parsing, var->match, 2);
                     exit(1);
                 }
                 ast_t *val = match_to_ast(get_numbered_capture(get_numbered_capture(rhses, 1), i));
@@ -357,11 +357,11 @@ ast_t *match_to_ast(match_t *m)
                     break;
                 } else if (var && !val) {
                     fprintf(stderr, "\x1b[31;7;1mThis term is missing a value to assign it\x1b[m\n\n");
-                    highlight_match(stderr, parsing, var->match);
+                    highlight_match(stderr, parsing, var->match, 2);
                     exit(1);
                 } else if (val && !var) {
                     fprintf(stderr, "\x1b[31;7;1mThis value doesn't have a corresponding term to assign to\x1b[m\n\n");
-                    highlight_match(stderr, parsing, val->match);
+                    highlight_match(stderr, parsing, val->match, 2);
                     exit(1);
                 }
 
@@ -411,7 +411,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
             fprintf(stderr, "\x1b[31;7;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
-            highlight_match(stderr, parsing, m);
+            highlight_match(stderr, parsing, m, 2);
             exit(1);
         }
     } else if (m->children) {

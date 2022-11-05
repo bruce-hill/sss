@@ -34,7 +34,7 @@ typedef struct {
 } env_t;
 
 #define ERROR(env, ast, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-            highlight_match(stderr, env->file, (ast)->match); \
+            highlight_match(stderr, env->file, (ast)->match, 2); \
             exit(1); }
 
 static inline gcc_loc_t *ast_loc(env_t *env, ast_t *ast)
@@ -859,7 +859,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *cat = hashmap_get(env->global_funcs, "CORD_cat");
         if (ast->child) {
             msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){
-                           gcc_new_string(env->ctx, "\x1b[31;7m"),
+                           gcc_new_string(env->ctx, "\x1b[41;30m Error: \x1b[0;31;1m "),
                            add_value(env, block, ast->child),
                            });
             msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){
@@ -867,13 +867,13 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                            gcc_new_string(env->ctx, "\x1b[m\n\n"),
                            });
         } else {
-            msg = gcc_new_string(env->ctx, "\x1b[31;7mA failure occurred\x1b[m\n\n");
+            msg = gcc_new_string(env->ctx, "\x1b[31;7mError: A failure occurred\x1b[m\n\n");
         }
 
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
-        highlight_match(f, env->file, ast->match);
+        highlight_match(f, env->file, ast->match, 2);
         fputc('\0', f);
         fflush(f);
         msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){msg, gcc_new_string(env->ctx, info)});

@@ -20,6 +20,6 @@ typedef struct defer_s {
     for (;__local_defer;__local_defer=__local_defer->next) __local_defer->fn(__local_defer->ptr); \
     return __VA_ARGS__; } while (0)
 
-void highlight_match(FILE *out, file_t *f, match_t *m);
+void highlight_match(FILE *out, file_t *f, match_t *m, int context);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

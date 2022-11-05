@@ -7,11 +7,11 @@
 //
 // Print a match highlighted in red with context lines
 //
-void highlight_match(FILE *out, file_t *f, match_t *m) {
+void highlight_match(FILE *out, file_t *f, match_t *m, int context) {
     size_t firstline = get_line_number(f, m->start);
     size_t lastline = get_line_number(f, m->end);
     fprintf(out, "\x1b[1;4m%s\x1b[m\n", f->filename);
-    for (size_t i = firstline - 1; i <= lastline + 1; i++) {
+    for (size_t i = firstline - context; i <= lastline + context; i++) {
         const char *line = get_line(f, i);
         if (!line) continue;
         const char *eol = strchrnul(line, '\n');
