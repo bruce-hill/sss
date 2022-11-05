@@ -1,0 +1,9 @@
+
+x := 1
+while x < 10
+    say "$x"
+    stop if x == 5
+    prev := x
+between
+    x += 1
+    say "prev: $prev next: $x"

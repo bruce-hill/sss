@@ -18,7 +18,7 @@
 
 typedef struct loop_label_s {
     struct loop_label_s *enclosing;
-    CORD skip_label, stop_label;
+    gcc_block_t *skip_label, *stop_label;
     istr_t name;
 } loop_label_t;
 
@@ -356,6 +356,45 @@ static gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global)
         bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
 }
 
+static gcc_rvalue_t *add_block(env_t *env, gcc_block_t **block, ast_t *ast, bool return_value)
+{
+    // Function defs are visible in the entire block (allowing corecursive funcs)
+    foreach (ast->children, stmt, last_stmt) {
+        if ((*stmt)->kind == FunctionDef) {
+            bl_type_t *t = get_type(env->file, env->bindings, *stmt);
+            gcc_func_t *func = get_function_def(env, *stmt, false);
+            gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
+            hashmap_set(env->bindings, (*stmt)->fn.name,
+                        new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+        }
+    }
+
+    foreach (ast->children, stmt, last_stmt) {
+        // Declarations are visible from here onwards:
+        if ((*stmt)->kind == Declare) {
+            bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
+            assert(t);
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, (*stmt)->lhs), gcc_t, fresh((*stmt)->lhs->str));
+            hashmap_set(env->bindings, (*stmt)->lhs->str,
+                        new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+        } else if ((*stmt)->kind == FunctionDef) {
+            binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
+            assert(binding);
+            // Compile the function here instead of above because we need the type information
+            // from the other functions in the block.
+            compile_function(env, binding->func, *stmt);
+        }
+        if (stmt == last_stmt && return_value) {
+            return add_value(env, block, *stmt);
+        } else {
+            add_statement(env, block, *stmt);
+        }
+    }
+    return NULL;
+}
+
 // static void set_nil(CORD *code, bl_type_t *t, CORD reg)
 // {
 //     add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
@@ -429,46 +468,11 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return ith(rvals, length(rvals)-1);
     }
     case Block: {
+        // Create scope:
         env_t block_env = *env;
         block_env.bindings = hashmap_new();
         block_env.bindings->fallback = env->bindings;
-        env = &block_env;
-
-        // Function defs are visible in the entire block (allowing corecursive funcs)
-        foreach (ast->children, stmt, last_stmt) {
-            if ((*stmt)->kind == FunctionDef) {
-                bl_type_t *t = get_type(env->file, env->bindings, *stmt);
-                gcc_func_t *func = get_function_def(env, *stmt, false);
-                gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                hashmap_set(env->bindings, (*stmt)->fn.name,
-                            new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
-            }
-        }
-
-        foreach (ast->children, stmt, last_stmt) {
-            // Declarations are visible from here onwards:
-            if ((*stmt)->kind == Declare) {
-                bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
-                assert(t);
-                gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                gcc_func_t *func = gcc_block_func(*block);
-                gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, (*stmt)->lhs), gcc_t, fresh((*stmt)->lhs->str));
-                hashmap_set(env->bindings, (*stmt)->lhs->str,
-                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
-            } else if ((*stmt)->kind == FunctionDef) {
-                binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
-                assert(binding);
-                // Compile the function here instead of above because we need the type information
-                // from the other functions in the block.
-                compile_function(env, binding->func, *stmt);
-            }
-            if (stmt == last_stmt) {
-                return add_value(env, block, *stmt);
-            } else {
-                add_statement(env, block, *stmt);
-            }
-        }
-        errx(1, "Unreachable");
+        return add_block(&block_env, block, ast, true);
     }
     case FunctionDef: case Lambda: {
         binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
@@ -749,12 +753,15 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                 branch_val = add_value(env, &if_truthy, body);
             }
 
-            gcc_comment(if_truthy, NULL, "Condition block");
-            if (if_t->kind != AbortType && if_t->kind != VoidType)
-                gcc_assign(if_truthy, NULL, if_ret, branch_val);
-            else
-                gcc_eval(if_truthy, NULL, branch_val);
-            gcc_jump(if_truthy, NULL, end_if);
+            if (if_truthy) {
+                if (branch_val) {
+                    if (if_t->kind != AbortType && if_t->kind != VoidType)
+                        gcc_assign(if_truthy, NULL, if_ret, branch_val);
+                    else
+                        gcc_eval(if_truthy, NULL, branch_val);
+                }
+                gcc_jump(if_truthy, NULL, end_if);
+            }
             *block = if_falsey;
         }
         if (ast->else_body) {
@@ -781,108 +788,81 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 
     }
-    // case While: case Repeat: {
-    //     add_line(code, "\n# Loop");
-    //     CORD loop_top = fresh_label(env, "loop_top");
-    //     CORD loop_body = fresh_label(env, "loop_body");
-    //     CORD loop_between = ast->loop.between ? fresh_label(env, "between") : NULL;
-    //     CORD loop_end = fresh_label(env, "end_loop");
+    case While: case Repeat: {
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *loop_top = gcc_new_block(func, NULL),
+                    *loop_body = gcc_new_block(func, NULL),
+                    *loop_between = ast->loop.between ? gcc_new_block(func, NULL) : NULL,
+                    *loop_end = gcc_new_block(func, NULL);
 
-    //     add_line(code, "%r", loop_top);
+        env_t loop_env = *env;
+        loop_env.bindings = hashmap_new();
+        loop_env.bindings->fallback = env->bindings;
+        loop_env.loop_label = &(loop_label_t){
+            .enclosing = env->loop_label,
+            .name = intern_str(ast->kind == While ? "while" : "repeat"),
+            .skip_label = loop_top,
+            .stop_label = loop_end,
+        };
+        env = &loop_env;
 
-    //     bl_type_t *t = get_type(env->file, env->bindings, ast);
-    //     CORD ret_reg = (t->kind == NilType || t->kind == AbortType) ? NULL : fresh_local(env, "loop_value");
-    //     if (ret_reg)
-    //         set_nil(code, t, ret_reg);
+        gcc_jump(*block, NULL, loop_top);
+        *block = NULL;
 
-    //     env_t loop_env = *env;
-    //     loop_env.bindings = hashmap_new();
-    //     loop_env.bindings->fallback = env->bindings;
-    //     loop_env.loop_label = &(loop_label_t){
-    //         .enclosing = env->loop_label,
-    //         .name = intern_str(ast->kind == While ? "while" : "repeat"),
-    //         .skip_label = loop_top,
-    //         .stop_label = loop_end,
-    //     };
+        gcc_comment(loop_top, NULL, "Loop");
+        ast_t *cond = ast->loop.condition;
+        binding_t cond_binding;
+        if (cond && cond->kind == Declare) {
+            bl_type_t *t = get_type(env->file, env->bindings, cond);
+            assert(t);
+            gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, cond->lhs), bl_type_to_gcc(env, t), fresh(cond->lhs->str));
+            cond_binding = (binding_t){.type=t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval)};
+            hashmap_set(env->bindings, cond->lhs->str, &cond_binding);
+            check_truthiness(env, &loop_top, cond, loop_body, loop_end);
+        } else if (cond) {
+            check_truthiness(env, &loop_top, cond, loop_body, loop_end);
+        } else {
+            gcc_jump(loop_top, NULL, loop_body);
+        }
 
-    //     ast_t *cond = ast->loop.condition;
-    //     binding_t cond_binding;
-    //     if (cond && cond->kind == Declare) {
-    //         bl_type_t *t = get_type(env->file, env->bindings, cond);
-    //         assert(t);
-    //         CORD cond_reg = fresh_local(&loop_env, cond->lhs->str);
-    //         cond_binding = (binding_t){.reg=cond_reg, .type=t};
-    //         hashmap_set(loop_env.bindings, cond->lhs->str, &cond_binding);
-    //         check_truthiness(&loop_env, code, cond, loop_body, loop_end);
-    //     } else if (cond) {
-    //         check_truthiness(&loop_env, code, cond, loop_body, loop_end);
-    //     } else {
-    //         add_line(code, "jmp %r", loop_body);
-    //     }
+        gcc_block_t *loop_body_orig = loop_body;
+        (void)add_block(env, &loop_body, ast->loop.body, false);
 
-    //     add_line(code, "%r", loop_body);
-    //     ast_t *body = ast->loop.body;
-    //     // Function defs are visible in the entire block (allowing corecursive funcs)
-    //     foreach (body->children, stmt, last_stmt) {
-    //         if ((*stmt)->kind == FunctionDef) {
-    //             CORD reg = fresh_global(env, (*stmt)->fn.name);
-    //             bl_type_t *t = get_type(env->file, loop_env.bindings, *stmt);
-    //             assert(t);
-    //             hashmap_set(loop_env.bindings, (*stmt)->fn.name, new(binding_t, .reg=reg, .type=t, .is_global=true));
-    //         }
-    //     }
+        if (loop_body) {
+            if (loop_between) {
+                if (cond)
+                    check_truthiness(env, &loop_body, cond, loop_between, loop_end);
+                else
+                    gcc_jump(loop_body, NULL, loop_between);
+                (void)add_block(env, &loop_between, ast->loop.between, false);
+                if (loop_between)
+                    gcc_jump(loop_between, NULL, loop_body_orig);
+            } else {
+                gcc_jump(loop_body_orig, NULL, loop_top);
+            }
+        }
 
-    //     foreach (body->children, stmt, last_stmt) {
-    //         // Declarations are visible from here onwards:
-    //         if ((*stmt)->kind == Declare) {
-    //             CORD reg = fresh_local(&loop_env, (*stmt)->lhs->str);
-    //             bl_type_t *t = get_type(loop_env.file, loop_env.bindings, (*stmt)->rhs);
-    //             assert(t);
-    //             hashmap_set(loop_env.bindings, (*stmt)->lhs->str, new(binding_t, .reg=reg, .type=t));
-    //         }
-    //         if (stmt == last_stmt) {
-    //             if (loop_env.debug)
-    //                 add_line(code, "loc %d, %d", 1, get_line_number(loop_env.file, (*stmt)->match->start));
-    //             CORD block_val = add_value(&loop_env, code, *stmt);
-    //             if (ret_reg)
-    //                 add_line(code, "%r =%c copy %r", ret_reg, base_type_for(t), block_val);
-    //         } else {
-    //             add_statement(&loop_env, code, *stmt);
-    //         }
-    //     }
-
-    //     if (loop_between) {
-    //         if (cond)
-    //             check_truthiness(&loop_env, code, cond, loop_between, loop_end);
-    //         else
-    //             add_line(code, "jmp %r", loop_between);
-
-    //         add_line(code, "%r", loop_between);
-    //         add_statement(&loop_env, code, ast->loop.between);
-    //         add_line(code, "jmp %r", loop_body);
-    //     } else {
-    //         add_line(code, "jmp %r", loop_top);
-    //     }
-    //     add_line(code, "%r", loop_end);
-    //     return ret_reg ? ret_reg : "0";
-    // }
-    // case Skip: case Stop: {
-    //     CORD label = NULL;
-    //     if (ast->str) {
-    //         for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
-    //             if (lbl->name == ast->str) {
-    //                 label = ast->kind == Skip ? lbl->skip_label : lbl->stop_label;
-    //                 break;
-    //             }
-    //         }
-    //     } else {
-    //         if (env->loop_label)
-    //             label = ast->kind == Skip ? env->loop_label->skip_label : env->loop_label->stop_label;
-    //     }
-    //     if (!label) ERROR(env, ast, "I'm not sure what %s is referring to", ast->str);
-    //     add_line(code, "jmp %r", label);
-    //     return "0";
-    // }
+        *block = loop_end;
+        return NULL;
+    }
+    case Skip: case Stop: {
+        gcc_block_t *jump_dest = NULL;
+        if (ast->str) {
+            for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
+                if (lbl->name == ast->str) {
+                    jump_dest = ast->kind == Skip ? lbl->skip_label : lbl->stop_label;
+                    break;
+                }
+            }
+        } else {
+            if (env->loop_label)
+                jump_dest = ast->kind == Skip ? env->loop_label->skip_label : env->loop_label->stop_label;
+        }
+        if (!jump_dest) ERROR(env, ast, "I'm not sure what %s is referring to", ast->str);
+        gcc_jump(*block, NULL, jump_dest);
+        *block = NULL;
+        return NULL;
+    }
     case Fail: {
         gcc_rvalue_t *msg;
         gcc_func_t *cat = hashmap_get(env->global_funcs, "CORD_cat");

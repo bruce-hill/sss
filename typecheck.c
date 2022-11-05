@@ -247,10 +247,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
 
         case While: case Repeat: {
-            bl_type_t *t = get_clause_type(f, bindings, ast->loop.condition, ast->loop.body);
-            assert(t); // Loop body has no type
-            if (t->kind == OptionalType || t->kind == VoidType) return t;
-            else return Type(OptionalType, .nonnil=t);
+            return Type(VoidType);
         }
 
         default: break;
@@ -266,6 +263,9 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);
+        if (t->kind == OptionalType)
+            t = t->nonnil;
+
         if (!(t->kind == VoidType || t->kind == AbortType)) {
             TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
         }
