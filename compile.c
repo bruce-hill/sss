@@ -596,9 +596,9 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     case KeywordArg: {
         return add_value(env, block, ast->named.value);
     }
-    // case Bool: {
-    //     return ast->b ? "1" : "0";
-    // }
+    case Bool: {
+        return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
+    }
     // case Cast: {
     //     bl_type_t *raw_t = get_type(env->file, env->bindings, ast->expr);
     //     bl_type_t *cast_t = get_type(env->file, env->bindings, ast->type);
