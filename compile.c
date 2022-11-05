@@ -339,7 +339,7 @@ int numtype_priority(bl_type_t *t)
     }
 }
 
-static void coerce_comparison(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)
+static void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)
 {
     if (numtype_priority(lhs_type) < numtype_priority(rhs_type))
         *lhs = gcc_cast(env->ctx, NULL, *lhs, bl_type_to_gcc(env, rhs_type));
@@ -663,7 +663,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env->file, env->bindings, ast); // Check type
         gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
-        coerce_comparison(
+        coerce_numbers(
             env, get_type(env->file, env->bindings, ast->lhs), &lhs_val,
             get_type(env->file, env->bindings, ast->rhs), &rhs_val);
         return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
@@ -673,7 +673,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
-        coerce_comparison(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
+        coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
         gcc_comparison_e cmp;
         switch (ast->kind) {
         case Less: cmp = GCC_COMPARISON_LT; break;
