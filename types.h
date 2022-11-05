@@ -8,8 +8,8 @@
 
 typedef enum {
     UnknownType,
-    AbortType,
-    NilType, BoolType,
+    AbortType, VoidType,
+    BoolType,
     IntType, Int32Type, Int16Type, Int8Type,
     NumType, Num32Type,
     StringType, DSLType,

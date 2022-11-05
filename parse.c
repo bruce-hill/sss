@@ -179,7 +179,10 @@ ast_t *match_to_ast(match_t *m)
     if (pat->type == BP_TAGGED) {
         astkind_e kind = get_kind(m);
         switch (kind) {
-        case Nil: return AST(m, Nil);
+        case Nil: {
+            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
+            return AST(m, kind, .child=type);
+        }
         case Bool: return AST(m, Bool, .b=strncmp(m->start, "no", 2) != 0);
         case Var: {
             istr_t v = intern_strn(m->start, (size_t)(m->end - m->start));
@@ -323,8 +326,7 @@ ast_t *match_to_ast(match_t *m)
         case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate:
         case And: case Or: case Xor:
         case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
-        case Declare:
-        {
+        case Declare: {
             ast_t *lhs = match_to_ast(get_named_capture(m, "lhs", -1));
             ast_t *rhs = match_to_ast(get_named_capture(m, "rhs", -1));
             return AST(m, kind, .lhs=lhs, .rhs=rhs);
@@ -334,8 +336,7 @@ ast_t *match_to_ast(match_t *m)
             ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
             return AST(m, kind, .expr=expr, .type=type);
         }
-        case Not: case Negative: case Len:
-        {
+        case Not: case Negative: case Len: {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, kind, .child=child);
         }

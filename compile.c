@@ -161,10 +161,6 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         "intern_str", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "str")}, 0);
     
     switch (t->kind) {
-    case NilType: {
-        gcc_return(block, NULL, gcc_new_string(env->ctx, "(nil)"));
-        break;
-    }
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, NULL);
         gcc_block_t *no_block = gcc_new_block(func, NULL);
@@ -722,7 +718,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             gcc_comment(if_truthy, NULL, "Condition block");
-            if (if_t->kind != AbortType && if_t->kind != NilType)
+            if (if_t->kind != AbortType && if_t->kind != VoidType)
                 gcc_assign(if_truthy, NULL, if_ret, branch_val);
             else
                 gcc_eval(if_truthy, NULL, branch_val);
@@ -731,14 +727,14 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         if (ast->else_body) {
             gcc_rvalue_t *branch_val = add_value(env, block, ast->else_body);
-            if (if_t->kind != AbortType && if_t->kind != NilType)
+            if (if_t->kind != AbortType && if_t->kind != VoidType)
                 gcc_assign(*block, NULL, if_ret, branch_val);
             else
                 gcc_eval(*block, NULL, branch_val);
             gcc_jump(*block, NULL, end_if);
         }
         *block = end_if;
-        return if_t->kind == AbortType || if_t->kind == NilType ? NULL : gcc_lvalue_as_rvalue(if_ret);
+        return if_t->kind == AbortType || if_t->kind == VoidType ? NULL : gcc_lvalue_as_rvalue(if_ret);
     }
     // case While: case Repeat: {
     //     add_line(code, "\n# Loop");
@@ -888,11 +884,10 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     };
 
     bl_type_t *string_type = Type(StringType);
-    bl_type_t *nil_type = Type(NilType);
     bl_type_t *say_type = Type(
         FunctionType,
         .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
-        .ret=nil_type);
+        .ret=Type(VoidType));
 
     gcc_param_t *gcc_str_param = gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str");
     gcc_func_t *puts_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "puts", 1, &gcc_str_param, 0);
@@ -900,7 +895,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_jit_context_new_string_literal(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
-    DEFTYPE(Bool); DEFTYPE(Nil); DEFTYPE(Abort);
+    DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
     DEFTYPE(Num); DEFTYPE(Num32);
     DEFTYPE(String);

@@ -33,7 +33,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
         case Nil: {
-            return Type(NilType);
+            bl_type_t *nonnil = get_type(f, bindings, ast->child)->type;
+            return nonnil->kind == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
         }
         case Bool: {
             return Type(BoolType);
@@ -106,7 +107,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return get_type(f, bindings, ast->rhs);
         }
         case Assign: {
-            return Type(NilType);
+            return Type(VoidType);
         }
         case Return: case Fail: case Stop: case Skip: {
             return Type(AbortType);
@@ -206,7 +207,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 }
                 ret = get_type(f, body_bindings, ast->fn.body->child);
             }
-            if (ret == NULL) ret = Type(NilType);
+            if (ret == NULL) ret = Type(VoidType);
             return Type(FunctionType, .args=args, .ret=ret);
         }
 
@@ -228,7 +229,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                              "This block has a type %s, which is incompatible with earlier blocks of type %s",
                              type_to_string(else_type), type_to_string(t));
             } else {
-                t = type_or_type(t, Type(NilType));
+                if (t->kind != OptionalType)
+                    t = Type(OptionalType, .nonnil=t);
             }
             return t;
         }
@@ -236,7 +238,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case While: case Repeat: {
             bl_type_t *t = get_clause_type(f, bindings, ast->loop.condition, ast->loop.body);
             assert(t); // Loop body has no type
-            if (t->kind == OptionalType || t->kind == NilType) return t;
+            if (t->kind == OptionalType || t->kind == VoidType) return t;
             else return Type(OptionalType, .nonnil=t);
         }
 
@@ -253,7 +255,7 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);
-        if (!(t->kind == NilType || t->kind == AbortType)) {
+        if (!(t->kind == VoidType || t->kind == AbortType)) {
             TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
         }
     }

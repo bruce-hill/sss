@@ -9,7 +9,7 @@ static CORD type_to_cord(bl_type_t *t) {
     switch (t->kind) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
-        case NilType: return "Nil";
+        case VoidType: return "Void";
         case BoolType: return "Bool";
         case IntType: return "Int";
         case Int32Type: return "Int32";
@@ -51,7 +51,7 @@ istr_t type_to_string(bl_type_t *t) {
 bool type_is_a(bl_type_t *t, bl_type_t *req)
 {
     if (t == req) return true;
-    if (req->kind == OptionalType && (t->kind == NilType || type_is_a(t, req->nonnil)))
+    if (req->kind == OptionalType && type_is_a(t, req->nonnil))
         return true;
     return false;
 }
@@ -66,8 +66,6 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (b->kind == AbortType && a->kind == OptionalType) return a->nonnil;
     if (a->kind == AbortType) return b;
     if (b->kind == AbortType) return a;
-    if (a->kind == NilType) return Type(OptionalType, .nonnil=b);
-    if (b->kind == NilType) return Type(OptionalType, .nonnil=a);
     return NULL;
 }
 

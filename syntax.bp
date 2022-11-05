@@ -41,7 +41,7 @@ Equal:: @lhs=expr _ "==" _ @rhs=expr
 NotEqual:: @lhs=expr _ "!=" _ @rhs=expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
-Nil:: \b"nil"\b
+Nil:: \b"nil"\b _ @type=type
 String:: (
   `" @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
   / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
