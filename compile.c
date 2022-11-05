@@ -596,6 +596,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         NEW_LIST(gcc_rvalue_t*, arg_vals);
         // TODO: keyword args
         foreach (ast->call.args, arg, _) {
+            // TODO: coerce numeric args? sqrt(5) -> sqrt(5.0)
             gcc_rvalue_t *val = add_value(env, block, *arg);
             append(arg_vals, val);
         }
