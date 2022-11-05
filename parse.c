@@ -8,6 +8,7 @@
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,7 +112,7 @@ static void report_errors(file_t *f, match_t *m, bool stop_on_first)
 
 const char *kind_tags[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
-    [Int]="Int", [Num]="Num",
+    [Int]="Int", [Num]="Num", [Range]="Range",
     [StringLiteral]=NULL, [StringJoin]="String", [DSL]="DSL", [Interp]="Interp",
     [Declare]="Declaration", [Assign]="Assignment",
     [AddUpdate]="AddUpdate", [SubtractUpdate]="SubUpdate", [MultiplyUpdate]="MulUpdate", [DivideUpdate]="DivUpdate",
@@ -195,6 +196,12 @@ ast_t *match_to_ast(match_t *m)
         case Num: {
             double n = strtod(m->start, NULL);
             return AST(m, Num, .n=n);
+        }
+        case Range: {
+            return AST(m, Range,
+                       .range.first=match_to_ast(get_named_capture(m, "first", -1)),
+                       .range.last=match_to_ast(get_named_capture(m, "last", -1)),
+                       .range.step=match_to_ast(get_named_capture(m, "step", -1)));
         }
         case StringJoin: {
             match_t *content = get_named_capture(m, "content", -1);

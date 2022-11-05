@@ -20,6 +20,7 @@ static CORD type_to_cord(bl_type_t *t) {
         case StringType: return "String";
         case NamedType: return t->name;
         case TypeType: return CORD_cat("Type(", CORD_cat(type_to_cord(t->type), ")"));
+        case RangeType: return "Range";
         case ListType: return CORD_cat("[", CORD_cat(type_to_cord(t->item_type), "]"));
         case TableType: {
             CORD c = "{";

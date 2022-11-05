@@ -76,13 +76,24 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case Num32Type: gcc_t = gcc_type(env->ctx, FLOAT); break;
     case StringType: gcc_t = gcc_type(env->ctx, STRING); break;
     case OptionalType: gcc_t = bl_type_to_gcc(env, t->nonnil); break;
+    case RangeType: {
+        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+        gcc_field_t *fields[3] = {
+            gcc_new_field(env->ctx, NULL, i64, "first"),
+            gcc_new_field(env->ctx, NULL, i64, "step"),
+            gcc_new_field(env->ctx, NULL, i64, "last"),
+        };
+        gcc_struct_t *range = gcc_new_struct_type(env->ctx, NULL, "Range", 3, fields);
+        gcc_t = gcc_struct_as_type(range);
+        break;
+    }
     case ListType: {
         gcc_field_t *fields[3] = {
             gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, t->item_type)), "items"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT64), "len"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT64), "slack"),
         };
-        gcc_struct_t *list = gcc_new_struct_type(env->ctx, NULL, "list", 3, fields);
+        gcc_struct_t *list = gcc_new_struct_type(env->ctx, NULL, "List", 3, fields);
         gcc_t = gcc_get_ptr_type(gcc_struct_as_type(list));
         break;
     }
@@ -91,7 +102,8 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         foreach (t->args, arg_t, _)
             append(arg_types, bl_type_to_gcc(env, *arg_t));
         gcc_type_t *ret_type = bl_type_to_gcc(env, t->ret);
-        return gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
+        gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
+        break;
     }
     default: gcc_t = gcc_type(env->ctx, VOID_PTR); break;
     }
@@ -155,14 +167,17 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     gcc_func_t *CORD_cat_func = hashmap_get(env->global_funcs, "CORD_cat");
     gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
     gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
+#define INTERN(val) gcc_call(env->ctx, NULL, intern_str_func, 1, (gcc_rvalue_t*[]){val})
+#define INTERN_LITERAL(str) INTERN(gcc_new_string(env->ctx, "yes"))
+#define INTERN_CORD(cord) INTERN(gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord}))
     
     switch (t->kind) {
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, NULL);
         gcc_block_t *no_block = gcc_new_block(func, NULL);
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
-        gcc_return(yes_block, NULL, gcc_new_string(env->ctx, "yes"));
-        gcc_return(no_block, NULL, gcc_new_string(env->ctx, "no"));
+        gcc_return(yes_block, NULL, INTERN_LITERAL("yes"));
+        gcc_return(no_block, NULL, INTERN_LITERAL("no"));
         break;
     }
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
@@ -181,7 +196,23 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         };
         gcc_func_t *cord_sprintf = hashmap_get(env->global_funcs, "CORD_sprintf");
         gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 3, args));
-        gcc_return(block, NULL, gcc_lvalue_as_rvalue(str));
+        gcc_return(block, NULL, INTERN_CORD(gcc_lvalue_as_rvalue(str)));
+        break;
+    }
+    case RangeType: {
+        gcc_struct_t *range_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
+
+        gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
+        gcc_rvalue_t *args[] = {
+            gcc_lvalue_address(str, NULL),
+            gcc_new_string(env->ctx, "%ld,%ld..%ld"),
+            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 0)),
+            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 1)),
+            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 2)),
+        };
+        gcc_func_t *cord_sprintf = hashmap_get(env->global_funcs, "CORD_sprintf");
+        gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 5, args));
+        gcc_return(block, NULL, INTERN_CORD(gcc_lvalue_as_rvalue(str)));
         break;
     }
     case OptionalType: {
@@ -198,7 +229,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
-        gcc_return(nil_block, NULL, gcc_new_string(env->ctx, "(nil)"));
+        gcc_return(nil_block, NULL, INTERN_LITERAL("(nil)"));
 
         if (t->nonnil->kind == StringType) {
             gcc_return(nonnil_block, NULL, obj);
@@ -274,9 +305,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
                                      gcc_lvalue_as_rvalue(str),
                                      gcc_new_string(env->ctx, "]"),
                             });
-        ret = gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){ret});
-        ret = gcc_call(env->ctx, NULL, intern_str_func, 1, (gcc_rvalue_t*[]){ret});
-        gcc_return(end, NULL, ret);
+        gcc_return(end, NULL, INTERN_CORD(ret));
         break;
     }
     default: {
@@ -751,6 +780,19 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         *block = end_if;
         return if_t->kind == AbortType || if_t->kind == VoidType ? NULL : gcc_lvalue_as_rvalue(if_ret);
+    }
+    case Range: {
+        gcc_type_t *range_t = bl_type_to_gcc(env, Type(RangeType));
+        gcc_struct_t *range_struct = gcc_type_if_struct(range_t);
+        assert(range_struct);
+        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+        gcc_rvalue_t *values[] = {
+            ast->range.first ? add_value(env, block, ast->range.first) : gcc_rvalue_from_long(env->ctx, i64, INT64_MIN),
+            ast->range.step ? add_value(env, block, ast->range.step) : gcc_rvalue_from_long(env->ctx, i64, 1),
+            ast->range.last ? add_value(env, block, ast->range.last) : gcc_rvalue_from_long(env->ctx, i64, INT64_MAX),
+        };
+        return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
+
     }
     // case While: case Repeat: {
     //     add_line(code, "\n# Loop");

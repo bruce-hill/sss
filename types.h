@@ -15,6 +15,7 @@ typedef enum {
     StringType, DSLType,
     NamedType,
     TypeType,
+    RangeType,
     ListType,
     TableType,
     FunctionType,

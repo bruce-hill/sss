@@ -45,6 +45,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Num: {
             return Type(NumType);
         }
+        case Range: {
+            return Type(RangeType);
+        }
         case StringJoin: case StringLiteral: {
             return Type(StringType);
         }

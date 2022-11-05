@@ -25,13 +25,13 @@ LIBS=-lgc -lbp -lgccjit -lcord -lbhash -lintern -lm -L. -lblang
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
-CFILES=ast.c parse.c types.c typecheck.c compile.c util.c datastructures/list.c datastructures/range.c lib/utils.c
-HFILES=ast.h parse.h types.h typecheck.h compile.h util.h datastructures/list.h datastructures/range.h
+CFILES=ast.c parse.c types.c typecheck.c compile.c util.c datastructures/list.c lib/utils.c
+HFILES=ast.h parse.h types.h typecheck.h compile.h util.h datastructures/list.h
 OBJFILES=$(CFILES:.c=.o)
 
 all: blang blangc
 
-$(LIBFILE): datastructures/list.o datastructures/range.o lib/utils.o
+$(LIBFILE): datastructures/list.o lib/utils.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c

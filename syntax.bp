@@ -224,7 +224,7 @@ Export:: \b"export"\b _ +Var %(_`,__)
 TypeOf:: \b"typeof"\b _ @expression=(expr)
 SizeOf:: \b"sizeof"\b _ @expression=(expr)
 Range:: (
-  @first=maybe-index-term [`,@next=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
+  @first=maybe-index-term [`,@step=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
   / ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 

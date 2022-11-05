@@ -34,6 +34,7 @@ int main(int argc, char *argv[])
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
+            gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_SUMMARY, 1);
             verbose = true;
             continue;
         } else if (streq(argv[i], "-r") || streq(argv[i], "--run")) {
