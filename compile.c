@@ -99,21 +99,6 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     return gcc_t;
 }
 
-static gcc_jit_rvalue *nil_value(env_t *env, bl_type_t *t)
-{
-    gcc_jit_type *gcc_t = bl_type_to_gcc(env, t);
-    switch (t->kind) {
-    case OptionalType: return nil_value(env, t->nonnil);
-    case IntType: return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_t, LONG_MIN);
-    case Int16Type: return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_t, INT_MIN);
-    case Int8Type: return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_t, SHRT_MIN);
-    case BoolType: return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_t, 0x7F);
-    case NumType: return gcc_jit_context_new_rvalue_from_double(env->ctx, gcc_t, nan("nil"));
-    case Num32Type: return gcc_jit_context_new_rvalue_from_double(env->ctx, gcc_t, nan("nil"));
-    default: return gcc_jit_context_null(env->ctx, gcc_t);
-    }
-}
-
 hashmap_t *global_bindings(hashmap_t *bindings)
 {
     hashmap_t *globals = hashmap_new();
@@ -131,39 +116,14 @@ hashmap_t *global_bindings(hashmap_t *bindings)
 static gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast);
 static void add_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 
-static void check_nil(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *obj, gcc_block_t *nil_block, gcc_block_t *nonnil_block)
-{
-    if (t->kind != OptionalType) {
-        gcc_jump(*block, NULL, nonnil_block);
-        *block = NULL;
-        return;
-    }
-
-    gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *nil = gcc_local(func, NULL, bl_type_to_gcc(env, t), "nil");
-    gcc_assign(*block, NULL, nil, nil_value(env, t));
-
-    gcc_rvalue_t *is_nil = gcc_comparison(
-        env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_lvalue_as_rvalue(nil));
-    gcc_jump_condition(*block, NULL, is_nil, nil_block, nonnil_block);
-    *block = NULL;
-}
-
-static gcc_rvalue_t *check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
+static void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
 {
     bl_type_t *t = get_type(env->file, env->bindings, obj);
-    gcc_rvalue_t *rval = add_value(env, block, obj);
-    if (t->kind == OptionalType) {
-        check_nil(env, block, t, rval, if_falsey, if_truthy);
-        return rval;
-    }
-
+    gcc_rvalue_t *bool_val = add_value(env, block, obj); 
     if (t->kind != BoolType)
-        ERROR(env, obj, "This value has type %s, which means it will always be truthy", type_to_string(t)); 
-    
-    gcc_jump_condition(*block, NULL, rval, if_truthy, if_falsey);
+        bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, bl_type_to_gcc(env, t)));
+    gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
     *block = NULL;
-    return rval;
 }
 
 static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
@@ -242,7 +202,10 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     case OptionalType: {
         gcc_block_t *nil_block = gcc_new_block(func, NULL);
         gcc_block_t *nonnil_block = gcc_new_block(func, NULL);
-        check_nil(env, &block, t, obj, nil_block, nonnil_block);
+
+        gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_zero(env->ctx, bl_type_to_gcc(env, t)));
+        gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
+        block = NULL;
 
         gcc_return(nil_block, NULL, gcc_new_string(env->ctx, "(nil)"));
 
@@ -623,6 +586,9 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     case Bool: {
         return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
     }
+    case Cast: {
+        return add_value(env, block, ast->expr);
+    }
     // case Cast: {
     //     bl_type_t *raw_t = get_type(env->file, env->bindings, ast->expr);
     //     bl_type_t *cast_t = get_type(env->file, env->bindings, ast->type);
@@ -646,10 +612,10 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     //         add_line(code, "%r =%c copy %r", cast_reg, cast_base, raw_reg);
     //     return cast_reg;
     // }
-    // case Nil: {
-    //     // TODO: different nil type values
-    //     return "0";
-    // }
+    case Nil: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        return gcc_zero(env->ctx, bl_type_to_gcc(env, t));
+    }
     case Equal: case NotEqual: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
@@ -751,7 +717,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                 check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
                 branch_val = add_value(&branch_env, &if_truthy, body);
             } else {
-                (void)check_truthiness(env, block, condition, if_truthy, if_falsey);
+                check_truthiness(env, block, condition, if_truthy, if_falsey);
                 branch_val = add_value(env, &if_truthy, body);
             }
 
