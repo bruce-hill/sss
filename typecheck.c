@@ -112,7 +112,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Return: case Fail: case Stop: case Skip: {
             return Type(AbortType);
         }
-        case Cast: {
+        case Cast: case As: {
             bl_type_t *t = get_type(f, bindings, ast->type);
             return t->type;
         }

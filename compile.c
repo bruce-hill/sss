@@ -595,10 +595,17 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return add_value(env, block, ast->named.value);
     }
     case Bool: {
-        return gcc_jit_context_new_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
     }
     case Cast: {
-        return add_value(env, block, ast->expr);
+        gcc_rvalue_t *val = add_value(env, block, ast->expr);
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        return gcc_bitcast(env->ctx, NULL, val, bl_type_to_gcc(env, t));
+    }
+    case As: {
+        gcc_rvalue_t *val = add_value(env, block, ast->expr);
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        return gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, t));
     }
     // case Cast: {
     //     bl_type_t *raw_t = get_type(env->file, env->bindings, ast->expr);
@@ -632,10 +639,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_zero(env->ctx, bl_type_to_gcc(env, t));
     }
     case Equal: case NotEqual: {
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        if (!(type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t)))
-            ERROR(env, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        (void)get_type(env->file, env->bindings, ast); // Check type
         gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
         return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
