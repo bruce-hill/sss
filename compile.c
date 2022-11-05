@@ -453,8 +453,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 gcc_func_t *func = gcc_block_func(*block);
-                gcc_lvalue_t *lval = gcc_local(
-                    func, ast_loc(env, (*stmt)->lhs), gcc_t, (*stmt)->lhs->str);
+                gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, (*stmt)->lhs), gcc_t, fresh((*stmt)->lhs->str));
                 hashmap_set(env->bindings, (*stmt)->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
             } else if ((*stmt)->kind == FunctionDef) {
