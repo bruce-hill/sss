@@ -456,35 +456,36 @@ static gcc_rvalue_t *add_list_for_loop(env_t *env, gcc_block_t **block, ast_t *a
     *block = NULL;
 
     // body:
-    gcc_block_t *loop_body_orig = loop_body;
+    gcc_block_t *loop_body_end = loop_body;
     // item = *item_ptr
     if (item_var)
-        gcc_assign(loop_body, ast_loc(env, ast->for_loop.value), item_var,
+        gcc_assign(loop_body_end, ast_loc(env, ast->for_loop.value), item_var,
                    gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
 
     // body block
-    (void)add_block(env, &loop_body, ast->for_loop.body, false);
-
-    if (loop_body) {
-        gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, gcc_lvalue_as_rvalue(index_var), gcc_lvalue_as_rvalue(len));
-        if (loop_between) {
-            // goto (index >= len) ? end : between
-            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_between);
-            // between:
-            (void)add_block(env, &loop_between, ast->for_loop.between, false);
-            if (loop_between)
-                gcc_jump(loop_between, NULL, loop_next); // goto next
-        } else {
-            // goto (index >= len) ? end : next
-            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_next);
-        }
-    }
+    (void)add_block(env, &loop_body_end, ast->for_loop.body, false);
+    if (loop_body_end)
+        gcc_jump(loop_body_end, NULL, loop_next);
 
     // next: index++, item_ptr++
     gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
     gcc_assign(loop_next, NULL, item_ptr,
                gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(item_ptr), one64), NULL));
-    gcc_jump(loop_next, NULL, loop_body_orig); // goto body
+
+    if (loop_between) {
+        // goto is_done ? end : between
+        gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
+        // between:
+        if (item_var)
+            gcc_assign(loop_between, ast_loc(env, ast->for_loop.value), item_var,
+                       gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
+        (void)add_block(env, &loop_between, ast->for_loop.between, false);
+        if (loop_between)
+            gcc_jump(loop_between, NULL, loop_body); // goto body
+    } else {
+        // goto is_done ? end : body
+        gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_body);
+    }
 
     *block = loop_end;
     return NULL;
@@ -573,38 +574,27 @@ static gcc_rvalue_t *add_range_for_loop(env_t *env, gcc_block_t **block, ast_t *
     *block = NULL;
 
     // body:
-    gcc_block_t *loop_body_orig = loop_body;
+    gcc_block_t *loop_body_end = loop_body;
     // body block
-    (void)add_block(env, &loop_body, ast->for_loop.body, false);
+    (void)add_block(env, &loop_body_end, ast->for_loop.body, false);
+    if (loop_body_end)
+        gcc_jump(loop_body_end, NULL, loop_next);
 
-    if (loop_body) {
-        gcc_rvalue_t *is_done = gcc_comparison(
-            env->ctx, NULL, GCC_COMPARISON_LT,
-            gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64_t,
-                          gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t,
-                                        gcc_lvalue_as_rvalue(last),
-                                        gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, i64_t,
-                                            gcc_lvalue_as_rvalue(val),
-                                            gcc_lvalue_as_rvalue(step))),
-                          gcc_lvalue_as_rvalue(sign)),
-            gcc_zero(env->ctx, i64_t));
-        if (loop_between) {
-            // goto (index >= len) ? end : between
-            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_between);
-            // between:
-            (void)add_block(env, &loop_between, ast->for_loop.between, false);
-            if (loop_between)
-                gcc_jump(loop_between, NULL, loop_next); // goto next
-        } else {
-            // goto (index >= len) ? end : next
-            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_next);
-        }
-    }
-
-    // next: index++, val += step
+    // next:
+    // index++, val+=step
     gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
     gcc_update(loop_next, NULL, val, GCC_BINOP_PLUS, gcc_lvalue_as_rvalue(step));
-    gcc_jump(loop_next, NULL, loop_body_orig); // goto body
+    if (loop_between) {
+        // goto is_done ? end : between
+        gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
+        // between:
+        (void)add_block(env, &loop_between, ast->for_loop.between, false);
+        if (loop_between)
+            gcc_jump(loop_between, NULL, loop_body); // goto body
+    } else {
+        // goto body
+        gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_body);
+    }
 
     *block = loop_end;
     return NULL;
