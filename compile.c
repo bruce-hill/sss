@@ -120,8 +120,13 @@ static void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_bl
 {
     bl_type_t *t = get_type(env->file, env->bindings, obj);
     gcc_rvalue_t *bool_val = add_value(env, block, obj); 
-    if (t->kind != BoolType)
-        bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, bl_type_to_gcc(env, t)));
+    if (t->kind != BoolType) {
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        if (gcc_type_if_pointer(gcc_t))
+            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
+        else
+            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, gcc_t));
+    }
     gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
     *block = NULL;
 }
@@ -199,18 +204,28 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_block_t *nil_block = gcc_new_block(func, NULL);
         gcc_block_t *nonnil_block = gcc_new_block(func, NULL);
 
-        gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_zero(env->ctx, bl_type_to_gcc(env, t)));
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_rvalue_t *is_nil;
+        if (gcc_type_if_pointer(gcc_t))
+            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));
+        else
+            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_zero(env->ctx, gcc_t));
+
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
         gcc_return(nil_block, NULL, gcc_new_string(env->ctx, "(nil)"));
 
-        gcc_rvalue_t *args[] = {
-            obj,
-            gcc_param_as_rvalue(params[1]),
-        };
-        gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, get_tostring_func(env, t->nonnil), 2, args);
-        gcc_return(nonnil_block, NULL, ret);
+        if (t->nonnil->kind == StringType) {
+            gcc_return(nonnil_block, NULL, obj);
+        } else {
+            gcc_rvalue_t *args[] = {
+                obj,
+                gcc_param_as_rvalue(params[1]),
+            };
+            gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, get_tostring_func(env, t->nonnil), 2, args);
+            gcc_return(nonnil_block, NULL, ret);
+        }
         break;
     }
     case ListType: {
@@ -610,7 +625,11 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     // }
     case Nil: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        return gcc_zero(env->ctx, bl_type_to_gcc(env, t));
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        if (gcc_type_if_pointer(gcc_t))
+            return gcc_null(env->ctx, bl_type_to_gcc(env, t));
+        else
+            return gcc_zero(env->ctx, bl_type_to_gcc(env, t));
     }
     case Equal: case NotEqual: {
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
