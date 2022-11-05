@@ -202,6 +202,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     case RangeType: {
         gcc_struct_t *range_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
 
+        // TODO: don't print default values e.g. "4.." instead of "4,1..9223372036854775807"
         gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
         gcc_rvalue_t *args[] = {
             gcc_lvalue_address(str, NULL),
