@@ -487,7 +487,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), ast->i);
     }
     case Num: {
-        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
+        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
     }
     case StringLiteral: {
         return gcc_new_string(env->ctx, ast->str);
