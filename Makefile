@@ -31,7 +31,7 @@ OBJFILES=$(CFILES:.c=.o)
 
 all: blang blangc
 
-$(LIBFILE): datastructures/list.o datastructures/range.o
+$(LIBFILE): datastructures/list.o datastructures/range.o lib/utils.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
