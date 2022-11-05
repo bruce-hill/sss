@@ -614,29 +614,6 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         return gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, t));
     }
-    // case Cast: {
-    //     bl_type_t *raw_t = get_type(env->file, env->bindings, ast->expr);
-    //     bl_type_t *cast_t = get_type(env->file, env->bindings, ast->type);
-    //     CORD raw_reg = add_value(env, code, ast->expr);
-    //     char raw_base = base_type_for(raw_t);
-    //     char cast_base = base_type_for(cast_t);
-    //     if (raw_base == cast_base)
-    //         return raw_reg;
-    //     CORD cast_reg = fresh_local(env, "cast");
-    //     if (raw_base == 's' && cast_base == 'd')
-    //         add_line(code, "%r =d exts %r", cast_reg, raw_reg);
-    //     else if (raw_base == 'd' && cast_base == 's')
-    //         add_line(code, "%r =s truncd %r", cast_reg, raw_reg);
-    //     else if (raw_base == 's' || raw_base == 'd')
-    //         add_line(code, "%r =%c %ctosi %r", cast_reg, cast_base, raw_base, raw_reg);
-    //     else if (cast_base == 's' || cast_base == 'd')
-    //         add_line(code, "%r =%c s%ctof %r", cast_reg, cast_base, raw_base, raw_reg);
-    //     else if (raw_base == 'w' && cast_base == 'l')
-    //         add_line(code, "%r =%c exts%c %r", cast_reg, cast_base, abi_type_for(raw_t), raw_reg);
-    //     else if (raw_base == 'l' && cast_base == 'w')
-    //         add_line(code, "%r =%c copy %r", cast_reg, cast_base, raw_reg);
-    //     return cast_reg;
-    // }
     case Nil: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
