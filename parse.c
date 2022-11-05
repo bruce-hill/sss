@@ -86,7 +86,7 @@ static void load_grammar(void)
 // Print error information from a match
 //
 static void print_err(file_t *f, match_t *m, int context) {
-    fprintf(stderr, "\x1b[31;7;1mSyntax Error: ");
+    fprintf(stderr, "\x1b[31;7;1m Syntax Error: \x1b[0;31;1m ");
     fprint_match(stderr, f->start, m, NULL);
     fprintf(stderr, "\x1b[m\n\n");
     highlight_match(stderr, f, m, context);

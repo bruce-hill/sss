@@ -4,6 +4,8 @@
 
 #include "util.h"
 
+#define HL "\x1b[31;7;1m"
+
 //
 // Print a match highlighted in red with context lines
 //
@@ -20,18 +22,18 @@ void highlight_match(FILE *out, file_t *f, match_t *m, int context) {
         if (i == firstline) {
             fprintf(out, "\x1b[m%.*s", (int)(m->start - line), line);
             if (i == lastline) {
-                fprintf(out, "\x1b[0;31;1m%.*s\x1b[m", (int)(m->end - m->start), m->start);
+                fprintf(out, HL "%.*s\x1b[m", (int)(m->end - m->start), m->start);
                 fprintf(out, "\x1b[m%.*s", (int)(eol - m->end), m->end);
             } else {
-                fprintf(out, "\x1b[0;31;1m%.*s\x1b[m", (int)(eol - m->start), m->start);
+                fprintf(out, HL "%.*s\x1b[m", (int)(eol - m->start), m->start);
             }
         } else if (i == lastline) {
-            fprintf(out, "\x1b[0;31;1m%.*s\x1b[m", (int)(m->end - line), line);
+            fprintf(out, HL "%.*s\x1b[m", (int)(m->end - line), line);
             fprintf(out, "\x1b[m%.*s", (int)(eol - m->end), m->end);
         } else if (i < firstline || i > lastline) {
             fprintf(out, "\x1b[m%.*s", (int)(eol - line), line);
         } else {
-            fprintf(out, "\x1b[0;31;1m%.*s", (int)(eol - line), line);
+            fprintf(out, HL "%.*s", (int)(eol - line), line);
         }
         fprintf(out, "\x1b[m\n");
     }
