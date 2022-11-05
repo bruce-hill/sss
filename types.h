@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 #include "libgccjit_abbrev.h"
-#include "datastructures/list.h"
+#include "libblang/list.h"
 
 typedef enum {
     UnknownType,

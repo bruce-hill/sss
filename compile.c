@@ -200,21 +200,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         break;
     }
     case RangeType: {
-        gcc_struct_t *range_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
-
-        // TODO: don't print default values e.g. "4.." instead of "4,1..9223372036854775807"
-        gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
-        gcc_rvalue_t *args[] = {
-            gcc_lvalue_address(str, NULL),
-            gcc_new_string(env->ctx, "%ld,%ld..%ld"),
-            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 0)),
-            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 1)),
-            gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 2)),
-        };
-        gcc_func_t *cord_sprintf = hashmap_get(env->global_funcs, "CORD_sprintf");
-        gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 5, args));
-        gcc_return(block, NULL, INTERN_CORD(gcc_lvalue_as_rvalue(str)));
-        break;
+        errx(1, "This should be handled by an externally defined function.");
     }
     case OptionalType: {
         gcc_block_t *nil_block = gcc_new_block(func, NULL);
@@ -1004,6 +990,14 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
             env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, VOID),
             "fail", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "message")}, 0);
         hashmap_set(env.global_funcs, "fail", fail_func);
+
+        gcc_func_t *range_tostring_func = gcc_new_func(
+            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
+            "range_tostring", 2, (gcc_param_t*[]){
+                gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
+                gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
+            }, 0);
+        hashmap_set(env.tostring_funcs, Type(RangeType), range_tostring_func);
     }
 
     gcc_func_t *main_func = gcc_new_func(

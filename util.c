@@ -39,4 +39,5 @@ void highlight_match(FILE *out, file_t *f, match_t *m, int context) {
     }
     fprintf(out, "\x1b[m\n");
 }
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

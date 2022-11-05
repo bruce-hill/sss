@@ -225,7 +225,7 @@ TypeOf:: \b"typeof"\b _ @expression=(expr)
 SizeOf:: \b"sizeof"\b _ @expression=(expr)
 Range:: (
   @first=maybe-index-term [`,@step=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
-  / ".." [@last=maybe-index-term]) # ..5 ..
+  / [`,@step=maybe-index-term] ".." [@last=maybe-index-term]) # ..5 ..
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")

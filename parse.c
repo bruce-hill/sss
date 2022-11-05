@@ -15,7 +15,7 @@
 #include <string.h>
 
 #include "ast.h"
-#include "datastructures/list.h"
+#include "libblang/list.h"
 #include "parse.h"
 #include "util.h"
 

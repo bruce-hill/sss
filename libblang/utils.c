@@ -2,7 +2,9 @@
 #include <dirent.h>
 #include <errno.h>
 #include <gc.h>
+#include <gc/cord.h>
 #include <intern.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -67,6 +69,23 @@ bl_fileinfo_t *bl_fstat(FILE* f)
     ret->moved->nanoseconds = buf.st_ctim.tv_nsec;
 
     return ret;
+}
+
+typedef struct {
+    int64_t first,step,last;
+} range_t;
+const char *range_tostring(range_t range, void *stack) {
+    (void)stack;
+    CORD str = NULL;
+    if (range.first != INT64_MIN)
+        CORD_sprintf(&str, "%ld", range.first);
+    if (range.step != 1)
+        CORD_sprintf(&str, "%r,%ld", str, range.step);
+    if (range.last != INT64_MAX)
+        CORD_sprintf(&str, "%r..%ld", str, range.last);
+    else
+        str = CORD_cat(str, "..");
+    return intern_str(CORD_to_char_star(str));
 }
 
 #define toggle(val, nil) ((void*)((int64_t)(val) ^ (int64_t)(nil)))

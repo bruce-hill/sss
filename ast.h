@@ -5,7 +5,7 @@
 #include <bp/match.h>
 #include <intern.h>
 
-#include "datastructures/list.h"
+#include "libblang/list.h"
 
 typedef enum {
     Unknown = 0,
