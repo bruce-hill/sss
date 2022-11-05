@@ -326,6 +326,27 @@ static void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_return_void(block, NULL);
 }
 
+int numtype_priority(bl_type_t *t)
+{
+    switch (t->kind) {
+    case BoolType: case Int8Type: return 1;
+    case Int16Type: return 2;
+    case Int32Type: return 3;
+    case IntType: return 4;
+    case Num32Type: return 5;
+    case NumType: return 6;
+    default: assert(false);
+    }
+}
+
+static void coerce_comparison(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)
+{
+    if (numtype_priority(lhs_type) < numtype_priority(rhs_type))
+        *lhs = gcc_cast(env->ctx, NULL, *lhs, bl_type_to_gcc(env, rhs_type));
+    else if (numtype_priority(lhs_type) > numtype_priority(rhs_type))
+        *rhs = gcc_cast(env->ctx, NULL, *rhs, bl_type_to_gcc(env, lhs_type));
+}
+
 static gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global)
 {
     istr_t name;
@@ -642,6 +663,9 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env->file, env->bindings, ast); // Check type
         gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
+        coerce_comparison(
+            env, get_type(env->file, env->bindings, ast->lhs), &lhs_val,
+            get_type(env->file, env->bindings, ast->rhs), &rhs_val);
         return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
@@ -649,6 +673,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         gcc_rvalue_t *lhs_val = add_value(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = add_value(env, block, ast->rhs);
+        coerce_comparison(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
         gcc_comparison_e cmp;
         switch (ast->kind) {
         case Less: cmp = GCC_COMPARISON_LT; break;

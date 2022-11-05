@@ -167,7 +167,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
             if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType))
                 return Type(BoolType);
-            else if (lhs_t == rhs_t && is_numeric(lhs_t))
+            else if (is_numeric(lhs_t) && is_numeric(rhs_t))
                 return Type(BoolType);
             else
                 TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
@@ -177,6 +177,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *lhs_t = get_type(f, bindings, ast->lhs);
             bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
             if (type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t))
+                return Type(BoolType);
+            else if (is_numeric(lhs_t) && is_numeric(rhs_t))
                 return Type(BoolType);
             else
                 TYPE_ERR(f, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
