@@ -85,6 +85,13 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_get_ptr_type(gcc_struct_as_type(list));
         break;
     }
+    case FunctionType: {
+        NEW_LIST(gcc_type_t*, arg_types);
+        foreach (t->args, arg_t, _)
+            append(arg_types, bl_type_to_gcc(env, *arg_t));
+        gcc_type_t *ret_type = bl_type_to_gcc(env, t->ret);
+        return gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
+    }
     default: gcc_t = gcc_type(env->ctx, VOID_PTR); break;
     }
 
@@ -123,19 +130,6 @@ hashmap_t *global_bindings(hashmap_t *bindings)
 
 static gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast);
 static void add_statement(env_t *env, gcc_block_t **block, ast_t *ast);
-
-static gcc_rvalue_t *add_fncall(env_t *env, gcc_block_t **block, ast_t *ast)
-{
-    gcc_rvalue_t *fn = add_value(env, block, ast->call.fn);
-    NEW_LIST(gcc_rvalue_t*, arg_vals);
-    // TODO: keyword args
-    foreach (ast->call.args, arg, _) {
-        gcc_rvalue_t *val = add_value(env, block, *arg);
-        append(arg_vals, val);
-    }
-    gcc_rvalue_t *call = gcc_call_ptr(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
-    return call;
-}
 
 static void check_nil(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *obj, gcc_block_t *nil_block, gcc_block_t *nonnil_block)
 {
@@ -335,42 +329,50 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     return func;
 }
 
-// static CORD compile_function(env_t *env, CORD *code, ast_t *def)
-// {
-//     binding_t *binding = hashmap_get(env->bindings, def->fn.name);
+static void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
+{
+    bl_type_t *t = get_type(env->file, env->bindings, def);
 
-//     env_t body_env = *env;
-//     // Use a set of bindings that don't include any closures
-//     body_env.bindings = global_bindings(env->bindings);
+    env_t body_env = *env;
+    // Use a set of bindings that don't include any closures
+    body_env.bindings = global_bindings(env->bindings);
 
-//     bl_type_t *t;
-//     CORD fn_reg;
-//     if (binding) {
-//         hashmap_set(body_env.bindings, def->fn.name, binding);
-//         fn_reg = binding->reg;
-//         t = binding->type;
-//     } else {
-//         fn_reg = fresh_global(&body_env, "lambda");
-//         t = get_type(body_env.file, body_env.bindings, def);
-//     }
-//     add_line(code, "# %s", type_to_string(t));
-//     addf(code, "function %c %r(", base_type_for(t->ret), fn_reg);
-//     for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
-//         if (i > 0) addf(code, ", ");
-//         istr_t argname = ith(def->fn.arg_names, i);
-//         bl_type_t *argtype = ith(t->args, i);
-//         CORD argreg = fresh_local(&body_env, argname);
-//         addf(code, "%c %s", base_type_for(argtype), argreg);
-//         assert(argtype);
-//         hashmap_set(body_env.bindings, argname, new(binding_t, .reg=argreg, .type=argtype));
-//     }
-//     addf(code, ") {\n@start\n");
-//     add_statement(&body_env, code, def->fn.body);
-//     if (!ends_with_jump(code))
-//         add_line(code, "ret 0");
-//     add_line(code, "}");
-//     return fn_reg;
-// }
+    for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
+        istr_t argname = ith(def->fn.arg_names, i);
+        bl_type_t *argtype = ith(t->args, i);
+        gcc_param_t *param = gcc_func_get_param(func, i);
+        gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
+        gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
+        hashmap_set(body_env.bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
+    }
+
+    gcc_block_t *block = gcc_new_block(func, NULL);
+    add_statement(&body_env, &block, def->fn.body);
+    if (block)
+        gcc_return_void(block, NULL);
+}
+
+static gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global)
+{
+    istr_t name;
+    if (def->fn.name)
+        name = is_global ? def->fn.name : fresh(def->fn.name);
+    else
+        name = fresh("lambda");
+
+    bl_type_t *t = get_type(env->file, env->bindings, def);
+    NEW_LIST(gcc_param_t*, params);
+    for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
+        istr_t argname = ith(def->fn.arg_names, i);
+        bl_type_t *argtype = ith(t->args, i);
+        gcc_param_t *param = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, argtype), argname);
+        append(params, param);
+    }
+
+    return gcc_new_func(
+        env->ctx, ast_loc(env, def), is_global ? GCC_FUNCTION_EXPORTED : GCC_FUNCTION_INTERNAL,
+        bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
+}
 
 // static void set_nil(CORD *code, bl_type_t *t, CORD reg)
 // {
@@ -446,53 +448,63 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t block_env = *env;
         block_env.bindings = hashmap_new();
         block_env.bindings->fallback = env->bindings;
+        env = &block_env;
 
         // Function defs are visible in the entire block (allowing corecursive funcs)
-        // foreach (ast->children, stmt, last_stmt) {
-        //     if ((*stmt)->kind == FunctionDef) {
-        //         CORD reg = fresh_global(env, (*stmt)->fn.name);
-        //         bl_type_t *t = get_type(env->file, block_env.bindings, *stmt);
-        //         assert(t);
-        //         hashmap_set(block_env.bindings, (*stmt)->fn.name, new(binding_t, .reg=reg, .type=t, .is_global=true));
-        //     }
-        // }
+        foreach (ast->children, stmt, last_stmt) {
+            if ((*stmt)->kind == FunctionDef) {
+                bl_type_t *t = get_type(env->file, env->bindings, *stmt);
+                gcc_func_t *func = get_function_def(env, *stmt, false);
+                gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
+                hashmap_set(env->bindings, (*stmt)->fn.name,
+                            new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+            }
+        }
 
         foreach (ast->children, stmt, last_stmt) {
             // Declarations are visible from here onwards:
             if ((*stmt)->kind == Declare) {
-                bl_type_t *t = get_type(block_env.file, block_env.bindings, (*stmt)->rhs);
+                bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *lval = gcc_local(
                     func, ast_loc(env, (*stmt)->lhs), gcc_t, (*stmt)->lhs->str);
-                hashmap_set(block_env.bindings, (*stmt)->lhs->str,
+                hashmap_set(env->bindings, (*stmt)->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+            } else if ((*stmt)->kind == FunctionDef) {
+                binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
+                assert(binding);
+                compile_function(env, binding->func, *stmt);
             }
             if (stmt == last_stmt) {
-                return add_value(&block_env, block, *stmt);
+                return add_value(env, block, *stmt);
             } else {
-                add_statement(&block_env, block, *stmt);
+                add_statement(env, block, *stmt);
             }
         }
         errx(1, "Unreachable");
     }
-    // case FunctionDef: case Lambda: {
-    //     CORD fn_code = NULL;
-    //     CORD fn_reg = compile_function(env, &fn_code, ast);
-    //     addf(env->fn_code, "\n%r\n", fn_code);
-    //     return fn_reg;
-    // }
-    // case Return: {
-    //     if (ast->child) {
-    //         CORD ret = add_value(env, code, ast->child);
-    //         add_line(code, "ret %r", ret);
-    //     } else {
-    //         add_line(code, "ret");
-    //     }
-    //     add_line(code, "%r", fresh_label(env, "unreachable_after_ret"));
-    //     return "0";
-    // }
+    case FunctionDef: case Lambda: {
+        binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
+        if (binding && binding->func) {
+            return binding->rval;
+        } else {
+            gcc_func_t *func = get_function_def(env, ast, false);
+            compile_function(env, func, ast);
+            return gcc_get_func_address(func, NULL);
+        }
+    }
+    case Return: {
+        if (ast->child) {
+            gcc_rvalue_t *val = add_value(env, block, ast->child);
+            gcc_return(*block, NULL, val);
+        } else {
+            gcc_return_void(*block, NULL);
+        }
+        *block = NULL;
+        return NULL;
+    }
     case Int: {
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), ast->i);
     }
@@ -591,7 +603,15 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_lvalue_as_rvalue(list);
     }
     case FunctionCall: {
-        return add_fncall(env, block, ast);
+        gcc_rvalue_t *fn = add_value(env, block, ast->call.fn);
+        NEW_LIST(gcc_rvalue_t*, arg_vals);
+        // TODO: keyword args
+        foreach (ast->call.args, arg, _) {
+            gcc_rvalue_t *val = add_value(env, block, *arg);
+            append(arg_vals, val);
+        }
+        gcc_rvalue_t *call = gcc_call_ptr(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
+        return call;
     }
     case KeywordArg: {
         return add_value(env, block, ast->named.value);
@@ -665,14 +685,15 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        static gcc_binary_op_e ops[NUM_TYPES] = {
-#define OP(bl,gcc) [bl]=GCC_BINOP_ ## gcc
-            OP(Add,PLUS), OP(Subtract,MINUS), OP(Multiply,MULT), OP(Divide,DIVIDE), OP(Modulus,MODULO),
-            OP(AddUpdate,PLUS), OP(SubtractUpdate,MINUS), OP(MultiplyUpdate,MULT), OP(DivideUpdate,DIVIDE),
-#undef OP
-        };
-        gcc_binary_op_e op = ops[ast->kind];
-        if (!op) ERROR(env, ast, "Unsupported math operation");
+
+        gcc_binary_op_e op;
+        switch (ast->kind) {
+        case Add: case AddUpdate: op = GCC_BINOP_PLUS; break;
+        case Subtract: case SubtractUpdate: op = GCC_BINOP_MINUS; break;
+        case Multiply: case MultiplyUpdate: op = GCC_BINOP_MULT; break;
+        case Modulus: op = GCC_BINOP_MODULO; break;
+        default: ERROR(env, ast, "Unsupported math operation");
+        }
 
         if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
             gcc_lvalue_t *lval = get_lvalue(env, block, ast->lhs);

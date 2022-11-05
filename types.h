@@ -3,6 +3,7 @@
 #include <libgccjit.h>
 #include <stdlib.h>
 
+#include "libgccjit_abbrev.h"
 #include "datastructures/list.h"
 
 typedef enum {
@@ -40,6 +41,7 @@ typedef const struct bl_type_s {
 typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
+    gcc_func_t *func;
     bl_type_t *type;
     bool is_global;
 } binding_t;
