@@ -205,7 +205,7 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_assign gcc_jit_block_add_assignment
 #define gcc_update gcc_jit_block_add_assignment_op
 #define gcc_comment gcc_jit_block_add_comment
-#define gcc_condition gcc_jit_block_end_with_conditional
+#define gcc_jump_condition gcc_jit_block_end_with_conditional
 #define gcc_jump gcc_jit_block_end_with_jump
 #define gcc_return gcc_jit_block_end_with_return
 #define gcc_return_void gcc_jit_block_end_with_void_return

@@ -145,7 +145,7 @@ static void check_nil(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_
 
     gcc_rvalue_t *is_nil = gcc_comparison(
         env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_lvalue_as_rvalue(nil));
-    gcc_condition(*block, NULL, is_nil, nil_block, nonnil_block);
+    gcc_jump_condition(*block, NULL, is_nil, nil_block, nonnil_block);
     *block = NULL;
 }
 
@@ -161,7 +161,7 @@ static gcc_rvalue_t *check_truthiness(env_t *env, gcc_block_t **block, ast_t *ob
     if (t->kind != BoolType)
         ERROR(env, obj, "This value has type %s, which means it will always be truthy", type_to_string(t)); 
     
-    gcc_condition(*block, NULL, rval, if_truthy, if_falsey);
+    gcc_jump_condition(*block, NULL, rval, if_truthy, if_falsey);
     *block = NULL;
     return rval;
 }
@@ -208,7 +208,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, NULL);
         gcc_block_t *no_block = gcc_new_block(func, NULL);
-        gcc_condition(block, NULL, obj, yes_block, no_block);
+        gcc_jump_condition(block, NULL, obj, yes_block, no_block);
         gcc_return(yes_block, NULL, gcc_new_string(env->ctx, "yes"));
         gcc_return(no_block, NULL, gcc_new_string(env->ctx, "no"));
         break;
@@ -272,7 +272,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_block_t *end = gcc_new_block(func, NULL);
 
         // if (i < len) goto add_next_item;
-        gcc_condition(block, NULL, 
+        gcc_jump_condition(block, NULL, 
                       gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len),
                       add_next_item, end);
 
@@ -298,7 +298,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         // i += 1
         gcc_update(add_next_item, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
         // if (i < len) goto add_comma;
-        gcc_condition(add_next_item, NULL, 
+        gcc_jump_condition(add_next_item, NULL, 
                       gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len),
                       add_comma, end);
 
