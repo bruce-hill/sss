@@ -326,19 +326,6 @@ static void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_return_void(block, NULL);
 }
 
-int numtype_priority(bl_type_t *t)
-{
-    switch (t->kind) {
-    case BoolType: case Int8Type: return 1;
-    case Int16Type: return 2;
-    case Int32Type: return 3;
-    case IntType: return 4;
-    case Num32Type: return 5;
-    case NumType: return 6;
-    default: assert(false);
-    }
-}
-
 static void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)
 {
     if (numtype_priority(lhs_type) < numtype_priority(rhs_type))
@@ -419,12 +406,15 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         for (int64_t i = 0; i < len; i++) {
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
             bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
-            if (!type_is_a(t_rhs, t_lhs)) {
+            gcc_rvalue_t *rval = add_value(env, block, ith(ast->multiassign.rhs, i));
+
+            if (is_numeric(t_lhs) && is_numeric(t_rhs) && numtype_priority(t_lhs) >= numtype_priority(t_rhs)) {
+                rval = gcc_cast(env->ctx, NULL, rval, bl_type_to_gcc(env, t_lhs));
+            } else if (!type_is_a(t_rhs, t_lhs)) {
                 ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
 
-            gcc_rvalue_t *rval = add_value(env, block, ith(ast->multiassign.rhs, i));
             if (len > 1) {
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *tmp = gcc_local(
@@ -712,6 +702,11 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
             gcc_lvalue_t *lval = get_lvalue(env, block, ast->lhs);
             gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
+
+            bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+            bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+            if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
+                rval = gcc_cast(env->ctx, NULL, rval, bl_type_to_gcc(env, lhs_t));
             gcc_update(*block, ast_loc(env, ast), lval, op, rval);
             return gcc_lvalue_as_rvalue(lval);
         } else {

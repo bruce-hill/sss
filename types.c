@@ -80,4 +80,17 @@ bool is_numeric(bl_type_t *t)
     }
 }
 
+int numtype_priority(bl_type_t *t)
+{
+    switch (t->kind) {
+    case BoolType: case Int8Type: return 1;
+    case Int16Type: return 2;
+    case Int32Type: return 3;
+    case IntType: return 4;
+    case Num32Type: return 5;
+    case NumType: return 6;
+    default: return 0;
+    }
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -146,6 +146,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
             bl_type_t *t1 = get_type(f, bindings, ast->lhs);
             bl_type_t *t2 = get_type(f, bindings, ast->rhs);
+
+            if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
+                if (is_numeric(t1) && is_numeric(t2) && numtype_priority(t1) >= numtype_priority(t2))
+                    return t1;
+            }
+
             if (t1 == t2) {
                 if (is_numeric(t1))
                     return t1;
