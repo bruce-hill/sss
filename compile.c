@@ -74,6 +74,7 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = gcc_type(env->ctx, DOUBLE); break;
     case Num32Type: gcc_t = gcc_type(env->ctx, FLOAT); break;
+    case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
     case StringType: gcc_t = gcc_type(env->ctx, STRING); break;
     case OptionalType: gcc_t = bl_type_to_gcc(env, t->nonnil); break;
     case RangeType: {
@@ -105,7 +106,9 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
         break;
     }
-    default: gcc_t = gcc_type(env->ctx, VOID_PTR); break;
+    default: {
+        errx(1, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
+    }
     }
 
     hashmap_set(env->gcc_types, t, gcc_t);
@@ -371,15 +374,7 @@ static gcc_rvalue_t *add_block(env_t *env, gcc_block_t **block, ast_t *ast, bool
 
     foreach (ast->children, stmt, last_stmt) {
         // Declarations are visible from here onwards:
-        if ((*stmt)->kind == Declare) {
-            bl_type_t *t = get_type(env->file, env->bindings, (*stmt)->rhs);
-            assert(t);
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, (*stmt)->lhs), gcc_t, fresh((*stmt)->lhs->str));
-            hashmap_set(env->bindings, (*stmt)->lhs->str,
-                        new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
-        } else if ((*stmt)->kind == FunctionDef) {
+        if ((*stmt)->kind == FunctionDef) {
             binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
             assert(binding);
             // Compile the function here instead of above because we need the type information
@@ -429,11 +424,18 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Declare: {
-        binding_t *binding = hashmap_get(env->bindings, ast->lhs->str);
-        assert(binding);
         gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
-        gcc_assign(*block, ast_loc(env, ast), binding->lval, rval);
-        return gcc_lvalue_as_rvalue(binding->lval);
+
+        bl_type_t *t = get_type(env->file, env->bindings, ast->rhs);
+        assert(t);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast->lhs), gcc_t, fresh(ast->lhs->str));
+        hashmap_set(env->bindings, ast->lhs->str,
+                    new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+        assert(rval);
+        gcc_assign(*block, ast_loc(env, ast), lval, rval);
+        return gcc_lvalue_as_rvalue(lval);
     }
     case Assign: {
         int64_t len = length(ast->multiassign.lhs);
@@ -457,6 +459,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             if (len > 1) {
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *tmp = gcc_local(func, NULL, bl_type_to_gcc(env, t_rhs), fresh("tmp"));
+                assert(rval);
                 gcc_assign(*block, NULL, tmp, rval);
                 append(rvals, gcc_lvalue_as_rvalue(tmp));
             } else {
@@ -726,8 +729,10 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     // }
     case If: {
         bl_type_t *if_t = get_type(env->file, env->bindings, ast);
+        bl_type_t *nonnil_t = if_t->kind == OptionalType ? if_t->nonnil : if_t;
+        bool has_value = !(nonnil_t->kind == AbortType || nonnil_t->kind == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *if_ret = gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value"));
+        gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
         gcc_block_t *end_if = gcc_new_block(func, NULL);
 
@@ -736,26 +741,15 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *if_falsey = (clause < last_clause || ast->else_body) ? gcc_new_block(func, NULL) : end_if;
 
             ast_t *condition = clause->condition, *body = clause->body;
-            gcc_rvalue_t *branch_val;
-            if (condition->kind == Declare) {
-                env_t branch_env = *env;
-                branch_env.bindings = hashmap_new();
-                branch_env.bindings->fallback = env->bindings;
-                bl_type_t *t = get_type(env->file, env->bindings, condition);
-                assert(t);
-                gcc_lvalue_t *cond_var = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("condition"));
-                binding_t b = {.type=t, .lval=cond_var, .rval=gcc_lvalue_as_rvalue(cond_var)};
-                hashmap_set(branch_env.bindings, condition->lhs->str, &b);
-                check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
-                branch_val = add_value(&branch_env, &if_truthy, body);
-            } else {
-                check_truthiness(env, block, condition, if_truthy, if_falsey);
-                branch_val = add_value(env, &if_truthy, body);
-            }
+            env_t branch_env = *env;
+            branch_env.bindings = hashmap_new();
+            branch_env.bindings->fallback = env->bindings;
+            check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
+            gcc_rvalue_t *branch_val = add_value(&branch_env, &if_truthy, body);
 
             if (if_truthy) {
                 if (branch_val) {
-                    if (if_t->kind != AbortType && if_t->kind != VoidType)
+                    if (if_ret)
                         gcc_assign(if_truthy, NULL, if_ret, branch_val);
                     else
                         gcc_eval(if_truthy, NULL, branch_val);
@@ -766,14 +760,16 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         if (ast->else_body) {
             gcc_rvalue_t *branch_val = add_value(env, block, ast->else_body);
-            if (if_t->kind != AbortType && if_t->kind != VoidType)
-                gcc_assign(*block, NULL, if_ret, branch_val);
-            else
-                gcc_eval(*block, NULL, branch_val);
+            if (branch_val) {
+                if (if_ret)
+                    gcc_assign(*block, NULL, if_ret, branch_val);
+                else
+                    gcc_eval(*block, NULL, branch_val);
+            }
             gcc_jump(*block, NULL, end_if);
         }
         *block = end_if;
-        return if_t->kind == AbortType || if_t->kind == VoidType ? NULL : gcc_lvalue_as_rvalue(if_ret);
+        return if_ret ? gcc_lvalue_as_rvalue(if_ret) : NULL;
     }
     case Range: {
         gcc_type_t *range_t = bl_type_to_gcc(env, Type(RangeType));
@@ -811,19 +807,10 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_comment(loop_top, NULL, "Loop");
         ast_t *cond = ast->loop.condition;
-        binding_t cond_binding;
-        if (cond && cond->kind == Declare) {
-            bl_type_t *t = get_type(env->file, env->bindings, cond);
-            assert(t);
-            gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, cond->lhs), bl_type_to_gcc(env, t), fresh(cond->lhs->str));
-            cond_binding = (binding_t){.type=t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval)};
-            hashmap_set(env->bindings, cond->lhs->str, &cond_binding);
+        if (cond)
             check_truthiness(env, &loop_top, cond, loop_body, loop_end);
-        } else if (cond) {
-            check_truthiness(env, &loop_top, cond, loop_body, loop_end);
-        } else {
+        else
             gcc_jump(loop_top, NULL, loop_body);
-        }
 
         gcc_block_t *loop_body_orig = loop_body;
         (void)add_block(env, &loop_body, ast->loop.body, false);

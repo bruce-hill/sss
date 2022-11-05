@@ -20,4 +20,7 @@ elseif 1 != 99
 else
     "Wrong"
 
+if str := "Hello"
+    say "$str"
+
 say "Result: $z"
