@@ -244,7 +244,7 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_func_type_return_type gcc_jit_function_type_get_return_type
 #define gcc_func_type_param_count gcc_jit_function_type_get_param_count
 #define gcc_func_type_param_type gcc_jit_function_type_get_param_type
-#define gcc_type_if_integral gcc_jit_type_is_integral
+#define gcc_type_is_integral gcc_jit_type_is_integral
 #define gcc_type_if_pointer gcc_jit_type_is_pointer
 #define gcc_type_dyncast_vector gcc_jit_type_dyncast_vector
 #define gcc_type_if_struct gcc_jit_type_is_struct
