@@ -90,6 +90,9 @@ typedef struct ast_s {
         struct { // While/Repeat
             struct ast_s *condition, *body, *between;
         } loop;
+        struct {
+            struct ast_s *key, *value, *iter, *body, *between;
+        } for_loop;
         struct { // Lists
             struct ast_s *type;
             List(struct ast_s*) items;

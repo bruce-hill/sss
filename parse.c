@@ -325,6 +325,18 @@ ast_t *match_to_ast(match_t *m)
             ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
             return AST(m, kind, .loop.condition=condition, .loop.body=body, .loop.between=between);
         }
+        case For: {
+            ast_t *iter = match_to_ast(get_named_capture(m, "iterable", -1));
+            ast_t *key = match_to_ast(get_named_capture(m, "index", -1));
+            ast_t *value = match_to_ast(get_named_capture(m, "val", -1));
+            ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
+            ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
+            if (filter)
+                body = AST(m, Block, .children=LIST(ast_t*, body, filter));
+            ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
+            return AST(m, For, .for_loop.iter=iter, .for_loop.key=key, .for_loop.value=value,
+                       .for_loop.body=body, .for_loop.between=between);
+        }
         case Skip: case Stop: {
             istr_t target = match_to_istr(get_named_capture(m, "target", -1));
             return AST(m, kind, .str=target);
@@ -417,7 +429,7 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
-            fprintf(stderr, "\x1b[31;7;1mUnimplemented AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
+            fprintf(stderr, "\x1b[31;7;1mParsing isn't fully implemented for AST tag: %.*s\x1b[m\n\n", (int)pat->args.capture.namelen, pat->args.capture.name);
             highlight_match(stderr, parsing, m, 2);
             exit(1);
         }

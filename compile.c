@@ -390,6 +390,106 @@ static gcc_rvalue_t *add_block(env_t *env, gcc_block_t **block, ast_t *ast, bool
     return NULL;
 }
 
+static gcc_rvalue_t *add_list_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
+{
+
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *loop_body = gcc_new_block(func, NULL),
+                *loop_between = ast->loop.between ? gcc_new_block(func, NULL) : NULL,
+                *loop_next = gcc_new_block(func, NULL),
+                *loop_end = gcc_new_block(func, NULL);
+
+    env_t loop_env = *env;
+    loop_env.bindings = hashmap_new();
+    loop_env.bindings->fallback = env->bindings;
+    loop_env.loop_label = &(loop_label_t){
+        .enclosing = env->loop_label,
+        .name = intern_str("for"),
+        .skip_label = loop_next,
+        .stop_label = loop_end,
+    };
+    env = &loop_env;
+
+    // Preamble:
+    gcc_rvalue_t *list = add_value(env, block, ast->for_loop.iter);
+    bl_type_t *list_t = get_type(env->file, env->bindings, ast->for_loop.iter);
+    assert(list_t->kind == ListType);
+    gcc_type_t *gcc_list_t = bl_type_to_gcc(env, list_t);
+    bl_type_t *item_t = list_t->item_type;
+    gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+
+    // item_ptr = list->items
+    gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_list_t));
+    assert(list_struct);
+    gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+    gcc_assign(*block, NULL, item_ptr,
+               gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(list, NULL, gcc_get_field(list_struct, 0))));
+    // len = list->len
+    gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("len"));
+    gcc_assign(*block, NULL, len,
+               gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(list, NULL, gcc_get_field(list_struct, 1))));
+
+    gcc_lvalue_t *item_var = NULL;
+    if (ast->for_loop.value) {
+        if (ast->for_loop.value->kind != Var)
+            ERROR(env, ast->for_loop.value, "This needs to be a variable");
+        item_var = gcc_local(func, ast_loc(env, ast->for_loop.value), gcc_item_t, fresh(ast->for_loop.value->str));
+        hashmap_set(env->bindings, ast->for_loop.value->str, new(binding_t, .rval=gcc_lvalue_as_rvalue(item_var), .type=item_t));
+    }
+
+    // index = 1
+    gcc_lvalue_t *index_var;
+    if (ast->for_loop.key) {
+        index_var = gcc_local(func, ast_loc(env, ast->for_loop.key), gcc_type(env->ctx, INT64), fresh(ast->for_loop.key->str));
+        if (ast->for_loop.key->kind != Var)
+            ERROR(env, ast->for_loop.key, "This needs to be a variable");
+        hashmap_set(env->bindings, ast->for_loop.key->str, new(binding_t, .rval=gcc_lvalue_as_rvalue(index_var), .type=Type(IntType)));
+    } else {
+        index_var = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
+    }
+    gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
+    gcc_assign(*block, NULL, index_var, one64);
+
+    // goto (index > len) ? end : body
+    gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_lvalue_as_rvalue(index_var), gcc_lvalue_as_rvalue(len));
+    gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
+    *block = NULL;
+
+    // body:
+    gcc_block_t *loop_body_orig = loop_body;
+    // item = *item_ptr
+    if (item_var)
+        gcc_assign(loop_body, ast_loc(env, ast->for_loop.value), item_var,
+                   gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
+
+    // body block
+    (void)add_block(env, &loop_body, ast->for_loop.body, false);
+
+    if (loop_body) {
+        gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, gcc_lvalue_as_rvalue(index_var), gcc_lvalue_as_rvalue(len));
+        if (loop_between) {
+            // goto (index >= len) ? end : between
+            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_between);
+            // between:
+            (void)add_block(env, &loop_between, ast->loop.between, false);
+            if (loop_between)
+                gcc_jump(loop_between, NULL, loop_next); // goto next
+        } else {
+            // goto (index >= len) ? end : next
+            gcc_jump_condition(loop_body, NULL, is_done, loop_end, loop_next);
+        }
+    }
+
+    // next: index++, item_ptr++
+    gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+    gcc_assign(loop_next, NULL, item_ptr,
+               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(item_ptr), one64), NULL));
+    gcc_jump(loop_next, NULL, loop_body_orig); // goto body
+
+    *block = loop_end;
+    return NULL;
+}
+
 // static void set_nil(CORD *code, bl_type_t *t, CORD reg)
 // {
 //     add_line(code, "%r =%c copy %s", reg, base_type_for(t), nil_value(t));
@@ -809,6 +909,13 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = loop_end;
         return NULL;
     }
+    case For: {
+        bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
+        switch (iter_t->kind) {
+        case ListType: return add_list_for_loop(env, block, ast);
+        default: ERROR(env, ast, "Not implemented");
+        }
+    }
     case Skip: case Stop: {
         gcc_block_t *jump_dest = NULL;
         if (ast->str) {
@@ -891,7 +998,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     gcc_param_t *gcc_str_param = gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str");
     gcc_func_t *puts_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "puts", 1, &gcc_str_param, 0);
     gcc_rvalue_t *puts_rvalue = gcc_get_func_address(puts_func, NULL);
-    hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type));
+    hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type, .is_global=true));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_jit_context_new_string_literal(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);

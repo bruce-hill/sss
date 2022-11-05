@@ -246,7 +246,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return t;
         }
 
-        case While: case Repeat: {
+        case While: case Repeat: case For: {
             return Type(VoidType);
         }
 
