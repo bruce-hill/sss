@@ -475,6 +475,8 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             } else if ((*stmt)->kind == FunctionDef) {
                 binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
                 assert(binding);
+                // Compile the function here instead of above because we need the type information
+                // from the other functions in the block.
                 compile_function(env, binding->func, *stmt);
             }
             if (stmt == last_stmt) {
@@ -490,6 +492,8 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         if (binding && binding->func) {
             return binding->rval;
         } else {
+            // At this point, either this is a lambda or a function def used as a value
+            // instead of a statement
             gcc_func_t *func = get_function_def(env, ast, false);
             compile_function(env, func, ast);
             return gcc_get_func_address(func, NULL);
