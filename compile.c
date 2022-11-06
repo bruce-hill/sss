@@ -36,6 +36,7 @@ typedef struct {
 #define ERROR(env, ast, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
             highlight_match(stderr, env->file, (ast)->match, 2); \
             exit(1); }
+#define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
 
 static inline gcc_loc_t *ast_loc(env_t *env, ast_t *ast)
 {
@@ -171,8 +172,8 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
 
-    gcc_func_t *CORD_cat_func = hashmap_get(env->global_funcs, "CORD_cat");
-    gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
+    gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+    gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 #define LITERAL(str) gcc_new_string(env->ctx, str)
 #define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
     
@@ -199,7 +200,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
             gcc_new_string(env->ctx, fmt),
             obj,
         };
-        gcc_func_t *cord_sprintf = hashmap_get(env->global_funcs, "CORD_sprintf");
+        gcc_func_t *cord_sprintf = hashmap_gets(env->global_funcs, "CORD_sprintf");
         gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 3, args));
         gcc_return(block, NULL, CORD_str(gcc_lvalue_as_rvalue(str)));
         break;
@@ -714,7 +715,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_new_string(env->ctx, ast->str);
     }
     case StringJoin: {
-        gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
+        gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
         if (length(ast->children) == 0) {
             gcc_rvalue_t *empty = gcc_new_string(env->ctx, "");
@@ -729,8 +730,8 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
         }
         gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
-        gcc_func_t *CORD_cat_func = hashmap_get(env->global_funcs, "CORD_cat");
-        gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
+        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 
         foreach (ast->children, chunk, _) {
             gcc_rvalue_t *val;
@@ -835,7 +836,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
         }
         case StringType: case DSLType: case TypeType: {
-            gcc_func_t *len_func = hashmap_get(env->global_funcs, "intern_len");
+            gcc_func_t *len_func = hashmap_gets(env->global_funcs, "intern_len");
             gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), len_func, 1, &obj);
             return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
         }
@@ -864,7 +865,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case TypeOf: {
-        gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
+        gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         return gcc_call(env->ctx, NULL, intern_str_func, 1,
                         (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t->type))});
@@ -1119,7 +1120,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Fail: {
         gcc_rvalue_t *msg;
-        gcc_func_t *cat = hashmap_get(env->global_funcs, "CORD_cat");
+        gcc_func_t *cat = hashmap_gets(env->global_funcs, "CORD_cat");
         if (ast->child) {
             msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){
                            gcc_new_string(env->ctx, "\x1b[41;30m Error: \x1b[0;31;1m "),
@@ -1140,11 +1141,11 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         fputc('\0', f);
         fflush(f);
         msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){msg, gcc_new_string(env->ctx, info)});
-        gcc_func_t *to_char_star = hashmap_get(env->global_funcs, "CORD_to_char_star");
+        gcc_func_t *to_char_star = hashmap_gets(env->global_funcs, "CORD_to_char_star");
         msg = gcc_call(env->ctx, NULL, to_char_star, 1, (gcc_rvalue_t*[]){msg});
-        gcc_func_t *intern = hashmap_get(env->global_funcs, "intern_str");
+        gcc_func_t *intern = hashmap_gets(env->global_funcs, "intern_str");
         msg = gcc_call(env->ctx, NULL, intern, 1, (gcc_rvalue_t*[]){msg});
-        gcc_func_t *fail = hashmap_get(env->global_funcs, "fail");
+        gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
         msg = gcc_call(env->ctx, NULL, fail, 1, (gcc_rvalue_t*[]){msg});
         fclose(f);
         return msg;
@@ -1161,6 +1162,37 @@ void add_statement(env_t *env, gcc_block_t **block, ast_t *ast) {
         gcc_eval(*block, ast_loc(env, ast), val);
 }
 
+static hashmap_t *get_global_functions(gcc_ctx_t *ctx)
+{
+    gcc_type_t *t_str = gcc_get_type(ctx, GCC_T_STRING),
+               *t_int = gcc_get_type(ctx, GCC_T_INT),
+               *t_void = gcc_get_type(ctx, GCC_T_VOID),
+               *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
+               *t_size = gcc_get_type(ctx, GCC_T_SIZE);
+    gcc_type_t *t_str_ptr = gcc_get_ptr_type(t_str);
+
+    hashmap_t *funcs = hashmap_new();
+
+#define PARAM(type, name) gcc_new_param(ctx, NULL, type, name)
+#define MAKE_FUNC(t_ret, name, variadic, ...) hashmap_set(funcs, intern_str(name), \
+    gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, \
+                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
+                 (gcc_param_t*[]){__VA_ARGS__}, variadic))
+    MAKE_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
+    MAKE_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
+    MAKE_FUNC(t_str, "CORD_cat", 0, PARAM(t_str, "str"), PARAM(t_str, "str2"));
+    MAKE_FUNC(t_int, "CORD_sprintf", 1, PARAM(t_str_ptr, "cord"), PARAM(t_str, "fmt"));
+    MAKE_FUNC(t_str, "CORD_to_char_star", 0, PARAM(t_str, "cord"));
+    MAKE_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
+    MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
+    MAKE_FUNC(t_void, "fail", 0, PARAM(t_str, "message"));
+#undef MAKE_FUNC
+#undef PARAM
+
+    return funcs;
+}
+
+
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     env_t env = {
         .ctx = ctx,
@@ -1168,7 +1200,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
         .bindings = hashmap_new(),
         .tostring_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
-        .global_funcs = hashmap_new(),
+        .global_funcs = get_global_functions(ctx),
         .debug = debug,
     };
 
@@ -1190,54 +1222,13 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     DEFTYPE(String);
 #undef DEFTYPE
 
-    { // Global funcs:
-        gcc_param_t *cord_cat_params[2] = {
-            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str"),
-            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str2"),
-        };
-        gcc_func_t *CORD_cat_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
-            "CORD_cat", 2, cord_cat_params, 0);
-        hashmap_set(env.global_funcs, "CORD_cat", CORD_cat_func);
-
-        gcc_type_t *str_t = gcc_type(env.ctx, STRING);
-        gcc_type_t *str_ptr_t = gcc_get_ptr_type(str_t);
-        gcc_param_t *sprintf_args[] = {
-            gcc_new_param(env.ctx, NULL, str_ptr_t, "cord"),
-            gcc_new_param(env.ctx, NULL, str_t, "fmt"),
-        };
-        gcc_func_t *CORD_sprintf_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, INT), "CORD_sprintf", 2, sprintf_args, 1);
-        hashmap_set(env.global_funcs, "CORD_sprintf", CORD_sprintf_func);
-
-        gcc_func_t *CORD_to_char_star_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
-            "CORD_to_char_star", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str")}, 0);
-        hashmap_set(env.global_funcs, "CORD_to_char_star", CORD_to_char_star_func);
-
-        gcc_func_t *intern_str_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
-            "intern_str", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str")}, 0);
-        hashmap_set(env.global_funcs, "intern_str", intern_str_func);
-
-        gcc_func_t *intern_len_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, SIZE),
-            "intern_len", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str")}, 0);
-        hashmap_set(env.global_funcs, "intern_len", intern_len_func);
-
-        gcc_func_t *fail_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, VOID),
-            "fail", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "message")}, 0);
-        hashmap_set(env.global_funcs, "fail", fail_func);
-
-        gcc_func_t *range_tostring_func = gcc_new_func(
-            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
-            "range_tostring", 2, (gcc_param_t*[]){
-                gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
-                gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
-            }, 0);
-        hashmap_set(env.tostring_funcs, Type(RangeType), range_tostring_func);
-    }
+    gcc_func_t *range_tostring_func = gcc_new_func(
+        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
+        "range_tostring", 2, (gcc_param_t*[]){
+            gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
+            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
+        }, 0);
+    hashmap_set(env.tostring_funcs, Type(RangeType), range_tostring_func);
 
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
