@@ -193,6 +193,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
         }
 
+        case Not: {
+            return Type(BoolType);
+        }
+
         case Equal: case NotEqual: {
             bl_type_t *lhs_t = get_type(f, bindings, ast->lhs);
             bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
