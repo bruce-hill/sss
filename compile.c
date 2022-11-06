@@ -174,7 +174,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
     gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
 #define INTERN(val) gcc_call(env->ctx, NULL, intern_str_func, 1, (gcc_rvalue_t*[]){val})
-#define INTERN_LITERAL(str) INTERN(gcc_new_string(env->ctx, "yes"))
+#define INTERN_LITERAL(str) INTERN(gcc_new_string(env->ctx, str))
 #define INTERN_CORD(cord) INTERN(gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord}))
     
     switch (t->kind) {
