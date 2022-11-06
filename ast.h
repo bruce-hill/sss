@@ -18,7 +18,7 @@ typedef enum {
     Add, Subtract, Multiply, Divide, Power, Modulus,
     And, Or, Xor,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
-    Not, Negative, Len,
+    Not, Negative, Len, Maybe,
     List, Table,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,

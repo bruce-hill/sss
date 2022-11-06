@@ -18,9 +18,10 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
 maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term
 expr: Range / ButWith / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
 extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / splatMethodCall / expr
-unaryOp: Negative / Len / Not
+unaryOp: Negative / Len / Maybe / Not
 Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
+Maybe:: `? _ @value=maybe-index-term
 Not:: \b"not"\b _ @value=(comparison / expr)
 Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub / MulDiv / Pow / maybe-index-term)
 AddSub:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ @op=`+,- _ @rhs=(MulDiv / Pow / maybe-index-term)
