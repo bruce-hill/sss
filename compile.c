@@ -172,18 +172,16 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 
     gcc_func_t *CORD_cat_func = hashmap_get(env->global_funcs, "CORD_cat");
     gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
-    gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
-#define INTERN(val) gcc_call(env->ctx, NULL, intern_str_func, 1, (gcc_rvalue_t*[]){val})
-#define INTERN_LITERAL(str) INTERN(gcc_new_string(env->ctx, str))
-#define INTERN_CORD(cord) INTERN(gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord}))
+#define LITERAL(str) gcc_new_string(env->ctx, str)
+#define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
     
     switch (t->kind) {
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, NULL);
         gcc_block_t *no_block = gcc_new_block(func, NULL);
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
-        gcc_return(yes_block, NULL, INTERN_LITERAL("yes"));
-        gcc_return(no_block, NULL, INTERN_LITERAL("no"));
+        gcc_return(yes_block, NULL, LITERAL("yes"));
+        gcc_return(no_block, NULL, LITERAL("no"));
         break;
     }
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
@@ -202,7 +200,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         };
         gcc_func_t *cord_sprintf = hashmap_get(env->global_funcs, "CORD_sprintf");
         gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 3, args));
-        gcc_return(block, NULL, INTERN_CORD(gcc_lvalue_as_rvalue(str)));
+        gcc_return(block, NULL, CORD_str(gcc_lvalue_as_rvalue(str)));
         break;
     }
     case RangeType: {
@@ -222,7 +220,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
-        gcc_return(nil_block, NULL, INTERN_LITERAL("(nil)"));
+        gcc_return(nil_block, NULL, LITERAL("(nil)"));
 
         gcc_rvalue_t *args[] = {
             obj,
@@ -291,7 +289,7 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
                                      gcc_lvalue_as_rvalue(str),
                                      gcc_new_string(env->ctx, "]"),
                             });
-        gcc_return(end, NULL, INTERN_CORD(ret));
+        gcc_return(end, NULL, CORD_str(ret));
         break;
     }
     default: {
@@ -715,10 +713,23 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_new_string(env->ctx, ast->str);
     }
     case StringJoin: {
+        gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
+        // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
+        if (length(ast->children) == 0) {
+            gcc_rvalue_t *empty = gcc_new_string(env->ctx, "");
+            return gcc_call(env->ctx, NULL, intern_str_func, 1, &empty);
+        } else if (length(ast->children) == 1) {
+            ast_t *child = ith(ast->children, 0);
+            gcc_rvalue_t *str = add_value(env, block, child);
+            bl_type_t *t = get_type(env->file, env->bindings, child);
+            gcc_func_t *tostring = get_tostring_func(env, t);
+            gcc_rvalue_t *args[] = {str, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
+            str = tostring ? gcc_call(env->ctx, ast_loc(env, child), tostring, 2, args) : args[0];
+            return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
+        }
         gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
         gcc_func_t *CORD_cat_func = hashmap_get(env->global_funcs, "CORD_cat");
         gcc_func_t *CORD_to_char_star_func = hashmap_get(env->global_funcs, "CORD_to_char_star");
-        gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
 
         foreach (ast->children, chunk, _) {
             gcc_rvalue_t *val;
