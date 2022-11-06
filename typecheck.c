@@ -67,6 +67,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 TYPE_ERR(f, ast, "Couldn't figure out what type %s refers to", ast->str);
             }
         }
+        case Len: {
+            return Type(IntType);
+        }
         case List: {
             if (ast->list.type)
                 return get_type(f, bindings, ast->list.type)->type;

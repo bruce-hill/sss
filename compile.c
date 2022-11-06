@@ -824,6 +824,25 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     case Maybe: {
         return add_value(env, block, ast->child);
     }
+    case Len: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        printf("Got type: %s\n", type_to_string(t));
+        gcc_rvalue_t *obj = add_value(env, block, ast->child);
+        switch (t->kind) {
+        case ListType: {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+            gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
+            return gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
+        }
+        case StringType: case DSLType: case TypeType: {
+            gcc_func_t *strlen_func = hashmap_get(env->global_funcs, "strlen");
+            gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), strlen_func, 1, &obj);
+            return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
+        }
+            // TODO: range
+        default: ERROR(env, ast, "Length is not implemented for %s", type_to_string(t));
+        }
+    }
     case TypeOf: {
         gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
         bl_type_t *t = get_type(env->file, env->bindings, ast);
@@ -1163,6 +1182,11 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
             env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
             "intern_str", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str")}, 0);
         hashmap_set(env.global_funcs, "intern_str", intern_str_func);
+
+        gcc_func_t *strlen_func = gcc_new_func(
+            env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, SIZE),
+            "strlen", 1, (gcc_param_t*[]){gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, STRING), "str")}, 0);
+        hashmap_set(env.global_funcs, "strlen", strlen_func);
 
         gcc_func_t *fail_func = gcc_new_func(
             env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, VOID),
