@@ -29,11 +29,46 @@ static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *conditi
     }
 }
 
+static bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
+{
+    switch (ast->kind) {
+    case TypeName: {
+        binding_t *binding = hashmap_get(bindings, ast->str);
+        if (!binding) {
+            TYPE_ERR(f, ast, "This type name is not defined");
+        }
+        return binding->type->type;
+    }
+
+    case TypeList: {
+        bl_type_t *item_t = parse_type(f, bindings, ast->child);
+        if (!item_t) TYPE_ERR(f, ast->child, "This item type is not defined");
+        return Type(ListType, .item_type=item_t);
+    }
+
+    case TypeOption: {
+        bl_type_t *item_t = parse_type(f, bindings, ast->child);
+        if (!item_t) TYPE_ERR(f, ast->child, "This option type is not defined");
+        return Type(OptionalType, .nonnil=item_t);
+    }
+    case TypeFunction: {
+        bl_type_t *ret_t = parse_type(f, bindings, ast->fn.ret_type);
+        NEW_LIST(bl_type_t*, arg_types);
+        LIST_FOR (ast->fn.arg_types, arg_t, _) {
+            bl_type_t *bl_arg_t = parse_type(f, bindings, *arg_t);
+            APPEND(arg_types, bl_arg_t);
+        }
+        return Type(FunctionType, .args=arg_types, .ret=ret_t);
+    }
+    default: TYPE_ERR(f, ast, "This is not a Type value");
+    }
+}
+
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
         case Nil: {
-            bl_type_t *nonnil = get_type(f, bindings, ast->child)->type;
+            bl_type_t *nonnil = parse_type(f, bindings, ast->child);
             return nonnil->kind == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
         }
         case Bool: {
@@ -72,7 +107,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         case List: {
             if (ast->list.type)
-                return get_type(f, bindings, ast->list.type)->type;
+                return parse_type(f, bindings, ast->list.type);
 
             bl_type_t *item_type = get_type(f, bindings, LIST_ITEM(ast->list.items, 0));
             for (int64_t i = 1; i < LIST_LEN(ast->list.items); i++) {
@@ -120,6 +155,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Declare: {
             return get_type(f, bindings, ast->rhs);
         }
+        case Extern: {
+            return Type(VoidType);
+        }
         case Assign: {
             return Type(VoidType);
         }
@@ -127,33 +165,11 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return Type(AbortType);
         }
         case Cast: case As: {
-            bl_type_t *t = get_type(f, bindings, ast->type);
-            return t->type;
+            return parse_type(f, bindings, ast->type);
         }
-        case TypeName: {
-            binding_t *binding = hashmap_get(bindings, ast->str);
-            if (!binding) {
-                TYPE_ERR(f, ast, "This type name is not defined");
-            }
-            if (binding->type->kind != TypeType)
-                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(binding->type));
-            return binding->type;
-        }
-
-        case TypeList: {
-            bl_type_t *item_t = get_type(f, bindings, ast->child);
-            if (!item_t) TYPE_ERR(f, ast->child, "This item type is not defined");
-            if (item_t->kind != TypeType)
-                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(item_t));
-            return Type(TypeType, .type=Type(ListType, .item_type=item_t->type));
-        }
-
-        case TypeOption: {
-            bl_type_t *item_t = get_type(f, bindings, ast->child);
-            if (!item_t) TYPE_ERR(f, ast->child, "This option type is not defined");
-            if (item_t->kind != TypeType)
-                TYPE_ERR(f, ast, "This is not a type, it's a %s", type_to_string(item_t));
-            return Type(TypeType, .type=Type(OptionalType, .nonnil=item_t->type));
+        case TypeName: case TypeList: case TypeOption: case TypeFunction: {
+            bl_type_t *t = parse_type(f, bindings, ast);
+            return Type(TypeType, .type=t);
         }
 
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
@@ -212,17 +228,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             NEW_LIST(bl_type_t*, args);
             for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
                 ast_t *arg_def = LIST_ITEM(ast->fn.arg_types, i);
-                bl_type_t *t = get_type(f, bindings, arg_def);
-                if (t->kind != TypeType) TYPE_ERR(f, arg_def, "Expected a type here, not %s", type_to_string(t));
-                APPEND(args, t->type);
+                bl_type_t *t = parse_type(f, bindings, arg_def);
+                APPEND(args, t);
             }
 
             bl_type_t *ret = NULL;
             if (ast->kind == FunctionDef) {
                 if (ast->fn.ret_type) {
-                    ret = get_type(f, bindings, ast->fn.ret_type);
-                    if (ret->kind != TypeType) TYPE_ERR(f, ast->fn.ret_type, "Expected a type here");
-                    ret = ret->type;
+                    ret = parse_type(f, bindings, ast->fn.ret_type);
                 }
             } else {
                 hashmap_t *body_bindings = hashmap_new();

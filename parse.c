@@ -133,7 +133,7 @@ const char *kind_tags[] = {
     [TypeName]="TypeVar",
     [TypeList]="ListType", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
-    [Cast]="Cast", [As]="As",
+    [Cast]="Cast", [As]="As", [Extern]="Extern",
 };
 
 static astkind_e get_kind(match_t *m)
@@ -356,6 +356,11 @@ ast_t *match_to_ast(match_t *m)
             ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
             return AST(m, kind, .expr=expr, .type=type);
         }
+        case Extern: {
+            ast_t *expr = match_to_ast(get_named_capture(m, "name", -1));
+            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
+            return AST(m, kind, .expr=expr, .type=type);
+        }
         case Not: case Negative: case Len: case Maybe: case TypeOf: {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, kind, .child=child);
@@ -405,6 +410,22 @@ ast_t *match_to_ast(match_t *m)
         case TypeList: {
             ast_t *item_t = match_to_ast(get_named_capture(m, "itemType", -1));
             return AST(m, TypeList, .child=item_t);
+        }
+        case TypeFunction: {
+            ast_t *ret = match_to_ast(get_named_capture(m, "returnType", -1));
+            assert(ret);
+            match_t *args_m = get_named_capture(m, "args", -1);
+            NEW_LIST(ast_t*, arg_types);
+            NEW_LIST(istr_t, arg_names);
+            for (int64_t i = 1; ; i++) {
+                match_t *arg_m = get_numbered_capture(args_m, i);
+                if (!arg_m) break;
+                istr_t arg_name = match_to_istr(get_named_capture(arg_m, "name", -1));
+                ast_t *arg_t = match_to_ast(get_named_capture(arg_m, "type", -1));
+                APPEND(arg_names, arg_name);
+                APPEND(arg_types, arg_t);
+            }
+            return AST(m, TypeFunction, .fn.ret_type=ret, .fn.arg_names=arg_names, .fn.arg_types=arg_types);
         }
         default: break;
         }

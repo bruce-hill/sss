@@ -28,6 +28,7 @@ typedef enum {
     Skip, Stop,
     Return,
     Fail,
+    Extern,
     TypeName,
     TypeList, TypeTable,
     TypeFunction, TypeOption,

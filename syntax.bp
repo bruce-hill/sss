@@ -154,7 +154,7 @@ ConvertDef:: @curdent:\C \b"def"\b _ (
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock))
 Extern:: \b"extern"\b _ @name=Var _ (
-  @type=@:FnType=(`( __ @args=@(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(FieldName =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
+  @type=@:FnType=(`( __ @args=(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(FieldName =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
   `: _ @returnType=type)
   / (`: _ @type=type)
 )
@@ -182,7 +182,7 @@ nonoptional-type: (
   / TupleType
   / TypeVar
   / @:ListType=(`[@itemType=type`])
-  / @:FnType=(`(__ @args=@(*@:FnArg=([@name=FieldName __`:__] @type=type) % (__`,__)) __ `) _ "=>" __ @returnType=type)
+  / @:FnType=(`(__ @args=(*@:FnArg=([@name=FieldName __`:__] @type=type) % (__`,__)) __ `) _ "=>" __ @returnType=type)
 )
 TupleType:: `{(__
   @members=@(*@:StructField=([@names=@*([@inline=".."_] FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,]

@@ -108,6 +108,10 @@ static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
         break;
     }
+    case TypeType: {
+        gcc_t = gcc_type(env->ctx, STRING);
+        break;
+    }
     default: {
         errx(1, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
     }
@@ -618,16 +622,26 @@ static gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 }
 
+//gcc_rvalue_t* list_comprehension_add(env_t *env, gcc_block_t **block, ast_t *body, void *userdata)
+//{
+//    //f
+
+//}
+
 gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     switch (ast->kind) {
     case Var: {
         binding_t *binding = hashmap_get(env->bindings, ast->str);
         if (binding) {
-            return binding->rval;
-        } else {
-            ERROR(env, ast, "Error: variable is not defined"); 
+            if (binding->rval)
+                return binding->rval;
+            if (binding->lval)
+                return gcc_lvalue_as_rvalue(binding->lval);
+            if (binding->func)
+                return gcc_get_func_address(binding->func, NULL);
         }
+        ERROR(env, ast, "Error: variable is not defined"); 
     }
     case Declare: {
         gcc_rvalue_t *rval = add_value(env, block, ast->rhs);
@@ -643,6 +657,32 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_lvalue_as_rvalue(lval);
     }
+
+    case Extern: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->type);
+        assert(t->kind == TypeType);
+        t = t->type;
+        if (t->kind == FunctionType) {
+            gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, t->ret);
+            NEW_LIST(gcc_param_t*, params);
+            foreach (t->args, arg, _) {
+                gcc_type_t *arg_t = bl_type_to_gcc(env, *arg);
+                APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, fresh("arg")));
+            }
+            assert(ast->expr->kind == Var);
+            gcc_func_t *func = gcc_new_func(
+                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ast->expr->str, LIST_LEN(params), params[0], 0);
+            hashmap_set(env->bindings, ast->expr->str, new(binding_t, .func=func, .type=t));
+        } else {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+            assert(ast->expr->kind == Var);
+            gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ast->expr->str));
+            hashmap_set(env->bindings, ast->expr->str,
+                        new(binding_t, .rval=glob, .type=t));
+        }
+        return NULL;
+    }
+
     case Assign: {
         int64_t len = length(ast->multiassign.lhs);
         NEW_LIST(gcc_lvalue_t*, lvals);
