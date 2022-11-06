@@ -500,8 +500,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case For: {
         bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
         switch (iter_t->kind) {
-        case ListType: return compile_list_for_loop(env, block, ast, NULL, NULL);
-        case RangeType: return compile_range_for_loop(env, block, ast, NULL, NULL);
+        case ListType: {
+            compile_list_iteration(env, block, ast, NULL, NULL);
+            return NULL;
+        }
+        case RangeType: {
+            compile_range_iteration(env, block, ast, NULL, NULL);
+            return NULL;
+        }
         default: ERROR(env, ast, "Not implemented");
         }
     }

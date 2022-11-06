@@ -73,7 +73,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_lvalue_as_rvalue(list);
 }
 
-gcc_rvalue_t *compile_list_for_loop(env_t *env, gcc_block_t **block, ast_t *ast, ast_compiler_t body_compiler, void *userdata)
+void compile_list_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata)
 {
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -146,14 +146,10 @@ gcc_rvalue_t *compile_list_for_loop(env_t *env, gcc_block_t **block, ast_t *ast,
                    gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
 
     // body block
-    gcc_rvalue_t *body_val;
     if (body_compiler)
-        body_val = body_compiler(env, &loop_body_end, ast->for_loop.body, userdata);
+        body_compiler(env, &loop_body_end, ast->for_loop.body, userdata);
     else
-        body_val = compile_block(env, &loop_body_end, ast->for_loop.body, false);
-
-    if (loop_body_end && body_val)
-        gcc_eval(loop_body_end, NULL, body_val);
+        (void)compile_block(env, &loop_body_end, ast->for_loop.body, false);
 
     if (loop_body_end)
         gcc_jump(loop_body_end, NULL, loop_next);
@@ -179,7 +175,6 @@ gcc_rvalue_t *compile_list_for_loop(env_t *env, gcc_block_t **block, ast_t *ast,
     }
 
     *block = loop_end;
-    return NULL;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

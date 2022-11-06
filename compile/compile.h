@@ -45,7 +45,7 @@ typedef struct {
     bool debug;
 } env_t;
 
-typedef gcc_rvalue_t* (*ast_compiler_t)(env_t *env, gcc_block_t **block, ast_t *body, void *userdata);
+typedef void (*block_compiler_t)(env_t *env, gcc_block_t **block, ast_t *ast, void *userdata);
 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
@@ -79,10 +79,10 @@ gcc_rvalue_t *compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool re
 
 // ============================== lists.c ==============================
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast);
-gcc_rvalue_t *compile_list_for_loop(env_t *env, gcc_block_t **block, ast_t *ast, ast_compiler_t body_compiler, void *userdata);
+void compile_list_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
-gcc_rvalue_t *compile_range_for_loop(env_t *env, gcc_block_t **block, ast_t *ast, ast_compiler_t body_compiler, void *userdata);
+void compile_range_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

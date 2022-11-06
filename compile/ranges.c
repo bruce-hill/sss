@@ -31,7 +31,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 }
 
-gcc_rvalue_t *compile_range_for_loop(env_t *env, gcc_block_t **block, ast_t *ast, ast_compiler_t body_compiler, void *userdata)
+void compile_range_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata)
 {
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -117,14 +117,10 @@ gcc_rvalue_t *compile_range_for_loop(env_t *env, gcc_block_t **block, ast_t *ast
     gcc_block_t *loop_body_end = loop_body;
 
     // body block
-    gcc_rvalue_t *body_val;
     if (body_compiler)
-        body_val = body_compiler(env, &loop_body_end, ast->for_loop.body, userdata);
+        body_compiler(env, &loop_body_end, ast->for_loop.body, userdata);
     else
-        body_val = compile_block(env, &loop_body_end, ast->for_loop.body, false);
-
-    if (loop_body_end && body_val)
-        gcc_eval(loop_body_end, NULL, body_val);
+        (void)compile_block(env, &loop_body_end, ast->for_loop.body, false);
 
     // next:
     // index++, val+=step
@@ -143,5 +139,4 @@ gcc_rvalue_t *compile_range_for_loop(env_t *env, gcc_block_t **block, ast_t *ast
     }
 
     *block = loop_end;
-    return NULL;
 }
