@@ -426,7 +426,7 @@ ast_t *match_to_ast(match_t *m)
                 CORD c = CORD_cat_char(NULL, (char)strtol(m->start+2, &endptr, 8));
                 return AST(m, StringLiteral, .str=intern_str(CORD_to_char_star(c)));
             } else {
-                return AST(m, StringLiteral, .str=intern_strn(m->start, 1));
+                return AST(m, StringLiteral, .str=intern_strn(m->start+1, 1));
             }
             return AST(m, StringLiteral, .str=match_to_istr(m));
         } else {
