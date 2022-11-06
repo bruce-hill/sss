@@ -149,6 +149,9 @@ static void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_bl
 
 static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 {
+    if (t->kind == StringType || t->kind == TypeType)
+        return NULL;
+
     gcc_func_t *func = hashmap_get(env->tostring_funcs, t);
     if (func) return func;
 
@@ -221,16 +224,13 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 
         gcc_return(nil_block, NULL, INTERN_LITERAL("(nil)"));
 
-        if (t->nonnil->kind == StringType) {
-            gcc_return(nonnil_block, NULL, obj);
-        } else {
-            gcc_rvalue_t *args[] = {
-                obj,
-                gcc_param_as_rvalue(params[1]),
-            };
-            gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, get_tostring_func(env, t->nonnil), 2, args);
-            gcc_return(nonnil_block, NULL, ret);
-        }
+        gcc_rvalue_t *args[] = {
+            obj,
+            gcc_param_as_rvalue(params[1]),
+        };
+        gcc_func_t *tostring = get_tostring_func(env, t->nonnil);
+        gcc_rvalue_t *ret = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
+        gcc_return(nonnil_block, NULL, ret);
         break;
     }
     case ListType: {
@@ -258,16 +258,12 @@ static gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         // add_next_item:
         gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, gcc_lvalue_as_rvalue(i)));
         gcc_rvalue_t *item_str;
-        if (t->item_type->kind == StringType) {
-            item_str = item;
-        } else {
-            gcc_func_t *item_tostring = get_tostring_func(env, t->item_type);
-            gcc_rvalue_t *args[] = {
-                item,
-                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-            };
-            item_str = gcc_call(env->ctx, NULL, item_tostring, 2, args);
-        }
+        gcc_func_t *item_tostring = get_tostring_func(env, t->item_type);
+        gcc_rvalue_t *args[] = {
+            item,
+            gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+        };
+        item_str = item_tostring ? gcc_call(env->ctx, NULL, item_tostring, 2, args) : item;
         gcc_assign(add_next_item, NULL, str,
                    gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
                             gcc_lvalue_as_rvalue(str),
@@ -735,7 +731,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                     add_value(env, block, *chunk),
                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                 };
-                val = gcc_call(env->ctx, ast_loc(env, *chunk), tostring, 2, args);
+                val = tostring ? gcc_call(env->ctx, ast_loc(env, *chunk), tostring, 2, args) : args[0];
             }
             str = gcc_call(env->ctx, ast_loc(env, *chunk), CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
         }
@@ -816,6 +812,12 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Maybe: {
         return add_value(env, block, ast->child);
+    }
+    case TypeOf: {
+        gcc_func_t *intern_str_func = hashmap_get(env->global_funcs, "intern_str");
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        return gcc_call(env->ctx, NULL, intern_str_func, 1,
+                        (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t->type))});
     }
     case Cast: {
         gcc_rvalue_t *val = add_value(env, block, ast->expr);
@@ -1113,7 +1115,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug) {
     gcc_func_t *puts_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "puts", 1, &gcc_str_param, 0);
     gcc_rvalue_t *puts_rvalue = gcc_get_func_address(puts_func, NULL);
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type, .is_global=true));
-#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_jit_context_new_string_literal(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);

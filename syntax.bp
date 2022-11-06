@@ -222,8 +222,8 @@ between: nl curdent \b"between"\b _ [comment] @between=(maybeIndentedBlock / @:P
 Return:: \b"return"\b _ [@value=extended-expr]
 Use:: \b"use"\b _ `" @name=.. `"
 Export:: \b"export"\b _ +Var %(_`,__)
-TypeOf:: \b"typeof"\b _ @expression=(expr)
-SizeOf:: \b"sizeof"\b _ @expression=(expr)
+TypeOf:: \b"typeof"\b _ @value=(expr)
+SizeOf:: \b"sizeof"\b _ @value=(expr)
 Range:: (
   @first=maybe-index-term [`,@step=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
   / [`,@step=maybe-index-term] ".." [@last=maybe-index-term]) # ..5 ..

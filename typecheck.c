@@ -45,6 +45,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Num: {
             return Type(NumType);
         }
+        case TypeOf: {
+            bl_type_t *t = get_type(f, bindings, ast->child);
+            return Type(TypeType, .type=t);
+        }
         case Maybe: {
             bl_type_t *nonnil = get_type(f, bindings, ast->child);
             return nonnil->kind == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
