@@ -59,6 +59,7 @@ static inline istr_t fresh(istr_t name)
 #define append APPEND
 
 #define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
+#define gcc_int64(ctx,i) gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), i)
 
 // This must be memoized because GCC JIT doesn't do structural equality
 static inline gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
@@ -704,7 +705,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Int: {
-        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), ast->i);
+        return gcc_int64(env->ctx, ast->i);
     }
     case Num: {
         return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
@@ -792,7 +793,7 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_rvalue_t *insert_args[] = {
                         gcc_lvalue_as_rvalue(list),
                         gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-                        gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), (long)INT_NIL),
+                        gcc_int64(ctx, INT_NIL),
                         item_addr,
                         gcc_null(ctx, gcc_type(ctx, STRING)),
                     };
@@ -839,7 +840,27 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), strlen_func, 1, &obj);
             return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
         }
-            // TODO: range
+        case RangeType: {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+            gcc_struct_t *range_struct = gcc_type_if_struct(gcc_t);
+            assert(range_struct);
+            gcc_rvalue_t *first = gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 0)),
+                         *step = gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 1)),
+                         *last = gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 2));
+            gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
+#define BINOP(a,op,b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_ ## op, i64_t, a, b)
+#define UNOP(op,a) gcc_unary_op(env->ctx, NULL, GCC_UNOP_ ## op, i64_t, a)
+            // (last - first)//step + 1
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *len_var = gcc_local(func, NULL, i64_t, fresh("len"));
+            gcc_assign(*block, NULL, len_var, BINOP(BINOP(BINOP(last, MINUS, first), DIVIDE, step), PLUS, gcc_one(env->ctx, i64_t)));
+            // If less than zero, set to zero (without a conditional branch)
+            // len = len & ~(len >> 63)
+            gcc_rvalue_t *len = gcc_lvalue_as_rvalue(len_var);
+            return BINOP(len, BITWISE_AND, UNOP(BITWISE_NEGATE, BINOP(len, RSHIFT, gcc_int64(env->ctx, 63))));
+#undef BINOP
+            return len;
+        }
         default: ERROR(env, ast, "Length is not implemented for %s", type_to_string(t));
         }
     }
@@ -997,11 +1018,10 @@ gcc_rvalue_t *add_value(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *range_t = bl_type_to_gcc(env, Type(RangeType));
         gcc_struct_t *range_struct = gcc_type_if_struct(range_t);
         assert(range_struct);
-        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
         gcc_rvalue_t *values[] = {
-            ast->range.first ? add_value(env, block, ast->range.first) : gcc_rvalue_from_long(env->ctx, i64, INT64_MIN),
-            ast->range.step ? add_value(env, block, ast->range.step) : gcc_rvalue_from_long(env->ctx, i64, 1),
-            ast->range.last ? add_value(env, block, ast->range.last) : gcc_rvalue_from_long(env->ctx, i64, INT64_MAX),
+            ast->range.first ? add_value(env, block, ast->range.first) : gcc_int64(env->ctx, INT64_MIN),
+            ast->range.step ? add_value(env, block, ast->range.step) : gcc_int64(env->ctx, 1),
+            ast->range.last ? add_value(env, block, ast->range.last) : gcc_int64(env->ctx, INT64_MAX),
         };
         return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 
