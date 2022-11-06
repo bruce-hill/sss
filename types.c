@@ -1,8 +1,6 @@
 #include <gc/cord.h>
 #include <intern.h>
-#include <libgccjit.h>
 
-#include "libgccjit_abbrev.h"
 #include "types.h"
 
 static CORD type_to_cord(bl_type_t *t) {

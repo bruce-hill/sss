@@ -12,7 +12,7 @@
 
 #include "parse.h"
 #include "typecheck.h"
-#include "compile.h"
+#include "compile/compile.h"
 
 #define streq(a,b) (strcmp(a,b) == 0)
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
