@@ -412,8 +412,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         void compile_between(env_t *env, gcc_block_t **block, iterator_info_t *info) {
             (void)info;
-            if (ast->loop.between)
-                compile_block_statement(env, block, ast->loop.between);
+            if (ast->for_loop.between)
+                compile_block_statement(env, block, ast->for_loop.between);
         }
         compile_iteration(env, block, ast, compile_body, compile_between);
         return NULL;

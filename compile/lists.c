@@ -110,7 +110,8 @@ void compile_list_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_body = gcc_new_block(func, NULL),
+    gcc_block_t *loop_preamble = gcc_new_block(func, NULL),
+                *loop_body = gcc_new_block(func, NULL),
                 *loop_between = gcc_new_block(func, NULL),
                 *loop_next = gcc_new_block(func, NULL),
                 *loop_end = gcc_new_block(func, NULL);
@@ -129,8 +130,20 @@ void compile_list_iteration(
     // Preamble:
     gcc_rvalue_t *list = compile_expr(env, block, list_ast);
     bl_type_t *list_t = get_type(env->file, env->bindings, list_ast);
-    assert(list_t->kind == ListType);
     gcc_type_t *gcc_list_t = bl_type_to_gcc(env, list_t);
+    if (list_t->kind == OptionalType) {
+        gcc_rvalue_t *is_nil;
+        if (gcc_type_if_pointer(gcc_list_t))
+            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_null(env->ctx, gcc_list_t));
+        else
+            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_zero(env->ctx, gcc_list_t));
+        gcc_jump_condition(*block, NULL, is_nil, loop_end, loop_preamble);
+        list_t = list_t->nonnil;
+    } else {
+        gcc_jump(*block, NULL, loop_preamble);
+    }
+    *block = NULL;
+    assert(list_t->kind == ListType);
     bl_type_t *item_t = list_t->item_type;
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
 
@@ -138,11 +151,11 @@ void compile_list_iteration(
     gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_list_t));
     assert(list_struct);
     gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
-    gcc_assign(*block, NULL, item_ptr,
+    gcc_assign(loop_preamble, NULL, item_ptr,
                gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(list, NULL, gcc_get_field(list_struct, 0))));
     // len = list->len
     gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("len"));
-    gcc_assign(*block, NULL, len,
+    gcc_assign(loop_preamble, NULL, len,
                gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(list, NULL, gcc_get_field(list_struct, 1))));
 
     gcc_lvalue_t *item_var = gcc_local(func, NULL, gcc_item_t, fresh("item"));
@@ -151,12 +164,12 @@ void compile_list_iteration(
     gcc_type_t *i64 = gcc_type(env->ctx, INT64);
     gcc_lvalue_t *index_var = gcc_local(func, NULL, i64, fresh("i"));
     gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
-    gcc_assign(*block, NULL, index_var, one64);
+    gcc_assign(loop_preamble, NULL, index_var, one64);
 
     // goto (index > len) ? end : body
     gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_lvalue_as_rvalue(index_var), gcc_lvalue_as_rvalue(len));
-    gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
-    *block = NULL;
+    gcc_jump_condition(loop_preamble, NULL, is_done, loop_end, loop_body);
+    loop_preamble = NULL;
 
     // body:
     gcc_block_t *loop_body_end = loop_body;

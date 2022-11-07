@@ -70,6 +70,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
     switch (ast->kind) {
     case For: {
         bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
+        if (iter_t->kind == OptionalType) iter_t = iter_t->nonnil;
         switch (iter_t->kind) {
         case ListType: {
             compile_list_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler);
@@ -79,14 +80,14 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
             compile_range_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler);
             return;
         }
-        default: ERROR(env, ast, "Not implemented");
+        default: ERROR(env, ast->for_loop.iter, "Iteration is not supported for %s", type_to_string(iter_t));
         }
     }
     case Repeat: case While: {
         compile_loop_iteration(env, block, ast->kind == While ? "while" : "repeat", ast->loop.condition, body_compiler, between_compiler);
         return;
     }
-    default: ERROR(env, ast, "Not implemented");
+    default: ERROR(env, ast, "This is not an interation");
     }
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

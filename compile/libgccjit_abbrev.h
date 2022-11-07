@@ -58,7 +58,7 @@ typedef enum gcc_jit_output_kind gcc_output_kind_e;
 #define gcc_result_global gcc_jit_result_get_global
 #define gcc_result_release gcc_jit_result_release
 #define gcc_obj_ctx gcc_jit_object_get_context
-#define gcc obj_debug_string gcc_jit_object_get_debug_string
+#define gcc_obj_debug_string gcc_jit_object_get_debug_string
 #define gcc_new_location gcc_jit_context_new_location
 #define gcc_location_as_obj gcc_jit_location_as_object
 #define gcc_type_as_obj gcc_jit_type_as_object

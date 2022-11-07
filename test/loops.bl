@@ -1,4 +1,5 @@
 
+say "While loop:"
 x := 1
 while x < 10
     say "$x"
@@ -7,3 +8,16 @@ while x < 10
 between
     x += 1
     say "prev: $prev next: $x"
+
+
+say "For loop:"
+for x in [1,2,3]
+    say "x: $x"
+    prev := x
+between
+    say "prev: $prev next: $x"
+
+
+maybe := nil [Int]
+for x in maybe
+    say "Okay"
