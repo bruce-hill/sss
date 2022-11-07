@@ -137,7 +137,6 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
 
-    gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
     gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 #define LITERAL(str) gcc_new_string(env->ctx, str)
 #define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
@@ -199,72 +198,18 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         break;
     }
     case ListType: {
-        gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
-        gcc_assign(block, NULL, str,
-                   gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                            gcc_null(env->ctx, gcc_type(env->ctx, STRING)),
-                            gcc_new_string(env->ctx, "["),
-                   }));
-        gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
-        gcc_assign(block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
-        gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
-        gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
-        gcc_rvalue_t *len = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
-
-        gcc_block_t *add_comma = gcc_new_block(func, NULL);
-        gcc_block_t *add_next_item = gcc_new_block(func, NULL);
-        gcc_block_t *end = gcc_new_block(func, NULL);
-
-        // if (i < len) goto add_next_item;
-        gcc_jump_condition(block, NULL, 
-                      gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len),
-                      add_next_item, end);
-
-        // add_next_item:
-        gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, gcc_lvalue_as_rvalue(i)));
-        gcc_rvalue_t *item_str;
-        gcc_func_t *item_tostring = get_tostring_func(env, t->item_type);
-        gcc_rvalue_t *args[] = {
-            item,
-            gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-        };
-        item_str = item_tostring ? gcc_call(env->ctx, NULL, item_tostring, 2, args) : item;
-        gcc_assign(add_next_item, NULL, str,
-                   gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                            gcc_lvalue_as_rvalue(str),
-                            item_str,
-                   }));
-        
-        // i += 1
-        gcc_update(add_next_item, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
-        // if (i < len) goto add_comma;
-        gcc_jump_condition(add_next_item, NULL, 
-                      gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len),
-                      add_comma, end);
-
-        // add_comma:
-        gcc_assign(add_comma, NULL, str,
-                   gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                            gcc_lvalue_as_rvalue(str),
-                            gcc_new_string(env->ctx, ", "),
-                   }));
-        // goto add_next_item;
-        gcc_jump(add_comma, NULL, add_next_item);
-
-        // end:
-        gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                                     gcc_lvalue_as_rvalue(str),
-                                     gcc_new_string(env->ctx, "]"),
-                            });
-        gcc_return(end, NULL, CORD_str(ret));
+        compile_list_tostring_func(env, &block, obj, t);
         break;
     }
+
     default: {
         fprintf(stderr, "\x1b[31;1mtostring(%s) function is not yet implemented!\n", type_to_string(t));
         exit(1);
     }
     }
     return func;
+#undef CORD_str 
+#undef LITERAL
 }
 
 void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)

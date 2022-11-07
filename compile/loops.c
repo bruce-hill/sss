@@ -1,0 +1,98 @@
+// Compilation logic for while/repeat/loop loops
+#include <assert.h>
+#include <bhash.h>
+#include <libgccjit.h>
+#include <bp/files.h>
+#include <ctype.h>
+#include <err.h>
+#include <gc/cord.h>
+#include <limits.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdint.h>
+
+#include "../ast.h"
+#include "compile.h"
+#include "libgccjit_abbrev.h"
+#include "../typecheck.h"
+#include "../types.h"
+#include "../util.h"
+
+void compile_loop_iteration(
+    env_t *env, gcc_block_t **block, const char *loop_name, ast_t *ast,
+    block_compiler_t body_compiler, block_compiler_t between_compiler)
+{
+    assert(ast->kind == Repeat || ast->kind == While);
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *loop_top = gcc_new_block(func, NULL),
+                *loop_body = gcc_new_block(func, NULL),
+                *loop_between = between_compiler ? gcc_new_block(func, NULL) : NULL,
+                *loop_end = gcc_new_block(func, NULL);
+
+    env_t loop_env = *env;
+    loop_env.bindings = hashmap_new();
+    loop_env.bindings->fallback = env->bindings;
+    loop_env.loop_label = &(loop_label_t){
+        .enclosing = env->loop_label,
+        .name = intern_str(loop_name),
+        .skip_label = loop_top,
+        .stop_label = loop_end,
+    };
+    env = &loop_env;
+
+    gcc_jump(*block, NULL, loop_top);
+    *block = NULL;
+
+    gcc_comment(loop_top, NULL, "Loop");
+    ast_t *cond = ast->loop.condition;
+    if (cond)
+        check_truthiness(env, &loop_top, cond, loop_body, loop_end);
+    else
+        gcc_jump(loop_top, NULL, loop_body);
+
+    gcc_block_t *loop_body_orig = loop_body;
+    if (body_compiler)
+        body_compiler(env, &loop_body, ast->loop.body);
+
+    if (loop_body) {
+        if (loop_between) {
+            if (cond)
+                check_truthiness(env, &loop_body, cond, loop_between, loop_end);
+            else
+                gcc_jump(loop_body, NULL, loop_between);
+            between_compiler(env, &loop_between, ast->loop.between);
+            if (loop_between)
+                gcc_jump(loop_between, NULL, loop_body_orig);
+        } else {
+            gcc_jump(loop_body_orig, NULL, loop_top);
+        }
+    }
+
+    *block = loop_end;
+}
+
+void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, block_compiler_t between_compiler)
+{
+    switch (ast->kind) {
+    case For: {
+        bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
+        switch (iter_t->kind) {
+        case ListType: {
+            compile_list_iteration(env, block, ast, body_compiler, between_compiler);
+            return;
+        }
+        case RangeType: {
+            compile_range_iteration(env, block, ast, body_compiler, between_compiler);
+            return;
+        }
+        default: ERROR(env, ast, "Not implemented");
+        }
+    }
+    case Repeat: case While: {
+        compile_loop_iteration(env, block, ast->kind == While ? "while" : "repeat", ast, body_compiler, between_compiler);
+        return;
+    }
+    default: ERROR(env, ast, "Not implemented");
+    }
+}
+// vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

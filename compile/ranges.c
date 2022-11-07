@@ -31,12 +31,14 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 }
 
-void compile_range_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata)
+void compile_range_iteration(
+    env_t *env, gcc_block_t **block, ast_t *ast,
+    block_compiler_t body_compiler, block_compiler_t between_compiler)
 {
-
+    assert(ast->kind == For);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, NULL),
-                *loop_between = ast->for_loop.between ? gcc_new_block(func, NULL) : NULL,
+                *loop_between = between_compiler ? gcc_new_block(func, NULL) : NULL,
                 *loop_next = gcc_new_block(func, NULL),
                 *loop_end = gcc_new_block(func, NULL);
 
@@ -118,19 +120,21 @@ void compile_range_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_
 
     // body block
     if (body_compiler)
-        body_compiler(env, &loop_body_end, ast->for_loop.body, userdata);
-    else
-        (void)compile_block(env, &loop_body_end, ast->for_loop.body, false);
+        body_compiler(env, &loop_body_end, ast->for_loop.body);
+
+    if (loop_body_end)
+        gcc_jump(loop_body_end, NULL, loop_next);
 
     // next:
     // index++, val+=step
-    gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+    if (index_var)
+        gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
     gcc_update(loop_next, NULL, val, GCC_BINOP_PLUS, gcc_lvalue_as_rvalue(step));
     if (loop_between) {
         // goto is_done ? end : between
         gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
         // between:
-        (void)compile_block(env, &loop_between, ast->for_loop.between, false);
+        between_compiler(env, &loop_between, ast->for_loop.between);
         if (loop_between)
             gcc_jump(loop_between, NULL, loop_body); // goto body
     } else {

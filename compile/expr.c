@@ -111,7 +111,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t block_env = *env;
         block_env.bindings = hashmap_new();
         block_env.bindings->fallback = env->bindings;
-        return compile_block(&block_env, block, ast, true);
+        return compile_block_expr(&block_env, block, ast);
     }
     case FunctionDef: case Lambda: {
         binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
@@ -183,57 +183,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return str;
     }
     case List: {
-        gcc_ctx_t *ctx = env->ctx;
-        bl_type_t *t = get_type(env->file, env->bindings, ast);
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_type_t *item_gcc_type = bl_type_to_gcc(env, t->item_type);
-        gcc_lvalue_t *list = gcc_local(gcc_block_func(*block), NULL, bl_type_to_gcc(env, t), fresh("list"));
-
-#define PARAM(_t, _name) gcc_new_param(ctx, NULL, gcc_type(ctx, _t), _name)
-        gcc_param_t *list_params[] = {PARAM(SIZE, "item_size"), PARAM(SIZE, "min_items")};
-        gcc_func_t *new_list_func = gcc_new_func(
-            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_t, "list_new", 2, list_params, 0);
-
-        gcc_param_t *list_insert_params[] = {
-            gcc_new_param(ctx, NULL, gcc_t, "list"), PARAM(SIZE,"item_size"), PARAM(INT64,"index"),
-            gcc_new_param(ctx, NULL, gcc_get_ptr_type(item_gcc_type), "item"), PARAM(STRING,"err_msg"),
-        };
-        gcc_func_t *list_insert_func = gcc_new_func(
-            ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_insert", 5, list_insert_params, 0);
-#undef PARAM
-
-        ssize_t item_size = gcc_type_is_integral(item_gcc_type) ? gcc_type_size(item_gcc_type) : 8;
-        gcc_rvalue_t *new_list_args[] = {
-            gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-            gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), ast->list.items ? length(ast->list.items): 0),
-        };
-        gcc_assign(*block, ast_loc(env, ast), list, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
-
-        if (ast->list.items) {
-            gcc_lvalue_t *item = gcc_local(gcc_block_func(*block), NULL, item_gcc_type, fresh("item"));
-            gcc_rvalue_t *item_addr = gcc_lvalue_address(item, NULL);
-            foreach (ast->list.items, item_ast, _) {
-                switch ((*item_ast)->kind) {
-                case For: case While: case Repeat: case If: {
-                    errx(1, "Comprehensions not yet implemented");
-                }
-                default: {
-                    gcc_rvalue_t *val = compile_expr(env, block, (*item_ast));
-                    gcc_assign(*block, NULL, item, val);
-
-                    gcc_rvalue_t *insert_args[] = {
-                        gcc_lvalue_as_rvalue(list),
-                        gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-                        gcc_int64(ctx, INT_NIL),
-                        item_addr,
-                        gcc_null(ctx, gcc_type(ctx, STRING)),
-                    };
-                    gcc_eval(*block, NULL, gcc_call(ctx, NULL, list_insert_func, 5, insert_args));
-                }
-                }
-            }
-        }
-        return gcc_lvalue_as_rvalue(list);
+        return compile_list(env, block, ast);
     }
     case FunctionCall: {
         gcc_rvalue_t *fn = compile_expr(env, block, ast->call.fn);
@@ -449,67 +399,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Range: {
         return compile_range(env, block, ast);
     }
-    case While: case Repeat: {
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *loop_top = gcc_new_block(func, NULL),
-                    *loop_body = gcc_new_block(func, NULL),
-                    *loop_between = ast->loop.between ? gcc_new_block(func, NULL) : NULL,
-                    *loop_end = gcc_new_block(func, NULL);
-
-        env_t loop_env = *env;
-        loop_env.bindings = hashmap_new();
-        loop_env.bindings->fallback = env->bindings;
-        loop_env.loop_label = &(loop_label_t){
-            .enclosing = env->loop_label,
-            .name = intern_str(ast->kind == While ? "while" : "repeat"),
-            .skip_label = loop_top,
-            .stop_label = loop_end,
-        };
-        env = &loop_env;
-
-        gcc_jump(*block, NULL, loop_top);
-        *block = NULL;
-
-        gcc_comment(loop_top, NULL, "Loop");
-        ast_t *cond = ast->loop.condition;
-        if (cond)
-            check_truthiness(env, &loop_top, cond, loop_body, loop_end);
-        else
-            gcc_jump(loop_top, NULL, loop_body);
-
-        gcc_block_t *loop_body_orig = loop_body;
-        (void)compile_block(env, &loop_body, ast->loop.body, false);
-
-        if (loop_body) {
-            if (loop_between) {
-                if (cond)
-                    check_truthiness(env, &loop_body, cond, loop_between, loop_end);
-                else
-                    gcc_jump(loop_body, NULL, loop_between);
-                (void)compile_block(env, &loop_between, ast->loop.between, false);
-                if (loop_between)
-                    gcc_jump(loop_between, NULL, loop_body_orig);
-            } else {
-                gcc_jump(loop_body_orig, NULL, loop_top);
-            }
-        }
-
-        *block = loop_end;
+    case For: case While: case Repeat: {
+        compile_iteration(env, block, ast, (block_compiler_t)compile_block_statement, (block_compiler_t)compile_block_statement);
         return NULL;
-    }
-    case For: {
-        bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
-        switch (iter_t->kind) {
-        case ListType: {
-            compile_list_iteration(env, block, ast, NULL, NULL);
-            return NULL;
-        }
-        case RangeType: {
-            compile_range_iteration(env, block, ast, NULL, NULL);
-            return NULL;
-        }
-        default: ERROR(env, ast, "Not implemented");
-        }
     }
     case Skip: case Stop: {
         gcc_block_t *jump_dest = NULL;

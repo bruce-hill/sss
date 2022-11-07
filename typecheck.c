@@ -1,3 +1,4 @@
+// Logic for getting a Blang type from an AST node
 #include <bhash.h>
 #include <gc.h>
 #include <stdarg.h>
@@ -109,10 +110,28 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             if (ast->list.type)
                 return parse_type(f, bindings, ast->list.type);
 
-            bl_type_t *item_type = get_type(f, bindings, LIST_ITEM(ast->list.items, 0));
-            for (int64_t i = 1; i < LIST_LEN(ast->list.items); i++) {
-                bl_type_t *t2 = get_type(f, bindings, LIST_ITEM(ast->list.items, i));
-                bl_type_t *merged = type_or_type(item_type, t2);
+            bl_type_t *item_type = NULL;
+            for (int64_t i = 0; i < LIST_LEN(ast->list.items); i++) {
+                ast_t *item = LIST_ITEM(ast->list.items, i);
+                bl_type_t *t2;
+                switch (item->kind) {
+                case For: {
+                    t2 = get_type(f, bindings, item->for_loop.body);
+                    break;
+                }
+                case While: case Repeat: {
+                    t2 = get_type(f, bindings, item->loop.body);
+                    break;
+                }
+                case If: {
+                    TYPE_ERR(f, item, "Conditional items in lists not yet supported");
+                }
+                default: {
+                    t2 = get_type(f, bindings, item);
+                    break;
+                }
+                }
+                bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
                 if (!merged)
                     TYPE_ERR(f, LIST_ITEM(ast->list.items, i),
                              "This list item has type %s, which is different from earlier items which have type %s",

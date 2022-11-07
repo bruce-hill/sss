@@ -26,8 +26,9 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_eval(*block, ast_loc(env, ast), val);
 }
 
-gcc_rvalue_t *compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool return_value)
+gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
+    assert(ast->kind == Block);
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == FunctionDef) {
@@ -48,7 +49,7 @@ gcc_rvalue_t *compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool re
             // from the other functions in the block.
             compile_function(env, binding->func, *stmt);
         }
-        if (stmt == last_stmt && return_value) {
+        if (stmt == last_stmt && give_expression) {
             return compile_expr(env, block, *stmt);
         } else {
             compile_statement(env, block, *stmt);
@@ -57,5 +58,15 @@ gcc_rvalue_t *compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool re
     return NULL;
 }
 
+gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast)
+{
+    return _compile_block(env, block, ast, true);
+}
+
+void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast)
+{
+    if (ast)
+        (void)_compile_block(env, block, ast, false);
+}
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

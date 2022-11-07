@@ -45,7 +45,7 @@ typedef struct {
     bool debug;
 } env_t;
 
-typedef void (*block_compiler_t)(env_t *env, gcc_block_t **block, ast_t *ast, void *userdata);
+typedef void (*block_compiler_t)(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
@@ -75,14 +75,27 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global);
 
 // ============================== blocks.c ==============================
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
-gcc_rvalue_t *compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool return_value);
+gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
+void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
+
+// ============================== loops.c ==============================
+void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast,
+                       block_compiler_t body_compiler, block_compiler_t between_compiler);
+void compile_while_iteration(
+    env_t *env, gcc_block_t **block, ast_t *ast,
+    block_compiler_t body_compiler, block_compiler_t between_compiler);
+void compile_list_iteration(
+    env_t *env, gcc_block_t **block, ast_t *ast,
+    block_compiler_t body_compiler, block_compiler_t between_compiler);
+void compile_range_iteration(
+    env_t *env, gcc_block_t **block, ast_t *ast,
+    block_compiler_t body_compiler, block_compiler_t between_compiler);
 
 // ============================== lists.c ==============================
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast);
-void compile_list_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata);
+void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, bl_type_t *t);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
-void compile_range_iteration(env_t *env, gcc_block_t **block, ast_t *ast, block_compiler_t body_compiler, void *userdata);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
