@@ -102,7 +102,7 @@ void list_clear(list_t *l) {
     l->items = NULL;
 }
 
-list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size_t list_item_size, bool allow_aliasing) {
+list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size_t item_size, bool allow_aliasing) {
     list_t *slice = new(list_t);
     if (step > 0) {
         if (first > list->len) return slice;
@@ -126,22 +126,80 @@ list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size
     slice->len = len;
 
     if (step == 1 && allow_aliasing) {
-        slice->items = list->items + (first-1)*list_item_size;
+        slice->items = list->items + (first-1)*item_size;
     } else if (len > 0) {
-        void *p = GC_MALLOC(len * list_item_size);
+        void *p = GC_MALLOC(len * item_size);
         slice->items = p;
         void *src_items = list->items;
         if (step == 1) {
-            memcpy(slice->items, list->items + (first-1)*list_item_size, len * list_item_size);
+            memcpy(slice->items, list->items + (first-1)*item_size, len * item_size);
         } else {
             int64_t actual_len = 0;
             for (int64_t i = first; step > 0 ? (i <= last) : (i >= last); i += step) {
                 actual_len += 1;
-                p = mempcpy(p, src_items + (i - 1)*list_item_size, list_item_size);
+                p = mempcpy(p, src_items + (i - 1)*item_size, item_size);
             }
             slice->len = actual_len;
         }
     }
     return slice;
 }
+
+void list_sort(list_t *list, size_t item_size, int (*cmp)(const void*,const void*,void*), void *userdata)
+{
+    if (!cmp) {
+        cmp = (int(*)(const void*,const void*,void*))(void*)memcmp;
+        userdata = (void*)item_size;
+    }
+
+    qsort_r(list->items, list->len, item_size, cmp, userdata);
+}
+
+bool list_heap_pop(list_t *list, size_t item_size, void *ret, int (*cmp)(const void*,const void*,void*), void *userdata)
+{
+    if (list->len <= 0) return false;
+
+    if (!cmp) {
+        cmp = (int(*)(const void*,const void*,void*))(void*)memcmp;
+        userdata = (void*)item_size;
+    }
+
+    char *items = (char*)list->items;
+    memcpy(ret, items, item_size);
+    char *last = items + item_size*(list->len-1);
+    memcpy(items, last, item_size);
+    list->len -= 1;
+    bzero(items + list->len, item_size);
+    for (int i = 0; i < (int)list->len; ) {
+        int c1 = 2*i + 1,
+            c2 = 2*i + 2;
+        int swap_index = cmp(items+c1, items+c2, userdata) >= 0 ? c1 : c2;
+        if (cmp(items+i, items+swap_index, userdata) >= 0)
+            break;
+        char tmp[item_size];
+        memcpy(tmp, items+swap_index, item_size);
+        memcpy(items+swap_index, items+i, item_size);
+        memcpy(items+i, tmp, item_size);
+        i = swap_index;
+    }
+
+    return true;
+}
+
+void list_heap_push(list_t *list, size_t item_size, int (*cmp)(const void*,const void*,void*), void *item, void *userdata)
+{
+    if (!cmp) {
+        cmp = (int(*)(const void*,const void*,void*))(void*)memcmp;
+        userdata = (void*)item_size;
+    }
+
+    list_insert(list, item_size, list->len, item, NULL);
+    for (int64_t i = list->len-1; i > 0 && cmp(list->items+i/2,list->items+i,userdata) < 0; i /= 2) {
+        char tmp[item_size];
+        memcpy(tmp, list->items+i/2, item_size);
+        memcpy(list->items+i/2, list->items+i, item_size);
+        memcpy(list->items+i, tmp, item_size);
+    }
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

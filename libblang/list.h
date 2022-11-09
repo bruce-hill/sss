@@ -20,7 +20,10 @@ void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last, co
 bool list_equal(list_t *a, list_t *b, size_t item_size);
 list_t *list_copy(list_t *l, size_t item_size);
 void list_clear(list_t *l);
-list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size_t list_item_size, bool allow_aliasing);
+list_t *list_slice(list_t *list, int64_t first, int64_t last, int64_t step, size_t item_size, bool allow_aliasing);
+void list_sort(list_t *list, size_t item_size, int (*cmp)(const void*,const void*,void*), void *userdata);
+bool list_heap_pop(list_t *list, size_t item_size, void *ret, int (*cmp)(const void*,const void*,void*), void *userdata);
+void list_heap_push(list_t *list, size_t item_size, int (*cmp)(const void*,const void*,void*), void *item, void *userdata);
 
 #define List(t) t**
 #define EMPTY_LIST(t) ((t**)list_new(sizeof(t), 0))
