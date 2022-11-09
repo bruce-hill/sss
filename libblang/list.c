@@ -19,7 +19,7 @@ list_t *list_new_items(size_t item_size, size_t len, void *items) {
 }
 
 void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
-    if (index == INT_NIL) index = list->len + 1;
+    if (index == 0) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
 
@@ -38,7 +38,7 @@ void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *othe
 }
 
 void list_insert(list_t *list, size_t item_size, int64_t index, void *item, const char *err_fmt) {
-    if (index == INT_NIL) index = list->len + 1;
+    if (index == 0) index = list->len + 1;
     else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
         errx(1, err_fmt, index);
 
@@ -56,8 +56,8 @@ void list_insert(list_t *list, size_t item_size, int64_t index, void *item, cons
 }
 
 void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last, const char *err_fmt) {
-    if (first == INT_NIL) first = list->len;
-    if (last == INT_NIL) last = first;
+    if (first == 0) first = list->len;
+    if (last == 0) last = first;
 
     if (__builtin_expect((first < 1) | (last < first) | (last > list->len), 0))
         errx(1, err_fmt, first, last);

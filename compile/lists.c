@@ -68,7 +68,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_rvalue_t *insert_args[] = {
                         gcc_lvalue_as_rvalue(list),
                         gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)item_size),
-                        gcc_int64(env->ctx, INT_NIL),
+                        gcc_int64(env->ctx, 0),
                         item_addr,
                         gcc_null(env->ctx, gcc_type(env->ctx, STRING)),
                     };
@@ -93,7 +93,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *insert_args[] = {
                     gcc_lvalue_as_rvalue(list),
                     gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-                    gcc_int64(ctx, INT_NIL),
+                    gcc_int64(ctx, 0),
                     item_addr,
                     gcc_null(ctx, gcc_type(ctx, STRING)),
                 };
