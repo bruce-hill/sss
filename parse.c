@@ -311,7 +311,7 @@ ast_t *match_to_ast(match_t *m)
                 };
                 // Workaround because this is an array-of-structs instead of pointers:
                 // (Can't use APPEND() macro)
-                list_insert((list_t*)clauses, sizeof(ast_clause_t), 0, &clause, "Invalid list index: %ld");
+                list_append((list_t*)clauses, sizeof(ast_clause_t), &clause);
             }
             ast_t *else_block = NULL;
             match_t *else_m = get_named_capture(m, "elseBody", -1);

@@ -18,23 +18,17 @@ list_t *list_new_items(size_t item_size, size_t len, void *items) {
     return list;
 }
 
-void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
-    if (index == 0) index = list->len + 1;
-    else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
-        errx(1, err_fmt, index);
-
-    if (index == list->len + 1 && list->slack >= other->len) {
-        memcpy(list->items + (index-1)*item_size, other->items, other->len*item_size);
-        list->slack -= other->len;
+void list_append(list_t *list, size_t item_size, void *item) {
+    if (list->slack > 0) {
+        list->slack -= 1;
     } else {
         char *old_items = list->items;
-        list->items = GC_MALLOC(item_size * (list->len + other->len));
-        list->slack = 0;
-        memcpy(list->items, old_items, item_size*(index-1));
-        memcpy(list->items + (index-1)*item_size, other->items, other->len*item_size);
-        memcpy(list->items + (index-1 + other->len)*item_size, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+        list->slack = 8;
+        list->items = GC_MALLOC(item_size * (list->len + 1 + list->slack));
+        memcpy(list->items, old_items, item_size*list->len);
     }
-    list->len += other->len;
+    memcpy(list->items + item_size * list->len, item, item_size);
+    list->len += 1;
 }
 
 void list_insert(list_t *list, size_t item_size, int64_t index, void *item, const char *err_fmt) {
@@ -53,6 +47,25 @@ void list_insert(list_t *list, size_t item_size, int64_t index, void *item, cons
     }
     memcpy(list->items + item_size * (index-1), item, item_size);
     list->len += 1;
+}
+
+void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt) {
+    if (index == 0) index = list->len + 1;
+    else if (__builtin_expect((index < 1) | (index > list->len + 1), 0))
+        errx(1, err_fmt, index);
+
+    if (index == list->len + 1 && list->slack >= other->len) {
+        memcpy(list->items + (index-1)*item_size, other->items, other->len*item_size);
+        list->slack -= other->len;
+    } else {
+        char *old_items = list->items;
+        list->items = GC_MALLOC(item_size * (list->len + other->len));
+        list->slack = 0;
+        memcpy(list->items, old_items, item_size*(index-1));
+        memcpy(list->items + (index-1)*item_size, other->items, other->len*item_size);
+        memcpy(list->items + (index-1 + other->len)*item_size, old_items+item_size*(index-1), item_size*(list->len - (index-1)));
+    }
+    list->len += other->len;
 }
 
 void list_remove(list_t *list, size_t item_size, int64_t first, int64_t last, const char *err_fmt) {

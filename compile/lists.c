@@ -32,12 +32,12 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_func_t *new_list_func = gcc_new_func(
         env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_t, "list_new", 2, list_params, 0);
 
-    gcc_param_t *list_insert_params[] = {
-        gcc_new_param(ctx, NULL, gcc_t, "list"), PARAM(SIZE,"item_size"), PARAM(INT64,"index"),
-        gcc_new_param(ctx, NULL, gcc_get_ptr_type(item_gcc_type), "item"), PARAM(STRING,"err_msg"),
+    gcc_param_t *append_params[] = {
+        gcc_new_param(ctx, NULL, gcc_t, "list"), PARAM(SIZE,"item_size"),
+        gcc_new_param(ctx, NULL, gcc_get_ptr_type(item_gcc_type), "item"),
     };
-    gcc_func_t *list_insert_func = gcc_new_func(
-        ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_insert", 5, list_insert_params, 0);
+    gcc_func_t *append_func = gcc_new_func(
+        ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_append", 3, append_params, 0);
 #undef PARAM
 
     ssize_t item_size = gcc_type_is_integral(item_gcc_type) ? gcc_type_size(item_gcc_type) : 8;
@@ -65,14 +65,12 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                         hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
 
                     gcc_assign(*block, NULL, item_var, compile_expr(env, block, body));
-                    gcc_rvalue_t *insert_args[] = {
+                    gcc_rvalue_t *append_args[] = {
                         gcc_lvalue_as_rvalue(list),
                         gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)item_size),
-                        gcc_int64(env->ctx, 0),
                         item_addr,
-                        gcc_null(env->ctx, gcc_type(env->ctx, STRING)),
                     };
-                    gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, list_insert_func, 5, insert_args));
+                    gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, append_func, 3, append_args));
                 }
                 void compile_between(env_t *env, gcc_block_t **block, iterator_info_t *info) {
                     (void)info;
@@ -90,14 +88,12 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *val = compile_expr(env, block, (*item_ast));
                 gcc_assign(*block, NULL, item_var, val);
 
-                gcc_rvalue_t *insert_args[] = {
+                gcc_rvalue_t *append_args[] = {
                     gcc_lvalue_as_rvalue(list),
                     gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-                    gcc_int64(ctx, 0),
                     item_addr,
-                    gcc_null(ctx, gcc_type(ctx, STRING)),
                 };
-                gcc_eval(*block, NULL, gcc_call(ctx, NULL, list_insert_func, 5, insert_args));
+                gcc_eval(*block, NULL, gcc_call(ctx, NULL, append_func, 3, append_args));
             }
             }
         }
