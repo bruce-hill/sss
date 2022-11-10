@@ -21,9 +21,7 @@
 istr_t fresh(istr_t name)
 {
     static int id = 0;
-    CORD ret;
-    CORD_sprintf(&ret, "%s__%d", name, id++);
-    return intern_str(CORD_to_char_star(ret));
+    return intern_strf("%s__%d", name, id++);
 }
 
 // This must be memoized because GCC JIT doesn't do structural equality
@@ -137,10 +135,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
 
-    gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 #define LITERAL(str) gcc_new_string(env->ctx, str)
-#define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
-    
     switch (t->kind) {
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, NULL);
@@ -158,15 +153,9 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         default: fmt = "%ld"; break;
         }
 
-        gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
-        gcc_rvalue_t *args[] = {
-            gcc_lvalue_address(str, NULL),
-            gcc_new_string(env->ctx, fmt),
-            obj,
-        };
-        gcc_func_t *cord_sprintf = hashmap_gets(env->global_funcs, "CORD_sprintf");
-        gcc_eval(block, NULL, gcc_call(env->ctx, NULL, cord_sprintf, 3, args));
-        gcc_return(block, NULL, CORD_str(gcc_lvalue_as_rvalue(str)));
+        gcc_rvalue_t *args[] = {gcc_new_string(env->ctx, fmt), obj};
+        gcc_func_t *internf = hashmap_gets(env->global_funcs, "intern_strf");
+        gcc_return(block, NULL, gcc_call(env->ctx, NULL, internf, 2, args));
         break;
     }
     case RangeType: {
@@ -208,7 +197,6 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     }
     }
     return func;
-#undef CORD_str 
 #undef LITERAL
 }
 

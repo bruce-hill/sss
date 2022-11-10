@@ -39,6 +39,7 @@ static hashmap_t *get_global_functions(gcc_ctx_t *ctx)
     MAKE_FUNC(t_int, "CORD_sprintf", 1, PARAM(t_str_ptr, "cord"), PARAM(t_str, "fmt"));
     MAKE_FUNC(t_str, "CORD_to_char_star", 0, PARAM(t_str, "cord"));
     MAKE_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
+    MAKE_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
     MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
     MAKE_FUNC(t_void, "fail", 0, PARAM(t_str, "message"));
 #undef MAKE_FUNC
