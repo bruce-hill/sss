@@ -8,7 +8,7 @@ backend IR, and compiles from there to assembly code and then to a binary.
 
 ```
 def sing_bottles_song(n:Int)
-    for i in n..0
+    for i in n,-1..0
         when i is 0
             say "No more bottles of beer on the wall! :("
         is 1
@@ -37,9 +37,9 @@ See [test/\*.bl](test/) for more examples.
 
 ## Dependencies
 
-The Blang compiler is written in [Moonscript](https://moonscript.org), uses
-[QBE](https://c9x.me/compile/) as a backend, before being compiled from
-assembly with your assembler of choice. Blang uses the following libraries:
+The Blang compiler is written in C and uses
+[libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend. Blang uses the
+following libraries:
 
 - Garbage collection: [Boehm garbage collector](https://www.hboehm.info/gc/)
     - Available from your package manager of choice: `pacman -S gc`
@@ -54,7 +54,7 @@ assembly with your assembler of choice. Blang uses the following libraries:
 
 Once the necessary dependencies are installed, you can use `./blang
 your-file.bl` to run a file directly or `./blangc your-file.bl` to compile it
-into a binary called `your-file.o`. See `blang --help` and `blangc --help` for
+into a binary called `your-file`. See `blang --help` and `blangc --help` for
 full usage info.
 
 ## License
