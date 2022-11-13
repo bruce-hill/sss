@@ -92,11 +92,11 @@ is ugly, cumbersome, and may result in unnecessary condition-checking overhead:
 ```python
 s = ""
 first_loop = true
-for num in nums:
+for num in nums
     if num < 0: continue
-    if first_loop:
+    if first_loop
         first_loop = false
-    else:
+    else
         s += ", "
     s += str(num)
 ```
@@ -179,7 +179,7 @@ n := nums[x] or fail "Not a valid key: $x"
 do_thing(n)
 
 // Option 3: Pattern match
-if n := nums[x]:
+if n := nums[x]
     do_thing(n)
 else
     missing_num_logic()
