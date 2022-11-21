@@ -126,7 +126,7 @@ Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @lhs=Var _":=" _ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=TypeVar _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDeclaration:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
-StructDeclaration:: \b"struct"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / Declaration) % __ __`}
+StructDeclaration:: \b"def"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / Declaration) % __ __`}
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
 UnionDeclaration:: \b"union"\b _ @name=TypeVar __ `{__ *(UnionField / MethodDef / FnDef / Declaration) % __ __`}
 UnionField:: @names=@+(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
@@ -230,7 +230,7 @@ Range:: (
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
-keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"then"/"struct"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"then"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
   /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])
