@@ -202,6 +202,53 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_return(nonnil_block, NULL, ret);
         break;
     }
+    case StructType: {
+        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
+
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+
+        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+        if (t->struct_.name) {
+            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                           (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, t->struct_.name)});
+        }
+        str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                       (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, "{")});
+        
+        size_t num_fields = gcc_field_count(gcc_struct);
+        for (size_t i = 0; i < num_fields; i++) {
+            if (i > 0)
+                str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                               (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, ", ")});
+
+            istr_t name = ith(t->struct_.field_names, i);
+            if (name) {
+                CORD label;
+                CORD_sprintf(&label, "%s=", name);
+                str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                               (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, label)});
+            }
+
+            bl_type_t *member_t = ith(t->struct_.field_types, i);
+            gcc_func_t *tostring = get_tostring_func(env, member_t);
+            gcc_field_t *field = gcc_get_field(gcc_struct, i);
+            gcc_rvalue_t *args[] = {
+                gcc_rvalue_access_field(obj, NULL, field),
+                gcc_param_as_rvalue(params[1]), // TODO: fix infinite recursion
+            };
+            gcc_rvalue_t *member_str = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
+            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                           (gcc_rvalue_t*[]){str, member_str});
+        }
+
+        str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                       (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, "}")});
+
+        gcc_return(block, NULL, gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){str}));
+        break;
+    }
     case ListType: {
         compile_list_tostring_func(env, &block, obj, t);
         break;

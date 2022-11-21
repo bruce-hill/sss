@@ -202,14 +202,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             unused_fields[i] = gcc_get_field(gcc_struct, i);
 
         size_t num_values = length(ast->struct_.members);
-        gcc_rvalue_t *values[num_values];
+
+        struct {
+            size_t field_num;
+            gcc_rvalue_t *value;
+            gcc_field_t *field;
+        } entries[num_values];
+
         for (size_t i = 0; i < num_values; i++) {
             ast_t *member = ith(ast->struct_.members, i);
             assert(member->kind == StructField);
-            values[i] = compile_expr(env, block, member->named.value);
+            entries[i].value = compile_expr(env, block, member->named.value);
         }
-
-        gcc_field_t *populated_fields[num_values];
 
         // Put in named fields first:
         for (size_t value_index = 0; value_index < num_values; value_index++) {
@@ -224,7 +228,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     ERROR(env, member, "This field is a duplicate of an earlier field")
 
                 // Found the field:
-                populated_fields[value_index] = field;
+                entries[value_index].field = field;
+                entries[value_index].field_num = field_index;
                 unused_fields[field_index] = NULL;
                 goto found_name;
             }
@@ -243,8 +248,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     continue;
 
                 // Found the field:
-                printf("Found an unnamed field %zu %zu\n", value_index, field_index);
-                populated_fields[value_index] = unused_fields[field_index];
+                entries[value_index].field = unused_fields[field_index];
+                entries[value_index].field_num = field_index;
                 unused_fields[field_index] = NULL;
                 goto found_index;
             }
@@ -254,7 +259,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
           found_index: continue;
         }
 
-        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, values);
+        // GCC is dumb and requires sorting the fields:
+        qsort_r(entries, num_values, sizeof(entries[0]), (int(*)(const void*,const void*,void*))(void*)memcmp, (void*)sizeof(size_t));
+        gcc_field_t *populated_fields[num_values];
+        gcc_rvalue_t *rvalues[num_values];
+        for (size_t i = 0; i < num_values; i++) {
+            populated_fields[i] = entries[i].field;
+            rvalues[i] = entries[i].value;
+        }
+
+        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
         return rval;
     }
