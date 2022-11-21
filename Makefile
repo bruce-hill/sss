@@ -43,8 +43,8 @@ blangc:
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 
-tags: $(CFILES) blang.c
-	ctags *.c *.h
+tags: $(CFILES) $(HFILES) blang.c
+	ctags $^
 
 clean:
 	rm -f $(NAME) $(OBJFILES) $(LIBFILE)

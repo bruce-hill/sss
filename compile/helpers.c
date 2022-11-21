@@ -24,6 +24,46 @@ istr_t fresh(istr_t name)
     return intern_strf("%s__%d", name, id++);
 }
 
+// Kinda janky, but libgccjit doesn't have this function built in
+ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
+{
+    if (bl_t->kind != StructType) return gcc_sizeof(env, bl_t);
+    ssize_t align = 0;
+    foreach (bl_t->struct_.field_types, ftype, _) {
+        ssize_t field_align = gcc_alignof(env, *ftype);
+        if (field_align > align) align = field_align;
+    }
+    return align;
+}
+
+// Kinda janky, but libgccjit doesn't have this function built in, except for integer types:
+ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
+{
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, bl_t);
+    if (gcc_type_is_integral(gcc_t))
+        return gcc_type_size(gcc_t);
+    switch (bl_t->kind) {
+    case ListType: return sizeof(list_t);
+    case RangeType: return 24;
+    case StringType: case DSLType: case TypeType: return sizeof(char*);
+    case StructType: {
+        ssize_t size = 0;
+        ssize_t max_align = 0;
+        foreach (bl_t->struct_.field_types, ftype, _) {
+            ssize_t field_align = gcc_alignof(env, *ftype);
+            if (size % field_align)
+                size += (field_align - size) % field_align; // padding
+            size += gcc_sizeof(env, *ftype);
+            if (field_align > max_align) max_align = field_align;
+        }
+        if (size % max_align)
+            size += (max_align - size) % max_align; // padding
+        return size;
+    }
+    default: return 8;
+    }
+}
+
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {

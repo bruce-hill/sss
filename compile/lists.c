@@ -40,7 +40,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
         ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_append", 3, append_params, 0);
 #undef PARAM
 
-    ssize_t item_size = gcc_type_is_integral(item_gcc_type) ? gcc_type_size(item_gcc_type) : 8;
+    ssize_t item_size = gcc_sizeof(env, t->item_type);
     gcc_rvalue_t *new_list_args[] = {
         gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
         gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), ast->list.items ? length(ast->list.items): 0),

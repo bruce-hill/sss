@@ -55,6 +55,9 @@ typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
 istr_t fresh(istr_t name);
+// Data layout information:
+ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t);
+ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t);
 // Convert a blang type to the GCC JIT representation
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t);
 // Get a map that contains only the global bindings

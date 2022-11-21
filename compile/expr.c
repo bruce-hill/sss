@@ -332,20 +332,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Index: {
+        (void)get_type(env->file, env->bindings, ast); // typecheck
         bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
-        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-        gcc_rvalue_t *obj = compile_expr(env, block, ast->child);
+        gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);
         switch (indexed_t->kind) {
         case StructType: {
             assert(ast->index->kind == FieldName);
             for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
                 if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str) {
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, NULL, field);
                 }
             }
             ERROR(env, ast->index, "Not a valid field on type %s", type_to_string(indexed_t));
+        }
+        case ListType: {
+            gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
+            gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
+            gcc_rvalue_t *index = compile_expr(env, block, ast->index);
+            // TODO: bounds check
+            return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index));
         }
         default: {
             ERROR(env, ast, "Indexing is not supported for %s", type_to_string(indexed_t));
