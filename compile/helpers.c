@@ -70,6 +70,22 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
         break;
     }
+    case StructType: {
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, t->struct_.name);
+        gcc_type_t *gcc_t = gcc_struct_as_type(gcc_struct);
+        hashmap_set(env->gcc_types, t, gcc_t);
+
+        NEW_LIST(gcc_field_t*, fields);
+        foreach (t->struct_.field_types, bl_ft, _) {
+            int i = (int)(bl_ft - *t->struct_.field_types);
+            gcc_type_t *gcc_ft = bl_type_to_gcc(env, *bl_ft);
+            gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(t->struct_.field_names, i));
+            append(fields, field);
+        }
+        gcc_set_fields(gcc_struct, NULL, length(fields), fields[0]);
+        gcc_t = gcc_struct_as_type(gcc_struct);
+        return gcc_t;
+    }
     case TypeType: {
         gcc_t = gcc_type(env->ctx, STRING);
         break;

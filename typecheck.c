@@ -269,6 +269,45 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             return Type(FunctionType, .args=args, .ret=ret);
         }
 
+        case Struct: {
+            binding_t *binding = hashmap_get(bindings, ast->struct_.name);
+            if (binding)
+                return binding->type->type;
+            assert(false);
+
+//             istr_t name = ast->struct_.name;
+//             NEW_LIST(istr_t, field_names);
+//             NEW_LIST(bl_type_t*, field_types);
+//             LIST_FOR (ast->struct_.members, member, _) {
+//                 if ((*member)->kind == StructField) {
+//                     APPEND(field_names, (*member)->named.name);
+//                     APPEND(field_types, get_type(f, bindings, (*member)->named.value));
+//                 } else {
+//                     assert(false);
+//                 }
+//             }
+//             return Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
+        }
+
+        case StructDef: {
+            istr_t name = ast->struct_.name;
+            NEW_LIST(istr_t, field_names);
+            NEW_LIST(bl_type_t*, field_types);
+            LIST_FOR (ast->struct_.members, member, _) {
+                if ((*member)->kind == StructFieldDef) {
+                    bl_type_t *ft = parse_type(f, bindings, (*member)->fields.type);
+                    LIST_FOR((*member)->fields.names, name, __) {
+                        APPEND(field_names, *name);
+                        APPEND(field_types, ft);
+                    }
+                } else {
+                    assert(false);
+                }
+            }
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
+            return Type(TypeType, .type=t);
+        }
+
         case If: {
             bl_type_t *t = NULL;
             LIST_FOR (ast->clauses, clause, _) {
@@ -306,7 +345,7 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Assign: case Declare: case Block: case FunctionDef:
+    case Assign: case Declare: case Block: case FunctionDef: case StructDef:
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);

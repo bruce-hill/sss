@@ -19,6 +19,7 @@ typedef enum {
     TableType,
     FunctionType,
     OptionalType,
+    StructType,
 } typekind_e;
 
 typedef const struct bl_type_s {
@@ -35,6 +36,11 @@ typedef const struct bl_type_s {
             List(const struct bl_type_s*) args;
             const struct bl_type_s *ret;
         };
+        struct {
+            istr_t name;
+            List(istr_t) field_names;
+            List(const struct bl_type_s*) field_types;
+        } struct_;
     };
 } bl_type_t;
 

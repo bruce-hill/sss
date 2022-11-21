@@ -123,7 +123,7 @@ const char *kind_tags[] = {
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
     [TypeOf]="TypeOf",
     [List]="List", [Table]="Table",
-    [FunctionDef]="FnDef", [Lambda]="Lambda",
+    [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
     [Block]="Block",
     [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
@@ -134,6 +134,7 @@ const char *kind_tags[] = {
     [TypeList]="ListType", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
+    [Struct]="Struct", [StructDef]="StructDeclaration", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
 };
 
 static astkind_e get_kind(match_t *m)
@@ -250,8 +251,8 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, Block, .children=stmts);
         }
-        case FunctionDef: case Lambda: {
-            istr_t name = kind == FunctionDef ? match_to_istr(get_named_capture(m, "name", -1)) : NULL;
+        case FunctionDef: case MethodDef: case Lambda: {
+            istr_t name = kind == Lambda ? NULL : match_to_istr(get_named_capture(m, "name", -1));
             NEW_LIST(istr_t, arg_names);
             NEW_LIST(ast_t*, arg_types);
             match_t *args_m = get_named_capture(m, "args", -1);
@@ -272,7 +273,11 @@ ast_t *match_to_ast(match_t *m)
             if (kind == Lambda)
                 body = AST(body_m, Return, .child=body);
 
-            return AST(m, kind, .fn.name=name,
+            istr_t self = NULL;
+            if (kind == MethodDef)
+                self = match_to_istr(get_named_capture(m, "selfVar", -1));
+
+            return AST(m, kind, .fn.name=name, .fn.self=self,
                        .fn.arg_names=arg_names, .fn.arg_types=arg_types,
                        .fn.ret_type=ret_type, .fn.body=body);
         }
@@ -287,15 +292,34 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, FunctionCall, .call.fn=fn, .call.args=args);
         }
-        case KeywordArg: {
-            match_t *name_m = get_named_capture(m, "name", -1);
-            CORD c = CORD_substr(name_m->start, 0, (size_t)(name_m->end - name_m->start));
-            istr_t name = intern_str(CORD_to_char_star(c));
+        case KeywordArg: case StructField: {
+            istr_t name = match_to_istr(get_named_capture(m, "name", -1));
             ast_t *value = match_to_ast(get_named_capture(m, "value", -1));
-            return AST(m, KeywordArg, .named.name=name, .named.value=value);
+            return AST(m, kind, .named.name=name, .named.value=value);
         }
         case Return: {
             return AST(m, Return, .child=match_to_ast(get_named_capture(m, "value", -1)));
+        }
+        case StructDef: case Struct: {
+            istr_t name = match_to_istr(get_named_capture(m, "name", -1));
+            NEW_LIST(ast_t*, members);
+            for (int i = 1; ; i++) {
+                ast_t *member = match_to_ast(get_numbered_capture(m, i));
+                if (!member) break;
+                APPEND(members, member);
+            }
+            return AST(m, kind, .struct_.name=name, .struct_.members=members);
+        }
+        case StructFieldDef: {
+            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
+            NEW_LIST(istr_t, names);
+            match_t *names_m = get_named_capture(m, "names", -1);
+            for (int i = 1; ; i++) {
+                istr_t name = match_to_istr(get_numbered_capture(names_m, i));
+                if (!name) break;
+                APPEND(names, name);
+            }
+            return AST(m, StructFieldDef, .fields.names=names, .fields.type=type);
         }
         case If: {
             NEW_LIST(ast_clause_t, clauses);

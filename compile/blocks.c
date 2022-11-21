@@ -29,6 +29,14 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
     assert(ast->kind == Block);
+    // Struct defs are visible in the entire block (allowing corecursive structs)
+    foreach (ast->children, stmt, last_stmt) {
+        if ((*stmt)->kind == StructDef) {
+            bl_type_t *t = get_type(env->file, env->bindings, *stmt);
+            hashmap_set(env->bindings, (*stmt)->fn.name, new(binding_t, .type=t, .is_global=true));
+        }
+    }
+    
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == FunctionDef) {

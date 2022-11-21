@@ -38,6 +38,26 @@ static CORD type_to_cord(bl_type_t *t) {
             c = CORD_cat(c, type_to_cord(t->value));
             return c;
         }
+        case StructType: {
+            CORD c = NULL;
+            if (t->struct_.name)
+                c = CORD_cat(c, t->struct_.name);
+            c = CORD_cat(c, "{");
+            for (int64_t i = 0; i < LIST_LEN(t->struct_.field_types); i++) {
+                bl_type_t *ft = LIST_ITEM(t->struct_.field_types, i);
+                istr_t fname = LIST_ITEM(t->struct_.field_names, i);
+                if (i > 0)
+                    c = CORD_cat(c, ",");
+
+                if (fname)
+                    c = CORD_cat(CORD_cat(c, fname), "=");
+
+                CORD fstr = type_to_cord(ft);
+                c = CORD_cat(c, fstr);
+            }
+            c = CORD_cat(c, "}");
+            return c;
+        }
         case OptionalType: return CORD_cat(type_to_cord(t->nonnil), "?");
         default: return "?!?!?";
     }

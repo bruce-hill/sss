@@ -185,6 +185,79 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case List: {
         return compile_list(env, block, ast);
     }
+    case StructDef: {
+        return NULL;
+    }
+    case Struct: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        if (length(ast->struct_.members) > length(t->struct_.field_names))
+            ERROR(env, ast, "This struct literal has too many fields (expected only %ld)", length(t->struct_.field_names));
+
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+        size_t num_fields = gcc_field_count(gcc_struct);
+        assert(num_fields == (size_t)length(t->struct_.field_names));
+        gcc_field_t *unused_fields[num_fields];
+        for (size_t i = 0, count = gcc_field_count(gcc_struct); i < count; i++)
+            unused_fields[i] = gcc_get_field(gcc_struct, i);
+
+        size_t num_values = length(ast->struct_.members);
+        gcc_rvalue_t *values[num_values];
+        for (size_t i = 0; i < num_values; i++) {
+            ast_t *member = ith(ast->struct_.members, i);
+            assert(member->kind == StructField);
+            values[i] = compile_expr(env, block, member->named.value);
+        }
+
+        gcc_field_t *populated_fields[num_values];
+
+        // Put in named fields first:
+        for (size_t value_index = 0; value_index < num_values; value_index++) {
+            ast_t *member = ith(ast->struct_.members, value_index);
+            if (!member->named.name) continue;
+            for (size_t field_index = 0; field_index < num_fields; field_index++) {
+                if (ith(t->struct_.field_names, field_index) != member->named.name)
+                    continue;
+
+                gcc_field_t *field = unused_fields[field_index];
+                if (!field)
+                    ERROR(env, member, "This field is a duplicate of an earlier field")
+
+                // Found the field:
+                populated_fields[value_index] = field;
+                unused_fields[field_index] = NULL;
+                goto found_name;
+            }
+
+            ERROR(env, member, "There is no struct field with this name");
+
+          found_name: continue;
+        }
+
+        // Now put in unnamed fields:
+        for (size_t value_index = 0; value_index < num_values; value_index++) {
+            ast_t *member = ith(ast->struct_.members, value_index);
+            if (member->named.name) continue;
+            for (size_t field_index = 0; field_index < num_fields; field_index++) {
+                if (!unused_fields[field_index])
+                    continue;
+
+                // Found the field:
+                printf("Found an unnamed field %zu %zu\n", value_index, field_index);
+                populated_fields[value_index] = unused_fields[field_index];
+                unused_fields[field_index] = NULL;
+                goto found_index;
+            }
+
+            ERROR(env, member, "This field is beyond the number of fields in this struct");
+
+          found_index: continue;
+        }
+
+        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, values);
+        assert(rval);
+        return rval;
+    }
     case FunctionCall: {
         gcc_rvalue_t *fn = compile_expr(env, block, ast->call.fn);
         NEW_LIST(gcc_rvalue_t*, arg_vals);

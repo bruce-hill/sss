@@ -21,7 +21,7 @@ typedef enum {
     Not, Negative, Len, Maybe,
     TypeOf,
     List, Table,
-    FunctionDef, Lambda,
+    FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
     If, For, While, Repeat,
@@ -33,6 +33,7 @@ typedef enum {
     TypeList, TypeTable,
     TypeFunction, TypeOption,
     Cast, As,
+    Struct, StructDef, StructFieldDef, StructField,
     NUM_TYPES,
 } astkind_e;
 
@@ -67,7 +68,7 @@ typedef struct ast_s {
             List(struct ast_s*) rhs;
         } multiassign;
         struct { // Function def/lambda
-            istr_t name;
+            istr_t name, self;
             List(istr_t) arg_names;
             List(struct ast_s*) arg_types;
             struct ast_s *ret_type;
@@ -102,5 +103,13 @@ typedef struct ast_s {
         struct {
             struct ast_s *first, *last, *step;
         } range;
+        struct {
+            List(istr_t) names;
+            struct ast_s *type;
+        } fields;
+        struct {
+            istr_t name;
+            List(struct ast_s *) members;
+        } struct_;
     };
 } ast_t;
