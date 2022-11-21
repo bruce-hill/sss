@@ -135,6 +135,7 @@ const char *kind_tags[] = {
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDeclaration", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
+    [Index]="IndexedTerm", [FieldName]="FieldName",
 };
 
 static astkind_e get_kind(match_t *m)
@@ -320,6 +321,14 @@ ast_t *match_to_ast(match_t *m)
                 APPEND(names, name);
             }
             return AST(m, StructFieldDef, .fields.names=names, .fields.type=type);
+        }
+        case FieldName: {
+            return AST(m, FieldName, .str=match_to_istr(m));
+        }
+        case Index: {
+            ast_t *indexed = match_to_ast(get_named_capture(m, "value", -1));
+            ast_t *index = match_to_ast(get_named_capture(m, "index", -1));
+            return AST(m, Index, .indexed=indexed, .index=index);
         }
         case If: {
             NEW_LIST(ast_clause_t, clauses);

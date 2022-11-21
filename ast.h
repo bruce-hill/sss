@@ -34,6 +34,7 @@ typedef enum {
     TypeFunction, TypeOption,
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
+    Index, FieldName,
     NUM_TYPES,
 } astkind_e;
 
@@ -62,6 +63,9 @@ typedef struct ast_s {
         };
         struct { // Cast/As
             struct ast_s *expr, *type;
+        };
+        struct { // Index
+            struct ast_s *indexed, *index;
         };
         struct { // Multiple assignment
             List(struct ast_s*) lhs;

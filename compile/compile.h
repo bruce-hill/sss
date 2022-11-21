@@ -37,10 +37,11 @@ typedef struct loop_label_s {
 typedef struct {
     gcc_ctx_t *ctx;
     file_t *file;
-    hashmap_t *tostring_funcs;
-    hashmap_t *bindings;
-    hashmap_t *gcc_types;
-    hashmap_t *global_funcs;
+    hashmap_t *tostring_funcs; // type -> func
+    hashmap_t *bindings; // name -> binding_t
+    hashmap_t *gcc_types; // name -> bl_type
+    hashmap_t *global_funcs; // name -> func
+    hashmap_t *methods; // bl_type -> name -> binding_t
     loop_label_t *loop_label;
     bool debug;
 } env_t;

@@ -140,6 +140,34 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             }
             return Type(ListType, .item_type=item_type);
         }
+        case Index: {
+            bl_type_t *indexed_t = get_type(f, bindings, ast->indexed);
+            // TODO: support methods
+            switch (indexed_t->kind) {
+            case ListType: {
+                bl_type_t *index_t = get_type(f, bindings, ast->index);
+                switch (index_t->kind) {
+                case IntType: case Int32Type: case Int16Type: case Int8Type: break;
+                default: TYPE_ERR(f, ast->index, "This value is not an integer");
+                }
+                return indexed_t->item_type;
+            }
+            case StructType: {
+                // TODO: support accessing fields by integer
+                assert(ast->index->kind == FieldName);
+                for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
+                    if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str)
+                        return LIST_ITEM(indexed_t->struct_.field_types, i);
+                }
+                TYPE_ERR(f, ast->index, "This is not a valid member of type %s", type_to_string(indexed_t));
+            }
+            default: {
+                TYPE_ERR(f, ast, "Indexing is not supported for type %s", type_to_string(indexed_t));
+            }
+            // TODO: support static methods
+            }
+            // TODO: index ranges
+        }
         case KeywordArg: {
             return get_type(f, bindings, ast->named.value);
         }
@@ -270,10 +298,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
 
         case Struct: {
-            binding_t *binding = hashmap_get(bindings, ast->struct_.name);
-            if (binding)
+            if (ast->struct_.name) {
+                binding_t *binding = hashmap_get(bindings, ast->struct_.name);
+                assert(binding);
                 return binding->type->type;
+            }
             assert(false);
+            // TODO: anonymous structs
 
 //             istr_t name = ast->struct_.name;
 //             NEW_LIST(istr_t, field_names);
