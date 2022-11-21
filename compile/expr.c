@@ -352,8 +352,36 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
             gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
             gcc_rvalue_t *index = compile_expr(env, block, ast->index);
-            // TODO: bounds check
-            return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index));
+            // Bounds check:
+            gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
+            gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
+            gcc_rvalue_t *len = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
+            gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, index, len);
+            gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
+
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_block_t *bounds_safe = gcc_new_block(func, NULL),
+                        *bounds_unsafe = gcc_new_block(func, NULL);
+            gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
+
+            // Bounds check failure:
+            gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
+            char *info = NULL;
+            size_t size = 0;
+            FILE *f = open_memstream(&info, &size);
+            highlight_match(f, env->file, ast->match, 2);
+            fputc('\0', f);
+            fflush(f);
+            gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+            gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+            gcc_eval(bounds_unsafe, NULL, gcc_call(env->ctx, NULL, fail, 4, (gcc_rvalue_t*[]){fmt, index, len, callstack}));
+            fclose(f);
+            gcc_jump(bounds_unsafe, NULL, bounds_unsafe);
+
+            // Bounds check success:
+            *block = bounds_safe;
+            gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
+            return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
         }
         default: {
             ERROR(env, ast, "Indexing is not supported for %s", type_to_string(indexed_t));
@@ -568,19 +596,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Fail: {
         gcc_rvalue_t *msg;
-        gcc_func_t *cat = hashmap_gets(env->global_funcs, "CORD_cat");
         if (ast->child) {
-            msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){
-                           gcc_new_string(env->ctx, "\x1b[41;30m Error: \x1b[0;31;1m "),
-                           compile_expr(env, block, ast->child),
-                           });
-            msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){
-                           msg,
-                           gcc_new_string(env->ctx, "\x1b[m\n\n"),
-                           });
+            msg = compile_expr(env, block, ast->child);
         } else {
-            msg = gcc_new_string(env->ctx, "\x1b[31;7mError: A failure occurred\x1b[m\n\n");
+            msg = gcc_new_string(env->ctx, "A failure occurred");
         }
+
+        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: %s\x1b[m\n\n%s");
 
         char *info = NULL;
         size_t size = 0;
@@ -588,15 +610,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         highlight_match(f, env->file, ast->match, 2);
         fputc('\0', f);
         fflush(f);
-        msg = gcc_call(env->ctx, NULL, cat, 2, (gcc_rvalue_t*[]){msg, gcc_new_string(env->ctx, info)});
-        gcc_func_t *to_char_star = hashmap_gets(env->global_funcs, "CORD_to_char_star");
-        msg = gcc_call(env->ctx, NULL, to_char_star, 1, (gcc_rvalue_t*[]){msg});
-        gcc_func_t *intern = hashmap_gets(env->global_funcs, "intern_str");
-        msg = gcc_call(env->ctx, NULL, intern, 1, (gcc_rvalue_t*[]){msg});
+        gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        msg = gcc_call(env->ctx, NULL, fail, 1, (gcc_rvalue_t*[]){msg});
+        gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, fail, 3, (gcc_rvalue_t*[]){fmt, msg, callstack});
         fclose(f);
-        return msg;
+        return ret;
     }
     default: break;
     }

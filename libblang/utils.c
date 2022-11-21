@@ -11,9 +11,12 @@
 #include <string.h>
 #include <sys/stat.h>
 
-void fail(const char *msg)
+void fail(const char *fmt, ...)
 {
-    fputs(msg, stderr);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
     raise(SIGABRT);
 }
 
