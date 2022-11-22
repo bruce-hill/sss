@@ -228,11 +228,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_block_t *nonnil_block = gcc_new_block(func, NULL);
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_rvalue_t *is_nil;
-        if (gcc_type_if_pointer(gcc_t))
-            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));
-        else
-            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_zero(env->ctx, gcc_t));
+        gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));
 
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
@@ -243,6 +239,10 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
             obj,
             gcc_param_as_rvalue(params[1]),
         };
+
+        if (!gcc_type_if_pointer(bl_type_to_gcc(env, t->nonnil)))
+            args[0] = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(args[0], NULL));
+
         gcc_func_t *tostring = get_tostring_func(env, t->nonnil);
         gcc_rvalue_t *ret = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
         gcc_return(nonnil_block, NULL, ret);

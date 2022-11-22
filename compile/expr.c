@@ -18,6 +18,19 @@
 #include "../types.h"
 #include "../util.h"
 
+static gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val)
+{
+    gcc_func_t *gc_malloc_func = hashmap_gets(env->global_funcs, "GC_malloc");
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
+    gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+    gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
+    // TODO: use gc_malloc_atomic() when possible
+    gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_malloc_func, 1, &size), gcc_t));
+    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_lvalue_as_rvalue(tmp), NULL), val);
+    return gcc_lvalue_as_rvalue(tmp);
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     switch (ast->kind) {
@@ -79,6 +92,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (ast->multiassign.lhs, lhs, _) {
             append(lvals, get_lvalue(env, block, *lhs));
         }
+        gcc_func_t *func = gcc_block_func(*block);
         NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
@@ -87,13 +101,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             if (is_numeric(t_lhs) && is_numeric(t_rhs) && numtype_priority(t_lhs) >= numtype_priority(t_rhs)) {
                 rval = gcc_cast(env->ctx, NULL, rval, bl_type_to_gcc(env, t_lhs));
+            } else if (type_is_a(t_rhs, t_lhs) && t_lhs->kind == OptionalType && t_rhs->kind != OptionalType) {
+                rval = move_to_heap(env, block, t_rhs, rval);
             } else if (!type_is_a(t_rhs, t_lhs)) {
                 ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
                       type_to_string(t_rhs), type_to_string(t_lhs));
             }
 
             if (len > 1) {
-                gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *tmp = gcc_local(func, NULL, bl_type_to_gcc(env, t_rhs), fresh("tmp"));
                 assert(rval);
                 gcc_assign(*block, NULL, tmp, rval);
@@ -205,6 +220,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         struct {
             size_t field_num;
+            ast_t *ast;
             gcc_rvalue_t *value;
             gcc_field_t *field;
         } entries[num_values];
@@ -212,6 +228,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (size_t i = 0; i < num_values; i++) {
             ast_t *member = ith(ast->struct_.members, i);
             assert(member->kind == StructField);
+            entries[i].ast = member->named.value;
             entries[i].value = compile_expr(env, block, member->named.value);
         }
 
@@ -226,13 +243,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_field_t *field = unused_fields[field_index];
                 if (!field)
                     ERROR(env, member, "This field is a duplicate of an earlier field");
-
-                // Check type:
-                bl_type_t *expected = ith(t->struct_.field_types, field_index);
-                bl_type_t *actual = get_type(env->file, env->bindings, member->named.value);
-                if (!type_is_a(actual, expected))
-                    ERROR(env, member, "This is supposed to be a %s, but this value is a %s", 
-                          type_to_string(expected), type_to_string(actual));
 
                 // Found the field:
                 entries[value_index].field = field;
@@ -253,13 +263,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             for (size_t field_index = 0; field_index < num_fields; field_index++) {
                 if (!unused_fields[field_index])
                     continue;
-
-                // Check type:
-                bl_type_t *expected = ith(t->struct_.field_types, field_index);
-                bl_type_t *actual = get_type(env->file, env->bindings, member->named.value);
-                if (!type_is_a(actual, expected))
-                    ERROR(env, member, "This is supposed to be a %s, but this value is a %s", 
-                          type_to_string(expected), type_to_string(actual));
 
                 // Found the field:
                 entries[value_index].field = unused_fields[field_index];
@@ -286,8 +289,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_field_t *populated_fields[num_values];
         gcc_rvalue_t *rvalues[num_values];
         for (size_t i = 0; i < num_values; i++) {
+            // Check type:
+            bl_type_t *expected = ith(t->struct_.field_types, entries[i].field_num);
+            bl_type_t *actual = get_type(env->file, env->bindings, entries[i].ast);
+            if (!type_is_a(actual, expected))
+                ERROR(env, entries[i].ast, "This is supposed to be a %s, but this value is a %s", 
+                      type_to_string(expected), type_to_string(actual));
+
+            if (expected->kind == OptionalType && actual->kind != OptionalType
+                && !gcc_type_if_pointer(bl_type_to_gcc(env, actual)))
+                rvalues[i] = move_to_heap(env, block, actual, entries[i].value);
+            else
+                rvalues[i] = entries[i].value;
+
             populated_fields[i] = entries[i].field;
-            rvalues[i] = entries[i].value;
         }
 
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, rvalues);
@@ -313,7 +328,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
     }
     case Maybe: {
-        return compile_expr(env, block, ast->child);
+        gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
+        bl_type_t *nonnil_t = get_type(env->file, env->bindings, ast->child);
+        gcc_type_t *gcc_nonnil_t = bl_type_to_gcc(env, nonnil_t);
+        if (!gcc_type_if_pointer(gcc_nonnil_t))
+            rval = move_to_heap(env, block, nonnil_t, rval);
+        return rval;
     }
     case Len: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->child);
