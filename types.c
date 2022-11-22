@@ -39,10 +39,9 @@ static CORD type_to_cord(bl_type_t *t) {
             return c;
         }
         case StructType: {
-            CORD c = NULL;
             if (t->struct_.name)
-                c = CORD_cat(c, t->struct_.name);
-            c = CORD_cat(c, "{");
+                return t->struct_.name;
+            CORD c = CORD_cat(NULL, "{");
             for (int64_t i = 0; i < LIST_LEN(t->struct_.field_types); i++) {
                 bl_type_t *ft = LIST_ITEM(t->struct_.field_types, i);
                 istr_t fname = LIST_ITEM(t->struct_.field_names, i);
@@ -59,7 +58,11 @@ static CORD type_to_cord(bl_type_t *t) {
             return c;
         }
         case OptionalType: return CORD_cat(type_to_cord(t->nonnil), "?");
-        default: return "?!?!?";
+        default: {
+            CORD c;
+            CORD_sprintf(&c, "Unknown type: %d", t->kind);
+            return c;
+        }
     }
 }
 

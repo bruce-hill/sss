@@ -85,6 +85,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *t = get_type(f, bindings, ast->child);
             return Type(TypeType, .type=t);
         }
+        case SizeOf: {
+            return Type(IntType);
+        }
         case Maybe: {
             bl_type_t *nonnil = get_type(f, bindings, ast->child);
             return nonnil->kind == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
@@ -190,7 +193,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 ast_t *arg = LIST_ITEM(ast->call.args, i);
                 bl_type_t *arg_t = get_type(f, bindings, arg);
                 if (!type_is_a(arg_t, LIST_ITEM(fn_type->args, i))) {
-                    TYPE_ERR(f, arg, "This argument has the wrong type. Expected %s but got %s", type_to_string(LIST_ITEM(fn_type->args, i)), type_to_string(arg_t));
+                    TYPE_ERR(f, arg, "This argument has the wrong type. Expected %s but got %s",
+                             type_to_string(LIST_ITEM(fn_type->args, i)), type_to_string(arg_t));
                 }
             }
             return fn_type->ret;
@@ -253,7 +257,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             else if (is_numeric(lhs_t) && is_numeric(rhs_t))
                 return Type(BoolType);
             else
-                TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+                TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s",
+                         type_to_string(lhs_t), type_to_string(rhs_t));
         }
 
         case Not: {
@@ -268,7 +273,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             else if (is_numeric(lhs_t) && is_numeric(rhs_t))
                 return Type(BoolType);
             else
-                TYPE_ERR(f, ast, "These two values have incompatible types: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+                TYPE_ERR(f, ast, "These two values have incompatible types: %s vs %s",
+                         type_to_string(lhs_t), type_to_string(rhs_t));
         }
 
         case FunctionDef: case Lambda: {
@@ -324,18 +330,22 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             istr_t name = ast->struct_.name;
             NEW_LIST(istr_t, field_names);
             NEW_LIST(bl_type_t*, field_types);
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
+            hashmap_t *rec_bindings = hashmap_new();
+            rec_bindings->fallback = bindings;
+            binding_t b = {.type=Type(TypeType, .type=t)};
+            hashmap_set(rec_bindings, name, &b);
             LIST_FOR (ast->struct_.members, member, _) {
                 if ((*member)->kind == StructFieldDef) {
-                    bl_type_t *ft = parse_type(f, bindings, (*member)->fields.type);
-                    LIST_FOR((*member)->fields.names, name, __) {
-                        APPEND(field_names, *name);
+                    bl_type_t *ft = parse_type(f, rec_bindings, (*member)->fields.type);
+                    LIST_FOR((*member)->fields.names, fname, __) {
+                        APPEND(field_names, *fname);
                         APPEND(field_types, ft);
                     }
                 } else {
                     assert(false);
                 }
             }
-            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
             return Type(TypeType, .type=t);
         }
 
@@ -384,7 +394,8 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
             t = t->nonnil;
 
         if (!(t->kind == VoidType || t->kind == AbortType)) {
-            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored", type_to_string(t));
+            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored",
+                     type_to_string(t));
         }
     }
     }

@@ -19,7 +19,7 @@ typedef enum {
     And, Or, Xor,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     Not, Negative, Len, Maybe,
-    TypeOf,
+    TypeOf, SizeOf,
     List, Table,
     FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,

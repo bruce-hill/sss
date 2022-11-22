@@ -121,7 +121,7 @@ const char *kind_tags[] = {
     [And]="And", [Or]="Or", [Xor]="Xor",
     [Equal]="Equal", [NotEqual]="NotEqual", [Greater]="Greater", [GreaterEqual]="GreaterEq", [Less]="Less", [LessEqual]="LessEq",
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
-    [TypeOf]="TypeOf",
+    [TypeOf]="TypeOf", [SizeOf]="SizeOf",
     [List]="List", [Table]="Table",
     [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
@@ -396,7 +396,7 @@ ast_t *match_to_ast(match_t *m)
             ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
             return AST(m, kind, .expr=expr, .type=type);
         }
-        case Not: case Negative: case Len: case Maybe: case TypeOf: {
+        case Not: case Negative: case Len: case Maybe: case TypeOf: case SizeOf: {
             ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
             return AST(m, kind, .child=child);
         }

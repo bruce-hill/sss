@@ -259,6 +259,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
           found_index: continue;
         }
 
+        for (size_t field_index = 0; field_index < num_fields; field_index++) {
+            bl_type_t *ft = ith(t->struct_.field_types, field_index);
+            if (ft->kind == OptionalType) continue;
+            if (unused_fields[field_index])
+                ERROR(env, ast, "This struct literal is missing the non-optional field '%s' (%s)",
+                      ith(t->struct_.field_names, field_index), type_to_string(ft));
+        }
+
         // GCC is dumb and requires sorting the fields:
         qsort_r(entries, num_values, sizeof(entries[0]), (int(*)(const void*,const void*,void*))(void*)memcmp, (void*)sizeof(size_t));
         gcc_field_t *populated_fields[num_values];
@@ -393,6 +401,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         return gcc_call(env->ctx, NULL, intern_str_func, 1,
                         (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t->type))});
+    }
+    case SizeOf: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        ssize_t size = gcc_sizeof(env, t);
+        return gcc_int64(env->ctx, size);
     }
     case Cast: {
         gcc_rvalue_t *val = compile_expr(env, block, ast->expr);
