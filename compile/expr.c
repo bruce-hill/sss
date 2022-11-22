@@ -225,7 +225,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 gcc_field_t *field = unused_fields[field_index];
                 if (!field)
-                    ERROR(env, member, "This field is a duplicate of an earlier field")
+                    ERROR(env, member, "This field is a duplicate of an earlier field");
+
+                // Check type:
+                bl_type_t *expected = ith(t->struct_.field_types, field_index);
+                bl_type_t *actual = get_type(env->file, env->bindings, member->named.value);
+                if (!type_is_a(actual, expected))
+                    ERROR(env, member, "This is supposed to be a %s, but this value is a %s", 
+                          type_to_string(expected), type_to_string(actual));
 
                 // Found the field:
                 entries[value_index].field = field;
@@ -246,6 +253,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             for (size_t field_index = 0; field_index < num_fields; field_index++) {
                 if (!unused_fields[field_index])
                     continue;
+
+                // Check type:
+                bl_type_t *expected = ith(t->struct_.field_types, field_index);
+                bl_type_t *actual = get_type(env->file, env->bindings, member->named.value);
+                if (!type_is_a(actual, expected))
+                    ERROR(env, member, "This is supposed to be a %s, but this value is a %s", 
+                          type_to_string(expected), type_to_string(actual));
 
                 // Found the field:
                 entries[value_index].field = unused_fields[field_index];

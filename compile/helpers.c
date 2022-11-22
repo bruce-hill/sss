@@ -81,7 +81,12 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case Num32Type: gcc_t = gcc_type(env->ctx, FLOAT); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
     case StringType: gcc_t = gcc_type(env->ctx, STRING); break;
-    case OptionalType: gcc_t = bl_type_to_gcc(env, t->nonnil); break;
+    case OptionalType: {
+        gcc_t = bl_type_to_gcc(env, t->nonnil);
+        if (!gcc_type_if_pointer(gcc_t))
+            gcc_t = gcc_get_ptr_type(gcc_t);
+        break;
+    }
     case RangeType: {
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
         gcc_field_t *fields[3] = {
