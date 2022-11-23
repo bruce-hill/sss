@@ -54,6 +54,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (ast->list.items, item_ast, _) {
             switch ((*item_ast)->kind) {
             case For: {
+                // List comprehension:
                 ast_t *key_ast = (*item_ast)->for_loop.key,
                       *value_ast = (*item_ast)->for_loop.value,
                       *body = (*item_ast)->for_loop.body,
@@ -82,6 +83,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             case While: case Repeat: case If: {
+                // List comprehension:
                 ERROR(env, *item_ast, "Not yet implemented");
             }
             default: {

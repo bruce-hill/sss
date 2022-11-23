@@ -357,7 +357,7 @@ ast_t *match_to_ast(match_t *m)
             ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
             ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
             if (filter)
-                body = AST(m, Block, .children=LIST(ast_t*, body, filter));
+                body = AST(m, Block, .children=LIST(ast_t*, filter, body));
             ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
             return AST(m, kind, .loop.condition=condition, .loop.body=body, .loop.between=between);
         }
@@ -368,7 +368,7 @@ ast_t *match_to_ast(match_t *m)
             ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
             ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
             if (filter)
-                body = AST(m, Block, .children=LIST(ast_t*, body, filter));
+                body = AST(m, Block, .children=LIST(ast_t*, filter, body));
             ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
             return AST(m, For, .for_loop.iter=iter, .for_loop.key=key, .for_loop.value=value,
                        .for_loop.body=body, .for_loop.between=between);

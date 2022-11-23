@@ -119,7 +119,28 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 bl_type_t *t2;
                 switch (item->kind) {
                 case For: {
-                    t2 = get_type(f, bindings, item->for_loop.body);
+                    bl_type_t *iter_t = get_type(f, bindings, item->for_loop.iter);
+                    if (iter_t->kind == OptionalType) iter_t = iter_t->nonnil;
+                    hashmap_t *loop_bindings = hashmap_new();
+                    loop_bindings->fallback = bindings;
+                    switch (iter_t->kind) {
+                    case ListType:
+                        if (item->for_loop.key)
+                            hashmap_set(loop_bindings, item->for_loop.key->str, new(binding_t, .type=Type(IntType)));
+                        if (item->for_loop.value)
+                            hashmap_set(loop_bindings, item->for_loop.value->str, new(binding_t, .type=iter_t->item_type));
+                        break;
+                    case RangeType:
+                        if (item->for_loop.key)
+                            hashmap_set(loop_bindings, item->for_loop.key->str, new(binding_t, .type=Type(IntType)));
+                        if (item->for_loop.value)
+                            hashmap_set(loop_bindings, item->for_loop.value->str, new(binding_t, .type=Type(IntType)));
+                        break;
+                    default:
+                        TYPE_ERR(f, item->for_loop.iter, "This value has type %s, which is not iterable", type_to_string(iter_t));
+                        break;
+                    }
+                    t2 = get_type(f, loop_bindings, item->for_loop.body);
                     break;
                 }
                 case While: case Repeat: {
@@ -244,10 +265,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 else if (t1->kind == DSLType || t1->kind == StringType)
                     return t1;
             } else if (is_numeric(t1)) {
-                TYPE_ERR(f, ast->rhs, "This value is type %s, which can't be added to something with type %s",
+                TYPE_ERR(f, ast, "The right side of this operation is type %s, but it needs to be numeric to do operations with %s",
                          type_to_string(t2), type_to_string(t1));
             } else if (is_numeric(t2)) {
-                TYPE_ERR(f, ast->lhs, "This value is type %s, which can't be added to something with type %s",
+                TYPE_ERR(f, ast, "The left side of this operation is type %s, but it needs to be numeric to do operations with %s",
                          type_to_string(t1), type_to_string(t2));
             }
             TYPE_ERR(f, ast, "Math operations are not supported between %s and %s",
