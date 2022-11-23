@@ -514,6 +514,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
     }
+    case Negative: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        if (!is_numeric(t))
+            ERROR(env, ast, "Negation is only supported for numeric types, not %s", type_to_string(t));
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
+        return gcc_unary_op(env->ctx, NULL, GCC_UNOP_MINUS, gcc_t, rval);
+    }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);

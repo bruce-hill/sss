@@ -222,7 +222,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *t = parse_type(f, bindings, ast);
             return Type(TypeType, .type=t);
         }
-
+        case Negative: {
+            bl_type_t *t = get_type(f, bindings, ast->child);
+            if (!is_numeric(t))
+                TYPE_ERR(f, ast, "Negation is only supported for numeric types, not %s", type_to_string(t));
+            return t;
+        }
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
         case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
             bl_type_t *t1 = get_type(f, bindings, ast->lhs);
