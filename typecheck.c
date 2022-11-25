@@ -229,9 +229,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 ast_t *self = ast->call.fn->indexed;
                 bl_type_t *self_t = get_type(f, bindings, self);
                 if (self_t->kind != TypeType) {
-                    if (!type_is_a(self_t, LIST_ITEM(fn_type->args, 0))) {
+                    bl_type_t *expected = LIST_ITEM(fn_type->args, 0);
+                    if (is_numeric(self_t) && is_numeric(expected) && numtype_priority(self_t) < numtype_priority(expected))
+                        self_t = expected;
+                    if (!type_is_a(self_t, expected)) {
                         TYPE_ERR(f, self, "This argument has the wrong type. Expected %s but got %s",
-                                 type_to_string(LIST_ITEM(fn_type->args, 0)), type_to_string(self_t));
+                                 type_to_string(expected), type_to_string(self_t));
                     }
                     num_selfs += 1;
                 }
@@ -244,9 +247,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             for (int64_t i = 0; i < len_args; i++) {
                 ast_t *arg = LIST_ITEM(ast->call.args, i);
                 bl_type_t *arg_t = get_type(f, bindings, arg);
-                if (!type_is_a(arg_t, LIST_ITEM(fn_type->args, num_selfs + i))) {
+                bl_type_t *expected = LIST_ITEM(fn_type->args, num_selfs + i);
+                if (is_numeric(arg_t) && is_numeric(expected) && numtype_priority(arg_t) < numtype_priority(expected))
+                    arg_t = expected;
+                if (!type_is_a(arg_t, expected)) {
                     TYPE_ERR(f, arg, "This argument has the wrong type. Expected %s but got %s",
-                             type_to_string(LIST_ITEM(fn_type->args, i)), type_to_string(arg_t));
+                             type_to_string(expected), type_to_string(arg_t));
                 }
             }
             return fn_type->ret;

@@ -157,11 +157,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ERROR(env, ast, "This function was defined to return a value of type %s, but no value is being returned here.",
                       type_to_string(env->return_type));
             bl_type_t *t = get_type(env->file, env->bindings, ast->child);
-            if (!type_is_a(t, env->return_type))
+            gcc_rvalue_t *val = compile_expr(env, block, ast->child);
+            if (is_numeric(t) && is_numeric(env->return_type) && numtype_priority(t) < numtype_priority(env->return_type))
+                val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, env->return_type));
+            else if (!type_is_a(t, env->return_type))
                 ERROR(env, ast, "This function was defined to return a value of type %s, this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
-            gcc_rvalue_t *val = compile_expr(env, block, ast->child);
             gcc_return(*block, NULL, val);
         }
         *block = NULL;
@@ -331,7 +333,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FunctionCall: {
         gcc_rvalue_t *fn;
+        bl_type_t *fn_t = get_type(env->file, env->bindings, ast->call.fn);
         NEW_LIST(gcc_rvalue_t*, arg_vals);
+        int64_t num_selfs = 0;
         // Method calls:
         if (ast->call.fn->kind == Index) {
             ast_t *self = ast->call.fn->indexed;
@@ -347,6 +351,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     ERROR(env, ast->call.fn, "This method is not defined");
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 append(arg_vals, self_val);
+                num_selfs += 1;
                 fn = binding->rval;
                 break;
             }
@@ -370,8 +375,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         // TODO: keyword args
         foreach (ast->call.args, arg, _) {
-            // TODO: coerce numeric args? sqrt(5) -> sqrt(5.0)
             gcc_rvalue_t *val = compile_expr(env, block, *arg);
+            bl_type_t *actual = get_type(env->file, env->bindings, *arg);
+            bl_type_t *expected = ith(fn_t->args, num_selfs + (int64_t)(arg - *ast->call.args));
+            // Numeric promotion:
+            if (is_numeric(actual) && is_numeric(expected) && numtype_priority(actual) < numtype_priority(expected))
+                val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, expected));
             append(arg_vals, val);
         }
         gcc_rvalue_t *call = gcc_call_ptr(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
