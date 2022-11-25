@@ -327,8 +327,44 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return rval;
     }
     case FunctionCall: {
-        gcc_rvalue_t *fn = compile_expr(env, block, ast->call.fn);
+        gcc_rvalue_t *fn;
         NEW_LIST(gcc_rvalue_t*, arg_vals);
+        // Method calls:
+        if (ast->call.fn->kind == Index) {
+            ast_t *self = ast->call.fn->indexed;
+            bl_type_t *self_t = get_type(env->file, env->bindings, self);
+            switch (self_t->kind) {
+            case StructType: {
+                if (ast->call.fn->index->kind != FieldName)
+                    ERROR(env, ast->call.fn, "Method calls must be specified by explicit method name");
+                CORD method_name;
+                CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t), ast->call.fn->index->str);
+                binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
+                if (!binding)
+                    ERROR(env, ast->call.fn, "This method is not defined");
+                gcc_rvalue_t *self_val = compile_expr(env, block, self);
+                append(arg_vals, self_val);
+                fn = binding->rval;
+                break;
+            }
+            case TypeType: {
+                if (ast->call.fn->index->kind != FieldName)
+                    ERROR(env, ast->call.fn, "Method calls must be specified by explicit method name");
+                CORD method_name;
+                CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
+                binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
+                if (!binding)
+                    ERROR(env, ast->call.fn, "This method is not defined");
+                fn = binding->rval;
+                break;
+            }
+            default: {
+                ERROR(env, ast->call.fn, "Method calls are only supported on struct types, not %s", type_to_string(self_t));
+            }
+            }
+        } else {
+            fn = compile_expr(env, block, ast->call.fn);
+        }
         // TODO: keyword args
         foreach (ast->call.args, arg, _) {
             // TODO: coerce numeric args? sqrt(5) -> sqrt(5.0)

@@ -183,7 +183,25 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str)
                         return LIST_ITEM(indexed_t->struct_.field_types, i);
                 }
+                for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.method_names); i < len; i++) {
+                    if (LIST_ITEM(indexed_t->struct_.method_names, i) == ast->index->str)
+                        return LIST_ITEM(indexed_t->struct_.method_types, i);
+                }
                 TYPE_ERR(f, ast->index, "This is not a valid member of type %s", type_to_string(indexed_t));
+            }
+            case TypeType: {
+                switch (indexed_t->type->kind) {
+                case StructType: {
+                    for (int64_t i = 0, len = LIST_LEN(indexed_t->type->struct_.method_names); i < len; i++) {
+                        if (LIST_ITEM(indexed_t->type->struct_.method_names, i) == ast->index->str)
+                            return LIST_ITEM(indexed_t->type->struct_.method_types, i);
+                    }
+                    TYPE_ERR(f, ast->index, "This is not a valid member of type %s", type_to_string(indexed_t->type));
+                }
+                default: {
+                    TYPE_ERR(f, ast, "Static methods are not supported for type %s", type_to_string(indexed_t->type));
+                }
+                }
             }
             default: {
                 TYPE_ERR(f, ast, "Indexing is not supported for type %s", type_to_string(indexed_t));
@@ -205,15 +223,28 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             while (min_args > 0 && LIST_ITEM(fn_type->args, min_args-1)->kind == OptionalType)
                 --min_args;
             int64_t len_args = LIST_LEN(ast->call.args);
-            if (len_args < min_args) {
-                TYPE_ERR(f, ast, "Expected to get at least %ld arguments but only got %ld", min_args, len_args);
-            } else if (len_args > max_args) {
+            int64_t num_selfs = 0;
+            if (ast->call.fn->kind == Index) {
+                // Insert "self" argument
+                ast_t *self = ast->call.fn->indexed;
+                bl_type_t *self_t = get_type(f, bindings, self);
+                if (self_t->kind != TypeType) {
+                    if (!type_is_a(self_t, LIST_ITEM(fn_type->args, 0))) {
+                        TYPE_ERR(f, self, "This argument has the wrong type. Expected %s but got %s",
+                                 type_to_string(LIST_ITEM(fn_type->args, 0)), type_to_string(self_t));
+                    }
+                    num_selfs += 1;
+                }
+            }
+            if (num_selfs + len_args < min_args) {
+                TYPE_ERR(f, ast, "Expected to get at least %ld arguments but only got %ld", min_args, num_selfs + len_args);
+            } else if (num_selfs + len_args > max_args) {
                 TYPE_ERR(f, LIST_ITEM(ast->call.args, max_args), "Too many arguments provided to this function call. Everything from here on is too much.");
             }
             for (int64_t i = 0; i < len_args; i++) {
                 ast_t *arg = LIST_ITEM(ast->call.args, i);
                 bl_type_t *arg_t = get_type(f, bindings, arg);
-                if (!type_is_a(arg_t, LIST_ITEM(fn_type->args, i))) {
+                if (!type_is_a(arg_t, LIST_ITEM(fn_type->args, num_selfs + i))) {
                     TYPE_ERR(f, arg, "This argument has the wrong type. Expected %s but got %s",
                              type_to_string(LIST_ITEM(fn_type->args, i)), type_to_string(arg_t));
                 }
@@ -404,7 +435,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             istr_t name = ast->struct_.name;
             NEW_LIST(istr_t, field_names);
             NEW_LIST(bl_type_t*, field_types);
-            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
+            NEW_LIST(istr_t, method_names);
+            NEW_LIST(bl_type_t*, method_types);
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types,
+                                .struct_.method_names=method_names, .struct_.method_types=method_types);
             hashmap_t *rec_bindings = hashmap_new();
             rec_bindings->fallback = bindings;
             binding_t b = {.type=Type(TypeType, .type=t)};
@@ -416,8 +450,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                         APPEND(field_names, *fname);
                         APPEND(field_types, ft);
                     }
+                } else if ((*member)->kind == FunctionDef) {
+                    bl_type_t *mt = get_type(f, rec_bindings, *member);
+                    APPEND(method_names, (*member)->fn.name);
+                    APPEND(method_types, mt);
                 } else {
-                    assert(false);
+                    TYPE_ERR(f, *member, "Not yet implemented");
                 }
             }
             return Type(TypeType, .type=t);

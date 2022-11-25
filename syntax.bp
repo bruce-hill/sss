@@ -140,7 +140,7 @@ FnDef:: @curdent:\C \b"def"\b _ @name=Var _ (
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock))
 MethodDef:: @curdent:\C \b"def"\b _ @selfVar=Var _`._ @name=Var _ (
-  `( __ @args=@(*((@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
+  `( __ @args=(*((@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   [`: _ @returnType=type]_ [comment]
   ((`= _ @body=(@:Block=(
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)

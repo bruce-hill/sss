@@ -45,6 +45,19 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
             hashmap_set(env->bindings, (*stmt)->fn.name,
                         new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+        } else if ((*stmt)->kind == StructDef) {
+            // Struct methods:
+            foreach ((*stmt)->struct_.members, member, _) {
+                if ((*member)->kind == FunctionDef) {
+                    bl_type_t *t = get_type(env->file, env->bindings, *member);
+                    gcc_func_t *func = get_function_def(env, *member, false);
+                    gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
+                    CORD name;
+                    CORD_sprintf(&name, "%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
+                    hashmap_set(env->bindings, intern_str(CORD_to_char_star(name)),
+                                new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+                }
+            }
         }
     }
 
@@ -56,6 +69,17 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             // Compile the function here instead of above because we need the type information
             // from the other functions in the block.
             compile_function(env, binding->func, *stmt);
+        } else if ((*stmt)->kind == StructDef) {
+            // Struct methods:
+            foreach ((*stmt)->struct_.members, member, _) {
+                if ((*member)->kind == FunctionDef) {
+                    CORD name;
+                    CORD_sprintf(&name, "%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
+                    binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(name)));
+                    assert(binding);
+                    compile_function(env, binding->func, *member);
+                }
+            }
         }
         if (stmt == last_stmt && give_expression) {
             return compile_expr(env, block, *stmt);
