@@ -24,7 +24,7 @@ typedef enum {
     FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
-    If, For, While, Repeat,
+    Do, If, For, While, Repeat,
     Skip, Stop,
     Return,
     Fail,

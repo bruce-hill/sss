@@ -126,7 +126,7 @@ const char *kind_tags[] = {
     [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
     [Block]="Block",
-    [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
+    [Do]="Do", [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
@@ -243,14 +243,14 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, List, .list.items=items);
         }
-        case Block: {
-            NEW_LIST(ast_t*, stmts);
+        case Do: case Block: {
+            NEW_LIST(ast_t*, children);
             for (int i = 1; ; i++) {
-                ast_t *stmt = match_to_ast(get_numbered_capture(m, i));
-                if (!stmt) break;
-                APPEND(stmts, stmt);
+                ast_t *child = match_to_ast(get_numbered_capture(m, i));
+                if (!child) break;
+                APPEND(children, child);
             }
-            return AST(m, Block, .children=stmts);
+            return AST(m, kind, .children=children);
         }
         case FunctionDef: case MethodDef: case Lambda: {
             istr_t name = kind == Lambda ? NULL : match_to_istr(get_named_capture(m, "name", -1));

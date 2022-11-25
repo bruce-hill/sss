@@ -121,6 +121,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(*block, ast_loc(env, ast), ith(lvals, i), ith(rvals, i));
         return ith(rvals, length(rvals)-1);
     }
+    case Do: {
+        // TODO: support do/else?
+        if (length(ast->children) > 1)
+            ERROR(env, ith(ast->children, 1), "Do/else is not currently supported");
+        return compile_expr(env, block, ith(ast->children, 0));
+    }
     case Block: {
         // Create scope:
         env_t block_env = *env;
