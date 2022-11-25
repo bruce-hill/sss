@@ -309,15 +309,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // Check type:
             bl_type_t *expected = ith(t->struct_.field_types, entries[i].field_num);
             bl_type_t *actual = get_type(env->file, env->bindings, entries[i].ast);
-            if (!type_is_a(actual, expected))
-                ERROR(env, entries[i].ast, "This is supposed to be a %s, but this value is a %s", 
-                      type_to_string(expected), type_to_string(actual));
 
-            if (expected->kind == OptionalType && actual->kind != OptionalType
+            if (expected == actual)
+                rvalues[i] = entries[i].value;
+            else if (expected->kind == OptionalType && actual->kind != OptionalType
                 && !gcc_type_if_pointer(bl_type_to_gcc(env, actual)))
                 rvalues[i] = move_to_heap(env, block, actual, entries[i].value);
+            else if (is_numeric(expected) && is_numeric(actual)
+                     && numtype_priority(expected) >= numtype_priority(actual))
+                rvalues[i] = gcc_cast(env->ctx, NULL, entries[i].value, bl_type_to_gcc(env, expected));
             else
-                rvalues[i] = entries[i].value;
+                ERROR(env, entries[i].ast, "This is supposed to be a %s, but this value is a %s", 
+                      type_to_string(expected), type_to_string(actual));
 
             populated_fields[i] = entries[i].field;
         }
