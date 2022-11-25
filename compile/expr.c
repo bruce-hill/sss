@@ -480,19 +480,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env->file, env->bindings, ast->child);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_rvalue_t *val = compile_expr(env, block, ast->child);
-        switch (t->kind) {
-        case BoolType:
+        if (t->kind == BoolType)
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
-        case OptionalType: {
-            if (gcc_type_if_pointer(gcc_t))
-                return gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
-            else
-                return gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, val, gcc_zero(env->ctx, gcc_t));
-        }
-        default: {
-            ERROR(env, ast, "Logical negation is not supported for %s", type_to_string(t));
-        }
-        }
+        else if (is_integral(t))
+            return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
+        else
+            ERROR(env, ast, "'not' isn't supported for %s", type_to_string(t));
     }
     case Equal: case NotEqual: {
         (void)get_type(env->file, env->bindings, ast); // Check type

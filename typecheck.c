@@ -333,7 +333,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
 
         case Not: {
-            return Type(BoolType);
+            bl_type_t *t = get_type(f, bindings, ast->child);
+            if (t->kind == BoolType || is_integral(t))
+                return t;
+            TYPE_ERR(f, ast, "'not' isn't supported for %s", type_to_string(t)); 
         }
 
         case Equal: case NotEqual: {
