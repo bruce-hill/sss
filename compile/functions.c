@@ -23,6 +23,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     bl_type_t *t = get_type(env->file, env->bindings, def);
 
     env_t body_env = *env;
+    body_env.return_type = t->ret;
     // Use a set of bindings that don't include any closures
     body_env.bindings = global_bindings(env->bindings);
 
@@ -37,8 +38,12 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
     gcc_block_t *block = gcc_new_block(func, NULL);
     compile_statement(&body_env, &block, def->fn.body);
-    if (block)
+    if (block) {
+        if (t->ret->kind != VoidType)
+            ERROR(env, def, "This function is supposed to return a value of type %s, but the end of the function can be reached without returning a value",
+                  type_to_string(t->ret));
         gcc_return_void(block, NULL);
+    }
 }
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global)

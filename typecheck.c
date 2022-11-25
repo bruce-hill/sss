@@ -249,14 +249,59 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 TYPE_ERR(f, ast, "Negation is only supported for numeric types, not %s", type_to_string(t));
             return t;
         }
+        case And: {
+            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs),
+                      *rhs_t = get_type(f, bindings, ast->rhs);
+
+            if (lhs_t->kind == BoolType && rhs_t->kind == BoolType)
+                return lhs_t;
+            else if (is_integral(lhs_t) && is_integral(rhs_t))
+                return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+
+            TYPE_ERR(f, ast, "The left and right sides of this 'and' are not compatible: %s and %s",
+                     type_to_string(lhs_t), type_to_string(rhs_t));
+        }
+        case Or: {
+            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs),
+                      *rhs_t = get_type(f, bindings, ast->rhs);
+
+            if (lhs_t->kind == BoolType && rhs_t->kind == BoolType)
+                return lhs_t;
+            else if (is_integral(lhs_t) && is_integral(rhs_t))
+                return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+
+            if (lhs_t->kind == OptionalType) {
+                if (rhs_t == lhs_t->nonnil || rhs_t->kind == AbortType)
+                    return lhs_t->nonnil;
+                else if (rhs_t == lhs_t)
+                    return lhs_t;
+            }
+            TYPE_ERR(f, ast, "The left and right sides of this 'or' are not compatible: %s and %s",
+                     type_to_string(lhs_t), type_to_string(rhs_t));
+        }
+        case Xor: {
+            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs),
+                      *rhs_t = get_type(f, bindings, ast->rhs);
+
+            if (lhs_t->kind == BoolType && rhs_t->kind == BoolType)
+                return lhs_t;
+            else if (is_integral(lhs_t) && is_integral(rhs_t))
+                return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+
+            TYPE_ERR(f, ast, "The left and right sides of this 'xor' are not compatible: %s and %s",
+                     type_to_string(lhs_t), type_to_string(rhs_t));
+        }
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
         case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
-            bl_type_t *t1 = get_type(f, bindings, ast->lhs);
-            bl_type_t *t2 = get_type(f, bindings, ast->rhs);
+            bl_type_t *t1 = get_type(f, bindings, ast->lhs),
+                      *t2 = get_type(f, bindings, ast->rhs);
 
             if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
                 if (is_numeric(t1) && is_numeric(t2) && numtype_priority(t1) >= numtype_priority(t2))
                     return t1;
+            } else {
+                if (is_numeric(t1) && is_numeric(t2))
+                    return numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
             }
 
             if (t1 == t2) {

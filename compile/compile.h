@@ -42,6 +42,7 @@ typedef struct {
     hashmap_t *gcc_types; // name -> bl_type
     hashmap_t *global_funcs; // name -> func
     hashmap_t *methods; // bl_type -> name -> binding_t
+    bl_type_t *return_type;
     loop_label_t *loop_label;
     bool debug;
 } env_t;

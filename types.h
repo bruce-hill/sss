@@ -57,6 +57,7 @@ typedef struct {
 istr_t type_to_string(bl_type_t *t);
 bool type_is_a(bl_type_t *t, bl_type_t *req);
 bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b);
+bool is_integral(bl_type_t *t);
 bool is_numeric(bl_type_t *t);
 int numtype_priority(bl_type_t *t);
 

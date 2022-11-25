@@ -147,11 +147,22 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Return: {
-        if (ast->child) {
+        assert(env->return_type);
+        if (env->return_type->kind == VoidType) {
+            if (ast->child)
+                ERROR(env, ast, "This function was defined with no return type, but a value is being returned here. Please specify a function return type.");
+            gcc_return_void(*block, NULL);
+        } else {
+            if (!ast->child)
+                ERROR(env, ast, "This function was defined to return a value of type %s, but no value is being returned here.",
+                      type_to_string(env->return_type));
+            bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+            if (!type_is_a(t, env->return_type))
+                ERROR(env, ast, "This function was defined to return a value of type %s, this value has type %s",
+                      type_to_string(env->return_type), type_to_string(t));
+
             gcc_rvalue_t *val = compile_expr(env, block, ast->child);
             gcc_return(*block, NULL, val);
-        } else {
-            gcc_return_void(*block, NULL);
         }
         *block = NULL;
         return NULL;
@@ -528,6 +539,94 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
         return gcc_unary_op(env->ctx, NULL, GCC_UNOP_MINUS, gcc_t, rval);
     }
+    case And: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
+        if (t->kind == BoolType) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            // Numeric promotion:
+            if (numtype_priority(rhs_t) < numtype_priority(t))
+                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
+            if (numtype_priority(lhs_t) < numtype_priority(t))
+                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+        }
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *result = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("and_result"));
+        gcc_block_t *if_truthy = gcc_new_block(func, NULL);
+        gcc_block_t *if_falsey = gcc_new_block(func, NULL);
+        gcc_block_t *done = gcc_new_block(func, NULL);
+
+        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_rvalue_t *bool_val = lhs_val;
+        if (t->kind != BoolType) {
+            gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
+            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
+        }
+        gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
+
+        gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, ast->rhs);
+        gcc_assign(if_truthy, NULL, result, rhs_val);
+        gcc_jump(if_truthy, NULL, done);
+
+        gcc_assign(if_falsey, NULL, result, lhs_val);
+        gcc_jump(if_falsey, NULL, done);
+
+        *block = done;
+        return gcc_lvalue_as_rvalue(result);
+    }
+    case Or: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
+        if (t->kind == BoolType) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            // Numeric promotion:
+            if (numtype_priority(rhs_t) < numtype_priority(t))
+                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
+            if (numtype_priority(lhs_t) < numtype_priority(t))
+                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+        }
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *result = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("and_result"));
+        gcc_block_t *if_truthy = gcc_new_block(func, NULL);
+        gcc_block_t *if_falsey = gcc_new_block(func, NULL);
+        gcc_block_t *done = gcc_new_block(func, NULL);
+
+        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_rvalue_t *bool_val = lhs_val;
+        if (t->kind != BoolType) {
+            gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
+            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
+        }
+        gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
+
+        gcc_assign(if_truthy, NULL, result, lhs_val);
+        gcc_jump(if_truthy, NULL, done);
+
+        gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, ast->rhs);
+        gcc_assign(if_falsey, NULL, result, rhs_val);
+        gcc_jump(if_falsey, NULL, done);
+
+        *block = done;
+        return gcc_lvalue_as_rvalue(result);
+    }
+    case Xor: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_XOR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+    }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: case Modulus: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
@@ -541,19 +640,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         default: ERROR(env, ast, "Unsupported math operation");
         }
 
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
-            gcc_lvalue_t *lval = get_lvalue(env, block, ast->lhs);
-            gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
+            gcc_lvalue_t *lhs_val = get_lvalue(env, block, ast->lhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
 
-            bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-            bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+            // Numeric promotion:
             if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
-                rval = gcc_cast(env->ctx, NULL, rval, bl_type_to_gcc(env, lhs_t));
-            gcc_update(*block, ast_loc(env, ast), lval, op, rval);
-            return gcc_lvalue_as_rvalue(lval);
+                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, lhs_t));
+            gcc_update(*block, ast_loc(env, ast), lhs_val, op, rhs_val);
+            return gcc_lvalue_as_rvalue(lhs_val);
         } else {
             gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            // Numeric promotion:
+            if (numtype_priority(rhs_t) < numtype_priority(t))
+                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
+            if (numtype_priority(lhs_t) < numtype_priority(t))
+                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
     }

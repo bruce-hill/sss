@@ -91,10 +91,20 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     return NULL;
 }
 
+bool is_integral(bl_type_t *t)
+{
+    switch (t->kind) {
+    case IntType: case Int32Type: case Int16Type: case Int8Type:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool is_numeric(bl_type_t *t)
 {
     switch (t->kind) {
-    case IntType: case Int16Type: case Int8Type:
+    case IntType: case Int32Type: case Int16Type: case Int8Type:
     case NumType: case Num32Type:
         return true;
     default:
