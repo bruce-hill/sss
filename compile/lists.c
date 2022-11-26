@@ -18,6 +18,46 @@
 #include "../types.h"
 #include "../util.h"
 
+typedef struct {
+    ast_t *item;
+    gcc_rvalue_t *list;
+    gcc_func_t *append_func;
+} list_insert_info_t;
+
+static void add_for_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    list_insert_info_t *list_info = data;
+    ast_t *ast = list_info->item;
+    ast_t *key_ast = ast->for_loop.key,
+          *value_ast = ast->for_loop.value,
+          *body = ast->for_loop.body;
+    if (key_ast)
+        hashmap_set(env->bindings, key_ast->str, new(binding_t, .type=info->key_type, .rval=info->key_rval));
+    if (value_ast)
+        hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
+
+    gcc_func_t *func = gcc_block_func(*block);
+    bl_type_t *t = get_type(env->file, env->bindings, ast);
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    ssize_t item_size = gcc_sizeof(env, t);
+    gcc_lvalue_t *item_var = gcc_local(func, NULL, gcc_t, fresh("item"));
+    gcc_rvalue_t *item_addr = gcc_lvalue_address(item_var, NULL);
+    gcc_assign(*block, NULL, item_var, compile_expr(env, block, body));
+    gcc_rvalue_t *append_args[] = {
+        list_info->list,
+        gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)item_size),
+        item_addr,
+    };
+    gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, list_info->append_func, 3, append_args));
+}
+
+static void compile_for_list_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    (void)info;
+    list_insert_info_t *list_info = data;
+    if (list_info->item->for_loop.between)
+        compile_block_statement(env, block, list_info->item->for_loop.between);
+}
+
+
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_ctx_t *ctx = env->ctx;
@@ -48,38 +88,16 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_assign(*block, ast_loc(env, ast), list, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
 
     if (ast->list.items) {
-        gcc_lvalue_t *item_var = gcc_local(func, NULL, item_gcc_type, fresh("item"));
-        gcc_rvalue_t *item_addr = gcc_lvalue_address(item_var, NULL);
-
         foreach (ast->list.items, item_ast, _) {
             switch ((*item_ast)->kind) {
             case For: {
                 // List comprehension:
-                ast_t *key_ast = (*item_ast)->for_loop.key,
-                      *value_ast = (*item_ast)->for_loop.value,
-                      *body = (*item_ast)->for_loop.body,
-                      *between = (*item_ast)->for_loop.between;
-                void add_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-                    if (key_ast)
-                        hashmap_set(env->bindings, key_ast->str, new(binding_t, .type=info->key_type, .rval=info->key_rval));
-                    if (value_ast)
-                        hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
-
-                    gcc_assign(*block, NULL, item_var, compile_expr(env, block, body));
-                    gcc_rvalue_t *append_args[] = {
-                        gcc_lvalue_as_rvalue(list),
-                        gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)item_size),
-                        item_addr,
-                    };
-                    gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, append_func, 3, append_args));
-                }
-                void compile_between(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-                    (void)info;
-                    if (between)
-                        compile_block_statement(env, block, between);
-                }
-
-                compile_iteration(env, block, *item_ast, add_list_item, compile_between);
+                list_insert_info_t info = {
+                    .item=ast,
+                    .list=gcc_lvalue_as_rvalue(list),
+                    .append_func=append_func,
+                };
+                compile_iteration(env, block, *item_ast, add_for_list_item, compile_for_list_between, (void*)&info);
                 break;
             }
             case While: case Repeat: case If: {
@@ -87,9 +105,10 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 ERROR(env, *item_ast, "Not yet implemented");
             }
             default: {
+                gcc_lvalue_t *item_var = gcc_local(func, NULL, item_gcc_type, fresh("item"));
                 gcc_rvalue_t *val = compile_expr(env, block, (*item_ast));
                 gcc_assign(*block, NULL, item_var, val);
-
+                gcc_rvalue_t *item_addr = gcc_lvalue_address(item_var, NULL);
                 gcc_rvalue_t *append_args[] = {
                     gcc_lvalue_as_rvalue(list),
                     gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
@@ -105,7 +124,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 
 void compile_list_iteration(
     env_t *env, gcc_block_t **block, ast_t *list_ast,
-    loop_handler_t body_compiler, loop_handler_t between_compiler)
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
 {
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_preamble = gcc_new_block(func, NULL),
@@ -185,7 +204,7 @@ void compile_list_iteration(
 
     // body block
     if (body_compiler)
-        body_compiler(env, &loop_body_end, &info);
+        body_compiler(env, &loop_body_end, &info, data);
 
     if (loop_body_end)
         gcc_jump(loop_body_end, NULL, loop_next);
@@ -202,7 +221,7 @@ void compile_list_iteration(
     gcc_assign(loop_between, NULL, item_var,
                gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
     if (between_compiler)
-        between_compiler(env, &loop_between, &info);
+        between_compiler(env, &loop_between, &info, data);
 
     if (loop_between)
         gcc_jump(loop_between, NULL, loop_body); // goto body

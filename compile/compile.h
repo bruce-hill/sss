@@ -51,7 +51,7 @@ typedef struct {
     bl_type_t *key_type, *value_type;
     gcc_rvalue_t *key_rval, *value_rval;
 } iterator_info_t;
-typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t *info);
+typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t *info, void *userdata);
 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
@@ -89,16 +89,16 @@ void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== loops.c ==============================
 void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast,
-                       loop_handler_t body_compiler, loop_handler_t between_compiler);
+                       loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_while_iteration(
     env_t *env, gcc_block_t **block, ast_t *condition,
-    loop_handler_t body_compiler, loop_handler_t between_compiler);
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_list_iteration(
     env_t *env, gcc_block_t **block, ast_t *list,
-    loop_handler_t body_compiler, loop_handler_t between_compiler);
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_range_iteration(
     env_t *env, gcc_block_t **block, ast_t *range,
-    loop_handler_t body_compiler, loop_handler_t between_compiler);
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 
 // ============================== lists.c ==============================
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast);

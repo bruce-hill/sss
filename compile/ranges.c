@@ -33,7 +33,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
 
 void compile_range_iteration(
     env_t *env, gcc_block_t **block, ast_t *range,
-    loop_handler_t body_compiler, loop_handler_t between_compiler)
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, NULL),
@@ -112,7 +112,7 @@ void compile_range_iteration(
 
     // body block
     if (body_compiler)
-        body_compiler(env, &loop_body_end, &info);
+        body_compiler(env, &loop_body_end, &info, userdata);
 
     if (loop_body_end)
         gcc_jump(loop_body_end, NULL, loop_next);
@@ -127,7 +127,7 @@ void compile_range_iteration(
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
     // between:
     if (between_compiler)
-        between_compiler(env, &loop_body_end, &info);
+        between_compiler(env, &loop_body_end, &info, userdata);
 
     if (loop_between)
         gcc_jump(loop_between, NULL, loop_body); // goto body

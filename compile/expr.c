@@ -31,6 +31,39 @@ static gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t,
     return gcc_lvalue_as_rvalue(tmp);
 }
 
+static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    ast_t *ast = data;
+    if (ast->for_loop.key)
+        hashmap_set(env->bindings, ast->for_loop.key->str, new(binding_t, .rval=info->key_rval, .type=info->key_type));
+
+    if (ast->for_loop.value)
+        hashmap_set(env->bindings, ast->for_loop.value->str, new(binding_t, .rval=info->value_rval, .type=info->value_type));
+
+    if (ast->for_loop.body)
+        compile_block_statement(env, block, ast->for_loop.body);
+}
+
+static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    (void)info;
+    ast_t *ast = data;
+    if (ast->for_loop.between)
+        compile_block_statement(env, block, ast->for_loop.between);
+}
+
+static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    (void)info;
+    ast_t *ast = data;
+    if (ast->loop.body)
+        compile_block_statement(env, block, ast->loop.body);
+}
+
+static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+    (void)info;
+    ast_t *ast = data;
+    if (ast->loop.between)
+        compile_block_statement(env, block, ast->loop.between);
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     switch (ast->kind) {
@@ -751,36 +784,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_range(env, block, ast);
     }
     case For: {
-        void compile_body(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-            if (ast->for_loop.key)
-                hashmap_set(env->bindings, ast->for_loop.key->str, new(binding_t, .rval=info->key_rval, .type=info->key_type));
-
-            if (ast->for_loop.value)
-                hashmap_set(env->bindings, ast->for_loop.value->str, new(binding_t, .rval=info->value_rval, .type=info->value_type));
-
-            if (ast->for_loop.body)
-                compile_block_statement(env, block, ast->for_loop.body);
-        }
-        void compile_between(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-            (void)info;
-            if (ast->for_loop.between)
-                compile_block_statement(env, block, ast->for_loop.between);
-        }
-        compile_iteration(env, block, ast, compile_body, compile_between);
+        compile_iteration(env, block, ast, compile_for_body, compile_for_between, (void*)ast);
         return NULL;
     }
     case While: case Repeat: {
-        void compile_body(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-            (void)info;
-            if (ast->loop.body)
-                compile_block_statement(env, block, ast->loop.body);
-        }
-        void compile_between(env_t *env, gcc_block_t **block, iterator_info_t *info) {
-            (void)info;
-            if (ast->loop.between)
-                compile_block_statement(env, block, ast->loop.between);
-        }
-        compile_iteration(env, block, ast, compile_body, compile_between);
+        compile_iteration(env, block, ast, compile_while_body, compile_while_between, (void*)ast);
         return NULL;
     }
     case Skip: case Stop: {

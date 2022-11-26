@@ -20,7 +20,7 @@
 
 void compile_loop_iteration(
     env_t *env, gcc_block_t **block, const char *loop_name, ast_t *condition,
-    loop_handler_t body_compiler, loop_handler_t between_compiler)
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_top = gcc_new_block(func, NULL),
@@ -50,14 +50,14 @@ void compile_loop_iteration(
 
     gcc_block_t *loop_body_orig = loop_body;
     if (body_compiler)
-        body_compiler(env, &loop_body, NULL);
+        body_compiler(env, &loop_body, NULL, userdata);
 
     if (loop_body) {
         if (condition)
             check_truthiness(env, &loop_body, condition, loop_between, loop_end);
         else
             gcc_jump(loop_body, NULL, loop_between);
-        between_compiler(env, &loop_between, NULL);
+        between_compiler(env, &loop_between, NULL, userdata);
         if (loop_between)
             gcc_jump(loop_between, NULL, loop_body_orig);
     }
@@ -65,7 +65,7 @@ void compile_loop_iteration(
     *block = loop_end;
 }
 
-void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler_t body_compiler, loop_handler_t between_compiler)
+void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     switch (ast->kind) {
     case For: {
@@ -73,18 +73,19 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
         if (iter_t->kind == OptionalType) iter_t = iter_t->nonnil;
         switch (iter_t->kind) {
         case ListType: {
-            compile_list_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler);
+            compile_list_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler, userdata);
             return;
         }
         case RangeType: {
-            compile_range_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler);
+            compile_range_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler, userdata);
             return;
         }
         default: ERROR(env, ast->for_loop.iter, "Iteration is not supported for %s", type_to_string(iter_t));
         }
     }
     case Repeat: case While: {
-        compile_loop_iteration(env, block, ast->kind == While ? "while" : "repeat", ast->loop.condition, body_compiler, between_compiler);
+        compile_loop_iteration(env, block, ast->kind == While ? "while" : "repeat",
+                               ast->loop.condition, body_compiler, between_compiler, userdata);
         return;
     }
     default: ERROR(env, ast, "This is not an interation");
