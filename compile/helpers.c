@@ -193,15 +193,15 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         fresh("tostring"), 2, params, 0);
     hashmap_set(env->tostring_funcs, t, func);
 
-    gcc_block_t *block = gcc_new_block(func, "tostring");
+    gcc_block_t *block = gcc_new_block(func, fresh("tostring"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
 
 #define LITERAL(str) gcc_new_string(env->ctx, str)
     switch (t->kind) {
     case BoolType: {
-        gcc_block_t *yes_block = gcc_new_block(func, "yes");
-        gcc_block_t *no_block = gcc_new_block(func, "no");
+        gcc_block_t *yes_block = gcc_new_block(func, fresh("yes"));
+        gcc_block_t *no_block = gcc_new_block(func, fresh("no"));
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
         gcc_return(yes_block, NULL, LITERAL("yes"));
         gcc_return(no_block, NULL, LITERAL("no"));
@@ -224,8 +224,8 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         errx(1, "This should be handled by an externally defined function.");
     }
     case OptionalType: {
-        gcc_block_t *nil_block = gcc_new_block(func, "nil");
-        gcc_block_t *nonnil_block = gcc_new_block(func, "nonnil");
+        gcc_block_t *nil_block = gcc_new_block(func, fresh("nil"));
+        gcc_block_t *nonnil_block = gcc_new_block(func, fresh("nonnil"));
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));

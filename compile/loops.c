@@ -23,10 +23,10 @@ void compile_loop_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_top = gcc_new_block(func, "loop_top"),
-                *loop_body = gcc_new_block(func, "loop_body"),
-                *loop_between = gcc_new_block(func, "loop_between"),
-                *loop_end = gcc_new_block(func, "loop_end");
+    gcc_block_t *loop_top = gcc_new_block(func, fresh("loop_top")),
+                *loop_body = gcc_new_block(func, fresh("loop_body")),
+                *loop_between = gcc_new_block(func, fresh("loop_between")),
+                *loop_end = gcc_new_block(func, fresh("loop_end"));
 
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();

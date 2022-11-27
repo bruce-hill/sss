@@ -500,8 +500,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_block_t *bounds_safe = gcc_new_block(func, "bounds_safe"),
-                        *bounds_unsafe = gcc_new_block(func, "bounds_unsafe");
+            gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
+                        *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
             gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
 
             // Bounds check failure:
@@ -632,9 +632,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("and_result"));
-        gcc_block_t *if_truthy = gcc_new_block(func, "and_truthy");
-        gcc_block_t *if_falsey = gcc_new_block(func, "and_falsey");
-        gcc_block_t *done = gcc_new_block(func, "and_done");
+        gcc_block_t *if_truthy = gcc_new_block(func, fresh("and_truthy"));
+        gcc_block_t *if_falsey = gcc_new_block(func, fresh("and_falsey"));
+        gcc_block_t *done = gcc_new_block(func, fresh("and_done"));
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_rvalue_t *bool_val = lhs_val;
@@ -673,9 +673,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("and_result"));
-        gcc_block_t *if_truthy = gcc_new_block(func, "or_truthy");
-        gcc_block_t *if_falsey = gcc_new_block(func, "or_falsey");
-        gcc_block_t *done = gcc_new_block(func, "or_done");
+        gcc_block_t *if_truthy = gcc_new_block(func, fresh("or_truthy"));
+        gcc_block_t *if_falsey = gcc_new_block(func, fresh("or_falsey"));
+        gcc_block_t *done = gcc_new_block(func, fresh("or_done"));
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_rvalue_t *bool_val = lhs_val;
@@ -743,11 +743,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
-        gcc_block_t *end_if = gcc_new_block(func, "endif");
+        gcc_block_t *end_if = gcc_new_block(func, fresh("endif"));
 
         foreach (ast->clauses, clause, last_clause) {
-            gcc_block_t *if_truthy = gcc_new_block(func, "if_true");
-            gcc_block_t *if_falsey = (clause < last_clause || ast->else_body) ? gcc_new_block(func, "elseif") : end_if;
+            gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
+            gcc_block_t *if_falsey = (clause < last_clause || ast->else_body) ? gcc_new_block(func, fresh("elseif")) : end_if;
 
             ast_t *condition = clause->condition, *body = clause->body;
             env_t branch_env = *env;

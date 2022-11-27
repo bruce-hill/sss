@@ -89,7 +89,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
         "main", 0, NULL, 0);
-    gcc_block_t *block = gcc_new_block(main_func, "main");
+    gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
     compile_statement(&env, &block, ast);
     if (block)
         gcc_return_void(block, NULL);
