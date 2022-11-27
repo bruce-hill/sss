@@ -370,7 +370,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return rval;
     }
     case FunctionCall: {
-        gcc_rvalue_t *fn;
+        gcc_rvalue_t *fn_ptr = NULL;
+        gcc_func_t *fn = NULL;
         bl_type_t *fn_t = get_type(env->file, env->bindings, ast->call.fn);
         NEW_LIST(gcc_rvalue_t*, arg_vals);
         int64_t num_selfs = 0;
@@ -379,37 +380,35 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *self = ast->call.fn->indexed;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
             switch (self_t->kind) {
-            case StructType: {
-                if (ast->call.fn->index->kind != FieldName)
-                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like foo.baz()");
-                CORD method_name;
-                CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t), ast->call.fn->index->str);
-                binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
-                if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined on a %s struct.", type_to_string(self_t));
-                gcc_rvalue_t *self_val = compile_expr(env, block, self);
-                append(arg_vals, self_val);
-                num_selfs += 1;
-                fn = binding->rval;
-                break;
-            }
             case TypeType: {
                 if (ast->call.fn->index->kind != FieldName)
                     ERROR(env, ast->call.fn, "I was expecting this to be a field index like Foo.baz()");
-                CORD method_name;
-                CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
-                binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
+                istr_t method_name = intern_strf("%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
+                binding_t *binding = hashmap_get(env->bindings, method_name);
                 if (!binding)
                     ERROR(env, ast->call.fn, "I couldn't find a method with this name defined on type %s.", type_to_string(self_t->type));
-                fn = binding->rval;
+                fn = binding->func;
+                fn_ptr = binding->rval;
                 break;
             }
             default: {
-                ERROR(env, ast->call.fn, "I don't yet know how to do method calls on type %s", type_to_string(self_t));
+                if (ast->call.fn->index->kind != FieldName)
+                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like foo.baz()");
+                istr_t method_name = intern_strf("%s.%s", type_to_string(self_t), ast->call.fn->index->str);
+                binding_t *binding = hashmap_get(env->bindings, method_name);
+                if (!binding)
+                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                gcc_rvalue_t *self_val = compile_expr(env, block, self);
+                append(arg_vals, self_val);
+                num_selfs += 1;
+                fn = binding->func;
+                fn_ptr = binding->rval;
+                break;
             }
             }
         } else {
-            fn = compile_expr(env, block, ast->call.fn);
+            fn_ptr = compile_expr(env, block, ast->call.fn);
+            fn = NULL;
         }
         // TODO: keyword args
         foreach (ast->call.args, arg, _) {
@@ -421,8 +420,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, expected));
             append(arg_vals, val);
         }
-        gcc_rvalue_t *call = gcc_call_ptr(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
-        return call;
+        if (fn)
+            return gcc_call(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
+        else if (fn_ptr)
+            return gcc_call_ptr(env->ctx, ast_loc(env, ast), fn_ptr, length(arg_vals), arg_vals[0]);
+        else
+            assert(false);
     }
     case KeywordArg: {
         return compile_expr(env, block, ast->named.value);

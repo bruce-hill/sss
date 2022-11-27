@@ -48,6 +48,33 @@ static hashmap_t *get_global_functions(gcc_ctx_t *ctx)
     return funcs;
 }
 
+static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
+{
+    gcc_param_t *params[LIST_LEN(fn_type->args)];
+    for (int64_t i = 0; i < LIST_LEN(fn_type->args); i++)
+        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, LIST_ITEM(fn_type->args, i)), fresh("arg"));
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn_type->ret),
+                                    extern_name, LIST_LEN(fn_type->args), params, is_vararg);
+    hashmap_set(env->bindings, intern_strf("%s.%s", type_to_string(t), method_name),
+                new(binding_t, .is_global=true, .type=fn_type, .func=func));
+}
+
+static void load_string_methods(env_t *env)
+{
+    extern_method(env, "bl_string_uppercased", Type(StringType), "uppercased",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+    extern_method(env, "bl_string_lowercased", Type(StringType), "lowercased",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+    extern_method(env, "bl_string_capitalized", Type(StringType), "capitalized",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+    extern_method(env, "bl_string_titlecased", Type(StringType), "titlecased",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+    extern_method(env, "bl_string_starts_with", Type(StringType), "starts_with",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
+    extern_method(env, "bl_string_ends_with", Type(StringType), "ends_with",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
+}
+
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
 {
     env_t env = {
@@ -85,6 +112,8 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
             gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
         }, 0);
     hashmap_set(env.tostring_funcs, Type(RangeType), range_tostring_func);
+
+    load_string_methods(&env);
 
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),

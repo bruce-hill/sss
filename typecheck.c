@@ -188,21 +188,34 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          ast->index->str, type_to_string(indexed_t));
             }
             case TypeType: {
-                switch (indexed_t->type->kind) {
-                case StructType: {
-                    for (int64_t i = 0, len = LIST_LEN(indexed_t->type->struct_.method_names); i < len; i++) {
-                        if (LIST_ITEM(indexed_t->type->struct_.method_names, i) == ast->index->str)
-                            return LIST_ITEM(indexed_t->type->struct_.method_types, i);
-                    }
-                    TYPE_ERR(f, ast->index, "I can't find any method named \"%s\" inside a %s struct",
-                             ast->index->str, type_to_string(indexed_t->type));
-                }
-                default: {
-                    TYPE_ERR(f, ast, "I don't know how to call methods on type %s", type_to_string(indexed_t->type));
-                }
-                }
+                binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t), ast->index->str));
+                if (binding)
+                    return binding->type;
+                else
+                    TYPE_ERR(f, ast, "I can't find any method called %s on type %s", ast->index->str, type_to_string(indexed_t));
+
+                // switch (indexed_t->type->kind) {
+                // case StructType: {
+                //     for (int64_t i = 0, len = LIST_LEN(indexed_t->type->struct_.method_names); i < len; i++) {
+                //         if (LIST_ITEM(indexed_t->type->struct_.method_names, i) == ast->index->str)
+                //             return LIST_ITEM(indexed_t->type->struct_.method_types, i);
+                //     }
+                //     TYPE_ERR(f, ast->index, "I can't find any method named \"%s\" inside a %s struct",
+                //              ast->index->str, type_to_string(indexed_t->type));
+                // }
+                // default: {
+                //     TYPE_ERR(f, ast, "I don't know how to call methods on type %s", type_to_string(indexed_t->type));
+                // }
+                // }
             }
             default: {
+                if (ast->index->kind == FieldName) {
+                    binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t), ast->index->str));
+                    if (binding)
+                        return binding->type;
+                    else
+                        TYPE_ERR(f, ast, "I can't find any method called %s on type %s", ast->index->str, type_to_string(indexed_t));
+                }
                 TYPE_ERR(f, ast, "I don't know how to index %s values", type_to_string(indexed_t));
             }
             // TODO: support static methods
