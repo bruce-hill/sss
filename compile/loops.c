@@ -99,7 +99,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
             compile_range_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler, userdata);
             return;
         }
-        default: ERROR(env, ast->for_loop.iter, "Iteration is not supported for %s", type_to_string(iter_t));
+        default: ERROR(env, ast->for_loop.iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
         }
     }
     case Repeat: case While: {

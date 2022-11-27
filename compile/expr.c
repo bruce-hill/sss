@@ -77,7 +77,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (binding->func)
                 return gcc_get_func_address(binding->func, NULL);
         }
-        ERROR(env, ast, "Error: variable is not defined"); 
+        ERROR(env, ast, "I can't find a definition for this variable"); 
     }
     case Declare: {
         gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
@@ -157,7 +157,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Do: {
         // TODO: support do/else?
         if (length(ast->children) > 1)
-            ERROR(env, ith(ast->children, 1), "Do/else is not currently supported");
+            ERROR(env, ith(ast->children, 1), "`do` statments with else clauses are not currently supported");
         return compile_expr(env, block, ith(ast->children, 0));
     }
     case Block: {
@@ -183,18 +183,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         assert(env->return_type);
         if (env->return_type->kind == VoidType) {
             if (ast->child)
-                ERROR(env, ast, "This function was defined with no return type, but a value is being returned here. Please specify a function return type.");
+                ERROR(env, ast, "I was expecting a plain `return` with no expression here, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
             gcc_return_void(*block, NULL);
         } else {
             if (!ast->child)
-                ERROR(env, ast, "This function was defined to return a value of type %s, but no value is being returned here.",
+                ERROR(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
                       type_to_string(env->return_type));
             bl_type_t *t = get_type(env->file, env->bindings, ast->child);
             gcc_rvalue_t *val = compile_expr(env, block, ast->child);
             if (is_numeric(t) && is_numeric(env->return_type) && numtype_priority(t) < numtype_priority(env->return_type))
                 val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, env->return_type));
             else if (!type_is_a(t, env->return_type))
-                ERROR(env, ast, "This function was defined to return a value of type %s, this value has type %s",
+                ERROR(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
             gcc_return(*block, NULL, val);
@@ -258,7 +258,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Struct: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         if (length(ast->struct_.members) > length(t->struct_.field_names))
-            ERROR(env, ast, "This struct literal has too many fields (expected only %ld)", length(t->struct_.field_names));
+            ERROR(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
+                  type_to_string(t),
+                  length(t->struct_.field_names), length(ast->struct_.members));
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
@@ -294,7 +296,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 gcc_field_t *field = unused_fields[field_index];
                 if (!field)
-                    ERROR(env, member, "This field is a duplicate of an earlier field");
+                    ERROR(env, member, "You already provided a value for this field earlier in this struct.");
 
                 // Found the field:
                 entries[value_index].field = field;
@@ -323,7 +325,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 goto found_index;
             }
 
-            ERROR(env, member, "This field is beyond the number of fields in this struct");
+            // Unreachable, this should be handled earlier
+            ERROR(env, member, "This field is beyond the number of fields in this struct.");
 
           found_index: continue;
         }
@@ -332,7 +335,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *ft = ith(t->struct_.field_types, field_index);
             if (ft->kind == OptionalType) continue;
             if (unused_fields[field_index])
-                ERROR(env, ast, "This struct literal is missing the non-optional field '%s' (%s)",
+                ERROR(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
+                      type_to_string(t),
                       ith(t->struct_.field_names, field_index), type_to_string(ft));
         }
 
@@ -354,8 +358,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                      && numtype_priority(expected) >= numtype_priority(actual))
                 rvalues[i] = gcc_cast(env->ctx, NULL, entries[i].value, bl_type_to_gcc(env, expected));
             else
-                ERROR(env, entries[i].ast, "This is supposed to be a %s, but this value is a %s", 
-                      type_to_string(expected), type_to_string(actual));
+                ERROR(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
+                      type_to_string(expected), type_to_string(t), ith(t->struct_.field_names, entries[i].field_num),
+                      type_to_string(actual));
 
             populated_fields[i] = entries[i].field;
         }
@@ -376,12 +381,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             switch (self_t->kind) {
             case StructType: {
                 if (ast->call.fn->index->kind != FieldName)
-                    ERROR(env, ast->call.fn, "Method calls must be specified by explicit method name");
+                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like foo.baz()");
                 CORD method_name;
                 CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t), ast->call.fn->index->str);
                 binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
                 if (!binding)
-                    ERROR(env, ast->call.fn, "This method is not defined");
+                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined on a %s struct.", type_to_string(self_t));
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 append(arg_vals, self_val);
                 num_selfs += 1;
@@ -390,17 +395,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             case TypeType: {
                 if (ast->call.fn->index->kind != FieldName)
-                    ERROR(env, ast->call.fn, "Method calls must be specified by explicit method name");
+                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like Foo.baz()");
                 CORD method_name;
                 CORD_sprintf(&method_name, "%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
                 binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(method_name)));
                 if (!binding)
-                    ERROR(env, ast->call.fn, "This method is not defined");
+                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined on type %s.", type_to_string(self_t->type));
                 fn = binding->rval;
                 break;
             }
             default: {
-                ERROR(env, ast->call.fn, "Method calls are only supported on struct types, not %s", type_to_string(self_t));
+                ERROR(env, ast->call.fn, "I don't yet know how to do method calls on type %s", type_to_string(self_t));
             }
             }
         } else {
@@ -468,7 +473,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 #undef BINOP
             return len;
         }
-        default: ERROR(env, ast, "Length is not implemented for %s", type_to_string(t));
+        default: ERROR(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
         }
     }
     case Index: {
@@ -486,7 +491,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     return gcc_rvalue_access_field(obj, NULL, field);
                 }
             }
-            ERROR(env, ast->index, "Not a valid field on type %s", type_to_string(indexed_t));
+            ERROR(env, ast->index, "There isn't any field called \"%s\" on %s structs.", ast->index->str, type_to_string(indexed_t));
         }
         case ListType: {
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
@@ -524,7 +529,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
         }
         default: {
-            ERROR(env, ast, "Indexing is not supported for %s", type_to_string(indexed_t));
+            ERROR(env, ast, "I don't know how to do indexing on things with type %s.", type_to_string(indexed_t));
         }
         }
     }
@@ -566,7 +571,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (is_integral(t))
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
         else
-            ERROR(env, ast, "'not' isn't supported for %s", type_to_string(t));
+            ERROR(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }
     case Equal: case NotEqual: {
         (void)get_type(env->file, env->bindings, ast); // Check type
@@ -603,12 +608,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (lhs_t == rhs_t && is_numeric(lhs_t)) {
             return gcc_comparison(env->ctx, NULL, cmp, lhs_val, rhs_val);
         }
-        ERROR(env, ast, "Ordered comparison is not supported for %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        ERROR(env, ast, "I don't know how to do ordered comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case Negative: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->child);
         if (!is_numeric(t))
-            ERROR(env, ast, "Negation is only supported for numeric types, not %s", type_to_string(t));
+            ERROR(env, ast, "I only know how to negate numbers, not %s", type_to_string(t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
         return gcc_unary_op(env->ctx, NULL, GCC_UNOP_MINUS, gcc_t, rval);
@@ -846,7 +851,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     default: break;
     }
-    ERROR(env, ast, "Error: compiling is not yet implemented for %s", get_ast_kind_name(ast->kind)); 
+    ERROR(env, ast, "I haven't yet implemented compiling for %s", get_ast_kind_name(ast->kind)); 
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

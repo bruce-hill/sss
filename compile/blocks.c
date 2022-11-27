@@ -82,7 +82,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             }
         }
         if (!*block)
-            ERROR(env, *stmt, "This code is unreachable");
+            ERROR(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
             return compile_expr(env, block, *stmt);
         } else {

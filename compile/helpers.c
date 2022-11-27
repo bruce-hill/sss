@@ -326,7 +326,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         if (binding) {
             return binding->lval;
         } else {
-            ERROR(env, ast, "Error: variable is not defined"); 
+            ERROR(env, ast, "I don't know what this variable is referring to."); 
         }
     }
     default:

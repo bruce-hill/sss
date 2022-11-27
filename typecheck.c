@@ -36,20 +36,20 @@ static bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case TypeName: {
         binding_t *binding = hashmap_get(bindings, ast->str);
         if (!binding) {
-            TYPE_ERR(f, ast, "This type name is not defined");
+            TYPE_ERR(f, ast, "I don't know any type with this name.");
         }
         return binding->type->type;
     }
 
     case TypeList: {
         bl_type_t *item_t = parse_type(f, bindings, ast->child);
-        if (!item_t) TYPE_ERR(f, ast->child, "This item type is not defined");
+        if (!item_t) TYPE_ERR(f, ast->child, "I can't figure out what this type is.");
         return Type(ListType, .item_type=item_t);
     }
 
     case TypeOption: {
         bl_type_t *item_t = parse_type(f, bindings, ast->child);
-        if (!item_t) TYPE_ERR(f, ast->child, "This option type is not defined");
+        if (!item_t) TYPE_ERR(f, ast->child, "I can't figure out what this type is.");
         return Type(OptionalType, .nonnil=item_t);
     }
     case TypeFunction: {
@@ -103,7 +103,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             if (binding) {
                 return binding->type;
             } else {
-                TYPE_ERR(f, ast, "Couldn't figure out what type %s refers to", ast->str);
+                TYPE_ERR(f, ast, "I can't figure out what type %s refers to", ast->str);
             }
         }
         case Len: {
@@ -137,7 +137,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                             hashmap_set(loop_bindings, item->for_loop.value->str, new(binding_t, .type=Type(IntType)));
                         break;
                     default:
-                        TYPE_ERR(f, item->for_loop.iter, "This value has type %s, which is not iterable", type_to_string(iter_t));
+                        TYPE_ERR(f, item->for_loop.iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
                         break;
                     }
                     t2 = get_type(f, loop_bindings, item->for_loop.body);
@@ -155,7 +155,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
                 if (!merged)
                     TYPE_ERR(f, LIST_ITEM(ast->list.items, i),
-                             "This list item has type %s, which is different from earlier items which have type %s",
+                             "This list item has type %s, which is different from earlier list items which have type %s",
                              type_to_string(t2),  type_to_string(item_type));
                 item_type = merged;
             }
@@ -169,7 +169,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 bl_type_t *index_t = get_type(f, bindings, ast->index);
                 switch (index_t->kind) {
                 case IntType: case Int32Type: case Int16Type: case Int8Type: break;
-                default: TYPE_ERR(f, ast->index, "This value is not an integer");
+                default: TYPE_ERR(f, ast->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
                 }
                 return indexed_t->item_type;
             }
@@ -184,7 +184,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     if (LIST_ITEM(indexed_t->struct_.method_names, i) == ast->index->str)
                         return LIST_ITEM(indexed_t->struct_.method_types, i);
                 }
-                TYPE_ERR(f, ast->index, "This is not a valid member of type %s", type_to_string(indexed_t));
+                TYPE_ERR(f, ast->index, "I can't find any field or method named \"%s\" inside a %s struct",
+                         ast->index->str, type_to_string(indexed_t));
             }
             case TypeType: {
                 switch (indexed_t->type->kind) {
@@ -193,15 +194,16 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                         if (LIST_ITEM(indexed_t->type->struct_.method_names, i) == ast->index->str)
                             return LIST_ITEM(indexed_t->type->struct_.method_types, i);
                     }
-                    TYPE_ERR(f, ast->index, "This is not a valid member of type %s", type_to_string(indexed_t->type));
+                    TYPE_ERR(f, ast->index, "I can't find any method named \"%s\" inside a %s struct",
+                             ast->index->str, type_to_string(indexed_t->type));
                 }
                 default: {
-                    TYPE_ERR(f, ast, "Static methods are not supported for type %s", type_to_string(indexed_t->type));
+                    TYPE_ERR(f, ast, "I don't know how to call methods on type %s", type_to_string(indexed_t->type));
                 }
                 }
             }
             default: {
-                TYPE_ERR(f, ast, "Indexing is not supported for type %s", type_to_string(indexed_t));
+                TYPE_ERR(f, ast, "I don't know how to index %s values", type_to_string(indexed_t));
             }
             // TODO: support static methods
             }
@@ -213,7 +215,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case FunctionCall: {
             bl_type_t *fn_type = get_type(f, bindings, ast->call.fn);
             if (fn_type->kind != FunctionType) {
-                TYPE_ERR(f, ast->call.fn, "This function is a %s and not a function", type_to_string(fn_type));
+                TYPE_ERR(f, ast->call.fn, "You're calling a value of type %s and not a function", type_to_string(fn_type));
             }
             int64_t max_args = LIST_LEN(fn_type->args);
             int64_t min_args = max_args;
@@ -230,16 +232,17 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     if (is_numeric(self_t) && is_numeric(expected) && numtype_priority(self_t) < numtype_priority(expected))
                         self_t = expected;
                     if (!type_is_a(self_t, expected)) {
-                        TYPE_ERR(f, self, "This argument has the wrong type. Expected %s but got %s",
+                        TYPE_ERR(f, self, "I was expecting this argument to be a %s, but this value is a %s",
                                  type_to_string(expected), type_to_string(self_t));
                     }
                     num_selfs += 1;
                 }
             }
             if (num_selfs + len_args < min_args) {
-                TYPE_ERR(f, ast, "Expected to get at least %ld arguments but only got %ld", min_args, num_selfs + len_args);
+                TYPE_ERR(f, ast, "I expected this function to have at least %ld arguments, but there's only %ld arguments here.", min_args, num_selfs + len_args);
             } else if (num_selfs + len_args > max_args) {
-                TYPE_ERR(f, LIST_ITEM(ast->call.args, max_args), "Too many arguments provided to this function call. Everything from here on is too much.");
+                TYPE_ERR(f, LIST_ITEM(ast->call.args, max_args), "I was only expecting %ld arguments for this function call, but everything from here on is too much.",
+                         max_args);
             }
             for (int64_t i = 0; i < len_args; i++) {
                 ast_t *arg = LIST_ITEM(ast->call.args, i);
@@ -248,7 +251,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 if (is_numeric(arg_t) && is_numeric(expected) && numtype_priority(arg_t) < numtype_priority(expected))
                     arg_t = expected;
                 if (!type_is_a(arg_t, expected)) {
-                    TYPE_ERR(f, arg, "This argument has the wrong type. Expected %s but got %s",
+                    TYPE_ERR(f, arg, "I was expecting this argument to be a %s, but this value is a %s",
                              type_to_string(expected), type_to_string(arg_t));
                 }
             }
@@ -280,7 +283,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case Negative: {
             bl_type_t *t = get_type(f, bindings, ast->child);
             if (!is_numeric(t))
-                TYPE_ERR(f, ast, "Negation is only supported for numeric types, not %s", type_to_string(t));
+                TYPE_ERR(f, ast, "I only know how to negate numeric types, not %s", type_to_string(t));
             return t;
         }
         case And: {
@@ -292,7 +295,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             else if (is_integral(lhs_t) && is_integral(rhs_t))
                 return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
-            TYPE_ERR(f, ast, "The left and right sides of this 'and' are not compatible: %s and %s",
+            TYPE_ERR(f, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
                      type_to_string(lhs_t), type_to_string(rhs_t));
         }
         case Or: {
@@ -310,7 +313,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 else if (rhs_t == lhs_t)
                     return lhs_t;
             }
-            TYPE_ERR(f, ast, "The left and right sides of this 'or' are not compatible: %s and %s",
+            TYPE_ERR(f, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
                      type_to_string(lhs_t), type_to_string(rhs_t));
         }
         case Xor: {
@@ -322,7 +325,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             else if (is_integral(lhs_t) && is_integral(rhs_t))
                 return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
-            TYPE_ERR(f, ast, "The left and right sides of this 'xor' are not compatible: %s and %s",
+            TYPE_ERR(f, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                      type_to_string(lhs_t), type_to_string(rhs_t));
         }
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
@@ -344,33 +347,25 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 else if (t1->kind == DSLType || t1->kind == StringType)
                     return t1;
             } else if (is_numeric(t1)) {
-                TYPE_ERR(f, ast, "The right side of this operation is type %s, but it needs to be numeric to do operations with %s",
-                         type_to_string(t2), type_to_string(t1));
+                TYPE_ERR(f, ast, "I only know how to do math operations on numeric types, but the right side of this operation is a %s.",
+                         type_to_string(t2));
             } else if (is_numeric(t2)) {
-                TYPE_ERR(f, ast, "The left side of this operation is type %s, but it needs to be numeric to do operations with %s",
-                         type_to_string(t1), type_to_string(t2));
+                TYPE_ERR(f, ast, "I only know how to do math operations on numeric types, but the left side of this operation is a %s.",
+                         type_to_string(t1));
             }
-            TYPE_ERR(f, ast, "Math operations are not supported between %s and %s",
+            TYPE_ERR(f, ast, "I only know how to do math operations between numeric types, not between a %s and a %s",
                      type_to_string(t1), type_to_string(t2));
         }
 
         case Less: case LessEqual: case Greater: case GreaterEqual: {
-            bl_type_t *lhs_t = get_type(f, bindings, ast->lhs);
-            bl_type_t *rhs_t = get_type(f, bindings, ast->rhs);
-            if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType))
-                return Type(BoolType);
-            else if (is_numeric(lhs_t) && is_numeric(rhs_t))
-                return Type(BoolType);
-            else
-                TYPE_ERR(f, ast, "Ordered comparison is not supported for %s and %s",
-                         type_to_string(lhs_t), type_to_string(rhs_t));
+            return Type(BoolType);
         }
 
         case Not: {
             bl_type_t *t = get_type(f, bindings, ast->child);
             if (t->kind == BoolType || is_integral(t))
                 return t;
-            TYPE_ERR(f, ast, "'not' isn't supported for %s", type_to_string(t)); 
+            TYPE_ERR(f, ast, "I only know what `not` means for Bools and integers, but this is a %s", type_to_string(t)); 
         }
 
         case Equal: case NotEqual: {
@@ -381,7 +376,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             else if (is_numeric(lhs_t) && is_numeric(rhs_t))
                 return Type(BoolType);
             else
-                TYPE_ERR(f, ast, "These two values have incompatible types: %s vs %s",
+                TYPE_ERR(f, ast, "I only know how to compare values that have the same type, but this comparison is between a %s and a %s",
                          type_to_string(lhs_t), type_to_string(rhs_t));
         }
 
@@ -458,7 +453,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     APPEND(method_names, (*member)->fn.name);
                     APPEND(method_types, mt);
                 } else {
-                    TYPE_ERR(f, *member, "Not yet implemented");
+                    TYPE_ERR(f, *member, "I haven't yet implemented struct members other than methods and fields");
                 }
             }
             return Type(TypeType, .type=t);
@@ -468,19 +463,21 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *t = NULL;
             LIST_FOR (ast->clauses, clause, _) {
                 bl_type_t *clause_t = get_clause_type(f, bindings, clause->condition, clause->body);
-                t = type_or_type(t, clause_t);
-                if (!t)
+                bl_type_t *t2 = type_or_type(t, clause_t);
+                if (!t2)
                     TYPE_ERR(f, clause->body,
-                             "This block has a type %s, which is incompatible with earlier blocks of type %s",
-                             type_to_string(clause_t), type_to_string(t));
+                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
+                             type_to_string(t), type_to_string(clause_t));
+                t = t2;
             }
             if (ast->else_body) {
                 bl_type_t *else_type = get_type(f, bindings, ast->else_body);
-                t = type_or_type(t, else_type);
-                if (!t)
+                bl_type_t *t2 = type_or_type(t, else_type);
+                if (!t2)
                     TYPE_ERR(f, ast->else_body,
-                             "This block has a type %s, which is incompatible with earlier blocks of type %s",
-                             type_to_string(else_type), type_to_string(t));
+                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
+                             type_to_string(t), type_to_string(else_type));
+                t = t2;
             } else {
                 if (t->kind != OptionalType)
                     t = Type(OptionalType, .nonnil=t);
@@ -494,7 +491,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
         default: break;
     }
-    TYPE_ERR(f, ast, "Couldn't figure out type for %s", get_ast_kind_name(ast->kind));
+    TYPE_ERR(f, ast, "I can't figure out what type a %s is", get_ast_kind_name(ast->kind));
 }
 
 void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
@@ -509,7 +506,7 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
             t = t->nonnil;
 
         if (!(t->kind == VoidType || t->kind == AbortType)) {
-            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored",
+            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
                      type_to_string(t));
         }
     }

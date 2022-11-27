@@ -40,7 +40,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     compile_statement(&body_env, &block, def->fn.body);
     if (block) {
         if (t->ret->kind != VoidType)
-            ERROR(env, def, "This function is supposed to return a value of type %s, but the end of the function can be reached without returning a value",
+            ERROR(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
                   type_to_string(t->ret));
         gcc_return_void(block, NULL);
     }
