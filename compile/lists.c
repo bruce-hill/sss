@@ -69,7 +69,6 @@ static void compile_list_between(env_t *env, gcc_block_t **block, iterator_info_
     }
 }
 
-
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_ctx_t *ctx = env->ctx;
@@ -99,8 +98,20 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     };
     gcc_assign(*block, ast_loc(env, ast), list, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
 
+    env_t env2 = *env;
+    env = &env2;
+
     if (ast->list.items) {
+        gcc_block_t *list_done = gcc_new_block(func, NULL);
         foreach (ast->list.items, item_ast, _) {
+            gcc_block_t *item_done = gcc_new_block(func, NULL);
+            env2.loop_label = &(loop_label_t){
+                .enclosing = env->loop_label,
+                    .name = intern_str("[]"),
+                    .skip_label = item_done,
+                    .stop_label = list_done,
+            };
+
             switch ((*item_ast)->kind) {
             case For: case While: case Repeat: {
                 // List comprehension:
@@ -125,7 +136,14 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_eval(*block, NULL, gcc_call(ctx, NULL, append_func, 3, append_args));
             }
             }
+
+            if (*block)
+                gcc_jump(*block, NULL, item_done);
+            *block = item_done;
         }
+        if (*block)
+            gcc_jump(*block, NULL, list_done);
+        *block = list_done;
     }
     return gcc_lvalue_as_rvalue(list);
 }
@@ -240,7 +258,6 @@ void compile_list_iteration(
 void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_comment(*block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
 
     gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
     gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");

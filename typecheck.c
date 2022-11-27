@@ -147,9 +147,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     t2 = get_type(f, bindings, item->loop.body);
                     break;
                 }
-                case If: {
-                    TYPE_ERR(f, item, "Conditional items in lists not yet supported");
-                }
                 default: {
                     t2 = get_type(f, bindings, item);
                     break;
