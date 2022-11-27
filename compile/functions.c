@@ -36,7 +36,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         hashmap_set(body_env.bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
-    gcc_block_t *block = gcc_new_block(func, NULL);
+    gcc_block_t *block = gcc_new_block(func, "func");
     compile_statement(&body_env, &block, def->fn.body);
     if (block) {
         if (t->ret->kind != VoidType)

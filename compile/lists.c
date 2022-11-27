@@ -102,9 +102,9 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     env = &env2;
 
     if (ast->list.items) {
-        gcc_block_t *list_done = gcc_new_block(func, NULL);
+        gcc_block_t *list_done = gcc_new_block(func, "list_done");
         foreach (ast->list.items, item_ast, _) {
-            gcc_block_t *item_done = gcc_new_block(func, NULL);
+            gcc_block_t *item_done = gcc_new_block(func, "item_done");
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
                     .name = intern_str("[]"),
@@ -153,11 +153,11 @@ void compile_list_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_preamble = gcc_new_block(func, NULL),
-                *loop_body = gcc_new_block(func, NULL),
-                *loop_between = gcc_new_block(func, NULL),
-                *loop_next = gcc_new_block(func, NULL),
-                *loop_end = gcc_new_block(func, NULL);
+    gcc_block_t *loop_preamble = gcc_new_block(func, "loop_preamble"),
+                *loop_body = gcc_new_block(func, "loop_body"),
+                *loop_between = gcc_new_block(func, "loop_between"),
+                *loop_next = gcc_new_block(func, "loop_next"),
+                *loop_end = gcc_new_block(func, "loop_end");
 
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
@@ -277,9 +277,9 @@ void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *o
     gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
     gcc_rvalue_t *len = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
 
-    gcc_block_t *add_comma = gcc_new_block(func, NULL);
-    gcc_block_t *add_next_item = gcc_new_block(func, NULL);
-    gcc_block_t *end = gcc_new_block(func, NULL);
+    gcc_block_t *add_comma = gcc_new_block(func, "add_comma");
+    gcc_block_t *add_next_item = gcc_new_block(func, "next_item");
+    gcc_block_t *end = gcc_new_block(func, "done");
 
     // if (i < len) goto add_next_item;
     gcc_jump_condition(*block, NULL, 

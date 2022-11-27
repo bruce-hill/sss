@@ -23,10 +23,10 @@ void compile_loop_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_top = gcc_new_block(func, NULL),
-                *loop_body = gcc_new_block(func, NULL),
-                *loop_between = gcc_new_block(func, NULL),
-                *loop_end = gcc_new_block(func, NULL);
+    gcc_block_t *loop_top = gcc_new_block(func, "loop_top"),
+                *loop_body = gcc_new_block(func, "loop_body"),
+                *loop_between = gcc_new_block(func, "loop_between"),
+                *loop_end = gcc_new_block(func, "loop_end");
 
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
@@ -39,27 +39,46 @@ void compile_loop_iteration(
     };
     env = &loop_env;
 
-    gcc_jump(*block, NULL, loop_top);
-    *block = NULL;
+    // gcc_jump(*block, NULL, loop_top);
+    // Stupid bullshit hack to make GCC happy, otherwise it thinks loop_between may be unreachable:
+    gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
+    gcc_jump_condition(*block, NULL, yes, loop_top, loop_between);
 
-    gcc_comment(loop_top, NULL, "Loop");
-    if (condition)
-        check_truthiness(env, &loop_top, condition, loop_body, loop_end);
-    else
-        gcc_jump(loop_top, NULL, loop_body);
+    *block = loop_top;
 
-    gcc_block_t *loop_body_orig = loop_body;
+    gcc_comment(*block, NULL, "Loop");
+    if (condition) {
+        check_truthiness(env, block, condition, loop_body, loop_end);
+        env->loop_label->stop_reachable = true;
+    } else {
+        // GCC isn't happy if `loop_end` is unreachable
+        // gcc_jump(*block, NULL, loop_body);
+        gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
+        gcc_jump_condition(*block, NULL, yes, loop_body, loop_end);
+    }
+    *block = loop_body;
+
     if (body_compiler)
-        body_compiler(env, &loop_body, NULL, userdata);
+        body_compiler(env, block, NULL, userdata);
 
-    if (loop_body) {
-        if (condition)
-            check_truthiness(env, &loop_body, condition, loop_between, loop_end);
-        else
-            gcc_jump(loop_body, NULL, loop_between);
-        between_compiler(env, &loop_between, NULL, userdata);
-        if (loop_between)
-            gcc_jump(loop_between, NULL, loop_body_orig);
+    if (*block) {
+        if (condition) {
+            check_truthiness(env, block, condition, loop_between, loop_end);
+            env->loop_label->stop_reachable = true;
+        } else {
+            // gcc_jump(*block, NULL, loop_between);
+            gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
+            gcc_jump_condition(*block, NULL, yes, loop_between, loop_end);
+        }
+
+        *block = loop_between;
+        between_compiler(env, block, NULL, userdata);
+        if (*block) {
+            gcc_jump(*block, NULL, loop_body);
+            *block = NULL;
+        }
+    } else {
+        gcc_jump(loop_between, NULL, loop_body);
     }
 
     *block = loop_end;
