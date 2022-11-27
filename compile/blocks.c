@@ -33,7 +33,9 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == StructDef) {
             bl_type_t *t = get_type(env->file, env->bindings, *stmt);
-            hashmap_set(env->bindings, (*stmt)->fn.name, new(binding_t, .type=t, .is_global=true));
+            if (hashmap_get(env->bindings, (*stmt)->struct_.name))
+                ERROR(env, *stmt, "Something called %s is already defined.", (*stmt)->struct_.name);
+            hashmap_set(env->bindings, (*stmt)->struct_.name, new(binding_t, .type=t, .is_global=true));
         }
     }
     
