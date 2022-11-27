@@ -73,6 +73,8 @@ static void load_string_methods(env_t *env)
                   Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
     extern_method(env, "bl_string_ends_with", Type(StringType), "ends_with",
                   Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
+    extern_method(env, "bl_string_replace", Type(StringType), "replace",
+                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType), Type(StringType), Type(OptionalType, .nonnil=Type(IntType))), .ret=Type(StringType)), 0);
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
@@ -90,7 +92,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     bl_type_t *string_type = Type(StringType);
     bl_type_t *say_type = Type(
         FunctionType,
-        .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=string_type)),
+        .args=LIST(bl_type_t*, string_type),
         .ret=Type(VoidType));
 
     gcc_param_t *gcc_str_param = gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str");

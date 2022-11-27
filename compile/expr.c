@@ -420,6 +420,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, expected));
             append(arg_vals, val);
         }
+
+        // Optional values get passed as nil:
+        for (int64_t i = length(arg_vals); i < length(fn_t->args); i++) {
+            gcc_rvalue_t *nil = gcc_null(env->ctx, bl_type_to_gcc(env, ith(fn_t->args, i)));
+            append(arg_vals, nil);
+        }
+
         if (fn)
             return gcc_call(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
         else if (fn_ptr)
