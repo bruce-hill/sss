@@ -571,7 +571,7 @@ void print_ast(ast_t *ast) {
         print_ast(ast->child);
         break;
     }
-    default: printf("???");
+    default: printf("%s(...)", kind_tags[ast->kind]);
     }
 }
 

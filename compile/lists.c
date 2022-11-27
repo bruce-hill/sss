@@ -24,19 +24,25 @@ typedef struct {
     gcc_func_t *append_func;
 } list_insert_info_t;
 
-static void add_for_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+static void add_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     list_insert_info_t *list_info = data;
     ast_t *ast = list_info->item;
-    ast_t *key_ast = ast->for_loop.key,
-          *value_ast = ast->for_loop.value,
-          *body = ast->for_loop.body;
-    if (key_ast)
-        hashmap_set(env->bindings, key_ast->str, new(binding_t, .type=info->key_type, .rval=info->key_rval));
-    if (value_ast)
-        hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
+    ast_t *body;
+    if (ast->kind == For) {
+        ast_t *key_ast = ast->for_loop.key,
+              *value_ast = ast->for_loop.value;
+        body = ast->for_loop.body;
+        if (key_ast)
+            hashmap_set(env->bindings, key_ast->str, new(binding_t, .type=info->key_type, .rval=info->key_rval));
+        if (value_ast)
+            hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
+    } else {
+        assert(list_info->item->kind == Repeat || list_info->item->kind == While);
+        body = ast->loop.body;
+    }
 
     gcc_func_t *func = gcc_block_func(*block);
-    bl_type_t *t = get_type(env->file, env->bindings, ast);
+    bl_type_t *t = get_type(env->file, env->bindings, body);
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     ssize_t item_size = gcc_sizeof(env, t);
     gcc_lvalue_t *item_var = gcc_local(func, NULL, gcc_t, fresh("item"));
@@ -50,11 +56,17 @@ static void add_for_list_item(env_t *env, gcc_block_t **block, iterator_info_t *
     gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, list_info->append_func, 3, append_args));
 }
 
-static void compile_for_list_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
+static void compile_list_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
     list_insert_info_t *list_info = data;
-    if (list_info->item->for_loop.between)
-        compile_block_statement(env, block, list_info->item->for_loop.between);
+    if (list_info->item->kind == For) {
+        if (list_info->item->for_loop.between)
+            compile_block_statement(env, block, list_info->item->for_loop.between);
+    } else {
+        assert(list_info->item->kind == Repeat || list_info->item->kind == While);
+        if (list_info->item->loop.between)
+            compile_block_statement(env, block, list_info->item->loop.between);
+    }
 }
 
 
@@ -90,19 +102,15 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
     if (ast->list.items) {
         foreach (ast->list.items, item_ast, _) {
             switch ((*item_ast)->kind) {
-            case For: {
+            case For: case While: case Repeat: {
                 // List comprehension:
                 list_insert_info_t info = {
-                    .item=ast,
+                    .item=*item_ast,
                     .list=gcc_lvalue_as_rvalue(list),
                     .append_func=append_func,
                 };
-                compile_iteration(env, block, *item_ast, add_for_list_item, compile_for_list_between, (void*)&info);
+                compile_iteration(env, block, *item_ast, add_list_item, compile_list_between, (void*)&info);
                 break;
-            }
-            case While: case Repeat: case If: {
-                // List comprehension:
-                ERROR(env, *item_ast, "Not yet implemented");
             }
             default: {
                 gcc_lvalue_t *item_var = gcc_local(func, NULL, item_gcc_type, fresh("item"));
