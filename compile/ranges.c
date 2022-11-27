@@ -36,10 +36,10 @@ void compile_range_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_body = gcc_new_block(func, fresh("loop_body")),
-                *loop_between = between_compiler ? gcc_new_block(func, fresh("loop_between")) : NULL,
-                *loop_next = gcc_new_block(func, fresh("loop_next")),
-                *loop_end = gcc_new_block(func, fresh("loop_end"));
+    gcc_block_t *loop_body = gcc_new_block(func, fresh("range_body")),
+                *loop_between = between_compiler ? gcc_new_block(func, fresh("range_between")) : NULL,
+                *loop_next = gcc_new_block(func, fresh("range_next")),
+                *loop_end = gcc_new_block(func, fresh("range_end"));
 
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
@@ -127,7 +127,7 @@ void compile_range_iteration(
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
     // between:
     if (between_compiler)
-        between_compiler(env, &loop_body_end, &info, userdata);
+        between_compiler(env, &loop_between, &info, userdata);
 
     if (loop_between)
         gcc_jump(loop_between, NULL, loop_body); // goto body
