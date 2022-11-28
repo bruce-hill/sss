@@ -5,6 +5,7 @@
 #include <gc/cord.h>
 #include <intern.h>
 #include <limits.h>
+#include <math.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -26,6 +27,12 @@ void fail(const char *fmt, ...)
     vfprintf(stderr, fmt, args);
     va_end(args);
     raise(SIGABRT);
+}
+
+double sane_fmod(double num, double modulus)
+{
+    double result = fmod(num, modulus);
+    return (result < 0) != (modulus < 0) ? result + modulus : result;
 }
 
 const char *readdir_str(DIR* dir)

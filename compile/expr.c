@@ -784,7 +784,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_XOR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Add: case Subtract: case Divide: case Multiply: case Modulus: {
+    case Add: case Subtract: case Divide: case Multiply: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
 
         gcc_binary_op_e op;
@@ -792,7 +792,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case Add: case AddUpdate: op = GCC_BINOP_PLUS; break;
         case Subtract: case SubtractUpdate: op = GCC_BINOP_MINUS; break;
         case Multiply: case MultiplyUpdate: op = GCC_BINOP_MULT; break;
-        case Modulus: op = GCC_BINOP_MODULO; break;
+        case Divide: case DivideUpdate: op = GCC_BINOP_DIVIDE; break;
         default: ERROR(env, ast, "Unsupported math operation");
         }
 
@@ -816,6 +816,24 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (numtype_priority(lhs_t) < numtype_priority(t))
                 lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+        }
+    }
+    case Modulus: {
+        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        // Numeric promotion:
+        if (numtype_priority(rhs_t) < numtype_priority(t))
+            rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
+        if (numtype_priority(lhs_t) < numtype_priority(t))
+            lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+        if (t->kind == NumType || t->kind == Num32Type) {
+            gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
+            return gcc_call(env->ctx, NULL, sane_fmod_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val});
+        } else {
+            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
     }
     case If: {

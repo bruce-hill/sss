@@ -21,6 +21,7 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
 {
     gcc_type_t *t_str = gcc_get_type(ctx, GCC_T_STRING),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
+               *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE);
@@ -42,6 +43,7 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
     MAKE_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
     MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
     MAKE_FUNC(t_void, "fail", 1, PARAM(t_str, "message"));
+    MAKE_FUNC(t_double, "sane_fmod", 2, PARAM(t_double, "num"), PARAM(t_double, "modulus"));
 #undef MAKE_FUNC
 #undef PARAM
 
