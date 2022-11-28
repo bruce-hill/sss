@@ -1,0 +1,45 @@
+a := 3_000 // Underscores can separate chunks
+b := 2
+x := 3.5
+y := 2e3 // Scientific notation
+say "Addition: $a+$b=$(a+b) $x+$y=$(x+y)"
+say "Subtraction: $a-$b=$(a-b) $x-$y=$(x-y)"
+say "Multiplication: $a*$b=$(a*b) $x*$y=$(x*y)"
+say "Division: $a/$b=$(a/b) $x/$y=$(x/y)"
+say "Modulus: $a mod $b=$(a mod b) $x mod 1=$(x mod 1.)"
+say "Negative num modulus: -$a mod $b=$(-a mod b) -$x mod 1=$(-x mod 1.)"
+say "Negative modulus: $a mod -$b=$(a mod -b) $x mod -1=$(x mod -1.)"
+// say "Exponentiation: $a^$b=$(a^b) $x^2.5=$(x^2.5)"
+
+long := 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
+fail unless long == -167
+say "Long chain: $long"
+
+f := 23.5
+say "$f casts to int: $(f as Int)"
+fail unless f as Int == 23
+say "$f reinterpreted as int: $(f:Int)"
+
+i := 123
+say "$i casts to float: $(i as Num)"
+fail unless i as Num == 123.0
+say "$i reinterpreted as float: $(i:Num)"
+
+fail unless 23.5 as Int8 == 23 as Int8
+fail "23 as Num32 = $(23 as Num32)" unless 23 as Num32 == 23.0 as Num32
+
+def fast_inverse_sqrt(number:Num):Num
+    x2 := number * 0.5
+    y := number
+    i := number:Int
+    i = 0x5FE6EB50C7B537A9 - (i / 2) // what the fuck? 
+    y = i:Num
+    y *= (1.5 - (x2 * y * y)) // 1st iteration
+    y *= (1.5 - (x2 * y * y)) // 2nd iteration, this can be removed
+    y *= (1.5 - (x2 * y * y)) // 3rd iteration, this can be removed
+    return y
+
+test := 16.
+say "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"
+result := fast_inverse_sqrt(16.)
+fail "got $result instead of 0.25" unless "$result" == "0.25"
