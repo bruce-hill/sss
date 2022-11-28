@@ -858,10 +858,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             if (if_truthy) {
                 if (branch_val) {
-                    if (if_ret)
+                    if (if_ret) {
+                        bl_type_t *actual = get_type(env->file, env->bindings, body);
+                        // Numeric promotion:
+                        if (is_numeric(actual) && is_numeric(if_t) && numtype_priority(actual) < numtype_priority(if_t))
+                            branch_val = gcc_cast(env->ctx, NULL, branch_val, bl_type_to_gcc(env, if_t));
+                        // Optional promotion:
+                        if (if_t->kind == OptionalType && actual->kind != OptionalType
+                            && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
+                            branch_val = move_to_heap(env, block, actual, branch_val);
+                        }
                         gcc_assign(if_truthy, NULL, if_ret, branch_val);
-                    else
+                    } else {
                         gcc_eval(if_truthy, NULL, branch_val);
+                    }
                 }
                 gcc_jump(if_truthy, NULL, end_if);
             }
@@ -870,10 +880,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (ast->else_body) {
             gcc_rvalue_t *branch_val = compile_expr(env, block, ast->else_body);
             if (branch_val) {
-                if (if_ret)
+                if (if_ret) {
+                    bl_type_t *actual = get_type(env->file, env->bindings, ast->else_body);
+                    // Numeric promotion:
+                    if (is_numeric(actual) && is_numeric(if_t) && numtype_priority(actual) < numtype_priority(if_t))
+                        branch_val = gcc_cast(env->ctx, NULL, branch_val, bl_type_to_gcc(env, if_t));
+                    // Optional promotion:
+                    if (if_t->kind == OptionalType && actual->kind != OptionalType
+                        && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
+                        branch_val = move_to_heap(env, block, actual, branch_val);
+                    }
                     gcc_assign(*block, NULL, if_ret, branch_val);
-                else
+                } else {
                     gcc_eval(*block, NULL, branch_val);
+                }
             }
             if (*block)
                 gcc_jump(*block, NULL, end_if);
