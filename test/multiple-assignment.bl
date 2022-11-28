@@ -1,0 +1,38 @@
+a := "A"
+b := "B"
+c := "C"
+
+a,b,c = c,b,a
+say "A,B,C -> $a,$b,$c"
+fail unless "$a,$b,$c" == "C,B,A"
+
+strings := ["A","B"]
+
+// eval_log := [:String]
+// def log(msg:String):[String]
+//     eval_log.insert(msg)
+//     return strings
+
+// (log("lhs1"))[1], (log("lhs2"))[2] = (log("rhs1"))[2], (log("rhs2"))[1]
+
+// say "Access order: $eval_log"
+// say "Result: $strings"
+// fail unless "$strings" == "[B, A]"
+// fail unless "$eval_log" == "[lhs1, lhs2, rhs1, rhs2]"
+
+// eval_log := [:String]
+// queue := ["a","b","c","d"]
+// i := 1
+// def fresh(msg:String):String
+//     eval_log.insert(msg)
+//     ret := queue[i]
+//     i += 1
+//     return ret
+
+// table := {:String=String}
+// table[fresh("lhs1")], table[fresh("lhs2")] = fresh("rhs1"),fresh("rhs2")
+
+// say "$table"
+
+// fail "Eval log is wrong: $eval_log" unless "$eval_log" == "[lhs1, lhs2, rhs1, rhs2]"
+// fail "Table is wrong: $(table["a"]) $(table["b"])" unless table["a"] == "c" and table["b"] == "d"
