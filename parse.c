@@ -203,6 +203,8 @@ ast_t *match_to_ast(match_t *m)
             *dest = '\0';
             if (strncmp(buf, "0x", 2) == 0)
                 i = strtol(buf+2, NULL, 16);
+            else if (strncmp(buf, "0o", 2) == 0)
+                i = strtol(buf+2, NULL, 8);
             else if (strncmp(buf, "0b", 2) == 0)
                 i = strtol(buf+2, NULL, 2);
             else

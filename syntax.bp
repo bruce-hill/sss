@@ -91,7 +91,7 @@ Num:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] 
 Measure:: @amount=(Num/Int) @units=MeasureType
 MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
-Int:: "0x" +`0-9,a-f,A-F,_ / "0b" +`0,1,_ / [`-,+] `0-9 *`0-9,_
+Int:: "0x" +`0-9,a-f,A-F,_ / "0o" +`0-7,_ / "0b" +`0,1,_ / [`-,+] `0-9 *`0-9,_
 Struct:: [@name=TypeVar] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
 KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
