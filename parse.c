@@ -193,7 +193,21 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, Var, .str=v);
         }
         case Int: {
-            int64_t i = strtol(m->start, NULL, 10);
+            int64_t i;
+            char buf[(int)(m->end - m->start + 1)];
+            memcpy(buf, m->start, (size_t)(m->end - m->start));
+            char *dest = buf;
+            for (char *src = buf; *src; ++src)
+                if (*src != '_')
+                    *(dest++) = *src;
+            *dest = '\0';
+            if (strncmp(buf, "0x", 2) == 0)
+                i = strtol(buf+2, NULL, 16);
+            else if (strncmp(buf, "0b", 2) == 0)
+                i = strtol(buf+2, NULL, 2);
+            else
+                i = strtol(buf, NULL, 10);
+
             return AST(m, Int, .i=i);
         }
         case Num: {
