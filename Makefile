@@ -49,4 +49,8 @@ tags: $(CFILES) $(HFILES) blang.c
 clean:
 	rm -f $(NAME) $(OBJFILES) $(LIBFILE)
 
+test: all
+	@for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
+	@printf '\x1b[42;30m All tests passed! \x1b[m\n\n'
+
 .PHONY: all clean install uninstall test

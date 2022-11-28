@@ -784,7 +784,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
-        gcc_block_t *end_if = gcc_new_block(func, fresh("endif"));
+        gcc_block_t *end_if = if_t->kind == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
         foreach (ast->clauses, clause, last_clause) {
             gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
@@ -816,7 +816,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 else
                     gcc_eval(*block, NULL, branch_val);
             }
-            gcc_jump(*block, NULL, end_if);
+            if (*block)
+                gcc_jump(*block, NULL, end_if);
         }
         *block = end_if;
         return if_ret ? gcc_lvalue_as_rvalue(if_ret) : NULL;

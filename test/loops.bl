@@ -1,23 +1,49 @@
+extern printf(str:String):NilType
 
-say "While loop:"
-x := 1
-while x < 10
-    say "$x"
-    stop if x == 5
-    prev := x
+repeat
+    stop
+
+nums := [10,20,30,40]
+tmp := 1
+while tmp <= #nums
+    say "$(nums[tmp])"
+    tmp += 1
+between printf ", "
+say ""
+
+
+for i,num in nums
+    say "[$i]$num"
+between printf ", "
+say ""
+
+say "$i" for i in 100..102
+
+extern random():Int
+
+def retry():Bool
+    r := random()
+    say "rng = $r"
+    return r mod 4 != 0
+
+say "doop\n" while retry()
+
+for i in [1,-2,3,-4,5]
+    skip if i < 0
+    say "i = $i"
 between
-    x += 1
-    say "prev: $prev next: $x"
+    say "---"
 
-
-say "For loop:"
-for x in [1,2,3]
-    say "x: $x"
-    prev := x
-between
-    say "prev: $prev next: $x"
-
-
-maybe := nil [Int]
-for x in maybe
-    say "Okay"
+for outer in [-10,1,2,-2,3000,4]
+    skip if outer < 0
+    for inner in [10,-1,20,-3,30,40,100,15]
+        skip if inner < 0
+        stop outer if inner*outer > 1000
+        while yes
+            say "inner: $inner outer: $outer product: $(inner*outer)"
+            stop while
+        between say "Between while"
+        say "Finished inner"
+    between say "Between inner"
+    say "Finished outer"
+between say "Between outer"

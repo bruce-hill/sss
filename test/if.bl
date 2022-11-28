@@ -1,26 +1,10 @@
-
-x := if 1 < 2
-    "Right"
+x := 5
+if not x > 10
+    say "x is small"
+elseif x > 100
+    say "x is HUGE"
 else
-    "Wrong"
+    say "x is big"
 
-say "Result: $x"
-
-y := if 1 == 2
-    "Wrong"
-else
-    "Right"
-
-say "Result: $y"
-
-z := if 1 > 2
-    "Wrong"
-elseif 1 != 99
-    "Right"
-else
-    "Wrong"
-
-if str := "Hello"
-    say "$str"
-
-say "Result: $z"
+say "Done" if x == 5
+say "Done2" unless x < 5
