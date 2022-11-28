@@ -1,0 +1,79 @@
+extern hypot(Num,Num):Num
+def Vec {
+    x,y:Num
+
+    def len(v:Vec):Num
+        return hypot(v.x, v.y)
+
+    def plus(v:Vec, other:Vec):Vec = Vec{v.x+other.x, v.y+other.y}
+    def dot(v:Vec, other:Vec):Num = v.x*other.x + v.y*other.y
+    def times(v:Vec, k:Num):Vec = Vec{k*v.x, k*v.y}
+    def as_string(v:Vec):String = "Vec<$(v.x),$(v.y)>"
+}
+// or: struct Vec{x:Num,y:Num}
+
+
+v := Vec{2.3, 4.5}
+say "v = $v"
+say "v.x = $(v.x)"
+say "v + v = $(v.plus(v))"
+say "100. * v = $(v.times(100.))"
+say "v * v = $(v.dot(v))"
+// butwith := v & .x=999.999
+// say "v&.x=999.999 = $butwith"
+
+// Anonymous structs (tuples)
+// x := {1, 2.3, "hello"}
+// say "Tuple: $x"
+// x &= [2]=5.5
+// say "Tuple: $x"
+
+// Return values
+// def foo(n:Int):{ok:Bool,msg:String}
+//     if n > 0
+//         return {ok=yes, msg="Can be used for multi-returns"}
+//     else
+//         return {ok=no, msg="Uh oh"}
+
+// result := foo(4)
+// if result.ok
+//     say result.msg
+
+say "Equality: $(Vec{1.,1.} == Vec{1.,1.})"
+
+// Recursive struct
+def Tree {
+    value:Int
+    left,right:Tree?
+}
+
+t := Tree{5, Tree{0, nil Tree, nil Tree}, nil Tree}
+// t.right = t
+// say "Recursive struct with cyclical references: $t"
+
+
+// Inline structs
+// do
+//     struct Inline {
+//         first:String
+//         ..vec:Vec
+//         last:String
+//     }
+
+//     inline := Inline{"hello", Vec{1.,2.}, "bye"}
+//     say "Inline struct: $inline"
+//     fail unless "$inline" == "Inline{first=hello, vec=Vec<1,2>, last=bye}"
+
+//     vec := inline.vec
+//     say "Extracted inline member: $vec"
+//     fail unless "$vec" == "Vec<1,2>"
+
+//     inline.vec = Vec{100.,200.}
+//     say "Updated inline member: $vec"
+//     fail unless "$inline" == "Inline{first=hello, vec=Vec<100,200>, last=bye}"
+
+//     inline = Inline{"xxx", Vec{0.,0.}, "xxx"}
+//     extern GC_gcollect():NilType
+//     GC_gcollect()
+//     say "Extracted inline member persists and keeps updates: $vec"
+//     fail unless "$vec" == "Vec<100,200>"
