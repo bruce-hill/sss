@@ -1,0 +1,20 @@
+
+for x in [1,2,3]
+    say "$x"
+    y := x + 1
+between
+    say "$x $y"
+    stop x
+
+while yes
+    z := 10
+between
+    say "$z"
+    stop while
+
+repeat
+    say "repeat"
+    w := 100
+between
+    say "$w"
+    stop repeat
