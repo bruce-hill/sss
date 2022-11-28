@@ -429,16 +429,16 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
         case StructDef: {
             istr_t name = ast->struct_.name;
-            NEW_LIST(istr_t, field_names);
-            NEW_LIST(bl_type_t*, field_types);
-            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
-            hashmap_t *rec_bindings = hashmap_new();
-            rec_bindings->fallback = bindings;
-            binding_t b = {.type=Type(TypeType, .type=t)};
-            hashmap_set(rec_bindings, name, &b);
+            // Structs should be pre-bound to an empty type in the enclosing block (compile/blocks.c)
+            // This is necessary for recursive and corecursive structs to work
+            binding_t *binding = hashmap_get(bindings, name);
+            assert(binding && binding->type && binding->type->kind == TypeType && binding->type->type->kind == StructType);
+            bl_type_t *t = binding->type->type;
+            List(istr_t) field_names = t->struct_.field_names;
+            List(bl_type_t*) field_types = t->struct_.field_types;
             LIST_FOR (ast->struct_.members, member, _) {
                 if ((*member)->kind == StructFieldDef) {
-                    bl_type_t *ft = parse_type(f, rec_bindings, (*member)->fields.type);
+                    bl_type_t *ft = parse_type(f, bindings, (*member)->fields.type);
                     LIST_FOR((*member)->fields.names, fname, __) {
                         APPEND(field_names, *fname);
                         APPEND(field_types, ft);

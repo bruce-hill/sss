@@ -32,12 +32,21 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     // Struct defs are visible in the entire block (allowing corecursive structs)
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == StructDef) {
-            bl_type_t *t = get_type(env->file, env->bindings, *stmt);
-            if (hashmap_get(env->bindings, (*stmt)->struct_.name))
-                ERROR(env, *stmt, "Something called %s is already defined.", (*stmt)->struct_.name);
-            gcc_rvalue_t *rval = gcc_new_string(env->ctx, type_to_string(t));
-            hashmap_set(env->bindings, (*stmt)->struct_.name, new(binding_t, .type=t, .is_global=true, .rval=rval));
+            istr_t name = (*stmt)->struct_.name;
+            NEW_LIST(istr_t, field_names);
+            NEW_LIST(bl_type_t*, field_types);
+            // Placeholder type, will be populated later:
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
+            if (hashmap_get(env->bindings, name))
+                ERROR(env, *stmt, "Something called %s is already defined.", name);
+            gcc_rvalue_t *rval = gcc_new_string(env->ctx, name);
+            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=rval));
         }
+    }
+    // Populate struct fields:
+    foreach (ast->children, stmt, last_stmt) {
+        if ((*stmt)->kind == StructDef)
+            get_type(env->file, env->bindings, *stmt);
     }
     
     // Function defs are visible in the entire block (allowing corecursive funcs)
