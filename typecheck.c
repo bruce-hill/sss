@@ -180,33 +180,18 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                     if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str)
                         return LIST_ITEM(indexed_t->struct_.field_types, i);
                 }
-                for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.method_names); i < len; i++) {
-                    if (LIST_ITEM(indexed_t->struct_.method_names, i) == ast->index->str)
-                        return LIST_ITEM(indexed_t->struct_.method_types, i);
-                }
-                TYPE_ERR(f, ast->index, "I can't find any field or method named \"%s\" inside a %s struct",
-                         ast->index->str, type_to_string(indexed_t));
-            }
-            case TypeType: {
                 binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t), ast->index->str));
                 if (binding)
                     return binding->type;
                 else
-                    TYPE_ERR(f, ast, "I can't find any method called %s on type %s", ast->index->str, type_to_string(indexed_t));
-
-                // switch (indexed_t->type->kind) {
-                // case StructType: {
-                //     for (int64_t i = 0, len = LIST_LEN(indexed_t->type->struct_.method_names); i < len; i++) {
-                //         if (LIST_ITEM(indexed_t->type->struct_.method_names, i) == ast->index->str)
-                //             return LIST_ITEM(indexed_t->type->struct_.method_types, i);
-                //     }
-                //     TYPE_ERR(f, ast->index, "I can't find any method named \"%s\" inside a %s struct",
-                //              ast->index->str, type_to_string(indexed_t->type));
-                // }
-                // default: {
-                //     TYPE_ERR(f, ast, "I don't know how to call methods on type %s", type_to_string(indexed_t->type));
-                // }
-                // }
+                    TYPE_ERR(f, ast, "I can't find anything called %s on type %s", ast->index->str, type_to_string(indexed_t));
+            }
+            case TypeType: {
+                binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t->type), ast->index->str));
+                if (binding)
+                    return binding->type;
+                else
+                    TYPE_ERR(f, ast, "I can't find anything called %s on type %s", ast->index->str, type_to_string(indexed_t));
             }
             default: {
                 if (ast->index->kind == FieldName) {
@@ -446,10 +431,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             istr_t name = ast->struct_.name;
             NEW_LIST(istr_t, field_names);
             NEW_LIST(bl_type_t*, field_types);
-            NEW_LIST(istr_t, method_names);
-            NEW_LIST(bl_type_t*, method_types);
-            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types,
-                                .struct_.method_names=method_names, .struct_.method_types=method_types);
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
             hashmap_t *rec_bindings = hashmap_new();
             rec_bindings->fallback = bindings;
             binding_t b = {.type=Type(TypeType, .type=t)};
@@ -461,12 +443,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                         APPEND(field_names, *fname);
                         APPEND(field_types, ft);
                     }
-                } else if ((*member)->kind == FunctionDef) {
-                    bl_type_t *mt = get_type(f, rec_bindings, *member);
-                    APPEND(method_names, (*member)->fn.name);
-                    APPEND(method_types, mt);
-                } else {
-                    TYPE_ERR(f, *member, "I haven't yet implemented struct members other than methods and fields");
                 }
             }
             return Type(TypeType, .type=t);

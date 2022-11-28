@@ -81,7 +81,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Declare: {
         gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
-
         bl_type_t *t = get_type(env->file, env->bindings, ast->rhs);
         assert(t);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -253,6 +252,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_list(env, block, ast);
     }
     case StructDef: {
+        foreach (ast->struct_.members, member, _) {
+            if ((*member)->kind == FunctionDef) {
+                istr_t name = intern_strf("%s.%s", ast->struct_.name, (*member)->fn.name);
+                binding_t *binding = hashmap_get(env->bindings, name);
+                assert(binding);
+                compile_function(env, binding->func, *member);
+            } else if ((*member)->kind == Declare) {
+                ast_t *decl = *member;
+                gcc_rvalue_t *rval = compile_expr(env, block, decl->rhs);
+                bl_type_t *t = get_type(env->file, env->bindings, decl->rhs);
+                assert(t);
+                gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, decl->lhs), gcc_t, fresh(decl->lhs->str));
+                istr_t name = intern_strf("%s.%s", ast->struct_.name, decl->lhs->str);
+                hashmap_set(env->bindings, name,
+                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+                assert(rval);
+                gcc_assign(*block, ast_loc(env, decl), lval, rval);
+            }
+        }
+
         return NULL;
     }
     case Struct: {
@@ -386,7 +407,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 istr_t method_name = intern_strf("%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
                 binding_t *binding = hashmap_get(env->bindings, method_name);
                 if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined on type %s.", type_to_string(self_t->type));
+                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->index->str, type_to_string(self_t->type));
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -491,19 +512,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
         gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);
-        switch (indexed_t->kind) {
-        case StructType: {
-            assert(ast->index->kind == FieldName);
-            for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
-                if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-                    gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
-                    return gcc_rvalue_access_field(obj, NULL, field);
+        if (ast->index->kind == FieldName) {
+            if (indexed_t->kind == StructType) {
+                assert(ast->index->kind == FieldName);
+                for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
+                    if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str) {
+                        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+                        gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
+                        return gcc_rvalue_access_field(obj, NULL, field);
+                    }
                 }
             }
-            ERROR(env, ast->index, "There isn't any field called \"%s\" on %s structs.", ast->index->str, type_to_string(indexed_t));
-        }
-        case ListType: {
+            bl_type_t *namespace = indexed_t->kind == TypeType ? indexed_t->type : indexed_t;
+            istr_t name = intern_strf("%s.%s", type_to_string(namespace), ast->index->str);
+            binding_t *binding = hashmap_get(env->bindings, name);
+            if (binding)
+                return binding->rval;
+            else
+                ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->index->str, type_to_string(indexed_t));
+        } else {
+            if (indexed_t->kind != ListType)
+                ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
+
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
             gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
             gcc_rvalue_t *index = compile_expr(env, block, ast->index);
@@ -537,10 +567,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             *block = bounds_safe;
             gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
             return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
-        }
-        default: {
-            ERROR(env, ast, "I don't know how to do indexing on things with type %s.", type_to_string(indexed_t));
-        }
         }
     }
     case TypeOf: {

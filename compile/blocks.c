@@ -35,7 +35,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             bl_type_t *t = get_type(env->file, env->bindings, *stmt);
             if (hashmap_get(env->bindings, (*stmt)->struct_.name))
                 ERROR(env, *stmt, "Something called %s is already defined.", (*stmt)->struct_.name);
-            hashmap_set(env->bindings, (*stmt)->struct_.name, new(binding_t, .type=t, .is_global=true));
+            gcc_rvalue_t *rval = gcc_new_string(env->ctx, type_to_string(t));
+            hashmap_set(env->bindings, (*stmt)->struct_.name, new(binding_t, .type=t, .is_global=true, .rval=rval));
         }
     }
     
@@ -75,9 +76,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             // Struct methods:
             foreach ((*stmt)->struct_.members, member, _) {
                 if ((*member)->kind == FunctionDef) {
-                    CORD name;
-                    CORD_sprintf(&name, "%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
-                    binding_t *binding = hashmap_get(env->bindings, intern_str(CORD_to_char_star(name)));
+                    istr_t name = intern_strf("%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
+                    binding_t *binding = hashmap_get(env->bindings, name);
                     assert(binding);
                     compile_function(env, binding->func, *member);
                 }

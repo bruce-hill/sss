@@ -40,9 +40,6 @@ typedef const struct bl_type_s {
             istr_t name;
             List(istr_t) field_names;
             List(const struct bl_type_s*) field_types;
-            List(istr_t) method_names;
-            List(const struct bl_type_s*) method_types;
-            // TODO: static values
         } struct_;
     };
 } bl_type_t;
