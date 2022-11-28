@@ -1,0 +1,14 @@
+if 1 < 5 and 1 == 1
+    say "Int comparison working"
+else
+    fail "Int comparison broken"
+
+if "a" < "bcde" and "a" == "a"
+    say "String comparison working"
+else
+    fail "String comparison broken"
+
+if yes xor no xor no
+    say "xor works!"
+else
+    fail "xor broken"

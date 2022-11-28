@@ -1,0 +1,14 @@
+// 99 Bottles of beer
+def sing_bottles(n:Int)
+  def verse(n:Int)
+    say "$n bottles of beer on the wall"
+
+  def dec(x:Int):Int = x - 1
+
+  while n > 0
+    verse n
+    n = dec n
+
+  say "No more bottles of beer on the wall"
+
+sing_bottles 5

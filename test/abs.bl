@@ -1,0 +1,10 @@
+def abs(x:Int):Int
+    if x < 0
+        return -1 * x
+    else
+        return x
+
+x := -5
+say "Abs($x) = $(abs x)"
+x = 15
+say "Abs($x) = $(abs x)"

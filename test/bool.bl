@@ -1,0 +1,18 @@
+x := yes
+y := x and (1 < 2)
+z := nil Bool
+
+if x and y and z == nil Bool
+    say "And pass"
+else
+    fail "'and' failed"
+
+if 1 < 0 or 2 < 1 or 3 > 1
+    say "Or pass"
+else
+    fail "'or' failed"
+
+if no xor yes xor no
+    say "Xor pass"
+else
+    fail "'xor' failed"
