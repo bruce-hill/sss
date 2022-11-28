@@ -1,0 +1,6 @@
+extern sqrt(n:Num):Num
+// Demonstrate calling external C func:
+x := sqrt(2.0)
+say "Result: $x"
+y := sqrt(3.0)
+say "Result: $y"

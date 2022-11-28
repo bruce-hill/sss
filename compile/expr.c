@@ -790,6 +790,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
+        if (!is_numeric(t))
+            ERROR(env, ast, "I don't yet know how to do math operations on non-numeric types like %s", type_to_string(t));
 
         gcc_binary_op_e op;
         switch (ast->kind) {

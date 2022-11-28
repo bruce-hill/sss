@@ -299,6 +299,10 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         compile_list_tostring_func(env, &block, obj, t);
         break;
     }
+    case FunctionType: {
+        gcc_return(block, NULL, LITERAL(type_to_string(t)));
+        break;
+    }
 
     default: {
         fprintf(stderr, "\x1b[31;1mtostring(%s) function is not yet implemented!\n", type_to_string(t));
