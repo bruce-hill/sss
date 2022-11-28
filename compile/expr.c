@@ -181,8 +181,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Return: {
         assert(env->return_type);
         if (env->return_type->kind == VoidType) {
-            if (ast->child)
-                ERROR(env, ast, "I was expecting a plain `return` with no expression here, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
+            if (ast->child) {
+                bl_type_t *child_type = get_type(env->file, env->bindings, ast->child);
+                if (child_type->kind != VoidType)
+                    ERROR(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
+                compile_statement(env, block, ast->child);
+            }
             gcc_return_void(*block, NULL);
         } else {
             if (!ast->child)

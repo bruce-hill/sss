@@ -399,13 +399,20 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
             bl_type_t *ret = NULL;
             if (ast->kind == FunctionDef) {
-                if (ast->fn.ret_type) {
+                if (ast->fn.ret_type)
                     ret = parse_type(f, bindings, ast->fn.ret_type);
-                }
-            } else {
+            } else { // Lambda:
+                // Include only global bindings:
                 hashmap_t *body_bindings = hashmap_new();
-                // TODO: strip closure bindings, but allow globals
-                // body_bindings->fallback = bindings;
+                for (hashmap_t *h = bindings; h; h = h->fallback) {
+                    for (istr_t key = NULL; (key = hashmap_next(h, key)); ) {
+                        binding_t *val = hashmap_get_raw(h, key);
+                        assert(val);
+                        if (val->is_global)
+                            hashmap_set(body_bindings, key, val);
+                    }
+                }
+
                 for (int64_t i = 0; i < LIST_LEN(ast->fn.arg_types); i++) {
                     hashmap_set(body_bindings, LIST_ITEM(ast->fn.arg_names, i), new(binding_t, .type=LIST_ITEM(args, i)));
                 }
