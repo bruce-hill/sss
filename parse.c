@@ -413,7 +413,7 @@ ast_t *match_to_ast(match_t *m)
             for (int64_t i = 1; ; i++) {
                 ast_t *var = match_to_ast(get_numbered_capture(get_numbered_capture(lhses, 1), i));
                 if (var && var->kind != Var) {
-                    fprintf(stderr, "\x1b[31;7;1mOnly variables can be declared\x1b[m\n\n");
+                    fprintf(stderr, "\x1b[31;7;1mOnly variables can be assigned to\x1b[m\n\n");
                     highlight_match(stderr, parsing, var->match, 2);
                     exit(1);
                 }
