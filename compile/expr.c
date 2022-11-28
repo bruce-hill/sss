@@ -662,7 +662,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        if (t->kind == BoolType) {
+        if (t->kind == BoolType && rhs_t->kind == BoolType) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
@@ -688,9 +688,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
 
-        gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, ast->rhs);
-        gcc_assign(if_truthy, NULL, result, rhs_val);
-        gcc_jump(if_truthy, NULL, done);
+        if (rhs_t->kind == AbortType) {
+            compile_statement(env, &if_truthy, ast->rhs);
+        } else {
+            gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, ast->rhs);
+            if (if_truthy) {
+                gcc_assign(if_truthy, NULL, result, rhs_val);
+                gcc_jump(if_truthy, NULL, done);
+            }
+        }
+        if (if_truthy)
+            gcc_jump(if_truthy, NULL, done);
 
         gcc_assign(if_falsey, NULL, result, lhs_val);
         gcc_jump(if_falsey, NULL, done);
@@ -703,7 +711,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        if (t->kind == BoolType) {
+        if (t->kind == BoolType && rhs_t->kind == BoolType) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
@@ -736,14 +744,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(if_truthy, NULL, result, lhs_val);
         gcc_jump(if_truthy, NULL, done);
 
-        gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, ast->rhs);
-        if (rhs_t->kind == OptionalType && t->kind != OptionalType
-            && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
-            rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
-        if (if_falsey) {
-            gcc_assign(if_falsey, NULL, result, rhs_val);
-            gcc_jump(if_falsey, NULL, done);
+        if (rhs_t->kind == AbortType) {
+            compile_statement(env, &if_falsey, ast->rhs);
+        } else {
+            gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, ast->rhs);
+            if (rhs_t->kind == OptionalType && t->kind != OptionalType
+                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
+                rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
+            if (if_falsey)
+                gcc_assign(if_falsey, NULL, result, rhs_val);
         }
+        if (if_falsey)
+            gcc_jump(if_falsey, NULL, done);
 
         *block = done;
         return gcc_lvalue_as_rvalue(result);

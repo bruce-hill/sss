@@ -293,6 +293,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
             if (lhs_t->kind == BoolType && rhs_t->kind == BoolType)
                 return lhs_t;
+            else if (lhs_t->kind == BoolType && rhs_t->kind == AbortType)
+                return lhs_t;
             else if (is_integral(lhs_t) && is_integral(rhs_t))
                 return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
@@ -304,6 +306,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                       *rhs_t = get_type(f, bindings, ast->rhs);
 
             if (lhs_t->kind == BoolType && rhs_t->kind == BoolType)
+                return lhs_t;
+            else if (lhs_t->kind == BoolType && rhs_t->kind == AbortType)
                 return lhs_t;
             else if (is_integral(lhs_t) && is_integral(rhs_t))
                 return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
