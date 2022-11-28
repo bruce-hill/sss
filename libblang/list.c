@@ -1,9 +1,10 @@
-#include <stdint.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdlib.h>
 #include <err.h>
 #include <gc.h>
+#include <intern.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "../util.h"
 #include "list.h"
@@ -15,6 +16,18 @@ list_t *list_new(size_t item_size, size_t min_items) {
 list_t *list_new_items(size_t item_size, size_t len, void *items) {
     list_t *list = new(list_t, .items=GC_MALLOC(item_size * len), .len=len);
     memcpy(list->items, items, item_size * len);
+    return list;
+}
+
+list_t *arg_list(int argc, char *argv[]) {
+    // Skip program name:
+    --argc;
+    ++argv;
+    list_t *list = new(list_t, .items=GC_MALLOC(sizeof(char*) * argc), .len=argc);
+    const char **args = list->items;
+    for (int i = 0; i < argc; i++) {
+        args[i] = intern_str(argv[i]);
+    }
     return list;
 }
 

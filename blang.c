@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         if (run_program) {
             if (verbose)
                 fprintf(stderr, "\x1b[0;33;4;1mProgram Output\x1b[m\n");
-            run(argc-i-1, argv+i+1);
+            run(argc-i, argv+i);
         } else {
             CORD binary_name;
             if (i+2 < argc && streq(argv[i+1], "-o")) {

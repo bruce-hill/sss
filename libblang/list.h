@@ -12,6 +12,7 @@ typedef struct {
 
 list_t *list_new(size_t item_size, size_t min_items);
 list_t *list_new_items(size_t item_size, size_t len, void *items);
+list_t *arg_list(int argc, char *argv[]);
 void list_append(list_t *list, size_t item_size, void *item);
 void list_insert(list_t *list, size_t item_size, int64_t index, void *item, const char *err_fmt);
 void list_insert_all(list_t *list, size_t item_size, int64_t index, list_t *other, const char *err_fmt);
