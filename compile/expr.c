@@ -740,8 +740,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (rhs_t->kind == OptionalType && t->kind != OptionalType
             && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
             rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
-        gcc_assign(if_falsey, NULL, result, rhs_val);
-        gcc_jump(if_falsey, NULL, done);
+        if (if_falsey) {
+            gcc_assign(if_falsey, NULL, result, rhs_val);
+            gcc_jump(if_falsey, NULL, done);
+        }
 
         *block = done;
         return gcc_lvalue_as_rvalue(result);
