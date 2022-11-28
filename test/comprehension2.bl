@@ -1,0 +1,11 @@
+
+remaining := 1000
+hybrid_list := [
+    1,2,3,i for i in 4..10 if i mod 2 == 0, 11,12,13,99 if no,100 if yes,
+    while remaining > 997
+        remaining -= 1
+        remaining
+]
+say "$hybrid_list"
+// hybrid_table := {[1]=yes,[2]=yes,[3]=yes,[i]=yes for i in 4..10 if i mod 2 == 0, [11]=yes,[12]=yes,[13]=yes,[99]=yes if no,[100]=yes if yes}
+// say "$hybrid_table"

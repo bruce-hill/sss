@@ -1,0 +1,20 @@
+x := [i*100 for i in 1..10]
+say "$x"
+
+y := [i*100 for i in 1..999 stop if i > 5]
+say "$y"
+
+z := [i*100 for i in 1..10 skip if i mod 2 == 0]
+say "$z"
+
+w := [i*100 for i in 1..10 if i mod 2 == 0]
+say "$w"
+
+p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
+say "$p"
+
+// t := {[i]=i*i for i in 1.. stop if i > 6}
+// say "$t"
+
+// t2 := {[v]=k for k,v in t}
+// say "$t2"
