@@ -1,0 +1,42 @@
+def fail_bool(msg:String):Bool
+    fail "Test failed: $msg"
+    return no
+
+if no or yes or fail_bool("or failed to short circuit")
+    say "or pass"
+else fail "'or' gave wrong result"
+
+if yes and no and fail_bool("and failed to short circuit")
+    fail "and gave wrong result"
+else say "and pass"
+
+// tmp := no
+// tmp or= yes
+// tmp or= fail_bool("or= failed to short circuit")
+// say "or= pass"
+// fail "or= gave wrong result" unless tmp
+
+// tmp = yes
+// tmp and= no
+// tmp and= fail_bool("and= failed to short circuit")
+// say "and= pass"
+// fail "and= gave wrong result" if tmp
+
+def doop():String
+    maybe_str := if yes then nil String else "ok"
+    x := maybe_str or return "Successfully short circuited with return"
+    fail "Failed to short circuit"
+    return "x"
+
+say doop()
+
+for i in 1..5
+    maybe_str := if yes then nil String else "ok"
+    x := maybe_str or stop
+    fail "Failed to short circuit"
+
+say "Successfully short circuited with stop"
+
+// opt := nil String
+// opt or= "optstring"
+// fail unless opt == "optstring"
