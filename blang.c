@@ -35,7 +35,8 @@ int main(int argc, char *argv[])
     };
     for (size_t i = 0; i < sizeof(linker_flags)/sizeof(linker_flags[0]); i++)
         gcc_add_driver_opt(ctx, linker_flags[i]);
-    gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DEBUGINFO, 1);
+    gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DEBUGINFO, true);
+    gcc_jit_context_set_bool_allow_unreachable_blocks(ctx, true);
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
