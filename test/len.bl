@@ -1,0 +1,11 @@
+s := "12345"
+say "Len(\"$s\") == $(#s)"
+fail unless #s == 5
+
+l := [1,2,3,4,5]
+say "Len($l) == $(#l)"
+fail unless #l == 5
+
+r := 1,2..10
+say "Len($r) == $(#r)"
+fail unless #r == 5
