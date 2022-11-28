@@ -692,10 +692,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, &if_truthy, ast->rhs);
         } else {
             gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, ast->rhs);
-            if (if_truthy) {
+            if (if_truthy)
                 gcc_assign(if_truthy, NULL, result, rhs_val);
-                gcc_jump(if_truthy, NULL, done);
-            }
         }
         if (if_truthy)
             gcc_jump(if_truthy, NULL, done);

@@ -295,6 +295,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 return lhs_t;
             else if (lhs_t->kind == BoolType && rhs_t->kind == AbortType)
                 return lhs_t;
+            else if (rhs_t->kind == AbortType)
+                return lhs_t;
+            else if (lhs_t->kind == OptionalType && rhs_t == lhs_t->nonnil)
+                return lhs_t;
             else if (is_integral(lhs_t) && is_integral(rhs_t))
                 return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
