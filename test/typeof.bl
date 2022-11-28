@@ -1,0 +1,10 @@
+def Vec {
+    x:Num
+    y:Num
+}
+
+v :=  Vec{0.,0.}
+say "$v : $(typeof v)"
+say "typeof $v : $(typeof (typeof v))"
+// say "use \"modules/testmod\" : $(typeof use "modules/testmod")"
+
