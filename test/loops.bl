@@ -1,4 +1,3 @@
-
 repeat
     stop
 
@@ -9,7 +8,6 @@ while tmp <= #nums
     tmp += 1
 between say ", ", no
 say ""
-
 
 for i,num in nums
     say "[$i]$num", no
