@@ -197,7 +197,13 @@ ast_t *match_to_ast(match_t *m)
             int64_t i;
             char buf[(int)(m->end - m->start + 1)];
             char *dest = buf;
-            for (const char *src = m->start; src < m->end; ++src)
+            const char *start = m->start;
+            bool negative = *start == '-';
+            if (*start == '-')
+                ++start;
+            else if (*start == '+')
+                ++start;
+            for (const char *src = start; src < m->end; ++src)
                 if (isalnum(*src))
                     *(dest++) = *src;
             *dest = '\0';
@@ -210,7 +216,7 @@ ast_t *match_to_ast(match_t *m)
             else
                 i = strtol(buf, NULL, 10);
 
-            return AST(m, Int, .i=i);
+            return AST(m, Int, .i=negative ? -i : i);
         }
         case Num: {
             double n = strtod(m->start, NULL);

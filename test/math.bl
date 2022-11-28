@@ -2,6 +2,7 @@ a := 3_000 // Underscores can separate chunks
 b := 2
 x := 3.5
 y := 2e3 // Scientific notation
+say "Literals: $(123) $(123_456) $(-123) $(0xFF) $(-0xFF) $(0o777) $(-0o777) $(0b111) $(-0b111)"
 say "Addition: $a+$b=$(a+b) $x+$y=$(x+y)"
 say "Subtraction: $a-$b=$(a-b) $x-$y=$(x-y)"
 say "Multiplication: $a*$b=$(a*b) $x*$y=$(x*y)"
