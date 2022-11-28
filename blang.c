@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
         assert(result != NULL);
 
         // Extract the generated code from "result".   
-        typedef void (*fn_type)(void);
+        typedef void (*fn_type)(int, char**);
         fn_type run = (fn_type)gcc_jit_result_get_code(result, "main");
         if (!run) {
             fprintf(stderr, "NULL run func");
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         if (run_program) {
             if (verbose)
                 fprintf(stderr, "\x1b[0;33;4;1mProgram Output\x1b[m\n");
-            run();
+            run(argc-i-1, argv+i+1);
         } else {
             CORD binary_name;
             if (i+2 < argc && streq(argv[i+1], "-o")) {
@@ -100,6 +100,7 @@ int main(int argc, char *argv[])
 
         recycle_all_matches();
         destroy_file(&f);
+        break;
     }
 
     gcc_jit_context_release(ctx);

@@ -117,10 +117,34 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
 
     load_string_methods(&env);
 
+    gcc_param_t* main_params[] = {
+        gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),
+        gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_type(env.ctx, STRING)), "argv"),
+    };
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
-        "main", 0, NULL, 0);
+        "main", 2, main_params, 0);
     gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
+
+    // Set up `args`
+    gcc_param_t *args_params[] = {
+        gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, SIZE), "item_size"),
+        gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, SIZE), "len"),
+        gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "items"),
+    };
+    bl_type_t *args_t = Type(ListType, .item_type=Type(StringType));
+    gcc_type_t *args_gcc_t = bl_type_to_gcc(&env, args_t);
+    gcc_func_t *new_list_func = gcc_new_func( env.ctx, NULL, GCC_FUNCTION_IMPORTED, args_gcc_t, "list_new_items", 3, args_params, 0);
+    gcc_lvalue_t *args = gcc_local(main_func, NULL, args_gcc_t, "args");
+    hashmap_set(env.bindings, intern_str("args"), new(binding_t, .rval=gcc_lvalue_as_rvalue(args), .type=args_t));
+    gcc_rvalue_t *arg_list_args[] = {
+        gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), sizeof(char*)),
+        gcc_cast(env.ctx, NULL, gcc_param_as_rvalue(main_params[0]), gcc_type(env.ctx, SIZE)),
+        gcc_cast(env.ctx, NULL, gcc_param_as_rvalue(main_params[1]), gcc_type(env.ctx, VOID_PTR)),
+    };
+    gcc_rvalue_t *arg_list = gcc_call(env.ctx, NULL, new_list_func, 3, arg_list_args);
+    gcc_assign(block, NULL, args, arg_list);
+
     compile_statement(&env, &block, ast);
     if (block)
         gcc_return_void(block, NULL);
