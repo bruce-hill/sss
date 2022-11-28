@@ -126,8 +126,14 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         "main", 2, main_params, 0);
     gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
 
-    // Set up `args`
+    // Set up `PROGRAM_NAME`
+    gcc_lvalue_t *program_name = gcc_local(main_func, NULL, gcc_type(env.ctx, STRING), "PROGRAM_NAME");
+    gcc_lvalue_t *name_lval = gcc_rvalue_dereference(gcc_param_as_rvalue(main_params[1]), NULL);
+    gcc_assign(block, NULL, program_name, gcc_lvalue_as_rvalue(name_lval));
+    hashmap_set(env.bindings, intern_str("PROGRAM_NAME"),
+                new(binding_t, .rval=gcc_lvalue_as_rvalue(program_name), .type=Type(StringType)));
 
+    // Set up `args`
     bl_type_t *args_t = Type(ListType, .item_type=Type(StringType));
     gcc_type_t *args_gcc_t = bl_type_to_gcc(&env, args_t);
     gcc_func_t *arg_func = gcc_new_func(
