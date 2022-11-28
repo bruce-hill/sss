@@ -107,13 +107,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert(ast->expr->kind == Var);
             gcc_func_t *func = gcc_new_func(
                 env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ast->expr->str, LIST_LEN(params), params[0], 0);
-            hashmap_set(env->bindings, ast->expr->str, new(binding_t, .func=func, .type=t));
+            hashmap_set(env->bindings, ast->expr->str, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             assert(ast->expr->kind == Var);
             gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ast->expr->str));
             hashmap_set(env->bindings, ast->expr->str,
-                        new(binding_t, .rval=glob, .type=t));
+                        new(binding_t, .rval=glob, .type=t, .is_global=true));
         }
         return NULL;
     }
@@ -192,6 +192,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val = compile_expr(env, block, ast->child);
             if (is_numeric(t) && is_numeric(env->return_type) && numtype_priority(t) < numtype_priority(env->return_type))
                 val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, env->return_type));
+            else if (env->return_type->kind == OptionalType && t->kind != OptionalType
+                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
+                val = move_to_heap(env, block, t, val);
             else if (!type_is_a(t, env->return_type))
                 ERROR(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));

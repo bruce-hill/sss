@@ -259,6 +259,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             ast_t *last = LIST_ITEM(ast->children, LIST_LEN(ast->children)-1);
             return get_type(f, bindings, last);
         }
+        case Do: {
+            return get_type(f, bindings, LIST_ITEM(ast->children, 0));
+        }
         case Declare: {
             return get_type(f, bindings, ast->rhs);
         }
