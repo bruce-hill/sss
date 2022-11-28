@@ -635,9 +635,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env->file, env->bindings, ast); // Check type
         gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
-        coerce_numbers(
-            env, get_type(env->file, env->bindings, ast->lhs), &lhs_val,
-            get_type(env->file, env->bindings, ast->rhs), &rhs_val);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
+        // TODO: support comparing optional values
+        if ((lhs_t->kind == OptionalType) != (rhs_t->kind == OptionalType))
+            ERROR(env, ast, "I don't currently support direct comparisons between %s and %s, you may have to add a question mark to make it explicitly optional.",
+                  type_to_string(lhs_t), type_to_string(rhs_t));
         return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: {

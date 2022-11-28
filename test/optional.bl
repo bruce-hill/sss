@@ -1,0 +1,27 @@
+should_nil := yes
+int := if should_nil then nil Int else 123
+say "$int (Optional(Int) $(if int then "wasn't" else "was") nil)"
+float := if should_nil then nil Num else 5.5
+say "$float (Optional(Num) $(if float then "wasn't" else "was") nil)"
+
+s := if should_nil then nil String else "Not nil"
+say "$s (Optional(String) $(if s then "wasn't" else "was") nil)"
+say(s or "Nah")
+
+// fn := if should_nil then nil (String)=>Void else ?(s:String)=> say(s)
+// maybe_log := fn or (s:String)=> say("...")
+// maybe_log("Hello")
+
+def maybe_str(s:String,nil_it:Bool):String?
+    return nil String if nil_it
+    return ?s
+
+say(maybe_str("hi", no) or "XXX")
+foo := maybe_str("hi", no)
+
+t := "truthy"
+f := "falsey"
+say "OptionalBool truthiness: nil=$(if nil Bool then t else f) yes=$(if ?yes then t else f) no=$(if ?no then t else f)"
+say "OptionalBool equality: nil==nil?$(nil Bool == nil Bool) yes==nil?$(?yes == nil Bool) no==nil?$(?no == nil Bool)"
+// say "OptionalBool equality: nil==yes?$(boolnil==yes) yes==yes?$(boolyes==yes) no==yes?$(boolno==yes)"
+// say "OptionalBool equality: nil==no?$(boolnil==no) yes==no?$(boolyes==no) no==no?$(boolno==no)"
