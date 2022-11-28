@@ -1,4 +1,3 @@
-extern printf(str:String):Void
 
 repeat
     stop
@@ -6,15 +5,15 @@ repeat
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums
-    say "$(nums[tmp])"
+    say "$(nums[tmp])", no
     tmp += 1
-between printf ", "
+between say ", ", no
 say ""
 
 
 for i,num in nums
-    say "[$i]$num"
-between printf ", "
+    say "[$i]$num", no
+between say ", ", no
 say ""
 
 say "$i" for i in 100..102

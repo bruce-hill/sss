@@ -92,13 +92,16 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     bl_type_t *string_type = Type(StringType);
     bl_type_t *say_type = Type(
         FunctionType,
-        .args=LIST(bl_type_t*, string_type),
+        .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=Type(BoolType))),
         .ret=Type(VoidType));
 
-    gcc_param_t *gcc_str_param = gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str");
-    gcc_func_t *puts_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "puts", 1, &gcc_str_param, 0);
-    gcc_rvalue_t *puts_rvalue = gcc_get_func_address(puts_func, NULL);
-    hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=puts_rvalue, .type=say_type, .is_global=true));
+    gcc_param_t *gcc_say_params[] = {
+        gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str"),
+        gcc_new_param(ctx, NULL, gcc_get_ptr_type(gcc_type(ctx, BOOL)), "nl"),
+    };
+    gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "say", 2, gcc_say_params, 0);
+    gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
+    hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);

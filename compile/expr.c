@@ -31,6 +31,15 @@ static gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t,
     return gcc_lvalue_as_rvalue(tmp);
 }
 
+static gcc_rvalue_t *move_to_stack(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
+    gcc_assign(*block, NULL, tmp, val);
+    return gcc_lvalue_address(tmp, NULL);
+}
+
 static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     ast_t *ast = data;
     if (ast->for_loop.key)
@@ -446,6 +455,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // Numeric promotion:
             if (is_numeric(actual) && is_numeric(expected) && numtype_priority(actual) < numtype_priority(expected))
                 val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, expected));
+            if (expected->kind == OptionalType && actual->kind != OptionalType
+                && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
+                // TODO: optimize by moving to stack when possible:
+                (void)move_to_stack;
+                val = move_to_heap(env, block, actual, val);
+            }
             append(arg_vals, val);
         }
 

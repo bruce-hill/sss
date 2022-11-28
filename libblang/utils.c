@@ -11,6 +11,14 @@
 #include <string.h>
 #include <sys/stat.h>
 
+void say(const char *str, bool *nl)
+{
+    if (!nl || *nl == true)
+        puts(str);
+    else
+        printf("%s", str);
+}
+
 void fail(const char *fmt, ...)
 {
     va_list args;
