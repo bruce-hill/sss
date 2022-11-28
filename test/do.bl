@@ -1,0 +1,20 @@
+def sqr_optional(n:Num):Num?
+    if n < 0.
+        return nil Num
+    else
+        return (n*n)
+
+for x in [9.,-1.,-2.,-3.,-999.,4.]
+    say "x = $x"
+    do
+        x := sqr_optional(x) or skip
+        say "First: $x"
+    // else
+    //     x = sqrt_optional(x+1.) or skip
+    //     say "Second: $x"
+    // else
+    //     x = sqrt_optional(x+2.) or skip
+    //     say "Third: $x"
+    // else
+    //     stop if x < -5.
+    //     say "I give up: $x"
