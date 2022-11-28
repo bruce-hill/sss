@@ -5,6 +5,7 @@
 #include <bp/pattern.h>
 #include <bp/printmatch.h>
 #include <bp/json.h>
+#include <ctype.h>
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
@@ -195,10 +196,9 @@ ast_t *match_to_ast(match_t *m)
         case Int: {
             int64_t i;
             char buf[(int)(m->end - m->start + 1)];
-            memcpy(buf, m->start, (size_t)(m->end - m->start));
             char *dest = buf;
-            for (char *src = buf; *src; ++src)
-                if (*src != '_')
+            for (const char *src = m->start; src < m->end; ++src)
+                if (isalnum(*src))
                     *(dest++) = *src;
             *dest = '\0';
             if (strncmp(buf, "0x", 2) == 0)
