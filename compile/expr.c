@@ -726,6 +726,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->kind != BoolType) {
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
+
+            if (lhs_t->kind == OptionalType && t->kind != OptionalType
+                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
+                lhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(lhs_val, NULL));
         }
         gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
 
@@ -733,6 +737,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump(if_truthy, NULL, done);
 
         gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, ast->rhs);
+        if (rhs_t->kind == OptionalType && t->kind != OptionalType
+            && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
+            rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
         gcc_assign(if_falsey, NULL, result, rhs_val);
         gcc_jump(if_falsey, NULL, done);
 
