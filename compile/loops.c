@@ -33,7 +33,7 @@ void compile_loop_iteration(
     loop_env.bindings->fallback = env->bindings;
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-        .name = intern_str(loop_name),
+        .names = LIST(istr_t, intern_str(loop_name)),
         .skip_label = loop_top,
         .stop_label = loop_end,
     };
@@ -92,11 +92,11 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
         if (iter_t->kind == OptionalType) iter_t = iter_t->nonnil;
         switch (iter_t->kind) {
         case ListType: {
-            compile_list_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler, userdata);
+            compile_list_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
         }
         case RangeType: {
-            compile_range_iteration(env, block, ast->for_loop.iter, body_compiler, between_compiler, userdata);
+            compile_range_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
         }
         default: ERROR(env, ast->for_loop.iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));

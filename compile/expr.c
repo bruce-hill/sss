@@ -863,17 +863,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_block_t *jump_dest = NULL;
         if (ast->str) {
             for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
-                if (lbl->name == ast->str) {
-                    if (ast->kind == Skip) {
-                        jump_dest = lbl->skip_label;
-                        lbl->skip_reachable = true;
-                    } else {
-                        jump_dest = lbl->stop_label;
-                        lbl->stop_reachable = true;
+                foreach (lbl->names, name, _) {
+                    if (*name == ast->str) {
+                        if (ast->kind == Skip) {
+                            jump_dest = lbl->skip_label;
+                            lbl->skip_reachable = true;
+                        } else {
+                            jump_dest = lbl->stop_label;
+                            lbl->stop_reachable = true;
+                        }
+                        goto found_label;
                     }
-                    break;
                 }
             }
+          found_label:;
         } else {
             if (env->loop_label) {
                 if (ast->kind == Skip) {

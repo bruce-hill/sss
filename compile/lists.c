@@ -107,7 +107,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                    .name = intern_str("[]"),
+                    .names = LIST(istr_t, intern_str("[]")),
                     .skip_label = item_done,
                     .stop_label = list_done,
             };
@@ -149,9 +149,11 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 }
 
 void compile_list_iteration(
-    env_t *env, gcc_block_t **block, ast_t *list_ast,
+    env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
 {
+    assert(ast->kind == For);
+    ast_t *list_ast = ast->for_loop.iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_preamble = gcc_new_block(func, fresh("loop_preamble")),
                 *loop_body = gcc_new_block(func, fresh("loop_body")),
@@ -162,9 +164,15 @@ void compile_list_iteration(
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
     loop_env.bindings->fallback = env->bindings;
+    NEW_LIST(istr_t, label_names);
+    append(label_names, intern_str("for"));
+    if (ast->for_loop.key)
+        append(label_names, ast->for_loop.key->str);
+    if (ast->for_loop.value)
+        append(label_names, ast->for_loop.value->str);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-        .name = intern_str("for"),
+        .names = label_names,
         .skip_label = loop_next,
         .stop_label = loop_end,
     };

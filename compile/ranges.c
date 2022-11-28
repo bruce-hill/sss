@@ -32,9 +32,11 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
 }
 
 void compile_range_iteration(
-    env_t *env, gcc_block_t **block, ast_t *range,
+    env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
+    assert(ast->kind == For);
+    ast_t *range = ast->for_loop.iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, fresh("range_body")),
                 *loop_between = between_compiler ? gcc_new_block(func, fresh("range_between")) : NULL,
@@ -44,9 +46,15 @@ void compile_range_iteration(
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
     loop_env.bindings->fallback = env->bindings;
+    NEW_LIST(istr_t, label_names);
+    append(label_names, intern_str("for"));
+    if (ast->for_loop.key)
+        append(label_names, ast->for_loop.key->str);
+    if (ast->for_loop.value)
+        append(label_names, ast->for_loop.value->str);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-        .name = intern_str("for"),
+        .names = label_names,
         .skip_label = loop_next,
         .stop_label = loop_end,
     };
