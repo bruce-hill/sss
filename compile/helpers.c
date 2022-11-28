@@ -145,6 +145,43 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     return gcc_t;
 }
 
+gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val)
+{
+    gcc_func_t *gc_malloc_func = hashmap_gets(env->global_funcs, "GC_malloc");
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
+    gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+    gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
+    // TODO: use gc_malloc_atomic() when possible
+    gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_malloc_func, 1, &size), gcc_t));
+    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_lvalue_as_rvalue(tmp), NULL), val);
+    return gcc_lvalue_as_rvalue(tmp);
+}
+
+bool promote(env_t *env, gcc_block_t **block, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed)
+{
+    // No promotion necessary:
+    if (actual == needed)
+        return true;
+
+    // Numeric promotion:
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed)) {
+        *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
+        return true;
+    }
+
+    // Optional promotion:
+    if (needed->kind == OptionalType && actual->kind != OptionalType && needed->nonnil == actual) {
+        if (!gcc_type_if_pointer(bl_type_to_gcc(env, actual)))
+            *val = move_to_heap(env, block, actual, *val);
+        return true;
+    }
+
+    // TODO: Struct promotion?
+
+    return false;
+}
+
 hashmap_t *global_bindings(hashmap_t *bindings)
 {
     hashmap_t *globals = hashmap_new();

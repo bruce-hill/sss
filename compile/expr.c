@@ -18,28 +18,6 @@
 #include "../types.h"
 #include "../util.h"
 
-static gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val)
-{
-    gcc_func_t *gc_malloc_func = hashmap_gets(env->global_funcs, "GC_malloc");
-    gcc_func_t *func = gcc_block_func(*block);
-    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
-    gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
-    gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
-    // TODO: use gc_malloc_atomic() when possible
-    gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_malloc_func, 1, &size), gcc_t));
-    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_lvalue_as_rvalue(tmp), NULL), val);
-    return gcc_lvalue_as_rvalue(tmp);
-}
-
-static gcc_rvalue_t *move_to_stack(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val)
-{
-    gcc_func_t *func = gcc_block_func(*block);
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
-    gcc_assign(*block, NULL, tmp, val);
-    return gcc_lvalue_address(tmp, NULL);
-}
-
 static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     ast_t *ast = data;
     if (ast->for_loop.key)
@@ -136,18 +114,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *func = gcc_block_func(*block);
         NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
+            ast_t *rhs = ith(ast->multiassign.rhs, i);
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
-            bl_type_t *t_rhs = get_type(env->file, env->bindings, ith(ast->multiassign.rhs, i));
+            bl_type_t *t_rhs = get_type(env->file, env->bindings, rhs);
             gcc_rvalue_t *rval = compile_expr(env, block, ith(ast->multiassign.rhs, i));
 
-            if (is_numeric(t_lhs) && is_numeric(t_rhs) && numtype_priority(t_lhs) >= numtype_priority(t_rhs)) {
-                rval = gcc_cast(env->ctx, NULL, rval, bl_type_to_gcc(env, t_lhs));
-            } else if (type_is_a(t_rhs, t_lhs) && t_lhs->kind == OptionalType && t_rhs->kind != OptionalType) {
-                rval = move_to_heap(env, block, t_rhs, rval);
-            } else if (!type_is_a(t_rhs, t_lhs)) {
-                ERROR(env, ith(ast->multiassign.rhs, i), "This value is a %s, but it needs to be a %s",
+            if (!promote(env, block, t_rhs, &rval, t_lhs))
+                ERROR(env, rhs, "You're assigning this value with type %s to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
-            }
 
             if (len > 1) {
                 gcc_lvalue_t *tmp = gcc_local(func, NULL, bl_type_to_gcc(env, t_rhs), fresh("tmp"));
@@ -203,12 +177,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                       type_to_string(env->return_type));
             bl_type_t *t = get_type(env->file, env->bindings, ast->child);
             gcc_rvalue_t *val = compile_expr(env, block, ast->child);
-            if (is_numeric(t) && is_numeric(env->return_type) && numtype_priority(t) < numtype_priority(env->return_type))
-                val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, env->return_type));
-            else if (env->return_type->kind == OptionalType && t->kind != OptionalType
-                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
-                val = move_to_heap(env, block, t, val);
-            else if (!type_is_a(t, env->return_type))
+            if (!promote(env, block, t, &val, env->return_type))
                 ERROR(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
@@ -385,16 +354,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // Check type:
             bl_type_t *expected = ith(t->struct_.field_types, entries[i].field_num);
             bl_type_t *actual = get_type(env->file, env->bindings, entries[i].ast);
-
-            if (expected == actual)
-                rvalues[i] = entries[i].value;
-            else if (expected->kind == OptionalType && actual->kind != OptionalType
-                && !gcc_type_if_pointer(bl_type_to_gcc(env, actual)))
-                rvalues[i] = move_to_heap(env, block, actual, entries[i].value);
-            else if (is_numeric(expected) && is_numeric(actual)
-                     && numtype_priority(expected) >= numtype_priority(actual))
-                rvalues[i] = gcc_cast(env->ctx, NULL, entries[i].value, bl_type_to_gcc(env, expected));
-            else
+            rvalues[i] = entries[i].value;
+            if (!promote(env, block, actual, &rvalues[i], expected))
                 ERROR(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
                       type_to_string(expected), type_to_string(t), ith(t->struct_.field_names, entries[i].field_num),
                       type_to_string(actual));
@@ -452,15 +413,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val = compile_expr(env, block, *arg);
             bl_type_t *actual = get_type(env->file, env->bindings, *arg);
             bl_type_t *expected = ith(fn_t->args, num_selfs + (int64_t)(arg - *ast->call.args));
-            // Numeric promotion:
-            if (is_numeric(actual) && is_numeric(expected) && numtype_priority(actual) < numtype_priority(expected))
-                val = gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, expected));
-            if (expected->kind == OptionalType && actual->kind != OptionalType
-                && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
-                // TODO: optimize by moving to stack when possible:
-                (void)move_to_stack;
-                val = move_to_heap(env, block, actual, val);
-            }
+            if (!promote(env, block, actual, &val, expected))
+                ERROR(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
+                      type_to_string(expected), type_to_string(actual));
+
             append(arg_vals, val);
         }
 
@@ -691,10 +647,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
             // Numeric promotion:
-            if (numtype_priority(rhs_t) < numtype_priority(t))
-                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
-            if (numtype_priority(lhs_t) < numtype_priority(t))
-                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+            if (!promote(env, block, lhs_t, &lhs_val, rhs_t))
+                assert(promote(env, block, rhs_t, &rhs_val, lhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_func_t *func = gcc_block_func(*block);
@@ -737,11 +691,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
-            // Numeric promotion:
-            if (numtype_priority(rhs_t) < numtype_priority(t))
-                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
-            if (numtype_priority(lhs_t) < numtype_priority(t))
-                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+            if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
+                && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+                ERROR(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_func_t *func = gcc_block_func(*block);
@@ -808,19 +760,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_lvalue_t *lhs_val = get_lvalue(env, block, ast->lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
 
-            // Numeric promotion:
-            if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
-                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, lhs_t));
+            if (!promote(env, block, rhs_t, &rhs_val, lhs_t))
+                ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them without losing precision.",
+                      type_to_string(lhs_t), type_to_string(rhs_t));
             gcc_update(*block, ast_loc(env, ast), lhs_val, op, rhs_val);
             return gcc_lvalue_as_rvalue(lhs_val);
         } else {
             gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
             // Numeric promotion:
-            if (numtype_priority(rhs_t) < numtype_priority(t))
-                rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
-            if (numtype_priority(lhs_t) < numtype_priority(t))
-                lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+            if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
+                && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+                ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
+                      type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
     }
@@ -830,11 +782,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
         gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
-        // Numeric promotion:
-        if (numtype_priority(rhs_t) < numtype_priority(t))
-            rhs_val = gcc_cast(env->ctx, NULL, rhs_val, bl_type_to_gcc(env, t));
-        if (numtype_priority(lhs_t) < numtype_priority(t))
-            lhs_val = gcc_cast(env->ctx, NULL, lhs_val, bl_type_to_gcc(env, t));
+        if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
+            && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+            ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
+                  type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->kind == NumType || t->kind == Num32Type) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
             return gcc_call(env->ctx, NULL, sane_fmod_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val});
@@ -866,14 +817,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (branch_val) {
                     if (if_ret) {
                         bl_type_t *actual = get_type(env->file, env->bindings, body);
-                        // Numeric promotion:
-                        if (is_numeric(actual) && is_numeric(if_t) && numtype_priority(actual) < numtype_priority(if_t))
-                            branch_val = gcc_cast(env->ctx, NULL, branch_val, bl_type_to_gcc(env, if_t));
-                        // Optional promotion:
-                        if (if_t->kind == OptionalType && actual->kind != OptionalType
-                            && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
-                            branch_val = move_to_heap(env, block, actual, branch_val);
-                        }
+                        if (!promote(env, block, actual, &branch_val, if_t))
+                            ERROR(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                                  type_to_string(if_t), type_to_string(actual));
                         gcc_assign(if_truthy, NULL, if_ret, branch_val);
                     } else {
                         gcc_eval(if_truthy, NULL, branch_val);
@@ -888,14 +834,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (branch_val) {
                 if (if_ret) {
                     bl_type_t *actual = get_type(env->file, env->bindings, ast->else_body);
-                    // Numeric promotion:
-                    if (is_numeric(actual) && is_numeric(if_t) && numtype_priority(actual) < numtype_priority(if_t))
-                        branch_val = gcc_cast(env->ctx, NULL, branch_val, bl_type_to_gcc(env, if_t));
-                    // Optional promotion:
-                    if (if_t->kind == OptionalType && actual->kind != OptionalType
-                        && !gcc_type_if_pointer(bl_type_to_gcc(env, actual))) {
-                        branch_val = move_to_heap(env, block, actual, branch_val);
-                    }
+                    if (!promote(env, block, actual, &branch_val, if_t))
+                        ERROR(env, ast->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                              type_to_string(if_t), type_to_string(actual));
                     gcc_assign(*block, NULL, if_ret, branch_val);
                 } else {
                     gcc_eval(*block, NULL, branch_val);
