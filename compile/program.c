@@ -127,7 +127,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_type(env.ctx, STRING)), "argv"),
     };
     gcc_func_t *main_func = gcc_new_func(
-        ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID),
+        ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, INT),
         "main", 2, main_params, 0);
     gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
 
@@ -158,7 +158,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
 
     compile_statement(&env, &block, ast);
     if (block)
-        gcc_return_void(block, NULL);
+        gcc_return(block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
     return gcc_compile(ctx);
 }
