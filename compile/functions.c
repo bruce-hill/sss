@@ -30,6 +30,8 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     for (int64_t i = 0; i < length(def->fn.arg_names); i++) {
         istr_t argname = ith(def->fn.arg_names, i);
         bl_type_t *argtype = ith(t->args, i);
+        if (argtype->kind == VoidType)
+            ERROR(env, ith(def->fn.arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
