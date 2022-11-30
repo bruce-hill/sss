@@ -257,6 +257,10 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_return(block, NULL, gcc_call(env->ctx, NULL, internf, 2, args));
         break;
     }
+    case VoidType: {
+        gcc_return(block, NULL, LITERAL("Void"));
+        break;
+    }
     case RangeType: {
         errx(1, "This should be handled by an externally defined function.");
     }

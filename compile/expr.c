@@ -67,9 +67,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ERROR(env, ast, "I can't find a definition for this variable"); 
     }
     case Declare: {
-        gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
         bl_type_t *t = get_type(env->file, env->bindings, ast->rhs);
         assert(t);
+        if (t->kind == VoidType)
+            ERROR(env, ast->rhs, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
+        gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast->lhs), gcc_t, fresh(ast->lhs->str));
@@ -194,6 +196,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_new_string(env->ctx, ast->str);
     }
     case StringJoin: {
+        foreach (ast->children, chunk, _) {
+            bl_type_t *t = get_type(env->file, env->bindings, *chunk);
+            if (t->kind == VoidType)
+                ERROR(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
+        }
+
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
         if (length(ast->children) == 0) {
