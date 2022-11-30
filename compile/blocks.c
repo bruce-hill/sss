@@ -58,6 +58,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         LIST_FOR (def->struct_.members, member, _) {
             if ((*member)->kind == StructFieldDef) {
                 bl_type_t *ft = parse_type(env->file, env->bindings, (*member)->fields.type);
+                if (ft->kind == VoidType)
+                    ERROR(env, (*member)->fields.type, "This field is a Void type, but that isn't supported for struct members.");
                 LIST_FOR((*member)->fields.names, fname, __) {
                     APPEND(t->struct_.field_names, *fname);
                     APPEND(t->struct_.field_types, ft);
