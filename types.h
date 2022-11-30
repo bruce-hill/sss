@@ -28,7 +28,6 @@ typedef const struct bl_type_s {
         istr_t name;
         const struct bl_type_s *item_type;
         const struct bl_type_s *nonnil;
-        const struct bl_type_s *type;
         struct {
             const struct bl_type_s *key, *value;
         };
@@ -48,7 +47,7 @@ typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
     gcc_jit_function *func;
-    bl_type_t *type;
+    bl_type_t *type, *type_value;
     bool is_global;
 } binding_t;
 

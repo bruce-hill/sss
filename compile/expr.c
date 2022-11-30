@@ -81,9 +81,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 
     case Extern: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->type);
-        assert(t->kind == TypeType);
-        t = t->type;
+        bl_type_t *t = parse_type(env->file, env->bindings, ast->type);
         if (t->kind == FunctionType) {
             gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, t->ret);
             NEW_LIST(gcc_param_t*, params);
@@ -379,12 +377,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
             switch (self_t->kind) {
             case TypeType: {
+                if (ast->call.fn->indexed->kind != Var)
+                    ERROR(env, ast->call.fn, "I only know how to access type members by referencing the type directly like Foo.baz()");
                 if (ast->call.fn->index->kind != FieldName)
                     ERROR(env, ast->call.fn, "I was expecting this to be a field index like Foo.baz()");
-                istr_t method_name = intern_strf("%s.%s", type_to_string(self_t->type), ast->call.fn->index->str);
+                istr_t type_name = ast->call.fn->indexed->str;
+                istr_t method_name = intern_strf("%s.%s", type_name, ast->call.fn->index->str);
                 binding_t *binding = hashmap_get(env->bindings, method_name);
                 if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->index->str, type_to_string(self_t->type));
+                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->index->str, type_name);
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -501,8 +502,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     }
                 }
             }
-            bl_type_t *namespace = indexed_t->kind == TypeType ? indexed_t->type : indexed_t;
-            istr_t name = intern_strf("%s.%s", type_to_string(namespace), ast->index->str);
+            istr_t type_name;
+            if (indexed_t->kind == TypeType) {
+                assert(ast->indexed->kind == Var);
+                binding_t *binding = hashmap_get(env->bindings, ast->indexed->str);
+                assert(binding && binding->type->kind == TypeType);
+                type_name = ast->indexed->str;
+            } else {
+                type_name = type_to_string(indexed_t);
+            }
+            istr_t name = intern_strf("%s.%s", type_name, ast->index->str);
             binding_t *binding = hashmap_get(env->bindings, name);
             if (binding)
                 return binding->rval;
@@ -549,9 +558,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case TypeOf: {
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
-        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
         return gcc_call(env->ctx, NULL, intern_str_func, 1,
-                        (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t->type))});
+                        (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t))});
     }
     case SizeOf: {
         bl_type_t *t = get_type(env->file, env->bindings, ast->child);

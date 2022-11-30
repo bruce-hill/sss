@@ -40,13 +40,30 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             if (hashmap_get(env->bindings, name))
                 ERROR(env, *stmt, "Something called %s is already defined.", name);
             gcc_rvalue_t *rval = gcc_new_string(env->ctx, name);
-            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=rval));
+            if (hashmap_get_raw(env->bindings, name))
+                ERROR(env, *stmt, "This Type's name is already being used by something else in the same scope");
+            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval));
         }
     }
     // Populate struct fields:
     foreach (ast->children, stmt, last_stmt) {
-        if ((*stmt)->kind == StructDef)
-            get_type(env->file, env->bindings, *stmt);
+        if ((*stmt)->kind != StructDef)
+            continue;
+
+        ast_t *def = *stmt;
+        istr_t name = def->struct_.name;
+        binding_t *binding = hashmap_get(env->bindings, name);
+        assert(binding && binding->type->kind == TypeType && binding->type_value);
+        bl_type_t *t = binding->type_value;
+        LIST_FOR (def->struct_.members, member, _) {
+            if ((*member)->kind == StructFieldDef) {
+                bl_type_t *ft = parse_type(env->file, env->bindings, (*member)->fields.type);
+                LIST_FOR((*member)->fields.names, fname, __) {
+                    APPEND(t->struct_.field_names, *fname);
+                    APPEND(t->struct_.field_types, ft);
+                }
+            }
+        }
     }
     
     // Function defs are visible in the entire block (allowing corecursive funcs)
