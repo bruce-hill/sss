@@ -55,6 +55,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         binding_t *binding = hashmap_get(env->bindings, name);
         assert(binding && binding->type->kind == TypeType && binding->type_value);
         bl_type_t *t = binding->type_value;
+        if (length(def->struct_.members) == 0)
+            ERROR(env, def, "This struct has no fields, which is currently not supported");
         LIST_FOR (def->struct_.members, member, _) {
             if ((*member)->kind == StructFieldDef) {
                 bl_type_t *ft = parse_type(env->file, env->bindings, (*member)->fields.type);

@@ -269,6 +269,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Struct: {
         bl_type_t *t = get_type(env->file, env->bindings, ast);
+        if (length(t->struct_.field_names) == 0)
+            ERROR(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
         if (length(ast->struct_.members) > length(t->struct_.field_names))
             ERROR(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
                   type_to_string(t),

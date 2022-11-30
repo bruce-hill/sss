@@ -187,9 +187,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case TypeType: {
             if (ast->indexed->kind != Var)
                 TYPE_ERR(f, ast->indexed, "Only type variables can be accessed for static variables");
-            binding_t *b = hashmap_get(bindings, ast->indexed->str);
-            if (b && b->type->kind == TypeType)
-                TYPE_ERR(f, ast->indexed, "I don't know what this is, but it's not a Type");
+            // binding_t *b = hashmap_get(bindings, ast->indexed->str);
+            // if (b && b->type->kind == TypeType)
+            //     TYPE_ERR(f, ast->indexed, "I don't know what this is, but it's not a Type");
             binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", ast->indexed->str, ast->index->str));
             if (binding)
                 return binding->type;
