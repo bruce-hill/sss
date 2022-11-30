@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
 
             binary_name = CORD_to_char_star(binary_name);
             gcc_jit_context_compile_to_file(ctx, GCC_JIT_OUTPUT_KIND_EXECUTABLE, binary_name);
-            printf("Successfully compiled %s to %s\n", argv[i], binary_name);
+            printf("Successfully compiled %s to %s\x1b[m\n", argv[i], binary_name);
         }
         gcc_jit_result_release(result);
 
