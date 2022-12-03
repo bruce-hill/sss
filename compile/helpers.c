@@ -263,7 +263,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
             istr_t field_name = ith(t->enum_.field_names, i);
             gcc_block_t *field_block = gcc_new_block(func, fresh(field_name));
-            gcc_return(field_block, NULL, LITERAL(field_name));
+            gcc_return(field_block, NULL, LITERAL(intern_strf("%s.%s", t->enum_.name, field_name)));
             int64_t value = ith(t->enum_.field_values, i);
             gcc_rvalue_t *rval = gcc_int64(env->ctx, value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, field_block);
