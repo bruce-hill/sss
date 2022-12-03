@@ -481,6 +481,32 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return t;
     }
 
+    case When: {
+        bl_type_t *t = NULL;
+        LIST_FOR (ast->cases, case_, _) {
+            bl_type_t *case_t = get_type(f, bindings, (case_)->body);
+            bl_type_t *t2 = type_or_type(t, case_t);
+            if (!t2)
+                TYPE_ERR(f, (case_)->body,
+                         "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
+                         type_to_string(t), type_to_string(case_t));
+            t = t2;
+        }
+        if (ast->default_body) {
+            bl_type_t *else_type = get_type(f, bindings, ast->default_body);
+            bl_type_t *t2 = type_or_type(t, else_type);
+            if (!t2)
+                TYPE_ERR(f, ast->default_body,
+                         "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
+                         type_to_string(t), type_to_string(else_type));
+            t = t2;
+        } else {
+            if (t->kind != OptionalType)
+                t = Type(OptionalType, .nonnil=t);
+        }
+        return t;
+    }
+
     case While: case Repeat: case For: {
         return Type(VoidType);
     }

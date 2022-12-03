@@ -81,6 +81,7 @@ bool promote(env_t *env, gcc_block_t **block, bl_type_t *actual, gcc_rvalue_t **
 gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug);
 
 // ============================== expr.c ==============================
+gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== functions.c ==============================

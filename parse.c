@@ -127,7 +127,7 @@ const char *kind_tags[] = {
     [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
     [Block]="Block",
-    [Do]="Do", [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
+    [Do]="Do", [If]="If", [For]="For", [While]="While", [Repeat]="Repeat", [When]="When",
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
@@ -395,11 +395,33 @@ ast_t *match_to_ast(match_t *m)
                 // (Can't use APPEND() macro)
                 list_append((list_t*)clauses, sizeof(ast_clause_t), &clause);
             }
-            ast_t *else_block = NULL;
-            match_t *else_m = get_named_capture(m, "elseBody", -1);
-            if (else_m)
-                else_block = match_to_ast(else_m);
+            ast_t *else_block = match_to_ast(get_named_capture(m, "elseBody", -1));
             return AST(m, If, .clauses=clauses, .else_body=else_block);
+        }
+        case When: {
+            ast_t *subject = match_to_ast(get_named_capture(m, "subject", -1));
+            NEW_LIST(ast_cases_t, cases);
+            for (int i = 1; ; i++) {
+                match_t *clause_m = get_numbered_capture(m, i);
+                if (!clause_m) break;
+                match_t *cases_m = get_named_capture(clause_m, "cases", -1);
+                NEW_LIST(ast_t*, values);
+                for (int casenum = 1; ; casenum++) {
+                    ast_t *caseval = match_to_ast(get_numbered_capture(cases_m, casenum));
+                    if (!caseval) break;
+                    APPEND(values, caseval);
+                }
+                ast_t *casebody = match_to_ast(get_named_capture(clause_m, "body", -1));
+                ast_cases_t case_ = {
+                    .cases=values,
+                    .body=casebody,
+                };
+                // Workaround because this is an array-of-structs instead of pointers:
+                // (Can't use APPEND() macro)
+                list_append((list_t*)cases, sizeof(ast_cases_t), &case_);
+            }
+            ast_t *else_block = match_to_ast(get_named_capture(m, "elseBody", -1));
+            return AST(m, When, .subject=subject, .cases=cases, .default_body=else_block);
         }
         case While: case Repeat: {
             ast_t *condition = match_to_ast(get_named_capture(m, "condition", -1));

@@ -52,9 +52,9 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
                 gcc_rvalue_t *rval = gcc_int64(env->ctx, ith(t->enum_.field_values, i));
                 istr_t field_name = ith(t->enum_.field_names, i);
-                hashmap_set(env->bindings, field_name, new(binding_t, .type=t, .is_global=true, .rval=rval));
+                hashmap_set(env->bindings, field_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
                 istr_t qualified_name = intern_strf("%s.%s", enum_name, field_name);
-                hashmap_set(env->bindings, qualified_name, new(binding_t, .type=t, .is_global=true, .rval=rval));
+                hashmap_set(env->bindings, qualified_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
             }
         }
     }

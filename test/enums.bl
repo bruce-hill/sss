@@ -1,0 +1,11 @@
+enum Foo { A, B, C, D }
+
+fail unless "$A" == "Foo.A" and "$(Foo.A)" == "Foo.A"
+
+for x in [A, B, C, D]
+    when x is A
+        say "$x is A!"
+    is Foo.B,C
+        say "$x is B or C!"
+    else
+        say "$x is something else"

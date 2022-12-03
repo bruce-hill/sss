@@ -199,8 +199,8 @@ PostfixFor: @:For=(@body=@:Block=@(line-statement / extended-expr) _
 PostfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
   \b"while"\b _ @condition=extended-expr _ [@filter=loopFilter] _ [comment])
 When:: ( \b"when"\b @curdent:\C _
-  @what=required-extended-expr _ [[comment] nl curdent]
-  +@:WhenClause=("is"\b _ @cases=@+required-extended-expr%(_`,_) _ @body=indentedBlock)%(nl curdent)
+  @subject=required-extended-expr _ [[comment] nl curdent]
+  +@:WhenClause=("is"\b _ @cases=+required-extended-expr%(_`,_) _ @body=indentedBlock)%(nl curdent)
   [nl curdent "else" _ @elseBody=maybeIndentedBlock]
 )
 For:: (

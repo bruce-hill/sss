@@ -51,6 +51,61 @@ static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info
         compile_block_statement(env, block, ast->loop.between);
 }
 
+gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
+{
+    switch (ast->kind) {
+    case Var: {
+        binding_t *binding = hashmap_get(env->bindings, ast->str);
+        if (!binding) {
+            ERROR(env, ast, "I can't find a definition for this variable"); 
+        } else if (!binding->is_constant) {
+            ERROR(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
+        } else if (binding->rval) {
+            return binding->rval;
+        } else if (binding->lval) {
+            return gcc_lvalue_as_rvalue(binding->lval);
+        } else if (binding->func) {
+            return gcc_get_func_address(binding->func, NULL);
+        }
+        break;
+    }
+    case Index: {
+        if (ast->index->kind != FieldName)
+            break;
+
+        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
+        istr_t type_name;
+        if (indexed_t->kind == TypeType)
+            type_name = ast->indexed->str;
+        else
+            type_name = type_to_string(indexed_t);
+        istr_t name = intern_strf("%s.%s", type_name, ast->index->str);
+        binding_t *binding = hashmap_get(env->bindings, name);
+        if (!binding) {
+            ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", ast->index->str, type_to_string(indexed_t));
+        } else if (!binding->is_constant) {
+            ERROR(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
+        } else if (binding->rval) {
+            return binding->rval;
+        } else if (binding->lval) {
+            return gcc_lvalue_as_rvalue(binding->lval);
+        } else if (binding->func) {
+            return gcc_get_func_address(binding->func, NULL);
+        }
+
+        return binding->rval;
+    }
+    case Int: {
+        return gcc_int64(env->ctx, ast->i);
+    }
+    case Num: {
+        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
+    }
+    default: break;
+    }
+    ERROR(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     switch (ast->kind) {
@@ -869,6 +924,63 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         *block = end_if;
         return if_ret ? gcc_lvalue_as_rvalue(if_ret) : NULL;
+    }
+    case When: {
+        // TODO: support `when "foo"` and `when x is (2+3)` by falling back to if/else when switch doesn't work
+        gcc_rvalue_t *subject = compile_expr(env, block, ast->subject);
+        bl_type_t *result_t = get_type(env->file, env->bindings, ast);
+        bl_type_t *nonnil_t = result_t->kind == OptionalType ? result_t->nonnil : result_t;
+        bool has_value = !(nonnil_t->kind == AbortType || nonnil_t->kind == VoidType);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *when_value = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
+        gcc_block_t *end_when = result_t->kind == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
+
+        NEW_LIST(gcc_case_t*, gcc_cases);
+        foreach (ast->cases, case_, _) {
+            gcc_block_t *case_block = gcc_new_block(func, fresh("case"));
+            gcc_rvalue_t *branch_val = compile_expr(env, &case_block, case_->body);
+            foreach (case_->cases, val, __) {
+                gcc_rvalue_t *rval = compile_constant(env, *val);
+                gcc_case_t *gcc_case = gcc_new_case(env->ctx, rval, rval, case_block);
+                APPEND(gcc_cases, gcc_case);
+            }
+
+            if (branch_val) {
+                if (when_value) {
+                    bl_type_t *actual = get_type(env->file, env->bindings, case_->body);
+                    if (!promote(env, &case_block, actual, &branch_val, result_t))
+                        ERROR(env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                              type_to_string(result_t), type_to_string(actual));
+                    gcc_assign(case_block, NULL, when_value, branch_val);
+                } else {
+                    gcc_eval(case_block, NULL, branch_val);
+                }
+            }
+            gcc_jump(case_block, NULL, end_when);
+        }
+        gcc_block_t *default_block;
+        if (ast->default_body) {
+            default_block = gcc_new_block(func, fresh("default"));
+            gcc_rvalue_t *branch_val = compile_expr(env, &default_block, ast->default_body);
+            if (branch_val) {
+                if (when_value) {
+                    bl_type_t *actual = get_type(env->file, env->bindings, ast->default_body);
+                    if (!promote(env, &default_block, actual, &branch_val, result_t))
+                        ERROR(env, ast->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                              type_to_string(result_t), type_to_string(actual));
+                    gcc_assign(default_block, NULL, when_value, branch_val);
+                } else {
+                    gcc_eval(default_block, NULL, branch_val);
+                }
+            }
+            if (*block)
+                gcc_jump(default_block, NULL, end_when);
+        } else {
+            default_block = end_when;
+        }
+        gcc_switch(*block, NULL, subject, default_block, length(gcc_cases), gcc_cases[0]);
+        *block = end_when;
+        return when_value ? gcc_lvalue_as_rvalue(when_value) : NULL;
     }
     case Range: {
         return compile_range(env, block, ast);

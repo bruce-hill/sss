@@ -24,7 +24,7 @@ typedef enum {
     FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
-    Do, If, For, While, Repeat,
+    Do, If, For, While, Repeat, When,
     Skip, Stop,
     Return,
     Fail,
@@ -44,6 +44,11 @@ const char *get_ast_kind_name(astkind_e kind);
 typedef struct {
     struct ast_s *condition, *body;
 } ast_clause_t;
+
+typedef struct {
+    List(struct ast_s*) cases;
+    struct ast_s *body;
+} ast_cases_t;
 
 typedef struct ast_s {
     astkind_e kind;
@@ -90,6 +95,11 @@ typedef struct ast_s {
         struct { // If
             List(ast_clause_t) clauses;
             struct ast_s *else_body;
+        };
+        struct { // When
+            struct ast_s *subject;
+            List(ast_cases_t) cases;
+            struct ast_s *default_body;
         };
         struct { // While/Repeat
             struct ast_s *condition, *body, *between;

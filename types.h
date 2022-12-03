@@ -59,7 +59,7 @@ typedef struct {
     gcc_jit_lvalue *lval;
     gcc_jit_function *func;
     bl_type_t *type, *type_value;
-    bool is_global;
+    bool is_global, is_constant;
 } binding_t;
 
 #define Type(mykind, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.kind=mykind, __VA_ARGS__}, sizeof(bl_type_t)))
