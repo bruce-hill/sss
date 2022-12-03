@@ -207,6 +207,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case FunctionDef: case Lambda: {
         binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
         if (binding && binding->func) {
+            compile_function(env, binding->func, ast);
             return binding->rval;
         } else {
             // At this point, either this is a lambda or a function def used as a value

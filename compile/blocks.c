@@ -107,24 +107,6 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     }
 
     foreach (ast->children, stmt, last_stmt) {
-        // Declarations are visible from here onwards:
-        if ((*stmt)->kind == FunctionDef) {
-            binding_t *binding = hashmap_get(env->bindings, (*stmt)->fn.name);
-            assert(binding);
-            // Compile the function here instead of above because we need the type information
-            // from the other functions in the block.
-            compile_function(env, binding->func, *stmt);
-        } else if ((*stmt)->kind == StructDef) {
-            // Struct methods:
-            foreach ((*stmt)->struct_.members, member, _) {
-                if ((*member)->kind == FunctionDef) {
-                    istr_t name = intern_strf("%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
-                    binding_t *binding = hashmap_get(env->bindings, name);
-                    assert(binding);
-                    compile_function(env, binding->func, *member);
-                }
-            }
-        }
         if (!*block)
             ERROR(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
