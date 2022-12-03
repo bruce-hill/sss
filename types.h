@@ -20,7 +20,13 @@ typedef enum {
     FunctionType,
     OptionalType,
     StructType,
+    EnumType,
 } typekind_e;
+
+typedef struct {
+    istr_t name;
+    int64_t value;
+} enum_field_t;
 
 typedef const struct bl_type_s {
     typekind_e kind;
@@ -40,6 +46,11 @@ typedef const struct bl_type_s {
             List(istr_t) field_names;
             List(const struct bl_type_s*) field_types;
         } struct_;
+        struct {
+            istr_t name;
+            List(istr_t) field_names;
+            List(int64_t) field_values;
+        } enum_;
     };
 } bl_type_t;
 

@@ -136,6 +136,7 @@ const char *kind_tags[] = {
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDeclaration", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
+    [EnumDef]="EnumDeclaration",
     [Index]="IndexedTerm", [FieldName]="FieldName",
 };
 
@@ -348,6 +349,27 @@ ast_t *match_to_ast(match_t *m)
                 APPEND(names, name);
             }
             return AST(m, StructFieldDef, .fields.names=names, .fields.type=type);
+        }
+        case EnumDef: {
+            istr_t name = match_to_istr(get_named_capture(m, "name", -1));
+            NEW_LIST(istr_t, field_names);
+            NEW_LIST(int64_t, field_values);
+            int64_t next_value = 0;
+            for (int i = 1; ; i++) {
+                match_t *field_m = get_numbered_capture(m, i);
+                if (!field_m) break;
+                istr_t name = match_to_istr(get_named_capture(field_m, "name", -1));
+                ast_t *value = match_to_ast(get_named_capture(field_m, "value", -1));
+                if (value)
+                    next_value = value->i;
+                APPEND(field_names, name);
+                APPEND(field_values, next_value);
+                // // Workaround because this is an array-of-structs instead of pointers:
+                // // (Can't use APPEND() macro)
+                // list_append((list_t*)fields, sizeof(enum_field_t), &field);
+                ++next_value;
+            }
+            return AST(m, EnumDef, .enum_.name=name, .enum_.field_names=field_names, .enum_.field_values=field_values);
         }
         case FieldName: {
             return AST(m, FieldName, .str=match_to_istr(m));

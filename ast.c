@@ -23,6 +23,8 @@ static const char *astkind_names[] = {
     [TypeList]="TypeList", [TypeTable]="TypeTable",
     [TypeFunction]="TypeFunction", [TypeOption]="TypeOption",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
+    [StructDef]="StructDef",
+    [EnumDef]="EnumDef",
 };
 
 const char *get_ast_kind_name(astkind_e kind) {

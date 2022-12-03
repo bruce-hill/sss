@@ -242,6 +242,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case List: {
         return compile_list(env, block, ast);
     }
+    case EnumDef: {
+        return NULL;
+    }
     case StructDef: {
         foreach (ast->struct_.members, member, _) {
             if ((*member)->kind == FunctionDef) {

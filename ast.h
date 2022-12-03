@@ -34,6 +34,7 @@ typedef enum {
     TypeFunction, TypeOption,
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
+    EnumDef,
     Index, FieldName,
     NUM_TYPES,
 } astkind_e;
@@ -54,10 +55,6 @@ typedef struct ast_s {
         istr_t str;
         struct ast_s *child;
         List(struct ast_s*) children;
-        // struct {
-        //     List(struct ast_s*) items;
-        //     struct ast_s *type;
-        // } list;
         struct { // Infix
             struct ast_s *lhs, *rhs;
         };
@@ -115,5 +112,10 @@ typedef struct ast_s {
             istr_t name;
             List(struct ast_s *) members;
         } struct_;
+        struct {
+            istr_t name;
+            List(istr_t) field_names;
+            List(int64_t) field_values;
+        } enum_;
     };
 } ast_t;

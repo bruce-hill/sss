@@ -424,7 +424,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return Type(FunctionType, .args=args, .ret=ret);
     }
 
-    case StructDef: {
+    case StructDef: case EnumDef: {
         return Type(VoidType);
     }
 

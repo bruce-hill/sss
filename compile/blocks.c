@@ -29,20 +29,33 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
     assert(ast->kind == Block);
-    // Struct defs are visible in the entire block (allowing corecursive structs)
+    // Struct and enum defs are visible in the entire block (allowing corecursive structs)
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == StructDef) {
             istr_t name = (*stmt)->struct_.name;
             NEW_LIST(istr_t, field_names);
             NEW_LIST(bl_type_t*, field_types);
             // Placeholder type, will be populated later:
-            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
             if (hashmap_get(env->bindings, name))
                 ERROR(env, *stmt, "Something called %s is already defined.", name);
+            bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
             gcc_rvalue_t *rval = gcc_new_string(env->ctx, name);
-            if (hashmap_get_raw(env->bindings, name))
-                ERROR(env, *stmt, "This Type's name is already being used by something else in the same scope");
             hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval));
+        } else if ((*stmt)->kind == EnumDef) {
+            istr_t enum_name = (*stmt)->enum_.name;
+            if (hashmap_get(env->bindings, enum_name))
+                ERROR(env, *stmt, "Something called %s is already defined.", enum_name);
+            bl_type_t *t = Type(EnumType, .enum_.name=enum_name,
+                                .enum_.field_names=(*stmt)->enum_.field_names, .enum_.field_values=(*stmt)->enum_.field_values);
+            gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
+            hashmap_set(env->bindings, enum_name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval));
+            for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
+                gcc_rvalue_t *rval = gcc_int64(env->ctx, ith(t->enum_.field_values, i));
+                istr_t field_name = ith(t->enum_.field_names, i);
+                hashmap_set(env->bindings, field_name, new(binding_t, .type=t, .is_global=true, .rval=rval));
+                istr_t qualified_name = intern_strf("%s.%s", enum_name, field_name);
+                hashmap_set(env->bindings, qualified_name, new(binding_t, .type=t, .is_global=true, .rval=rval));
+            }
         }
     }
     // Populate struct fields:
@@ -85,9 +98,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
                     bl_type_t *t = get_type(env->file, env->bindings, *member);
                     gcc_func_t *func = get_function_def(env, *member, false);
                     gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                    CORD name;
-                    CORD_sprintf(&name, "%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
-                    hashmap_set(env->bindings, intern_str(CORD_to_char_star(name)),
+                    istr_t name = intern_strf("%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
+                    hashmap_set(env->bindings, name,
                                 new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
                 }
             }

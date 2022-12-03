@@ -72,6 +72,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     if (gcc_t) return gcc_t;
 
     switch (t->kind) {
+    case EnumType: gcc_t = gcc_type(env->ctx, INT64); break;
     case IntType: gcc_t = gcc_type(env->ctx, INT64); break;
     case Int32Type: gcc_t = gcc_type(env->ctx, INT32); break;
     case Int16Type: gcc_t = gcc_type(env->ctx, INT16); break;
@@ -255,6 +256,22 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_rvalue_t *args[] = {gcc_new_string(env->ctx, fmt), obj};
         gcc_func_t *internf = hashmap_gets(env->global_funcs, "intern_strf");
         gcc_return(block, NULL, gcc_call(env->ctx, NULL, internf, 2, args));
+        break;
+    }
+    case EnumType: {
+        NEW_LIST(gcc_case_t*, cases);
+        for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
+            istr_t field_name = ith(t->enum_.field_names, i);
+            gcc_block_t *field_block = gcc_new_block(func, fresh(field_name));
+            gcc_return(field_block, NULL, LITERAL(field_name));
+            int64_t value = ith(t->enum_.field_values, i);
+            gcc_rvalue_t *rval = gcc_int64(env->ctx, value);
+            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, field_block);
+            APPEND(cases, case_);
+        }
+        gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
+        gcc_return(default_block, NULL, LITERAL(intern_strf("<Unknown %s value>", t->enum_.name)));
+        gcc_switch(block, NULL, obj, default_block, length(cases), cases[0]);
         break;
     }
     case VoidType: {
