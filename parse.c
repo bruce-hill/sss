@@ -135,8 +135,8 @@ const char *kind_tags[] = {
     [TypeList]="ListType", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
-    [Struct]="Struct", [StructDef]="StructDeclaration", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
-    [EnumDef]="EnumDeclaration",
+    [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
+    [EnumDef]="EnumDef",
     [Index]="IndexedTerm", [FieldName]="FieldName",
 };
 

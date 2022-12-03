@@ -111,7 +111,7 @@ statements: @curdent:\C +(
 indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDef / ConvertDef / Extern / Macro / If / Do / When / For / While / Repeat
-  / TypeDef / StructDeclaration / UnionDeclaration / UnitDeclaration / EnumDeclaration
+  / TypeDef / StructDef / UnionDef / UnitDef / EnumDef
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
   / line-statement
@@ -125,12 +125,12 @@ line-statement: (
 Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @lhs=Var _":=" _ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=TypeVar _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
-UnitDeclaration:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
-StructDeclaration:: \b"def"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / Declaration) % __ __`}
+UnitDef:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
+StructDef:: \b"def"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / Declaration) % __ __`}
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
-UnionDeclaration:: \b"union"\b _ @name=TypeVar __ `{__ *(UnionField / MethodDef / FnDef / Declaration) % __ __`}
+UnionDef:: \b"union"\b _ @name=TypeVar __ `{__ *(UnionField / MethodDef / FnDef / Declaration) % __ __`}
 UnionField:: @names=@+(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
-EnumDeclaration:: \b"enum"\b _ @name=TypeVar _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int])) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
+EnumDef:: \b"enum"\b _ @name=TypeVar _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int])) % (__`,__) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 Macro:: @curdent:\C \b"macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
 FnDef:: @curdent:\C \b"def"\b _ @name=Var _ (
   `( __ @args=(*((@:FnArg=(@name=Var_`:_@type=type) / @:ParseError=(Var =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
