@@ -48,14 +48,8 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     }
 }
 
-gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global)
+gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global)
 {
-    istr_t name;
-    if (def->fn.name)
-        name = is_global ? def->fn.name : fresh(def->fn.name);
-    else
-        name = fresh("lambda");
-
     bl_type_t *t = get_type(env->file, env->bindings, def);
     NEW_LIST(gcc_param_t*, params);
     for (int64_t i = 0; i < length(def->fn.arg_names); i++) {

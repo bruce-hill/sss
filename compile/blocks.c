@@ -40,8 +40,9 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             if (hashmap_get(env->bindings, name))
                 ERROR(env, *stmt, "Something called %s is already defined.", name);
             bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
-            gcc_rvalue_t *rval = gcc_new_string(env->ctx, name);
-            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=hashmap_new()));
+            gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, STRING), name);
+            lval = gcc_global_set_initializer_rvalue(lval, gcc_new_string(env->ctx, name));
+            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=gcc_lvalue_as_rvalue(lval), .namespace=hashmap_new()));
         } else if ((*stmt)->kind == EnumDef) {
             istr_t enum_name = (*stmt)->enum_.name;
             if (hashmap_get(env->bindings, enum_name))
@@ -89,7 +90,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == FunctionDef) {
             bl_type_t *t = get_type(env->file, env->bindings, *stmt);
-            gcc_func_t *func = get_function_def(env, *stmt, false);
+            gcc_func_t *func = get_function_def(env, *stmt, fresh((*stmt)->fn.name), false);
             gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
             hashmap_set(env->bindings, (*stmt)->fn.name,
                         new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
@@ -100,7 +101,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             foreach ((*stmt)->struct_.members, member, _) {
                 if ((*member)->kind == FunctionDef) {
                     bl_type_t *t = get_type(env->file, env->bindings, *member);
-                    gcc_func_t *func = get_function_def(env, *member, false);
+                    gcc_func_t *func = get_function_def(env, *member, intern_strf("%s__%s", (*stmt)->struct_.name, (*member)->fn.name), true);
                     gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
                     hashmap_set(b->namespace, (*member)->fn.name,
                                 new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));

@@ -86,7 +86,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== functions.c ==============================
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
-gcc_func_t *get_function_def(env_t *env, ast_t *def, bool is_global);
+gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global);
 
 // ============================== blocks.c ==============================
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);

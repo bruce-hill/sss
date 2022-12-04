@@ -216,7 +216,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             // At this point, either this is a lambda or a function def used as a value
             // instead of a statement
-            gcc_func_t *func = get_function_def(env, ast, false);
+            gcc_func_t *func = get_function_def(env, ast, fresh(ast->fn.name ? ast->fn.name : "lambda"), false);
             compile_function(env, func, ast);
             return gcc_get_func_address(func, NULL);
         }
