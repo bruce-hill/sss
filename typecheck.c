@@ -178,7 +178,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str)
                     return LIST_ITEM(indexed_t->struct_.field_types, i);
             }
-            binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t), ast->index->str));
+            binding_t *type_binding = hashmap_get(bindings, type_to_string(indexed_t));
+            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
             if (binding)
                 return binding->type;
             else
@@ -187,10 +188,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case TypeType: {
             if (ast->indexed->kind != Var)
                 TYPE_ERR(f, ast->indexed, "Only type variables can be accessed for static variables");
-            // binding_t *b = hashmap_get(bindings, ast->indexed->str);
-            // if (b && b->type->kind == TypeType)
-            //     TYPE_ERR(f, ast->indexed, "I don't know what this is, but it's not a Type");
-            binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", ast->indexed->str, ast->index->str));
+            binding_t *type_binding = hashmap_get(bindings, ast->indexed->str);
+            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
             if (binding)
                 return binding->type;
             else
@@ -198,7 +197,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         default: {
             if (ast->index->kind == FieldName) {
-                binding_t *binding = hashmap_get(bindings, intern_strf("%s.%s", type_to_string(indexed_t), ast->index->str));
+                binding_t *type_binding = hashmap_get(bindings, type_to_string(indexed_t));
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
                 if (binding)
                     return binding->type;
                 else

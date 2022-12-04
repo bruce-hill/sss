@@ -79,8 +79,8 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
             type_name = ast->indexed->str;
         else
             type_name = type_to_string(indexed_t);
-        istr_t name = intern_strf("%s.%s", type_name, ast->index->str);
-        binding_t *binding = hashmap_get(env->bindings, name);
+        binding_t *type_binding = hashmap_get(env->bindings, type_name);
+        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
         if (!binding) {
             ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", ast->index->str, type_to_string(indexed_t));
         } else if (!binding->is_constant) {
@@ -130,6 +130,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast->lhs), gcc_t, fresh(ast->lhs->str));
+        binding_t *clobbered = hashmap_get_raw(env->bindings, ast->lhs->str);
+        if (clobbered && clobbered->namespace)
+            ERROR(env, ast->lhs, "This name is already being used for a namespace (struct or enum) in the same block, "
+                  "and I get confused if you try to redeclare the name of a namespace.");
         hashmap_set(env->bindings, ast->lhs->str,
                     new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
         assert(rval);
@@ -302,10 +306,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case StructDef: {
+        binding_t *b = hashmap_get(env->bindings, ast->struct_.name);
+        assert(b && b->namespace);
+        hashmap_t *namespace = b->namespace;
         foreach (ast->struct_.members, member, _) {
             if ((*member)->kind == FunctionDef) {
-                istr_t name = intern_strf("%s.%s", ast->struct_.name, (*member)->fn.name);
-                binding_t *binding = hashmap_get(env->bindings, name);
+                binding_t *binding = hashmap_get(namespace, (*member)->fn.name);
                 assert(binding);
                 compile_function(env, binding->func, *member);
             } else if ((*member)->kind == Declare) {
@@ -316,8 +322,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, decl->lhs), gcc_t, fresh(decl->lhs->str));
-                istr_t name = intern_strf("%s.%s", ast->struct_.name, decl->lhs->str);
-                hashmap_set(env->bindings, name,
+                hashmap_set(namespace, decl->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, decl), lval, rval);
@@ -451,8 +456,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (ast->call.fn->index->kind != FieldName)
                     ERROR(env, ast->call.fn, "I was expecting this to be a field index like Foo.baz()");
                 istr_t type_name = ast->call.fn->indexed->str;
-                istr_t method_name = intern_strf("%s.%s", type_name, ast->call.fn->index->str);
-                binding_t *binding = hashmap_get(env->bindings, method_name);
+                binding_t *type_binding = hashmap_get(env->bindings, type_name);
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->index->str) : NULL;
                 if (!binding)
                     ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->index->str, type_name);
                 fn = binding->func;
@@ -462,8 +467,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             default: {
                 if (ast->call.fn->index->kind != FieldName)
                     ERROR(env, ast->call.fn, "I was expecting this to be a field index like foo.baz()");
-                istr_t method_name = intern_strf("%s.%s", type_to_string(self_t), ast->call.fn->index->str);
-                binding_t *binding = hashmap_get(env->bindings, method_name);
+                istr_t type_name = type_to_string(self_t);
+                binding_t *type_binding = hashmap_get(env->bindings, type_name);
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->index->str) : NULL;
                 if (!binding)
                     ERROR(env, ast->call.fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
@@ -562,7 +568,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);
         if (ast->index->kind == FieldName) {
             if (indexed_t->kind == StructType) {
-                assert(ast->index->kind == FieldName);
                 for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
                     if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str) {
                         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
@@ -580,8 +585,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             } else {
                 type_name = type_to_string(indexed_t);
             }
-            istr_t name = intern_strf("%s.%s", type_name, ast->index->str);
-            binding_t *binding = hashmap_get(env->bindings, name);
+            binding_t *type_binding = hashmap_get(env->bindings, type_name);
+            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
             if (binding)
                 return binding->rval;
             else

@@ -29,6 +29,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
     assert(ast->kind == Block);
+
     // Struct and enum defs are visible in the entire block (allowing corecursive structs)
     foreach (ast->children, stmt, last_stmt) {
         if ((*stmt)->kind == StructDef) {
@@ -40,7 +41,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
                 ERROR(env, *stmt, "Something called %s is already defined.", name);
             bl_type_t *t = Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
             gcc_rvalue_t *rval = gcc_new_string(env->ctx, name);
-            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval));
+            hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=hashmap_new()));
         } else if ((*stmt)->kind == EnumDef) {
             istr_t enum_name = (*stmt)->enum_.name;
             if (hashmap_get(env->bindings, enum_name))
@@ -48,13 +49,14 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             bl_type_t *t = Type(EnumType, .enum_.name=enum_name,
                                 .enum_.field_names=(*stmt)->enum_.field_names, .enum_.field_values=(*stmt)->enum_.field_values);
             gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
-            hashmap_set(env->bindings, enum_name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval));
+            binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=hashmap_new());
+            hashmap_set(env->bindings, enum_name, binding);
             for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
                 gcc_rvalue_t *rval = gcc_int64(env->ctx, ith(t->enum_.field_values, i));
                 istr_t field_name = ith(t->enum_.field_names, i);
+                hashmap_set(binding->namespace, field_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
+                // Default to also visible outside the enum's namespace:
                 hashmap_set(env->bindings, field_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
-                istr_t qualified_name = intern_strf("%s.%s", enum_name, field_name);
-                hashmap_set(env->bindings, qualified_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
             }
         }
     }
@@ -92,14 +94,15 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             hashmap_set(env->bindings, (*stmt)->fn.name,
                         new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
         } else if ((*stmt)->kind == StructDef) {
+            binding_t *b = hashmap_get(env->bindings, (*stmt)->struct_.name);
+            assert(b && b->namespace);
             // Struct methods:
             foreach ((*stmt)->struct_.members, member, _) {
                 if ((*member)->kind == FunctionDef) {
                     bl_type_t *t = get_type(env->file, env->bindings, *member);
                     gcc_func_t *func = get_function_def(env, *member, false);
                     gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                    istr_t name = intern_strf("%s.%s", (*stmt)->struct_.name, (*member)->fn.name);
-                    hashmap_set(env->bindings, name,
+                    hashmap_set(b->namespace, (*member)->fn.name,
                                 new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
                 }
             }

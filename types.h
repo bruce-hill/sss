@@ -1,4 +1,5 @@
 #pragma once
+#include <bhash.h>
 #include <intern.h>
 #include <libgccjit.h>
 #include <stdlib.h>
@@ -57,8 +58,14 @@ typedef const struct bl_type_s {
 typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
-    gcc_jit_function *func;
-    bl_type_t *type, *type_value;
+    bl_type_t *type;
+    union {
+        struct {
+            bl_type_t *type_value;
+            hashmap_t *namespace;
+        };
+        gcc_jit_function *func;
+    };
     bool is_global, is_constant;
 } binding_t;
 

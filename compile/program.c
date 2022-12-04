@@ -53,11 +53,13 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
 static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
 {
     gcc_param_t *params[LIST_LEN(fn_type->args)];
+    binding_t *type_binding = hashmap_get(env->bindings, type_to_string(t));
+    assert(type_binding && type_binding->namespace);
     for (int64_t i = 0; i < LIST_LEN(fn_type->args); i++)
         params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, LIST_ITEM(fn_type->args, i)), fresh("arg"));
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn_type->ret),
                                     extern_name, LIST_LEN(fn_type->args), params, is_vararg);
-    hashmap_set(env->bindings, intern_strf("%s.%s", type_to_string(t), method_name),
+    hashmap_set(type_binding->namespace, method_name,
                 new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
 
@@ -104,7 +106,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
-#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type), .namespace=hashmap_new()));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
