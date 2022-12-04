@@ -126,7 +126,12 @@ Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @lhs=Var _":=" _ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=TypeVar _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDef:: \b"unit"\b _ @name=TypeVar _ `= _ @measure=Measure
-StructDef:: \b"def"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / Declaration) % __ __`}
+StructDef:: \b"def"\b _ @name=TypeVar __ `{__ *(StructFieldDef / MethodDef / FnDef / EnumDef / Declaration) % __ __`}
+TaggedUnion:: ( \b"when"\b @curdent:\C _
+  @subject=Var _ [[comment] nl curdent]
+  +@:WhenClause=("is"\b _ @cases=+required-extended-expr%(_`,_) _ @body=([_comment] nl curdent +(` /\t) +StructFieldDef%(nl curdent +(` /\t))))%(nl curdent)
+  [nl curdent "else" _ @elseBody=([_comment] nl curdent +(` /\t) +StructFieldDef%(nl curdent +(` /\t)))]
+)
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
 UnionDef:: \b"union"\b _ @name=TypeVar __ `{__ *(UnionField / MethodDef / FnDef / Declaration) % __ __`}
 UnionField:: @names=@+(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
