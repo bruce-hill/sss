@@ -309,9 +309,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *b = hashmap_get(env->bindings, ast->struct_.name);
         assert(b && b->namespace);
         hashmap_t *namespace = b->namespace;
+        hashmap_t *globals = global_bindings(env->bindings);
+        namespace->fallback = globals;
+
+        env_t struct_env = *env;
+        struct_env.bindings = namespace;
+        env = &struct_env;
+
         foreach (ast->struct_.members, member, _) {
             if ((*member)->kind == FunctionDef) {
-                binding_t *binding = hashmap_get(namespace, (*member)->fn.name);
+                binding_t *binding = hashmap_get(env->bindings, (*member)->fn.name);
                 assert(binding);
                 compile_function(env, binding->func, *member);
             } else if ((*member)->kind == Declare) {
@@ -320,10 +327,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 bl_type_t *t = get_type(env->file, env->bindings, decl->rhs);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                gcc_func_t *func = gcc_block_func(*block);
-                gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, decl->lhs), gcc_t, fresh(decl->lhs->str));
-                hashmap_set(namespace, decl->lhs->str,
-                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, decl->lhs), GCC_GLOBAL_INTERNAL, gcc_t, fresh(decl->lhs->str));
+                hashmap_set(env->bindings, decl->lhs->str,
+                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t, .is_global=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, decl), lval, rval);
             }

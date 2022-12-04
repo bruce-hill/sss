@@ -101,7 +101,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         if (binding) {
             return binding->type;
         } else {
-            TYPE_ERR(f, ast, "I can't figure out what type \"%s\" refers to", ast->str);
+            TYPE_ERR(f, ast, "I can't figure out what \"%s\" refers to", ast->str);
         }
     }
     case Len: {
