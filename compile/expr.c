@@ -327,7 +327,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 bl_type_t *t = get_type(env->file, env->bindings, decl->rhs);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, decl->lhs), GCC_GLOBAL_INTERNAL, gcc_t, fresh(decl->lhs->str));
+                istr_t global_name = intern_strf("%s__%s", ast->struct_.name, decl->lhs->str);
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, decl->lhs), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
                 hashmap_set(env->bindings, decl->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t, .is_global=true));
                 assert(rval);
