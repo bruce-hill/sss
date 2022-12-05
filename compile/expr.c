@@ -563,33 +563,30 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FieldAccess: {
         (void)get_type(env->file, env->bindings, ast); // typecheck
-        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->fielded);
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
+        bl_type_t *fielded_t = get_type(env->file, env->bindings, ast->fielded);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
         gcc_rvalue_t *obj = compile_expr(env, block, ast->fielded);
-        if (indexed_t->kind == StructType) {
-            for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
-                if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->field) {
+        if (fielded_t->kind == StructType) {
+            for (int64_t i = 0, len = LIST_LEN(fielded_t->struct_.field_names); i < len; i++) {
+                if (LIST_ITEM(fielded_t->struct_.field_names, i) == ast->field) {
                     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, NULL, field);
                 }
             }
         }
-        istr_t type_name;
-        if (indexed_t->kind == TypeType) {
-            assert(ast->fielded->kind == Var);
-            binding_t *binding = hashmap_get(env->bindings, ast->fielded->str);
-            assert(binding && binding->type->kind == TypeType);
-            type_name = ast->fielded->str;
+        binding_t *binding;
+        if (fielded_t->kind == TypeType) {
+            hashmap_t *ns = get_namespace(env->bindings, ast->fielded);
+            binding = hashmap_get(ns, ast->field);
         } else {
-            type_name = type_to_string(indexed_t);
+            binding_t *type_binding = hashmap_get(env->bindings, type_to_string(fielded_t));
+            binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
         }
-        binding_t *type_binding = hashmap_get(env->bindings, type_name);
-        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
         if (binding)
             return binding->rval;
         else
-            ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->field, type_to_string(indexed_t));
+            ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->field, type_to_string(fielded_t));
     }
     case Index: {
         (void)get_type(env->file, env->bindings, ast); // typecheck

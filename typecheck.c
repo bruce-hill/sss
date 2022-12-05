@@ -64,6 +64,23 @@ bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
 }
 
+hashmap_t *get_namespace(hashmap_t *bindings, ast_t *ast)
+{
+    switch (ast->kind) {
+    case Var: {
+        binding_t *binding = hashmap_get(bindings, ast->str);
+        return binding ? binding->namespace : NULL;
+    }
+    case FieldAccess: {
+        hashmap_t *ns = get_namespace(bindings, ast->fielded);
+        if (!ns) return NULL;
+        binding_t *binding = hashmap_get(ns, ast->field);
+        return binding ? binding->namespace : NULL;
+    }
+    default: return NULL;
+    }
+}
+
 bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
@@ -161,7 +178,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
     case FieldAccess: {
         bl_type_t *fielded_t = get_type(f, bindings, ast->fielded);
-        // TODO: support methods
         switch (fielded_t->kind) {
         case StructType: {
             for (int64_t i = 0, len = LIST_LEN(fielded_t->struct_.field_names); i < len; i++) {
@@ -171,10 +187,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             goto class_lookup;
         }
         case TypeType: {
-            if (ast->fielded->kind != Var)
-                TYPE_ERR(f, ast->fielded, "Only type variables can be accessed for static variables");
-            binding_t *type_binding = hashmap_get(bindings, ast->fielded->str);
-            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+            hashmap_t *ns = get_namespace(bindings, ast->fielded);
+            binding_t *binding = ns ? hashmap_get(ns, ast->field) : NULL;
             if (binding)
                 return binding->type;
             else
