@@ -35,7 +35,7 @@ typedef enum {
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef,
-    Index, FieldName,
+    Index, FieldAccess, FieldName,
     NUM_TYPES,
 } astkind_e;
 
@@ -68,6 +68,10 @@ typedef struct ast_s {
         };
         struct { // Index
             struct ast_s *indexed, *index;
+        };
+        struct { // foo.baz
+            struct ast_s *fielded;
+            istr_t field;
         };
         struct { // Multiple assignment
             List(struct ast_s*) lhs;

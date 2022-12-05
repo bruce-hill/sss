@@ -377,6 +377,8 @@ ast_t *match_to_ast(match_t *m)
         case Index: {
             ast_t *indexed = match_to_ast(get_named_capture(m, "value", -1));
             ast_t *index = match_to_ast(get_named_capture(m, "index", -1));
+            if (index->kind == FieldName)
+                return AST(m, FieldAccess, .fielded=indexed, .field=index->str);
             return AST(m, Index, .indexed=indexed, .index=index);
         }
         case If: {

@@ -69,20 +69,17 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         }
         break;
     }
-    case Index: {
-        if (ast->index->kind != FieldName)
-            break;
-
-        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
+    case FieldAccess: {
+        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->fielded);
         istr_t type_name;
         if (indexed_t->kind == TypeType)
-            type_name = ast->indexed->str;
+            type_name = ast->fielded->str;
         else
             type_name = type_to_string(indexed_t);
         binding_t *type_binding = hashmap_get(env->bindings, type_name);
-        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
+        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
         if (!binding) {
-            ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", ast->index->str, type_to_string(indexed_t));
+            ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", ast->field, type_to_string(indexed_t));
         } else if (!binding->is_constant) {
             ERROR(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
         } else if (binding->rval) {
@@ -453,30 +450,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         NEW_LIST(gcc_rvalue_t*, arg_vals);
         int64_t num_selfs = 0;
         // Method calls:
-        if (ast->call.fn->kind == Index) {
-            ast_t *self = ast->call.fn->indexed;
+        if (ast->call.fn->kind == FieldAccess) {
+            ast_t *self = ast->call.fn->fielded;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
             switch (self_t->kind) {
             case TypeType: {
-                if (ast->call.fn->indexed->kind != Var)
+                if (ast->call.fn->fielded->kind != Var)
                     ERROR(env, ast->call.fn, "I only know how to access type members by referencing the type directly like Foo.baz()");
-                if (ast->call.fn->index->kind != FieldName)
-                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like Foo.baz()");
-                istr_t type_name = ast->call.fn->indexed->str;
+                istr_t type_name = ast->call.fn->fielded->str;
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
-                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->index->str) : NULL;
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->field) : NULL;
                 if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->index->str, type_name);
+                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->field, type_name);
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
             }
             default: {
-                if (ast->call.fn->index->kind != FieldName)
-                    ERROR(env, ast->call.fn, "I was expecting this to be a field index like foo.baz()");
                 istr_t type_name = type_to_string(self_t);
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
-                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->index->str) : NULL;
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->field) : NULL;
                 if (!binding)
                     ERROR(env, ast->call.fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
@@ -568,74 +561,77 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         default: ERROR(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
         }
     }
+    case FieldAccess: {
+        (void)get_type(env->file, env->bindings, ast); // typecheck
+        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->fielded);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
+        gcc_rvalue_t *obj = compile_expr(env, block, ast->fielded);
+        if (indexed_t->kind == StructType) {
+            for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
+                if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->field) {
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+                    gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
+                    return gcc_rvalue_access_field(obj, NULL, field);
+                }
+            }
+        }
+        istr_t type_name;
+        if (indexed_t->kind == TypeType) {
+            assert(ast->fielded->kind == Var);
+            binding_t *binding = hashmap_get(env->bindings, ast->fielded->str);
+            assert(binding && binding->type->kind == TypeType);
+            type_name = ast->fielded->str;
+        } else {
+            type_name = type_to_string(indexed_t);
+        }
+        binding_t *type_binding = hashmap_get(env->bindings, type_name);
+        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+        if (binding)
+            return binding->rval;
+        else
+            ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->field, type_to_string(indexed_t));
+    }
     case Index: {
         (void)get_type(env->file, env->bindings, ast); // typecheck
         bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
         gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);
-        if (ast->index->kind == FieldName) {
-            if (indexed_t->kind == StructType) {
-                for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
-                    if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str) {
-                        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-                        gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
-                        return gcc_rvalue_access_field(obj, NULL, field);
-                    }
-                }
-            }
-            istr_t type_name;
-            if (indexed_t->kind == TypeType) {
-                assert(ast->indexed->kind == Var);
-                binding_t *binding = hashmap_get(env->bindings, ast->indexed->str);
-                assert(binding && binding->type->kind == TypeType);
-                type_name = ast->indexed->str;
-            } else {
-                type_name = type_to_string(indexed_t);
-            }
-            binding_t *type_binding = hashmap_get(env->bindings, type_name);
-            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
-            if (binding)
-                return binding->rval;
-            else
-                ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->index->str, type_to_string(indexed_t));
-        } else {
-            if (indexed_t->kind != ListType)
-                ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
+        if (indexed_t->kind != ListType)
+            ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
-            gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
-            gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
-            gcc_rvalue_t *index = compile_expr(env, block, ast->index);
-            // Bounds check:
-            gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
-            gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
-            gcc_rvalue_t *len = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
-            gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, index, len);
-            gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
+        gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
+        gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
+        gcc_rvalue_t *index = compile_expr(env, block, ast->index);
+        // Bounds check:
+        gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
+        gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
+        gcc_rvalue_t *len = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
+        gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, index, len);
+        gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
-                        *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
-            gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
+                    *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
+        gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
 
-            // Bounds check failure:
-            gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
-            char *info = NULL;
-            size_t size = 0;
-            FILE *f = open_memstream(&info, &size);
-            highlight_match(f, env->file, ast->match, 2);
-            fputc('\0', f);
-            fflush(f);
-            gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
-            gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-            gcc_eval(bounds_unsafe, NULL, gcc_call(env->ctx, NULL, fail, 4, (gcc_rvalue_t*[]){fmt, index, len, callstack}));
-            fclose(f);
-            gcc_jump(bounds_unsafe, NULL, bounds_unsafe);
+        // Bounds check failure:
+        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
+        char *info = NULL;
+        size_t size = 0;
+        FILE *f = open_memstream(&info, &size);
+        highlight_match(f, env->file, ast->match, 2);
+        fputc('\0', f);
+        fflush(f);
+        gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+        gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+        gcc_eval(bounds_unsafe, NULL, gcc_call(env->ctx, NULL, fail, 4, (gcc_rvalue_t*[]){fmt, index, len, callstack}));
+        fclose(f);
+        gcc_jump(bounds_unsafe, NULL, bounds_unsafe);
 
-            // Bounds check success:
-            *block = bounds_safe;
-            gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
-            return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
-        }
+        // Bounds check success:
+        *block = bounds_safe;
+        gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
+        return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
     }
     case TypeOf: {
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");

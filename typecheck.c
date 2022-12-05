@@ -159,9 +159,40 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         return Type(ListType, .item_type=item_type);
     }
+    case FieldAccess: {
+        bl_type_t *fielded_t = get_type(f, bindings, ast->fielded);
+        // TODO: support methods
+        switch (fielded_t->kind) {
+        case StructType: {
+            for (int64_t i = 0, len = LIST_LEN(fielded_t->struct_.field_names); i < len; i++) {
+                if (LIST_ITEM(fielded_t->struct_.field_names, i) == ast->field)
+                    return LIST_ITEM(fielded_t->struct_.field_types, i);
+            }
+            goto class_lookup;
+        }
+        case TypeType: {
+            if (ast->fielded->kind != Var)
+                TYPE_ERR(f, ast->fielded, "Only type variables can be accessed for static variables");
+            binding_t *type_binding = hashmap_get(bindings, ast->fielded->str);
+            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+            if (binding)
+                return binding->type;
+            else
+                TYPE_ERR(f, ast, "I can't find anything called %s on type %s", ast->field, type_to_string(fielded_t));
+        }
+        default: {
+          class_lookup:;
+            binding_t *type_binding = hashmap_get(bindings, type_to_string(fielded_t));
+            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+            if (binding)
+                return binding->type;
+            else
+                TYPE_ERR(f, ast, "I can't find any method called %s on type %s", ast->field, type_to_string(fielded_t));
+        }
+        }
+    }
     case Index: {
         bl_type_t *indexed_t = get_type(f, bindings, ast->indexed);
-        // TODO: support methods
         switch (indexed_t->kind) {
         case ListType: {
             bl_type_t *index_t = get_type(f, bindings, ast->index);
@@ -171,44 +202,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             }
             return indexed_t->item_type;
         }
-        case StructType: {
-            // TODO: support accessing fields by integer
-            assert(ast->index->kind == FieldName);
-            for (int64_t i = 0, len = LIST_LEN(indexed_t->struct_.field_names); i < len; i++) {
-                if (LIST_ITEM(indexed_t->struct_.field_names, i) == ast->index->str)
-                    return LIST_ITEM(indexed_t->struct_.field_types, i);
-            }
-            binding_t *type_binding = hashmap_get(bindings, type_to_string(indexed_t));
-            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
-            if (binding)
-                return binding->type;
-            else
-                TYPE_ERR(f, ast, "I can't find anything called %s on type %s", ast->index->str, type_to_string(indexed_t));
-        }
-        case TypeType: {
-            if (ast->indexed->kind != Var)
-                TYPE_ERR(f, ast->indexed, "Only type variables can be accessed for static variables");
-            binding_t *type_binding = hashmap_get(bindings, ast->indexed->str);
-            binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
-            if (binding)
-                return binding->type;
-            else
-                TYPE_ERR(f, ast, "I can't find anything called %s on type %s", ast->index->str, type_to_string(indexed_t));
-        }
+        // TODO: support accessing fields by integer like (Vec{3,4})[1] --> 3
+        // TODO: support ranges like (99..123)[5]
         default: {
-            if (ast->index->kind == FieldName) {
-                binding_t *type_binding = hashmap_get(bindings, type_to_string(indexed_t));
-                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->index->str) : NULL;
-                if (binding)
-                    return binding->type;
-                else
-                    TYPE_ERR(f, ast, "I can't find any method called %s on type %s", ast->index->str, type_to_string(indexed_t));
-            }
             TYPE_ERR(f, ast, "I don't know how to index %s values", type_to_string(indexed_t));
         }
-            // TODO: support static methods
         }
-        // TODO: index ranges
     }
     case KeywordArg: {
         return get_type(f, bindings, ast->named.value);
@@ -224,9 +223,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             --min_args;
         int64_t len_args = LIST_LEN(ast->call.args);
         int64_t num_selfs = 0;
-        if (ast->call.fn->kind == Index) {
+        if (ast->call.fn->kind == FieldAccess) {
             // Insert "self" argument
-            ast_t *self = ast->call.fn->indexed;
+            ast_t *self = ast->call.fn->fielded;
             bl_type_t *self_t = get_type(f, bindings, self);
             if (self_t->kind != TypeType) {
                 bl_type_t *expected = LIST_ITEM(fn_type->args, 0);
