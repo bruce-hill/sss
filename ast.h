@@ -29,7 +29,6 @@ typedef enum {
     Return,
     Fail,
     Extern,
-    TypeName,
     TypeList, TypeTable,
     TypeFunction, TypeOption,
     Cast, As,

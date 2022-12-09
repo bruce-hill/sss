@@ -30,14 +30,41 @@ static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *conditi
     }
 }
 
+hashmap_t *get_scope_namespace(hashmap_t *bindings, ast_t *scope)
+{
+    switch (scope->kind) {
+    case Var: {
+        binding_t *binding = hashmap_get(bindings, scope->str);
+        return binding ? binding->namespace : NULL;
+    }
+    case Index: {
+        if (scope->index->kind != FieldName)
+            return NULL;
+        hashmap_t *ns = get_scope_namespace(bindings, scope->indexed);
+        if (!ns) return NULL;
+        binding_t *binding = hashmap_get(ns, scope->index->str);
+        return binding ? binding->namespace : NULL;
+    }
+    default: assert(false);
+    }
+}
+
 bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
-    case TypeName: {
+    case Var: {
         binding_t *binding = hashmap_get(bindings, ast->str);
         if (!binding || binding->type->kind != TypeType)
             TYPE_ERR(f, ast, "I don't know any type with this name.");
         return binding->type_value;
+    }
+    case Index: {
+        if (ast->index->kind != FieldName)
+            return NULL;
+        hashmap_t *ns = get_scope_namespace(bindings, ast->indexed);
+        if (!ns) return NULL;
+        binding_t *binding = hashmap_get(ns, ast->index->str);
+        return binding ? binding->type_value : NULL;
     }
 
     case TypeList: {
@@ -293,7 +320,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case Cast: case As: {
         return parse_type(f, bindings, ast->type);
     }
-    case TypeName: case TypeList: case TypeOption: case TypeFunction: {
+    case TypeList: case TypeOption: case TypeFunction: {
         return Type(TypeType);
     }
     case Negative: {

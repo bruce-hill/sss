@@ -131,7 +131,6 @@ const char *kind_tags[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
-    [TypeName]="TypeVar",
     [TypeList]="ListType", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypeOption]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
@@ -510,10 +509,6 @@ ast_t *match_to_ast(match_t *m)
         case TypeOption: {
             ast_t *nonnil = match_to_ast(get_named_capture(m, "nonnil", -1));
             return AST(m, TypeOption, .child=nonnil);
-        }
-        case TypeName: {
-            istr_t name = match_to_istr(m);
-            return AST(m, TypeName, .str=name);
         }
         case TypeList: {
             ast_t *item_t = match_to_ast(get_named_capture(m, "itemType", -1));

@@ -19,7 +19,6 @@ static const char *astkind_names[] = {
     [If]="If", [For]="For", [While]="While", [Repeat]="Repeat",
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
-    [TypeName]="TypeName",
     [TypeList]="TypeList", [TypeTable]="TypeTable",
     [TypeFunction]="TypeFunction", [TypeOption]="TypeOption",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
