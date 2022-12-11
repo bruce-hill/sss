@@ -194,7 +194,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         case TypeType: {
             hashmap_t *ns = get_namespace(bindings, ast->fielded);
-            binding_t *binding = ns ? hashmap_get(ns, ast->field) : NULL;
+            assert(ns);
+            binding_t *binding = hashmap_get(ns, ast->field);
             if (binding)
                 return binding->type;
             else

@@ -69,10 +69,13 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=namespace);
         hashmap_set(env->bindings, enum_name, binding);
-        for (int64_t i = 0, len = length(union_t->union_.field_names); i < len; i++) {
-            istr_t tag_name = ith(t->tagged.tag_names, i);
+
+        // Bind tag values:
+        for (int64_t i = 0, len = length(def->enum_def.tag_names); i < len; i++) {
+            istr_t tag_name = ith(def->enum_def.tag_names, i);
             gcc_rvalue_t *tag_val = gcc_int64(env->ctx, ith(def->enum_def.tag_values, i));
             binding_t *b = new(binding_t, .type=Type(IntType), .is_constant=true, .is_global=true, .rval=tag_val, .enum_type=t);
+
             ast_t *field_type_ast = ith(def->enum_def.tag_types, i);
             if (field_type_ast) {
                 NEW_LIST(bl_type_t*, union_fields);
@@ -80,6 +83,7 @@ static void predeclare_def_types(env_t *env, ast_t *def)
                 b->type_value = field_type;
                 APPEND(field_types, field_type);
             }
+
             hashmap_set(namespace, tag_name, b);
             // Default to also visible outside the enum's namespace:
             hashmap_set(env->bindings, tag_name, b);

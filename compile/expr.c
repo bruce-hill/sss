@@ -465,7 +465,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             };
             gcc_rvalue_t *tag = binding->rval;
             rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 2, fields, (gcc_rvalue_t*[]){tag, data_union});
-            // rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, fields, (gcc_rvalue_t*[]){tag});
         }
 
         return rval;
@@ -616,7 +615,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->field, type_to_string(fielded_t));
     }
     case Index: {
-        (void)get_type(env->file, env->bindings, ast); // typecheck
+        // (void)get_type(env->file, env->bindings, ast); // typecheck
         bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
         gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);

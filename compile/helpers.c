@@ -291,15 +291,37 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         break;
     }
     case TaggedUnionType: {
-        gcc_struct_t *enum_struct = gcc_type_if_struct(gcc_t);
-        gcc_field_t *tag_field = gcc_get_field(enum_struct, 0);
+        gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
+        gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
+        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+        gcc_rvalue_t *type_prefix = gcc_new_string(env->ctx, intern_strf("%s.", t->struct_.name));
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(t->tagged.tag_names); i < len; i++) {
             istr_t tag_name = ith(t->tagged.tag_names, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-            // TODO: print enum struct values
+
+            bl_type_t *union_t = t->tagged.data;
+            for (int64_t u = 0, len = length(union_t->union_.field_names); u < len; u++) {
+                if (ith(union_t->union_.field_names, u) == tag_name) {
+                    bl_type_t *tag_data_type = ith(union_t->union_.field_types, u);
+                    gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
+                    gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
+                    gcc_field_t *union_field = ith(union_t->union_.fields, u);
+                    gcc_rvalue_t *args[] = {
+                        gcc_rvalue_access_field(data, NULL, union_field),
+                        gcc_param_as_rvalue(params[1]),
+                    };
+                    gcc_func_t *tag_tostring = get_tostring_func(env, tag_data_type);
+                    gcc_rvalue_t *field_str = gcc_call(env->ctx, NULL, tag_tostring, 2, args);
+                    field_str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
+                                         (gcc_rvalue_t*[]){type_prefix, field_str});
+                    gcc_return(tag_block, NULL, field_str);
+                    goto found;
+                }
+            }
             gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.%s", t->tagged.name, tag_name)));
+          found:;
             int64_t value = ith(t->tagged.tag_values, i);
             gcc_rvalue_t *rval = gcc_int64(env->ctx, value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
@@ -378,7 +400,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
                 gcc_rvalue_access_field(obj, NULL, field),
                 gcc_param_as_rvalue(params[1]), // TODO: fix infinite recursion
             };
-            gcc_rvalue_t *member_str = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
+            gcc_rvalue_t *member_str = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : args[0];
             str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
                            (gcc_rvalue_t*[]){str, member_str});
         }
