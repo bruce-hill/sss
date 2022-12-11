@@ -110,7 +110,7 @@ typedef enum gcc_jit_types gcc_types_e;
 #define gcc_set_fields gcc_jit_struct_set_fields
 #define gcc_get_field gcc_jit_struct_get_field
 #define gcc_field_count gcc_jit_struct_get_field_count
-#define gcc_union_type gcc_jit_context_new_union_type
+#define gcc_union gcc_jit_context_new_union_type
 #define gcc_new_func_type gcc_jit_context_new_function_ptr_type
 #define gcc_new_param gcc_jit_context_new_param
 #define gcc_param_as_obj gcc_jit_param_as_object

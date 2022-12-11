@@ -6,16 +6,17 @@ term: (
     / Fail / Return / Skip / Stop / Use / TypeOf / SizeOf
     / Lambda
     / unaryOp
-    / Var !(_`(,{)
+    / Struct
+    / Var !(_`(,{,.)
     / Percent / Measure / Num / Int
     / String / DSL
     / List / Table
-    / Struct / FnCall
+    / FnCall
     / `(__extended-expr__`)
 )
-IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term)
+IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term / Var)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
-maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term
+maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term / Var
 expr: Range / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
 extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Maybe / Not
@@ -90,7 +91,7 @@ Measure:: @amount=(Num/Int) @units=MeasureType
 MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
 Int:: [`-,+] ("0x" +`0-9,a-f,A-F,_ / "0o" +`0-7,_ / "0b" +`0,1,_ / `0-9 *`0-9,_)
-Struct:: [@name=typeName] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
+Struct:: [@type=typeName] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
 KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
 methodCall: @:FnCall=((methodCall / IndexedTerm / As / Cast / term) _ `| _
@@ -108,7 +109,7 @@ statements: @curdent:\C +(
 indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDef / ConvertDef / Extern / Macro / If / Do / When / For / While / Repeat
-  / TypeDef / StructDef / UnionDef / UnitDef / EnumDef
+  / TypeDef / StructDef / UnitDef / EnumDef
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
   / line-statement
@@ -125,8 +126,6 @@ TypeDef:: \b"deftype"\b _ @name=Var _ `: _ @derivesFrom=(type / @:ParseError=(..
 UnitDef:: \b"unit"\b _ @name=Var _ `= _ @measure=Measure
 StructDef:: \b"def"\b _ @name=Var __ `{__ *(StructFieldDef / MethodDef / FnDef / EnumDef / Declaration) % __ __`}
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
-UnionDef:: \b"union"\b _ @name=Var __ `{__ *(UnionField / MethodDef / FnDef / Declaration) % __ __`}
-UnionField:: @names=@+(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
 EnumDef:: \b"enum"\b _ @name=Var _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int] [__@data=taggedData__])) % (__[`,__]) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 taggedData: `{ __ *(StructFieldDef) % __ __`}
 Macro:: @curdent:\C \b"macro"\b _ @name=Var _ `( __ @args=@(*Var%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
@@ -223,7 +222,7 @@ Range:: (
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
-keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"union"/"typeof"/"then"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
+keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"then"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
   /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])

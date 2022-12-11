@@ -303,7 +303,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case StructDef: {
-        binding_t *b = hashmap_get(env->bindings, ast->struct_.name);
+        binding_t *b = hashmap_get(env->bindings, ast->struct_def.name);
         assert(b && b->namespace);
         hashmap_t *namespace = b->namespace;
         hashmap_t *globals = global_bindings(env->bindings);
@@ -313,7 +313,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         struct_env.bindings = namespace;
         env = &struct_env;
 
-        foreach (ast->struct_.members, member, _) {
+        foreach (ast->struct_def.members, member, _) {
             if ((*member)->kind == FunctionDef) {
                 binding_t *binding = hashmap_get(env->bindings, (*member)->fn.name);
                 assert(binding);
@@ -324,7 +324,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 bl_type_t *t = get_type(env->file, env->bindings, decl->rhs);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                istr_t global_name = intern_strf("%s__%s", ast->struct_.name, decl->lhs->str);
+                istr_t global_name = intern_strf("%s__%s", ast->struct_def.name, decl->lhs->str);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, decl->lhs), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
                 hashmap_set(env->bindings, decl->lhs->str,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t, .is_global=true));
@@ -336,7 +336,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Struct: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast);
+        binding_t *binding = get_binding(env->bindings, ast->struct_.type);
+        bl_type_t *t = binding->type_value;
         if (length(t->struct_.field_names) == 0)
             ERROR(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
         if (length(ast->struct_.members) > length(t->struct_.field_names))
@@ -441,6 +442,32 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
+
+        if (binding->enum_type) {
+            gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, binding->enum_type);
+            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+
+            bl_type_t *union_type = binding->enum_type->tagged.data;
+
+            int64_t field_index = 0;
+            for (int64_t i = 0, len = length(union_type->union_.field_types); i < len; i++) {
+                if (ith(union_type->union_.field_types, i) == t) {
+                    field_index = i;
+                    break;
+                }
+            }
+            gcc_field_t *union_field = ith(union_type->union_.fields, field_index);//gcc_get_field((gcc_struct_t*)bl_type_to_gcc(env, union_type), field_index);
+            gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
+            gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
+            gcc_field_t *fields[] = {
+                gcc_get_field(gcc_tagged_s, 0),
+                gcc_get_field(gcc_tagged_s, 1),
+            };
+            gcc_rvalue_t *tag = binding->rval;
+            rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 2, fields, (gcc_rvalue_t*[]){tag, data_union});
+            // rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, fields, (gcc_rvalue_t*[]){tag});
+        }
+
         return rval;
     }
     case FunctionCall: {

@@ -21,13 +21,9 @@ typedef enum {
     FunctionType,
     OptionalType,
     StructType,
-    EnumType,
+    TaggedUnionType,
+    UnionType,
 } typekind_e;
-
-typedef struct {
-    istr_t name;
-    int64_t value;
-} enum_field_t;
 
 typedef const struct bl_type_s {
     typekind_e kind;
@@ -49,9 +45,15 @@ typedef const struct bl_type_s {
         } struct_;
         struct {
             istr_t name;
+            List(istr_t) tag_names;
+            List(int64_t) tag_values;
+            const struct bl_type_s *data;
+        } tagged;
+        struct {
             List(istr_t) field_names;
-            List(int64_t) field_values;
-        } enum_;
+            List(const struct bl_type_s*) field_types;
+            List(gcc_jit_field*) fields;
+        } union_;
     };
 } bl_type_t;
 
@@ -61,12 +63,12 @@ typedef struct {
     bl_type_t *type;
     union {
         struct {
-            bl_type_t *type_value;
+            bl_type_t *type_value, *enum_type;
             hashmap_t *namespace;
         };
         gcc_jit_function *func;
     };
-    bool is_global, is_constant;
+    bool is_global:1, is_constant:1;
 } binding_t;
 
 #define Type(mykind, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.kind=mykind, __VA_ARGS__}, sizeof(bl_type_t)))

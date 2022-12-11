@@ -72,7 +72,6 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     if (gcc_t) return gcc_t;
 
     switch (t->kind) {
-    case EnumType: gcc_t = gcc_type(env->ctx, INT64); break;
     case IntType: gcc_t = gcc_type(env->ctx, INT64); break;
     case Int32Type: gcc_t = gcc_type(env->ctx, INT32); break;
     case Int16Type: gcc_t = gcc_type(env->ctx, INT16); break;
@@ -119,19 +118,52 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     case StructType: {
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, t->struct_.name);
-        gcc_type_t *gcc_t = gcc_struct_as_type(gcc_struct);
+        gcc_t = gcc_struct_as_type(gcc_struct);
         hashmap_set(env->gcc_types, t, gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
         foreach (t->struct_.field_types, bl_ft, _) {
             int i = (int)(bl_ft - *t->struct_.field_types);
             gcc_type_t *gcc_ft = bl_type_to_gcc(env, *bl_ft);
+            assert(gcc_ft);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(t->struct_.field_names, i));
             append(fields, field);
         }
         gcc_set_fields(gcc_struct, NULL, length(fields), fields[0]);
         gcc_t = gcc_struct_as_type(gcc_struct);
-        return gcc_t;
+        break;
+    }
+    case UnionType: {
+        // NEW_LIST(gcc_field_t*, union_types);
+        // for (int64_t i = 0, len = length(t->union_.field_names); i < len; i++) {
+        //     bl_type_t *ft = ith(t->union_.field_types, i);
+        //     gcc_type_t *gcc_ft = bl_type_to_gcc(env, ft);
+        //     gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(t->union_.field_names, i));
+        //     append(union_types, field);
+        // }
+
+        if (length(t->union_.fields) > 0) {
+            gcc_t = gcc_union(env->ctx, NULL, "data_u", length(t->union_.fields), t->union_.fields[0]);
+        } else {
+            assert(false);
+            gcc_t = NULL;
+        }
+        break;
+    }
+    case TaggedUnionType: {
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, t->tagged.name);
+        gcc_field_t *tag_field = gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT64), "tag");
+        gcc_t = gcc_struct_as_type(gcc_struct);
+        hashmap_set(env->gcc_types, t, gcc_t);
+
+        gcc_type_t *gcc_data_t = bl_type_to_gcc(env, t->tagged.data);
+        if (gcc_data_t) {
+            gcc_field_t *data_field = gcc_new_field(env->ctx, NULL, gcc_data_t, "data");
+            gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){tag_field, data_field});
+        } else {
+            gcc_set_fields(gcc_struct, NULL, 1, &tag_field);
+        }
+        break;
     }
     case TypeType: {
         gcc_t = gcc_type(env->ctx, STRING);
@@ -258,20 +290,24 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_return(block, NULL, gcc_call(env->ctx, NULL, internf, 2, args));
         break;
     }
-    case EnumType: {
+    case TaggedUnionType: {
+        gcc_struct_t *enum_struct = gcc_type_if_struct(gcc_t);
+        gcc_field_t *tag_field = gcc_get_field(enum_struct, 0);
+        gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
         NEW_LIST(gcc_case_t*, cases);
-        for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
-            istr_t field_name = ith(t->enum_.field_names, i);
-            gcc_block_t *field_block = gcc_new_block(func, fresh(field_name));
-            gcc_return(field_block, NULL, LITERAL(intern_strf("%s.%s", t->enum_.name, field_name)));
-            int64_t value = ith(t->enum_.field_values, i);
+        for (int64_t i = 0, len = length(t->tagged.tag_names); i < len; i++) {
+            istr_t tag_name = ith(t->tagged.tag_names, i);
+            gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
+            // TODO: print enum struct values
+            gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.%s", t->tagged.name, tag_name)));
+            int64_t value = ith(t->tagged.tag_values, i);
             gcc_rvalue_t *rval = gcc_int64(env->ctx, value);
-            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, field_block);
+            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, LITERAL(intern_strf("<Unknown %s value>", t->enum_.name)));
-        gcc_switch(block, NULL, obj, default_block, length(cases), cases[0]);
+        gcc_return(default_block, NULL, LITERAL(intern_strf("<Unknown %s value>", t->tagged.name)));
+        gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
         break;
     }
     case VoidType: {

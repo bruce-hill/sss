@@ -30,41 +30,37 @@ static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *conditi
     }
 }
 
-hashmap_t *get_scope_namespace(hashmap_t *bindings, ast_t *scope)
+binding_t *get_binding(hashmap_t *bindings, ast_t *ast)
 {
-    switch (scope->kind) {
+    switch (ast->kind) {
     case Var: {
-        binding_t *binding = hashmap_get(bindings, scope->str);
-        return binding ? binding->namespace : NULL;
+        binding_t *binding = hashmap_get(bindings, ast->str);
+        return binding ? binding : NULL;
     }
-    case Index: {
-        if (scope->index->kind != FieldName)
-            return NULL;
-        hashmap_t *ns = get_scope_namespace(bindings, scope->indexed);
-        if (!ns) return NULL;
-        binding_t *binding = hashmap_get(ns, scope->index->str);
-        return binding ? binding->namespace : NULL;
+    case FieldAccess: {
+        binding_t *ns_binding = get_binding(bindings, ast->fielded);
+        if (!ns_binding || !ns_binding->namespace) return NULL;
+        binding_t *binding = hashmap_get(ns_binding->namespace, ast->field);
+        return binding ? binding : NULL;
     }
-    default: assert(false);
+    default: return NULL;
     }
+}
+
+hashmap_t *get_namespace(hashmap_t *bindings, ast_t *ast)
+{
+    binding_t *binding = get_binding(bindings, ast);
+    return binding ? binding->namespace : NULL;
 }
 
 bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->kind) {
-    case Var: {
-        binding_t *binding = hashmap_get(bindings, ast->str);
-        if (!binding || binding->type->kind != TypeType)
+    case Var: case FieldAccess: {
+        binding_t *b = get_binding(bindings, ast);
+        if (!b || b->type->kind != TypeType)
             TYPE_ERR(f, ast, "I don't know any type with this name.");
-        return binding->type_value;
-    }
-    case Index: {
-        if (ast->index->kind != FieldName)
-            return NULL;
-        hashmap_t *ns = get_scope_namespace(bindings, ast->indexed);
-        if (!ns) return NULL;
-        binding_t *binding = hashmap_get(ns, ast->index->str);
-        return binding ? binding->type_value : NULL;
+        return b ? b->type_value : NULL;
     }
 
     case TypeList: {
@@ -88,23 +84,6 @@ bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return Type(FunctionType, .args=arg_types, .ret=ret_t);
     }
     default: TYPE_ERR(f, ast, "This is not a Type value");
-    }
-}
-
-hashmap_t *get_namespace(hashmap_t *bindings, ast_t *ast)
-{
-    switch (ast->kind) {
-    case Var: {
-        binding_t *binding = hashmap_get(bindings, ast->str);
-        return binding ? binding->namespace : NULL;
-    }
-    case FieldAccess: {
-        hashmap_t *ns = get_namespace(bindings, ast->fielded);
-        if (!ns) return NULL;
-        binding_t *binding = hashmap_get(ns, ast->field);
-        return binding ? binding->namespace : NULL;
-    }
-    default: return NULL;
     }
 }
 
@@ -469,16 +448,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
 
     case Struct: {
-        if (ast->struct_.name) {
-            binding_t *binding = hashmap_get(bindings, ast->struct_.name);
-            for (hashmap_t *b = bindings->fallback; b && binding && binding->type->kind != TypeType; b = b->fallback)
-                binding = hashmap_get(bindings, ast->struct_.name);
-            if (!binding || binding->type->kind != TypeType)
-                TYPE_ERR(f, ast, "I don't know what this is, but it's not the name of a struct");
-            assert(binding->type_value);
-            return binding->type_value;
+        if (ast->struct_.type) {
+            binding_t *b = get_binding(bindings, ast->struct_.type);
+            if (b->enum_type)
+                return b->enum_type;
+            else
+                return b->type_value;
         }
-        assert(false);
+        TYPE_ERR(f, ast, "I haven't implemented anonymous structs yet");
         // TODO: anonymous structs
 
         //             istr_t name = ast->struct_.name;

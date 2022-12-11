@@ -29,7 +29,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 static void predeclare_def_types(env_t *env, ast_t *def)
 {
     if (def->kind == StructDef) {
-        istr_t name = def->struct_.name;
+        istr_t name = def->struct_def.name;
         NEW_LIST(istr_t, field_names);
         NEW_LIST(bl_type_t*, field_types);
         // Placeholder type, will be populated later:
@@ -45,58 +45,111 @@ static void predeclare_def_types(env_t *env, ast_t *def)
 
         env_t struct_env = *env;
         struct_env.bindings = namespace;
-        foreach (def->struct_.members, member, _) {
+        foreach (def->struct_def.members, member, _) {
             predeclare_def_types(&struct_env, *member);
         }
     } else if (def->kind == EnumDef) {
-        istr_t enum_name = def->enum_.name;
+        istr_t enum_name = def->enum_def.name;
         if (hashmap_get(env->bindings, enum_name))
             ERROR(env, def, "Something called %s is already defined.", enum_name);
-        bl_type_t *t = Type(EnumType, .enum_.name=enum_name,
-                            .enum_.field_names=def->enum_.field_names, .enum_.field_values=def->enum_.field_values);
+        NEW_LIST(bl_type_t*, field_types);
+        NEW_LIST(istr_t, field_names);
+        for (int64_t i = 0, len = length(def->enum_def.tag_names); i < len; i++) {
+            if (ith(def->enum_def.tag_types, i))
+                APPEND(field_names, ith(def->enum_def.tag_names, i));
+        }
+        bl_type_t *union_t = Type(UnionType, .union_.field_names=field_names, .union_.field_types=field_types, .union_.fields=LIST(gcc_field_t*));
+        bl_type_t *t = Type(TaggedUnionType, .tagged.name=enum_name, .tagged.tag_names=def->enum_def.tag_names,
+                            .tagged.tag_values=def->enum_def.tag_values, .tagged.data=union_t);
         gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
 
         hashmap_t *namespace = hashmap_new();
         namespace->fallback = env->bindings;
 
+        // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=namespace);
         hashmap_set(env->bindings, enum_name, binding);
-        for (int64_t i = 0, len = length(t->enum_.field_names); i < len; i++) {
-            gcc_rvalue_t *rval = gcc_int64(env->ctx, ith(t->enum_.field_values, i));
-            istr_t field_name = ith(t->enum_.field_names, i);
-            hashmap_set(namespace, field_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
+        for (int64_t i = 0, len = length(union_t->union_.field_names); i < len; i++) {
+            istr_t tag_name = ith(t->tagged.tag_names, i);
+            gcc_rvalue_t *tag_val = gcc_int64(env->ctx, ith(def->enum_def.tag_values, i));
+            binding_t *b = new(binding_t, .type=Type(IntType), .is_constant=true, .is_global=true, .rval=tag_val, .enum_type=t);
+            ast_t *field_type_ast = ith(def->enum_def.tag_types, i);
+            if (field_type_ast) {
+                NEW_LIST(bl_type_t*, union_fields);
+                bl_type_t *field_type = Type(StructType, .struct_.name=tag_name, .struct_.field_names=LIST(istr_t), .struct_.field_types=union_fields);
+                b->type_value = field_type;
+                APPEND(field_types, field_type);
+            }
+            hashmap_set(namespace, tag_name, b);
             // Default to also visible outside the enum's namespace:
-            hashmap_set(env->bindings, field_name, new(binding_t, .type=t, .is_constant=true, .is_global=true, .rval=rval));
+            hashmap_set(env->bindings, tag_name, b);
         }
     }
 }
 
 static void populate_def_members(env_t *env, ast_t *def)
 {
-    if (def->kind != StructDef)
-        return;
+    if (def->kind == StructDef) {
+        istr_t name = def->struct_def.name;
+        binding_t *binding = hashmap_get(env->bindings, name);
+        assert(binding && binding->type->kind == TypeType && binding->type_value);
+        bl_type_t *t = binding->type_value;
+        if (length(def->struct_def.members) == 0)
+            ERROR(env, def, "This struct has no fields, which is currently not supported");
 
-    istr_t name = def->struct_.name;
-    binding_t *binding = hashmap_get(env->bindings, name);
-    assert(binding && binding->type->kind == TypeType && binding->type_value);
-    bl_type_t *t = binding->type_value;
-    if (length(def->struct_.members) == 0)
-        ERROR(env, def, "This struct has no fields, which is currently not supported");
+        env_t inner_env = *env;
+        inner_env.bindings = binding->namespace;
 
-    env_t inner_env = *env;
-    inner_env.bindings = binding->namespace;
-
-    foreach (def->struct_.members, member, _) {
-        if ((*member)->kind == StructFieldDef) {
-            bl_type_t *ft = parse_type(env->file, inner_env.bindings, (*member)->fields.type);
-            if (ft->kind == VoidType)
-                ERROR(env, (*member)->fields.type, "This field is a Void type, but that isn't supported for struct members.");
-            foreach((*member)->fields.names, fname, __) {
-                APPEND(t->struct_.field_names, *fname);
-                APPEND(t->struct_.field_types, ft);
+        foreach (def->struct_def.members, member, _) {
+            if ((*member)->kind == StructFieldDef) {
+                bl_type_t *ft = parse_type(env->file, inner_env.bindings, (*member)->fields.type);
+                if (ft->kind == VoidType)
+                    ERROR(env, (*member)->fields.type, "This field is a Void type, but that isn't supported for struct members.");
+                foreach((*member)->fields.names, fname, __) {
+                    APPEND(t->struct_.field_names, *fname);
+                    APPEND(t->struct_.field_types, ft);
+                }
+            } else {
+                populate_def_members(&inner_env, *member);
             }
-        } else {
-            populate_def_members(&inner_env, *member);
+        }
+    } else if (def->kind == EnumDef) {
+        istr_t name = def->enum_def.name;
+        binding_t *binding = hashmap_get(env->bindings, name);
+        assert(binding && binding->type->kind == TypeType && binding->type_value);
+        bl_type_t *t = binding->type_value;
+        if (length(def->struct_def.members) == 0)
+            ERROR(env, def, "This struct has no fields, which is currently not supported");
+
+        env_t inner_env = *env;
+        inner_env.bindings = binding->namespace;
+
+        // populate the unioned structs for the tagged data:
+        bl_type_t *union_t = t->tagged.data;
+        int64_t field_index = 0;
+        for (int64_t i = 0, len = length(def->enum_def.tag_names); i < len; i++) {
+            ast_t *fields_ast = ith(def->enum_def.tag_types, i);
+            if (!fields_ast)
+                continue;
+
+            assert(fields_ast->kind == StructDef);
+
+            bl_type_t *field_struct = ith(union_t->union_.field_types, field_index);
+            foreach (fields_ast->struct_def.members, member, _) {
+                assert((*member)->kind == StructFieldDef);
+                bl_type_t *ft = parse_type(env->file, inner_env.bindings, (*member)->fields.type);
+                if (ft->kind == VoidType)
+                    ERROR(env, *member, "This field is a Void type, but that isn't supported for struct members.");
+                foreach((*member)->fields.names, fname, __) {
+                    APPEND(field_struct->struct_.field_names, *fname);
+                    APPEND(field_struct->struct_.field_types, ft);
+                }
+            }
+            gcc_type_t *field_type = bl_type_to_gcc(env, field_struct);
+            assert(field_type);
+            gcc_field_t *field = gcc_new_field(env->ctx, NULL, field_type, ith(def->enum_def.tag_names, i));
+            APPEND(union_t->union_.fields, field);
+            ++field_index;
         }
     }
 }
@@ -110,16 +163,16 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         hashmap_set(env->bindings, def->fn.name,
                     new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
     } else if (def->kind == StructDef) {
-        binding_t *b = hashmap_get(env->bindings, def->struct_.name);
+        binding_t *b = hashmap_get(env->bindings, def->struct_def.name);
         assert(b && b->namespace);
         env_t inner_env = *env;
         inner_env.bindings = b->namespace;
         env = &inner_env;
         // Struct methods:
-        foreach (def->struct_.members, member, _) {
+        foreach (def->struct_def.members, member, _) {
             if ((*member)->kind == FunctionDef) {
                 bl_type_t *t = get_type(env->file, env->bindings, *member);
-                gcc_func_t *func = get_function_def(env, *member, intern_strf("%s__%s", def->struct_.name, (*member)->fn.name), true);
+                gcc_func_t *func = get_function_def(env, *member, intern_strf("%s__%s", def->struct_def.name, (*member)->fn.name), true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
                 hashmap_set(env->bindings, (*member)->fn.name,
                             new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
@@ -128,6 +181,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
             }
         }
     }
+    // TODO: enum methods
 }
 
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)

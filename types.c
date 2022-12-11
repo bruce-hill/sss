@@ -58,6 +58,8 @@ static CORD type_to_cord(bl_type_t *t) {
             return c;
         }
         case OptionalType: return CORD_cat(type_to_cord(t->nonnil), "?");
+        case TaggedUnionType: return t->tagged.name;
+        case UnionType: return "Union";
         default: {
             CORD c;
             CORD_sprintf(&c, "Unknown type: %d", t->kind);
