@@ -74,7 +74,9 @@ static void predeclare_def_types(env_t *env, ast_t *def)
 
         hashmap_t *tag_namespace = hashmap_new();
         tag_namespace->fallback = namespace;
-        hashmap_set(namespace, intern_str("Tag"), new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true, .namespace=tag_namespace, .rval=rval));
+        hashmap_set(namespace, intern_str("Tag"),
+                    new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true, .namespace=tag_namespace,
+                        .rval=gcc_new_string(env->ctx, intern_strf("%s.Tag", enum_name))));
 
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
 
@@ -92,7 +94,7 @@ static void predeclare_def_types(env_t *env, ast_t *def)
                 APPEND(field_types, field_type);
             }
 
-            hashmap_set(namespace, tag_name, b);
+            // hashmap_set(namespace, tag_name, b);
             hashmap_set(tag_namespace, tag_name, b);
             // Default to also visible outside the enum's namespace:
             hashmap_set(env->bindings, tag_name, b);
@@ -169,6 +171,23 @@ static void populate_def_members(env_t *env, ast_t *def)
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, field_type, ith(enum_def->tag_names, i));
             APPEND(union_t->fields, field);
             ++field_index;
+        }
+
+        bl_type_t *tag_t = Match(t, TaggedUnionType)->tag_type;
+        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
+
+        // Bind any tagged union fields without data
+        for (int64_t i = 0, len = length(enum_def->tag_names); i < len; i++) {
+            ast_t *field_type_ast = ith(enum_def->tag_types, i);
+            if (field_type_ast) continue;
+            gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, t);
+            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+            gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(enum_def->tag_values, i));
+            gcc_rvalue_t *singleton = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, &tag_field, &tag_val);
+            binding_t *tagged_binding = new(binding_t, .type=t, .rval=singleton, .is_global=true);
+            istr_t tag_name = ith(enum_def->tag_names, i);
+            hashmap_set(binding->namespace, tag_name, tagged_binding);
         }
     }
 }

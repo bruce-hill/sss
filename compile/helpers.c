@@ -203,7 +203,6 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         if (length(union_t->fields) > 0) {
             gcc_t = gcc_union(env->ctx, NULL, "data_u", length(union_t->fields), union_t->fields[0]);
         } else {
-            assert(false);
             gcc_t = NULL;
         }
         break;
@@ -341,7 +340,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
             istr_t tag_name = ith(tags->names, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-            gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.%s", tags->name, tag_name)));
+            gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.Tag.%s", tags->name, tag_name)));
             int64_t tag_value = ith(tags->values, i);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);

@@ -1023,6 +1023,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // TODO: support `when "foo"` and `when x is (2+3)` by falling back to if/else when switch doesn't work
         auto when = Match(ast, When);
         gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
+        bl_type_t *subject_t = get_type(env->file, env->bindings, when->subject);
+        if (subject_t->tag == TaggedUnionType) {
+            gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, subject_t));
+            gcc_field_t *field = gcc_get_field(gcc_struct, 0); // .tag
+            subject = gcc_rvalue_access_field(subject, NULL, field);
+        }
+
         bl_type_t *result_t = get_type(env->file, env->bindings, ast);
         bl_type_t *nonnil_t = result_t->tag == OptionalType ? Match(result_t, OptionalType)->nonnil : result_t;
         bool has_value = !(nonnil_t->tag == AbortType || nonnil_t->tag == VoidType);
