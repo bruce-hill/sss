@@ -454,7 +454,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
 
     case Lambda: {
-        auto lambda = Match(ast, FunctionDef);
+        auto lambda = Match(ast, Lambda);
         NEW_LIST(bl_type_t*, args);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
