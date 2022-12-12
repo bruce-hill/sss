@@ -211,6 +211,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             }
             goto class_lookup;
         }
+        case TaggedUnionType: {
+            auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
+            for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
+                if (LIST_ITEM(union_t->field_names, i) == access->field)
+                    return LIST_ITEM(union_t->field_types, i);
+            }
+            goto class_lookup;
+        }
         case TypeType: {
             hashmap_t *ns = get_namespace(bindings, access->fielded);
             assert(ns);

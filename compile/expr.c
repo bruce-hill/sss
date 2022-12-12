@@ -168,7 +168,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, fresh("arg")));
             }
             gcc_func_t *func = gcc_new_func(
-                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, LIST_LEN(params), params[0], 0);
+                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
             hashmap_set(env->bindings, ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -623,18 +623,67 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case FieldAccess: {
-        (void)get_type(env->file, env->bindings, ast); // typecheck
+        get_type(env->file, env->bindings, ast); // typecheck
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
         gcc_rvalue_t *obj = compile_expr(env, block, access->fielded);
         if (fielded_t->tag == StructType) {
             auto struct_type = Match(fielded_t, StructType);
-            for (int64_t i = 0, len = LIST_LEN(struct_type->field_names); i < len; i++) {
-                if (LIST_ITEM(struct_type->field_names, i) == access->field) {
+            for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
+                if (ith(struct_type->field_names, i) == access->field) {
                     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, NULL, field);
+                }
+            }
+        } else if (fielded_t->tag == TaggedUnionType) {
+            bl_type_t* tag_bl_type = Match(fielded_t, TaggedUnionType)->tag_type;
+            auto tag_type = Match(tag_bl_type, TagType);
+            auto union_type = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
+            for (int64_t i = 0, len = length(union_type->field_names); i < len; i++) {
+                if (ith(union_type->field_names, i) == access->field) {
+                    // Step 1: check tag and fail if it's the wrong one:
+                    gcc_rvalue_t *tagged_tag = gcc_rvalue_access_field(obj, NULL, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
+                    gcc_rvalue_t *field_tag = NULL;
+                    for (int64_t tag_index = 0, len = length(tag_type->names); tag_index < len; tag_index++) {
+                        if (ith(tag_type->names, tag_index) == access->field) {
+                            gcc_type_t *tag_t = bl_type_to_gcc(env, tag_bl_type);
+                            field_tag = gcc_rvalue_from_long(env->ctx, tag_t, ith(tag_type->values, i));
+                            break;
+                        }
+                    }
+                    gcc_func_t *func = gcc_block_func(*block);
+                    gcc_block_t *tag_ok = gcc_new_block(func, fresh("tag_ok")),
+                                *tag_wrong = gcc_new_block(func, fresh("tag_wrong"));
+                    gcc_rvalue_t *is_ok = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, tagged_tag, field_tag);
+                    gcc_jump_condition(*block, NULL, is_ok, tag_ok, tag_wrong);
+
+                    *block = tag_wrong;
+                    char *info = NULL;
+                    size_t size = 0;
+                    FILE *f = open_memstream(&info, &size);
+                    highlight_match(f, env->file, ast->match, 2);
+                    fputc('\0', f);
+                    fflush(f);
+                    gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+                    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+                    istr_t fmt_str = intern_strf("\x1b[31;1;7mError: this tagged union is a %%s, but you are treating it like a %s\x1b[m\n\n%%s", access->field);
+                    gcc_rvalue_t *fmt = gcc_new_string(env->ctx, fmt_str);
+                    gcc_func_t *tostring = get_tostring_func(env, fielded_t);
+                    assert(tostring);
+                    gcc_rvalue_t *args[] = {obj, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
+                    gcc_rvalue_t *tag_str = gcc_call(env->ctx, NULL, tostring, 2, args);
+                    gcc_rvalue_t *failure = gcc_call(env->ctx, NULL, fail, 3, (gcc_rvalue_t*[]){fmt, tag_str, callstack});
+                    gcc_eval(tag_wrong, NULL, failure);
+                    fclose(f);
+                    gcc_jump(tag_wrong, NULL, tag_wrong);
+
+                    // Step 2: access tagged.__data.TagName
+                    *block = tag_ok;
+                    gcc_field_t *field = ith(union_type->fields, i);
+                    gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
+                    return gcc_rvalue_access_field(data, NULL, field);
                 }
             }
         }
@@ -676,7 +725,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
 
         // Bounds check failure:
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
@@ -1139,7 +1188,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             msg = gcc_new_string(env->ctx, "A failure occurred");
         }
 
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;7mError: %s\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: %s\x1b[m\n\n%s");
 
         char *info = NULL;
         size_t size = 0;
