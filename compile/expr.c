@@ -39,16 +39,30 @@ static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t
 
 static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
-    auto loop = Match((ast_t*)data, While);
-    if (loop->body)
-        compile_block_statement(env, block, loop->body);
+    ast_t *ast = (ast_t*)data;
+    if (ast->tag == While) {
+        auto loop = Match(ast, While);
+        if (loop->body)
+            compile_block_statement(env, block, loop->body);
+    } else {
+        auto loop = Match(ast, Repeat);
+        if (loop->body)
+            compile_block_statement(env, block, loop->body);
+    }
 }
 
 static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
-    auto loop = Match((ast_t*)data, While);
-    if (loop->between)
-        compile_block_statement(env, block, loop->between);
+    ast_t *ast = (ast_t*)data;
+    if (ast->tag == While) {
+        auto loop = Match(ast, While);
+        if (loop->between)
+            compile_block_statement(env, block, loop->between);
+    } else {
+        auto loop = Match(ast, Repeat);
+        if (loop->between)
+            compile_block_statement(env, block, loop->between);
+    }
 }
 
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
