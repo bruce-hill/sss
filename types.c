@@ -71,6 +71,10 @@ static CORD type_to_cord(bl_type_t *t) {
             auto opt = Match(t, OptionalType);
             return CORD_cat(type_to_cord(opt->nonnil), "?");
         }
+        case TagType: {
+            auto tag = Match(t, TagType);
+            return CORD_cat(tag->name, ".Tag");
+        }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
             return tagged->name;

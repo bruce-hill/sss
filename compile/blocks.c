@@ -72,6 +72,10 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=namespace);
         hashmap_set(env->bindings, enum_name, binding);
 
+        hashmap_t *tag_namespace = hashmap_new();
+        tag_namespace->fallback = namespace;
+        hashmap_set(namespace, intern_str("Tag"), new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true, .namespace=tag_namespace, .rval=rval));
+
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
 
         // Bind tag values:
@@ -89,6 +93,7 @@ static void predeclare_def_types(env_t *env, ast_t *def)
             }
 
             hashmap_set(namespace, tag_name, b);
+            hashmap_set(tag_namespace, tag_name, b);
             // Default to also visible outside the enum's namespace:
             hashmap_set(env->bindings, tag_name, b);
         }

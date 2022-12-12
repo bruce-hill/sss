@@ -363,6 +363,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto struct_ = Match(ast, Struct);
         binding_t *binding = get_binding(env->bindings, struct_->type);
         bl_type_t *t = binding->type_value;
+        if (!t)
+            ERROR(env, struct_->type, "This isn't a struct type that I recognize");
         auto struct_type = Match(t, StructType);
         if (length(struct_type->field_names) == 0)
             ERROR(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
