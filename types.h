@@ -6,7 +6,9 @@
 
 #include "libblang/list.h"
 
-typedef const struct bl_type_s {
+typedef const struct bl_type_s bl_type_t;
+
+struct bl_type_s {
     enum {
         UnknownType,
         AbortType, VoidType,
@@ -22,6 +24,7 @@ typedef const struct bl_type_s {
         FunctionType,
         OptionalType,
         StructType,
+        TagType,
         TaggedUnionType,
         UnionType,
     } tag;
@@ -37,36 +40,40 @@ typedef const struct bl_type_s {
         struct {
         } TypeType, RangeType;
         struct {
-            const struct bl_type_s *item_type;
+            bl_type_t *item_type;
         } ListType;
         struct {
-            const struct bl_type_s *key_type, *value_type;
+            bl_type_t *key_type, *value_type;
         } TableType;
         struct {
-            List(const struct bl_type_s*) args;
-            const struct bl_type_s *ret;
+            List(bl_type_t*) args;
+            bl_type_t *ret;
         } FunctionType;
         struct {
-            const struct bl_type_s *nonnil;
+            bl_type_t *nonnil;
         } OptionalType;
         struct {
             istr_t name;
             List(istr_t) field_names;
-            List(const struct bl_type_s*) field_types;
+            List(bl_type_t*) field_types;
         } StructType;
         struct {
             istr_t name;
-            List(istr_t) tag_names;
-            List(int64_t) tag_values;
-            const struct bl_type_s *data;
+            List(istr_t) names;
+            List(int64_t) values;
+        } TagType;
+        struct {
+            istr_t name;
+            bl_type_t *tag_type;
+            bl_type_t *data;
         } TaggedUnionType;
         struct {
             List(istr_t) field_names;
-            List(const struct bl_type_s*) field_types;
+            List(bl_type_t*) field_types;
             List(gcc_jit_field*) fields;
         } UnionType;
     } __data;
-} bl_type_t;
+};
 
 typedef struct {
     gcc_jit_rvalue *rval;

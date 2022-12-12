@@ -61,8 +61,8 @@ static void predeclare_def_types(env_t *env, ast_t *def)
                 APPEND(field_names, ith(enum_def->tag_names, i));
         }
         bl_type_t *union_t = Type(UnionType, .field_names=field_names, .field_types=field_types, .fields=LIST(gcc_field_t*));
-        bl_type_t *t = Type(TaggedUnionType, .name=enum_name, .tag_names=enum_def->tag_names,
-                            .tag_values=enum_def->tag_values, .data=union_t);
+        bl_type_t *tag_t = Type(TagType, .name=enum_name, .names=enum_def->tag_names, .values=enum_def->tag_values);
+        bl_type_t *t = Type(TaggedUnionType, .name=enum_name, .tag_type=tag_t, .data=union_t);
         gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
 
         hashmap_t *namespace = hashmap_new();
@@ -72,11 +72,13 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=namespace);
         hashmap_set(env->bindings, enum_name, binding);
 
+        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
+
         // Bind tag values:
         for (int64_t i = 0, len = length(enum_def->tag_names); i < len; i++) {
             istr_t tag_name = ith(enum_def->tag_names, i);
-            gcc_rvalue_t *tag_val = gcc_int64(env->ctx, ith(enum_def->tag_values, i));
-            binding_t *b = new(binding_t, .type=Type(IntType), .is_constant=true, .is_global=true, .rval=tag_val, .enum_type=t);
+            gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(enum_def->tag_values, i));
+            binding_t *b = new(binding_t, .type=tag_t, .is_constant=true, .is_global=true, .rval=tag_val, .enum_type=t);
 
             ast_t *field_type_ast = ith(enum_def->tag_types, i);
             if (field_type_ast) {

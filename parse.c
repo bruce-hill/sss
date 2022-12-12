@@ -399,9 +399,15 @@ ast_t *match_to_ast(match_t *m)
                 if (!tag_m) break;
                 match_t *name_m = get_named_capture(tag_m, "name", -1);
                 istr_t name = match_to_istr(name_m);
-                ast_t *value = match_to_ast(get_named_capture(tag_m, "value", -1));
-                if (value)
+                match_t *value_m = get_named_capture(tag_m, "value", -1);
+                ast_t *value = match_to_ast(value_m);
+                if (value) {
                     next_value = Match(value, Int)->i;
+                    if (next_value < 0) {
+                        fprintf(stderr, "Negative values are not allowed as enum tags");
+                        print_err(parsing, value_m, 1);
+                    }
+                }
                 APPEND(tag_names, name);
                 APPEND(tag_values, next_value);
                 match_t *data_m = get_named_capture(tag_m, "data", -1);
