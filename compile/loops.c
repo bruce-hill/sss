@@ -86,11 +86,12 @@ void compile_loop_iteration(
 
 void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
-    switch (ast->kind) {
+    switch (ast->tag) {
     case For: {
-        bl_type_t *iter_t = get_type(env->file, env->bindings, ast->for_loop.iter);
-        if (iter_t->kind == OptionalType) iter_t = iter_t->nonnil;
-        switch (iter_t->kind) {
+        auto for_loop = Match(ast, For);
+        bl_type_t *iter_t = get_type(env->file, env->bindings, for_loop->iter);
+        if (iter_t->tag == OptionalType) iter_t = Match(iter_t, OptionalType)->nonnil;
+        switch (iter_t->tag) {
         case ListType: {
             compile_list_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
@@ -99,12 +100,16 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
             compile_range_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
         }
-        default: ERROR(env, ast->for_loop.iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
+        default: ERROR(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
         }
     }
-    case Repeat: case While: {
-        compile_loop_iteration(env, block, ast->kind == While ? "while" : "repeat",
-                               ast->loop.condition, body_compiler, between_compiler, userdata);
+    case Repeat: {
+        compile_loop_iteration(env, block, "repeat", NULL, body_compiler, between_compiler, userdata);
+        return;
+    }
+    case While: {
+        auto loop = Match(ast, While);
+        compile_loop_iteration(env, block, "while", loop->condition, body_compiler, between_compiler, userdata);
         return;
     }
     default: ERROR(env, ast, "This is not an interation");

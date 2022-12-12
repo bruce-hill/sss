@@ -1,11 +1,20 @@
 #pragma once
 
+#include <assert.h>
 #include <bp/match.h>
 #include <bp/files.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "libblang/utils.h"
+
 #define new(t, ...) ((t*)memcpy(GC_MALLOC(sizeof(t)), &(t){__VA_ARGS__}, sizeof(t)))
+#define Match(x, _tag) ((x)->tag == _tag ? &(x)->__data._tag : (fail(__FILE__ ":%d This was supposed to be a " # _tag "\n", __LINE__), &(x)->__data._tag))
+#define Tagged(t, _tag, ...) new(t, .tag=_tag, .__data._tag={__VA_ARGS__})
+
+#ifndef auto
+#define auto __auto_type
+#endif
 
 typedef void (*defer_fn_t)(void*);
 typedef struct defer_s {

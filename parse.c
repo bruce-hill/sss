@@ -28,7 +28,9 @@
 #define strneq(a,b,n) (strncmp(a,b,n) == 0)
 #endif
 
-#define AST(m, mykind, ...) (new(ast_t, .kind=mykind, .match=m __VA_OPT__(,) __VA_ARGS__))
+#define AST(m, ast_tag, ...) (new(ast_t, .tag=ast_tag, .match=m, .__data.ast_tag={__VA_ARGS__}))
+
+ast_t *match_to_ast(match_t *m);
 
 static pat_t *grammar = NULL;
 static file_t *loaded_files = NULL;
@@ -111,7 +113,7 @@ static void report_errors(file_t *f, match_t *m, bool stop_on_first)
     }
 }
 
-const char *kind_tags[] = {
+const char *tag_names[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
     [Int]="Int", [Num]="Num", [Range]="Range",
     [StringLiteral]=NULL, [StringJoin]="String", [DSL]="DSL", [Interp]="Interp",
@@ -139,14 +141,14 @@ const char *kind_tags[] = {
     [Index]="IndexedTerm", [FieldName]="FieldName",
 };
 
-static astkind_e get_kind(match_t *m)
+static ast_tag_e get_tag(match_t *m)
 {
     const char *tag = m->pat->args.capture.name;
     size_t len = m->pat->args.capture.namelen;
-    for (size_t i = 0; i < sizeof(kind_tags)/sizeof(kind_tags[0]); i++) {
-        if (!kind_tags[i]) continue;
-        if (strncmp(kind_tags[i], tag, len) == 0 && kind_tags[i][len] == '\0')
-            return (astkind_e)i;
+    for (size_t i = 0; i < sizeof(tag_names)/sizeof(tag_names[0]); i++) {
+        if (!tag_names[i]) continue;
+        if (strncmp(tag_names[i], tag, len) == 0 && tag_names[i][len] == '\0')
+            return (ast_tag_e)i;
     }
     if (strncmp(tag, "AddSub", len) == 0) {
         match_t *op = get_named_capture(m, "op", -1);
@@ -174,6 +176,16 @@ static istr_t match_to_istr(match_t *m)
     return intern_str(CORD_to_const_char_star(c));
 }
 
+static inline istr_t capture_istr(match_t *m, const char *name)
+{
+    return match_to_istr(get_named_capture(m, name, -1));
+}
+
+static inline ast_t *capture_ast(match_t *m, const char *name)
+{
+    return match_to_ast(get_named_capture(m, name, -1));
+}
+
 //
 // Convert a match structure (from BP) into an AST structure (for Blang)
 //
@@ -182,16 +194,15 @@ ast_t *match_to_ast(match_t *m)
     if (!m) return NULL;
     pat_t *pat = m->pat;
     if (pat->type == BP_TAGGED) {
-        astkind_e kind = get_kind(m);
-        switch (kind) {
+        ast_tag_e tag = get_tag(m);
+        switch (tag) {
         case Nil: {
-            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
-            return AST(m, kind, .child=type);
+            return AST(m, Nil, .type=capture_ast(m, "type"));
         }
         case Bool: return AST(m, Bool, .b=strncmp(m->start, "no", 2) != 0);
         case Var: {
             istr_t v = intern_strn(m->start, (size_t)(m->end - m->start));
-            return AST(m, Var, .str=v);
+            return AST(m, Var, .name=v);
         }
         case Int: {
             int64_t i;
@@ -224,9 +235,9 @@ ast_t *match_to_ast(match_t *m)
         }
         case Range: {
             return AST(m, Range,
-                       .range.first=match_to_ast(get_named_capture(m, "first", -1)),
-                       .range.last=match_to_ast(get_named_capture(m, "last", -1)),
-                       .range.step=match_to_ast(get_named_capture(m, "step", -1)));
+                       .first=capture_ast(m, "first"),
+                       .last=capture_ast(m, "last"),
+                       .step=capture_ast(m, "step"));
         }
         case StringJoin: {
             match_t *content = get_named_capture(m, "content", -1);
@@ -254,7 +265,7 @@ ast_t *match_to_ast(match_t *m)
         case List: {
             match_t *type_m = get_named_capture(m, "type", -1);
             if (type_m)
-                return AST(m, List, .list.type=match_to_ast(type_m));
+                return AST(m, List, .type=match_to_ast(type_m));
             
             List(ast_t*) items = EMPTY_LIST(ast_t*);
             for (int i = 1; ; i++) {
@@ -264,50 +275,64 @@ ast_t *match_to_ast(match_t *m)
                 // Shim: [x if cond] is mapped to [x if cond else skip]
                 // `skip` in a list means "don't add this item"
                 ast_t *item = match_to_ast(im);
-                if (item->kind == If && !item->else_body)
-                    item->else_body = AST(item->match, Skip);
+                if (item->tag == If && !Match(item, If)->else_body)
+                    Match(item, If)->else_body = AST(item->match, Skip);
                 APPEND(items, item);
             }
-            return AST(m, List, .list.items=items);
+            return AST(m, List, .items=items);
         }
-        case Do: case Block: {
-            NEW_LIST(ast_t*, children);
+        case Do: {
+            NEW_LIST(ast_t*, blocks);
             for (int i = 1; ; i++) {
-                ast_t *child = match_to_ast(get_numbered_capture(m, i));
-                if (!child) break;
-                APPEND(children, child);
+                ast_t *block = match_to_ast(get_numbered_capture(m, i));
+                if (!block) break;
+                APPEND(blocks, block);
             }
-            return AST(m, kind, .children=children);
+            return AST(m, Do, .blocks=blocks);
+        }
+        case Block: {
+            NEW_LIST(ast_t*, stmts);
+            for (int i = 1; ; i++) {
+                ast_t *stmt = match_to_ast(get_numbered_capture(m, i));
+                if (!stmt) break;
+                APPEND(stmts, stmt);
+            }
+            return AST(m, Block, .statements=stmts);
         }
         case FunctionDef: case MethodDef: case Lambda: {
-            istr_t name = kind == Lambda ? NULL : match_to_istr(get_named_capture(m, "name", -1));
+            istr_t name = tag == Lambda ? NULL : capture_istr(m, "name");
             NEW_LIST(istr_t, arg_names);
             NEW_LIST(ast_t*, arg_types);
             match_t *args_m = get_named_capture(m, "args", -1);
             for (int i = 1; ; i++) {
                 match_t *arg_m = get_numbered_capture(args_m, i);
                 if (!arg_m) break;
-                match_t *arg_name = get_named_capture(arg_m, "name", -1);
-                match_t *arg_type = get_named_capture(arg_m, "type", -1);
-                assert(arg_name != NULL && arg_type != NULL);
-                APPEND(arg_names, match_to_istr(arg_name));
-                APPEND(arg_types, match_to_ast(arg_type));
+                APPEND(arg_names, capture_istr(arg_m, "name"));
+                APPEND(arg_types, capture_ast(arg_m, "type"));
             }
-            match_t *ret_m = get_named_capture(m, "returnType", -1);
-            ast_t *ret_type = ret_m ? match_to_ast(ret_m) : NULL;
+            ast_t *ret_type = capture_ast(m, "returnType");
             match_t *body_m = get_named_capture(m, "body", -1);
             ast_t *body = match_to_ast(body_m);
 
-            if (kind == Lambda)
-                body = AST(body_m, Return, .child=body);
+            if (tag == Lambda)
+                body = AST(body_m, Return, .value=body);
 
             istr_t self = NULL;
-            if (kind == MethodDef)
+            if (tag == MethodDef)
                 self = match_to_istr(get_named_capture(m, "selfVar", -1));
 
-            return AST(m, kind, .fn.name=name, .fn.self=self,
-                       .fn.arg_names=arg_names, .fn.arg_types=arg_types,
-                       .fn.ret_type=ret_type, .fn.body=body);
+            if (tag == FunctionDef) {
+                return AST(m, FunctionDef, .name=name,
+                           .arg_names=arg_names, .arg_types=arg_types,
+                           .ret_type=ret_type, .body=body);
+            } else if (tag == MethodDef) {
+                return AST(m, MethodDef, .name=name, .self=self,
+                           .arg_names=arg_names, .arg_types=arg_types,
+                           .ret_type=ret_type, .body=body);
+            } else {
+                return AST(m, Lambda, .arg_names=arg_names, .arg_types=arg_types,
+                           .ret_type=ret_type, .body=body);
+            }
         }
         case FunctionCall: {
             match_t *fn_m = get_named_capture(m, "fn", -1);
@@ -318,25 +343,29 @@ ast_t *match_to_ast(match_t *m)
                 if (!arg) break;
                 APPEND(args, arg);
             }
-            return AST(m, FunctionCall, .call.fn=fn, .call.args=args);
+            return AST(m, FunctionCall, .fn=fn, .args=args);
         }
-        case KeywordArg: case StructField: case EnumField: {
-            istr_t name = match_to_istr(get_named_capture(m, "name", -1));
-            ast_t *value = match_to_ast(get_named_capture(m, "value", -1));
-            return AST(m, kind, .named.name=name, .named.value=value);
+        case KeywordArg: {
+            return AST(m, KeywordArg, .name=capture_istr(m, "name"), .arg=capture_ast(m, "value"));
+        }
+        case StructField: {
+            return AST(m, StructField, .name=capture_istr(m, "name"), .value=capture_ast(m, "value"));
+        }
+        case EnumField: {
+            return AST(m, EnumField, .name=capture_istr(m, "name"), .value=capture_ast(m, "value"));
         }
         case Return: {
-            return AST(m, Return, .child=match_to_ast(get_named_capture(m, "value", -1)));
+            return AST(m, Return, .value=capture_ast(m, "value"));
         }
         case StructDef: {
-            istr_t name = match_to_istr(get_named_capture(m, "name", -1));
+            istr_t name = capture_istr(m, "name");
             NEW_LIST(ast_t*, members);
             for (int i = 1; ; i++) {
                 ast_t *member = match_to_ast(get_numbered_capture(m, i));
                 if (!member) break;
                 APPEND(members, member);
             }
-            return AST(m, StructDef, .struct_def.name=name, .struct_.members=members);
+            return AST(m, StructDef, .name=name, .members=members);
         }
         case Struct: {
             ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
@@ -346,7 +375,7 @@ ast_t *match_to_ast(match_t *m)
                 if (!member) break;
                 APPEND(members, member);
             }
-            return AST(m, kind, .struct_.type=type, .struct_.members=members);
+            return AST(m, Struct, .type=type, .members=members);
         }
         case StructFieldDef: {
             ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
@@ -357,7 +386,7 @@ ast_t *match_to_ast(match_t *m)
                 if (!name) break;
                 APPEND(names, name);
             }
-            return AST(m, StructFieldDef, .fields.names=names, .fields.type=type);
+            return AST(m, StructFieldDef, .names=names, .type=type);
         }
         case EnumDef: {
             istr_t name = match_to_istr(get_named_capture(m, "name", -1));
@@ -372,7 +401,7 @@ ast_t *match_to_ast(match_t *m)
                 istr_t name = match_to_istr(name_m);
                 ast_t *value = match_to_ast(get_named_capture(tag_m, "value", -1));
                 if (value)
-                    next_value = value->i;
+                    next_value = Match(value, Int)->i;
                 APPEND(tag_names, name);
                 APPEND(tag_values, next_value);
                 match_t *data_m = get_named_capture(tag_m, "data", -1);
@@ -383,24 +412,24 @@ ast_t *match_to_ast(match_t *m)
                         if (!member) break;
                         APPEND(members, member);
                     }
-                    ast_t *field = AST(m, StructDef, .struct_def.name=name, .struct_def.members=members);
+                    ast_t *field = AST(m, StructDef, .name=name, .members=members);
                     APPEND(tag_types, field);
                 } else {
                     APPEND(tag_types, NULL);
                 }
                 ++next_value;
             }
-            return AST(m, EnumDef, .enum_def.name=name, .enum_def.tag_names=tag_names,
-                       .enum_def.tag_values=tag_values, .enum_def.tag_types=tag_types);
+            return AST(m, EnumDef, .name=name, .tag_names=tag_names,
+                       .tag_values=tag_values, .tag_types=tag_types);
         }
         case FieldName: {
-            return AST(m, FieldName, .str=match_to_istr(m));
+            return AST(m, FieldName, .name=match_to_istr(m));
         }
         case Index: {
             ast_t *indexed = match_to_ast(get_named_capture(m, "value", -1));
             ast_t *index = match_to_ast(get_named_capture(m, "index", -1));
-            if (index->kind == FieldName)
-                return AST(m, FieldAccess, .fielded=indexed, .field=index->str);
+            if (index->tag == FieldName)
+                return AST(m, FieldAccess, .fielded=indexed, .field=Match(index, FieldName)->name);
             return AST(m, Index, .indexed=indexed, .index=index);
         }
         case If: {
@@ -452,49 +481,52 @@ ast_t *match_to_ast(match_t *m)
             ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
             ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
             if (filter)
-                body = AST(m, Block, .children=LIST(ast_t*, filter, body));
+                body = AST(m, Block, .statements=LIST(ast_t*, filter, body));
             ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
-            return AST(m, kind, .loop.condition=condition, .loop.body=body, .loop.between=between);
+            if (tag == While)
+                return AST(m, While, .condition=condition, .body=body, .between=between);
+            else
+                return AST(m, Repeat, .body=body, .between=between);
         }
         case For: {
-            ast_t *iter = match_to_ast(get_named_capture(m, "iterable", -1));
-            ast_t *key = match_to_ast(get_named_capture(m, "index", -1));
-            ast_t *value = match_to_ast(get_named_capture(m, "val", -1));
-            ast_t *body = match_to_ast(get_named_capture(m, "body", -1));
-            ast_t *filter = match_to_ast(get_named_capture(m, "filter", -1));
+            ast_t *iter = capture_ast(m, "iterable");
+            istr_t key = capture_istr(m, "index");
+            istr_t value = capture_istr(m, "val");
+            ast_t *body = capture_ast(m, "body");
+            ast_t *filter = capture_ast(m, "filter");
             if (filter)
-                body = AST(m, Block, .children=LIST(ast_t*, filter, body));
-            ast_t *between = match_to_ast(get_named_capture(m, "between", -1));
-            return AST(m, For, .for_loop.iter=iter, .for_loop.key=key, .for_loop.value=value,
-                       .for_loop.body=body, .for_loop.between=between);
+                body = AST(m, Block, .statements=LIST(ast_t*, filter, body));
+            ast_t *between = capture_ast(m, "between");
+            return AST(m, For, .iter=iter, .key=key, .value=value,
+                       .body=body, .between=between);
         }
-        case Skip: case Stop: {
-            istr_t target = match_to_istr(get_named_capture(m, "target", -1));
-            return AST(m, kind, .str=target);
+        case Skip: {
+            return AST(m, Skip, .target=capture_istr(m, "target"));
         }
-        case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
-        case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate:
-        case And: case Or: case Xor:
-        case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
+        case Stop: {
+            return AST(m, Stop, .target=capture_istr(m, "target"));
+        }
+#define BINOP(t) case t: return AST(m, t, .lhs=capture_ast(m, "lhs"), .rhs=capture_ast(m, "rhs"))
+        BINOP(Add); BINOP(Subtract); BINOP(Multiply); BINOP(Divide); BINOP(Power);
+        BINOP(Modulus); BINOP(AddUpdate); BINOP(SubtractUpdate); BINOP(MultiplyUpdate);
+        BINOP(DivideUpdate); BINOP(And); BINOP(Or); BINOP(Xor); BINOP(Equal);
+        BINOP(NotEqual); BINOP(Less); BINOP(LessEqual); BINOP(Greater); BINOP(GreaterEqual);
+#undef BINOP
         case Declare: {
-            ast_t *lhs = match_to_ast(get_named_capture(m, "lhs", -1));
-            ast_t *rhs = match_to_ast(get_named_capture(m, "rhs", -1));
-            return AST(m, kind, .lhs=lhs, .rhs=rhs);
+            return AST(m, Declare, .name=capture_istr(m, "lhs"), .value=capture_ast(m, "rhs"));
         }
-        case Cast: case As: {
-            ast_t *expr = match_to_ast(get_named_capture(m, "expr", -1));
-            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
-            return AST(m, kind, .expr=expr, .type=type);
+        case Cast: {
+            return AST(m, Cast, .value=capture_ast(m, "expr"), .type=capture_ast(m, "type"));
+        }
+        case As: {
+            return AST(m, As, .value=capture_ast(m, "expr"), .type=capture_ast(m, "type"));
         }
         case Extern: {
-            ast_t *expr = match_to_ast(get_named_capture(m, "name", -1));
-            ast_t *type = match_to_ast(get_named_capture(m, "type", -1));
-            return AST(m, kind, .expr=expr, .type=type);
+            return AST(m, Extern, .name=capture_istr(m, "name"), .type=capture_ast(m, "type"));
         }
-        case Not: case Negative: case Len: case Maybe: case TypeOf: case SizeOf: {
-            ast_t *child = match_to_ast(get_named_capture(m, "value", -1));
-            return AST(m, kind, .child=child);
-        }
+#define UNOP(t) case t: return AST(m, t, .value=capture_ast(m, "value"))
+        UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf);
+#undef UNOP
         case Assign: {
             NEW_LIST(ast_t*, lhs);
             NEW_LIST(ast_t*, rhs);
@@ -502,7 +534,7 @@ ast_t *match_to_ast(match_t *m)
             match_t *rhses = get_named_capture(m, "rhs", -1);
             for (int64_t i = 1; ; i++) {
                 ast_t *var = match_to_ast(get_numbered_capture(get_numbered_capture(lhses, 1), i));
-                if (var && var->kind != Var) {
+                if (var && var->tag != Var) {
                     fprintf(stderr, "\x1b[31;7;1mOnly variables can be assigned to\x1b[m\n\n");
                     highlight_match(stderr, parsing, var->match, 2);
                     exit(1);
@@ -523,22 +555,19 @@ ast_t *match_to_ast(match_t *m)
                 APPEND(lhs, var);
                 APPEND(rhs, val);
             }
-            return AST(m, kind, .multiassign.lhs=lhs, .multiassign.rhs=rhs);
+            return AST(m, Assign, .targets=lhs, .values=rhs);
         }
         case Fail: {
-            ast_t *msg = match_to_ast(get_named_capture(m, "message", -1));
-            return AST(m, Fail, .child=msg);
+            return AST(m, Fail, .message=capture_ast(m, "message"));
         }
         case TypeOption: {
-            ast_t *nonnil = match_to_ast(get_named_capture(m, "nonnil", -1));
-            return AST(m, TypeOption, .child=nonnil);
+            return AST(m, TypeOption, .nonnil=capture_ast(m, "nonnil"));
         }
         case TypeList: {
-            ast_t *item_t = match_to_ast(get_named_capture(m, "itemType", -1));
-            return AST(m, TypeList, .child=item_t);
+            return AST(m, TypeList, .item_type=capture_ast(m, "itemType"));
         }
         case TypeFunction: {
-            ast_t *ret = match_to_ast(get_named_capture(m, "returnType", -1));
+            ast_t *ret = capture_ast(m, "returnType");
             assert(ret);
             match_t *args_m = get_named_capture(m, "args", -1);
             NEW_LIST(ast_t*, arg_types);
@@ -546,21 +575,19 @@ ast_t *match_to_ast(match_t *m)
             for (int64_t i = 1; ; i++) {
                 match_t *arg_m = get_numbered_capture(args_m, i);
                 if (!arg_m) break;
-                istr_t arg_name = match_to_istr(get_named_capture(arg_m, "name", -1));
-                ast_t *arg_t = match_to_ast(get_named_capture(arg_m, "type", -1));
-                APPEND(arg_names, arg_name);
-                APPEND(arg_types, arg_t);
+                APPEND(arg_names, capture_istr(arg_m, "name"));
+                APPEND(arg_types, capture_ast(arg_m, "type"));
             }
-            return AST(m, TypeFunction, .fn.ret_type=ret, .fn.arg_names=arg_names, .fn.arg_types=arg_types);
+            return AST(m, TypeFunction, .ret_type=ret, .arg_names=arg_names, .arg_types=arg_types);
         }
         default: break;
         }
 
-        const char *tag = m->pat->args.capture.name;
+        const char *tagname = m->pat->args.capture.name;
         size_t taglen = m->pat->args.capture.namelen;
-        if (strneq(tag, "Newline", taglen)) {
+        if (strneq(tagname, "Newline", taglen)) {
             return AST(m, StringLiteral, .str=intern_str("\n"));
-        } else if (strneq(tag, "Escape", taglen)) {
+        } else if (strneq(tagname, "Escape", taglen)) {
             static const char *unescapes[255] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
             if (unescapes[(int)m->start[1]]) {
                 return AST(m, StringLiteral, .str=intern_str(unescapes[(int)m->start[1]]));
@@ -588,82 +615,6 @@ ast_t *match_to_ast(match_t *m)
         }
     }
     return NULL;
-}
-
-//
-// Print an AST (for debugging)
-//
-void print_ast(ast_t *ast) {
-    if (!ast) {
-        printf("\x1b[31;1m(NULL)\x1b[m");
-        return;
-    }
-    switch (ast->kind) {
-    case Bool: printf("\x1b[35m%s\x1b[m", ast->b ? "yes" : "no"); break;
-    case Int: printf("\x1b[35m%ld\x1b[m", ast->i); break;
-    case Num: printf("\x1b[35m%g\x1b[m", ast->n); break;
-    case Var: printf("\x1b[1m%s\x1b[m", ast->str); break;
-    case FunctionCall: {
-        print_ast(ast->call.fn);
-        printf("(");
-        for (int64_t i = 0; i < LIST_LEN(ast->call.args); i++) {
-            if (i > 0)
-                printf(", ");
-            print_ast(LIST_ITEM(ast->call.args, i));
-        }
-        printf(")");
-        break;
-    }
-    case KeywordArg: {
-        printf("\x1b[0;2m%s=\x1b[m", ast->named.name);
-        print_ast(ast->named.value);
-        break;
-    }
-    case StringJoin: {
-        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
-            if (i > 0) printf("..");
-            print_ast(LIST_ITEM(ast->children, i));
-        }
-        break;
-    }
-    case StringLiteral: printf("\x1b[35m\"%s\"\x1b[m", ast->str); break;
-    case Block: {
-        for (int64_t i = 0; i < LIST_LEN(ast->children); i++) {
-            printf("\x1b[2m%ld |\x1b[m ", i+1);
-            print_ast(LIST_ITEM(ast->children, i));
-            printf("\n");
-        }
-        break;
-    }
-
-    case Add: case Subtract: case Multiply: case Divide: case Power: case Modulus:
-    case And: case Or: case Xor:
-    case Equal: case NotEqual: case Less: case LessEqual: case Greater: case GreaterEqual:
-    case Declare: case Cast: case As: {
-        printf("%s(", get_ast_kind_name(ast->kind));
-        print_ast(ast->lhs);
-        printf(",");
-        print_ast(ast->rhs);
-        printf(")");
-        break;
-    }
-
-    case While: {
-        printf("While(");
-        print_ast(ast->loop.condition);
-        printf(",");
-        print_ast(ast->loop.body);
-        printf(")");
-        break;
-    }
-
-    case Fail: {
-        printf("\x1b[33mfail\x1b[m ");
-        print_ast(ast->child);
-        break;
-    }
-    default: printf("%s(...)", kind_tags[ast->kind]);
-    }
 }
 
 ast_t *parse(file_t *f)

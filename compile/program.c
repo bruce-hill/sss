@@ -52,13 +52,14 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
 
 static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
 {
-    gcc_param_t *params[LIST_LEN(fn_type->args)];
+    auto fn = Match(fn_type, FunctionType);
+    gcc_param_t *params[LIST_LEN(fn->args)];
     binding_t *type_binding = hashmap_get(env->bindings, type_to_string(t));
     assert(type_binding && type_binding->namespace);
-    for (int64_t i = 0; i < LIST_LEN(fn_type->args); i++)
-        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, LIST_ITEM(fn_type->args, i)), fresh("arg"));
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn_type->ret),
-                                    extern_name, LIST_LEN(fn_type->args), params, is_vararg);
+    for (int64_t i = 0; i < LIST_LEN(fn->args); i++)
+        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, LIST_ITEM(fn->args, i)), fresh("arg"));
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn->ret),
+                                    extern_name, LIST_LEN(fn->args), params, is_vararg);
     hashmap_set(type_binding->namespace, method_name,
                 new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }

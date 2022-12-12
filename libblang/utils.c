@@ -12,6 +12,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "utils.h"
+
 void say(const char *str, bool *nl)
 {
     if (!nl || *nl == true)

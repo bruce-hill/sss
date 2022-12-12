@@ -62,9 +62,6 @@ int main(int argc, char *argv[])
         ast_t *ast = parse(f);
 
         if (verbose)
-            print_ast(ast);
-
-        if (verbose)
             fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", argv[i]);
 
         gcc_jit_result *result = compile_file(ctx, f, ast, true);

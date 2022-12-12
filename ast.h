@@ -35,105 +35,205 @@ typedef enum {
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
     Index, FieldAccess, FieldName,
-    NUM_TYPES,
-} astkind_e;
+} ast_tag_e;
 
-const char *get_ast_kind_name(astkind_e kind);
+#define NUM_TYPES (FieldName + 1)
+
+typedef struct ast_s ast_t;
+
+const char *get_ast_tag_name(ast_tag_e tag);
 
 typedef struct {
-    struct ast_s *condition, *body;
+    ast_t *condition, *body;
 } ast_clause_t;
 
 typedef struct {
-    List(struct ast_s*) cases;
-    struct ast_s *body;
+    List(ast_t*) cases;
+    ast_t *body;
 } ast_cases_t;
 
-typedef struct ast_s {
-    astkind_e kind;
+
+struct ast_s {
+    ast_tag_e tag;
     match_t *match;
     union {
-        bool b;
-        int64_t i;
-        double n;
-        istr_t str;
-        struct ast_s *child;
-        List(struct ast_s*) children;
-        struct { // Infix
-            struct ast_s *lhs, *rhs;
-        };
-        struct { // Cast/As
-            struct ast_s *expr, *type;
-        };
-        struct { // Index
-            struct ast_s *indexed, *index;
-        };
-        struct { // foo.baz
-            struct ast_s *fielded;
-            istr_t field;
-        };
-        struct { // Multiple assignment
-            List(struct ast_s*) lhs;
-            List(struct ast_s*) rhs;
-        } multiassign;
-        struct { // Function def/lambda
+        struct {
+        } Unknown;
+        struct {
+            ast_t *type;
+        } Nil;
+        struct {
+            bool b;
+        } Bool;
+        struct {
+            istr_t name;
+        } Var;
+        struct {
+            int64_t i;
+        } Int;
+        struct {
+            double n;
+        } Num;
+        struct {
+            ast_t *first, *last, *step;
+        } Range;
+        struct {
+            istr_t str;
+        } StringLiteral;
+        struct {
+            List(ast_t*) children;
+        } StringJoin;
+        struct {
+            istr_t name;
+            ast_t *str;
+        } DSL;
+        struct {
+            ast_t *value;
+        } Interp;
+        struct {
+            istr_t name;
+            ast_t *value;
+        } Declare;
+        struct {
+            List(ast_t*) targets;
+            List(ast_t*) values;
+        } Assign; 
+        struct {
+            ast_t *lhs, *rhs;
+        } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
+            AndUpdate, OrUpdate,
+            Add, Subtract, Multiply, Divide, Power, Modulus,
+            And, Or, Xor,
+            Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
+        struct {
+            ast_t *value;
+        } Not, Negative, Len, Maybe, TypeOf, SizeOf;
+        struct {
+            ast_t *type;
+            List(ast_t*) items;
+        } List;
+        struct {
+            ast_t *key_type, *value_type;
+            List(ast_t*) items;
+        } Table;
+        struct {
+            istr_t name;
+            List(istr_t) arg_names;
+            List(ast_t*) arg_types;
+            ast_t *ret_type;
+            ast_t *body;
+        } FunctionDef;
+        struct {
             istr_t name, self;
             List(istr_t) arg_names;
-            List(struct ast_s*) arg_types;
-            struct ast_s *ret_type;
-            struct ast_s *body;
-        } fn;
-        struct { // Function
-            struct ast_s *fn;
-            List(struct ast_s*) args;
-        } call;
+            List(ast_t*) arg_types;
+            ast_t *ret_type;
+            ast_t *body;
+        } MethodDef;
+        struct {
+            List(istr_t) arg_names;
+            List(ast_t*) arg_types;
+            ast_t *ret_type;
+            ast_t *body;
+        } Lambda;
+        struct {
+            ast_t *fn;
+            List(ast_t*) args;
+        } FunctionCall;
         struct {
             istr_t name;
-            struct ast_s *text;
-        } dsl;
+            ast_t *arg;
+        } KeywordArg;
         struct {
-            istr_t name;
-            struct ast_s *value;
-        } named;
-        struct { // If
+            List(ast_t*) statements;
+        } Block;
+        struct {
+            List(ast_t*) blocks;
+        } Do;
+        struct {
             List(ast_clause_t) clauses;
-            struct ast_s *else_body;
-        };
-        struct { // When
-            struct ast_s *subject;
+            ast_t *else_body;
+        } If;
+        struct {
+            istr_t key, value;
+            ast_t *iter, *body, *between;
+        } For;
+        struct {
+            ast_t *condition, *body, *between;
+        } While;
+        struct {
+            ast_t *body, *between;
+        } Repeat;
+        struct {
+            ast_t *subject;
             List(ast_cases_t) cases;
-            struct ast_s *default_body;
-        };
-        struct { // While/Repeat
-            struct ast_s *condition, *body, *between;
-        } loop;
+            ast_t *default_body;
+        } When;
         struct {
-            struct ast_s *key, *value, *iter, *body, *between;
-        } for_loop;
-        struct { // Lists
-            struct ast_s *type;
-            List(struct ast_s*) items;
-        } list;
+            istr_t target;
+        } Skip, Stop;
         struct {
-            struct ast_s *first, *last, *step;
-        } range;
+            ast_t *value;
+        } Return;
+        struct {
+            ast_t *message;
+        } Fail;
+        struct {
+            istr_t name;
+            ast_t *type;
+        } Extern;
+        struct {
+            ast_t *item_type;
+        } TypeList;
+        struct {
+            ast_t *key_type, *val_type;
+        } TypeTable;
+        struct {
+            List(istr_t) arg_names;
+            List(ast_t*) arg_types;
+            ast_t *ret_type;
+        } TypeFunction;
+        struct {
+            ast_t *nonnil;
+        } TypeOption;
+        struct {
+            ast_t *value, *type;
+        } Cast, As;
+        struct {
+            ast_t *type;
+            List(ast_t *) members;
+        } Struct;
+        struct {
+            istr_t name;
+            List(ast_t *) members;
+        } StructDef;
         struct {
             List(istr_t) names;
-            struct ast_s *type;
-        } fields;
-        struct {
-            struct ast_s *type;
-            List(struct ast_s *) members;
-        } struct_;
+            ast_t *type;
+        } StructFieldDef;
         struct {
             istr_t name;
-            List(struct ast_s *) members;
-        } struct_def;
+            ast_t *value;
+        } StructField;
         struct {
             istr_t name;
             List(istr_t) tag_names;
             List(int64_t) tag_values;
-            List(struct ast_s *) tag_types;
-        } enum_def;
-    };
-} ast_t;
+            List(ast_t *) tag_types;
+        } EnumDef;
+        struct {
+            istr_t name;
+            ast_t *value;
+        } EnumField;
+        struct {
+            ast_t *indexed, *index;
+        } Index;
+        struct {
+            istr_t field;
+            ast_t *fielded;
+        } FieldAccess;
+        struct {
+            istr_t name;
+        } FieldName;
+    } __data;
+};

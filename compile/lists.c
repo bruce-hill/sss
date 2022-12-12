@@ -28,17 +28,20 @@ static void add_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info
     list_insert_info_t *list_info = data;
     ast_t *ast = list_info->item;
     ast_t *body;
-    if (ast->kind == For) {
-        ast_t *key_ast = ast->for_loop.key,
-              *value_ast = ast->for_loop.value;
-        body = ast->for_loop.body;
-        if (key_ast)
-            hashmap_set(env->bindings, key_ast->str, new(binding_t, .type=info->key_type, .rval=info->key_rval));
-        if (value_ast)
-            hashmap_set(env->bindings, value_ast->str, new(binding_t, .type=info->value_type, .rval=info->value_rval));
+    if (ast->tag == For) {
+        auto for_loop = Match(ast, For);
+        istr_t key = for_loop->key, value = for_loop->value;
+        body = for_loop->body;
+        if (key)
+            hashmap_set(env->bindings, key, new(binding_t, .type=info->key_type, .rval=info->key_rval));
+        if (value)
+            hashmap_set(env->bindings, value, new(binding_t, .type=info->value_type, .rval=info->value_rval));
+    } else if (ast->tag == While) {
+        body = Match(ast, While)->body;
+    } else if (ast->tag == Repeat) {
+        body = Match(ast, Repeat)->body;
     } else {
-        assert(list_info->item->kind == Repeat || list_info->item->kind == While);
-        body = ast->loop.body;
+        assert(false);
     }
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -59,24 +62,28 @@ static void add_list_item(env_t *env, gcc_block_t **block, iterator_info_t *info
 static void compile_list_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
     list_insert_info_t *list_info = data;
-    if (list_info->item->kind == For) {
-        if (list_info->item->for_loop.between)
-            compile_block_statement(env, block, list_info->item->for_loop.between);
-    } else {
-        assert(list_info->item->kind == Repeat || list_info->item->kind == While);
-        if (list_info->item->loop.between)
-            compile_block_statement(env, block, list_info->item->loop.between);
+    ast_t *between = NULL;
+    if (list_info->item->tag == For) {
+        between = Match(list_info->item, For)->between;
+    } else if (list_info->item->tag == While) {
+        between = Match(list_info->item, While)->between;
+    } else if (list_info->item->tag == Repeat) {
+        between = Match(list_info->item, Repeat)->between;
     }
+    if (between)
+        compile_block_statement(env, block, between);
 }
 
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 {
+    auto list = Match(ast, List);
     gcc_ctx_t *ctx = env->ctx;
     bl_type_t *t = get_type(env->file, env->bindings, ast);
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_type_t *item_gcc_type = bl_type_to_gcc(env, t->item_type);
+    bl_type_t *item_type = Match(t, ListType)->item_type;
+    gcc_type_t *item_gcc_type = bl_type_to_gcc(env, item_type);
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *list = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("list"));
+    gcc_lvalue_t *list_lval = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("list"));
 
 #define PARAM(_t, _name) gcc_new_param(ctx, NULL, gcc_type(ctx, _t), _name)
     gcc_param_t *list_params[] = {PARAM(SIZE, "item_size"), PARAM(SIZE, "min_items")};
@@ -91,19 +98,19 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
         ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "list_append", 3, append_params, 0);
 #undef PARAM
 
-    ssize_t item_size = gcc_sizeof(env, t->item_type);
+    ssize_t item_size = gcc_sizeof(env, item_type);
     gcc_rvalue_t *new_list_args[] = {
         gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
-        gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), ast->list.items ? length(ast->list.items): 0),
+        gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), list->items ? length(list->items): 0),
     };
-    gcc_assign(*block, ast_loc(env, ast), list, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
+    gcc_assign(*block, ast_loc(env, ast), list_lval, gcc_call(ctx, NULL, new_list_func, 2, new_list_args));
 
     env_t env2 = *env;
     env = &env2;
 
-    if (ast->list.items) {
+    if (list->items) {
         gcc_block_t *list_done = gcc_new_block(func, fresh("list_done"));
-        foreach (ast->list.items, item_ast, _) {
+        foreach (list->items, item_ast, _) {
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
@@ -112,12 +119,12 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                     .stop_label = list_done,
             };
 
-            switch ((*item_ast)->kind) {
+            switch ((*item_ast)->tag) {
             case For: case While: case Repeat: {
                 // List comprehension:
                 list_insert_info_t info = {
                     .item=*item_ast,
-                    .list=gcc_lvalue_as_rvalue(list),
+                    .list=gcc_lvalue_as_rvalue(list_lval),
                     .append_func=append_func,
                 };
                 compile_iteration(env, block, *item_ast, add_list_item, compile_list_between, (void*)&info);
@@ -129,7 +136,7 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_assign(*block, NULL, item_var, val);
                 gcc_rvalue_t *item_addr = gcc_lvalue_address(item_var, NULL);
                 gcc_rvalue_t *append_args[] = {
-                    gcc_lvalue_as_rvalue(list),
+                    gcc_lvalue_as_rvalue(list_lval),
                     gcc_rvalue_from_long(ctx, gcc_type(ctx, SIZE), (long)item_size),
                     item_addr,
                 };
@@ -145,15 +152,16 @@ gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, NULL, list_done);
         *block = list_done;
     }
-    return gcc_lvalue_as_rvalue(list);
+    return gcc_lvalue_as_rvalue(list_lval);
 }
 
 void compile_list_iteration(
     env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
 {
-    assert(ast->kind == For);
-    ast_t *list_ast = ast->for_loop.iter;
+    assert(ast->tag == For);
+    auto for_loop = Match(ast, For);
+    ast_t *list_ast = for_loop->iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_preamble = gcc_new_block(func, fresh("loop_preamble")),
                 *loop_body = gcc_new_block(func, fresh("loop_body")),
@@ -166,10 +174,10 @@ void compile_list_iteration(
     loop_env.bindings->fallback = env->bindings;
     NEW_LIST(istr_t, label_names);
     append(label_names, intern_str("for"));
-    if (ast->for_loop.key)
-        append(label_names, ast->for_loop.key->str);
-    if (ast->for_loop.value)
-        append(label_names, ast->for_loop.value->str);
+    if (for_loop->key)
+        append(label_names, for_loop->key);
+    if (for_loop->value)
+        append(label_names, for_loop->value);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
@@ -182,20 +190,19 @@ void compile_list_iteration(
     gcc_rvalue_t *list = compile_expr(env, block, list_ast);
     bl_type_t *list_t = get_type(env->file, env->bindings, list_ast);
     gcc_type_t *gcc_list_t = bl_type_to_gcc(env, list_t);
-    if (list_t->kind == OptionalType) {
+    if (list_t->tag == OptionalType) {
         gcc_rvalue_t *is_nil;
         if (gcc_type_if_pointer(gcc_list_t))
             is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_null(env->ctx, gcc_list_t));
         else
             is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_zero(env->ctx, gcc_list_t));
         gcc_jump_condition(*block, NULL, is_nil, loop_end, loop_preamble);
-        list_t = list_t->nonnil;
+        list_t = Match(list_t, OptionalType)->nonnil;
     } else {
         gcc_jump(*block, NULL, loop_preamble);
     }
     *block = NULL;
-    assert(list_t->kind == ListType);
-    bl_type_t *item_t = list_t->item_type;
+    bl_type_t *item_t = Match(list_t, ListType)->item_type;
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
 
     // item_ptr = list->items
@@ -297,7 +304,7 @@ void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *o
     // add_next_item:
     gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, gcc_lvalue_as_rvalue(i)));
     gcc_rvalue_t *item_str;
-    gcc_func_t *item_tostring = get_tostring_func(env, t->item_type);
+    gcc_func_t *item_tostring = get_tostring_func(env, Match(t, ListType)->item_type);
     gcc_rvalue_t *args[] = {
         item,
         gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),

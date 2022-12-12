@@ -23,10 +23,11 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_type_t *range_t = bl_type_to_gcc(env, Type(RangeType));
     gcc_struct_t *range_struct = gcc_type_if_struct(range_t);
     assert(range_struct);
+    auto range = Match(ast, Range);
     gcc_rvalue_t *values[] = {
-        ast->range.first ? compile_expr(env, block, ast->range.first) : gcc_int64(env->ctx, INT64_MIN),
-        ast->range.step ? compile_expr(env, block, ast->range.step) : gcc_int64(env->ctx, 1),
-        ast->range.last ? compile_expr(env, block, ast->range.last) : gcc_int64(env->ctx, INT64_MAX),
+        range->first ? compile_expr(env, block, range->first) : gcc_int64(env->ctx, INT64_MIN),
+        range->step ? compile_expr(env, block, range->step) : gcc_int64(env->ctx, 1),
+        range->last ? compile_expr(env, block, range->last) : gcc_int64(env->ctx, INT64_MAX),
     };
     return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 }
@@ -35,8 +36,8 @@ void compile_range_iteration(
     env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
-    assert(ast->kind == For);
-    ast_t *range = ast->for_loop.iter;
+    auto for_loop = Match(ast, For);
+    ast_t *range = for_loop->iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, fresh("range_body")),
                 *loop_between = between_compiler ? gcc_new_block(func, fresh("range_between")) : NULL,
@@ -48,10 +49,10 @@ void compile_range_iteration(
     loop_env.bindings->fallback = env->bindings;
     NEW_LIST(istr_t, label_names);
     append(label_names, intern_str("for"));
-    if (ast->for_loop.key)
-        append(label_names, ast->for_loop.key->str);
-    if (ast->for_loop.value)
-        append(label_names, ast->for_loop.value->str);
+    if (for_loop->key)
+        append(label_names, for_loop->key);
+    if (for_loop->value)
+        append(label_names, for_loop->value);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
@@ -62,7 +63,7 @@ void compile_range_iteration(
 
     // Preamble:
     bl_type_t *range_t = get_type(env->file, env->bindings, range);
-    assert(range_t->kind == RangeType);
+    assert(range_t->tag == RangeType);
     gcc_rvalue_t *range_val = compile_expr(env, block, range);
     gcc_type_t *gcc_range_t = bl_type_to_gcc(env, range_t);
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);

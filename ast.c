@@ -1,6 +1,6 @@
 #include "ast.h"
 
-static const char *astkind_names[] = {
+static const char *ast_tag_names[] = {
     [Unknown]="Unknown",
     [Nil]="Nil", [Bool]="Bool", [Var]="Var",
     [Int]="Int", [Num]="Num",
@@ -26,6 +26,6 @@ static const char *astkind_names[] = {
     [EnumDef]="EnumDef",
 };
 
-const char *get_ast_kind_name(astkind_e kind) {
-    return astkind_names[kind];
+const char *get_ast_tag_name(ast_tag_e tag) {
+    return ast_tag_names[tag];
 }

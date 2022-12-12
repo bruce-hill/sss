@@ -19,43 +19,44 @@
 #include "../util.h"
 
 static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
-    ast_t *ast = data;
-    if (ast->for_loop.key)
-        hashmap_set(env->bindings, ast->for_loop.key->str, new(binding_t, .rval=info->key_rval, .type=info->key_type));
+    auto for_loop = Match((ast_t*)data, For);
+    if (for_loop->key)
+        hashmap_set(env->bindings, for_loop->key, new(binding_t, .rval=info->key_rval, .type=info->key_type));
 
-    if (ast->for_loop.value)
-        hashmap_set(env->bindings, ast->for_loop.value->str, new(binding_t, .rval=info->value_rval, .type=info->value_type));
+    if (for_loop->value)
+        hashmap_set(env->bindings, for_loop->value, new(binding_t, .rval=info->value_rval, .type=info->value_type));
 
-    if (ast->for_loop.body)
-        compile_block_statement(env, block, ast->for_loop.body);
+    if (for_loop->body)
+        compile_block_statement(env, block, for_loop->body);
 }
 
 static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
-    ast_t *ast = data;
-    if (ast->for_loop.between)
-        compile_block_statement(env, block, ast->for_loop.between);
+    auto for_loop = Match((ast_t*)data, For);
+    if (for_loop->between)
+        compile_block_statement(env, block, for_loop->between);
 }
 
 static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
-    ast_t *ast = data;
-    if (ast->loop.body)
-        compile_block_statement(env, block, ast->loop.body);
+    auto loop = Match((ast_t*)data, While);
+    if (loop->body)
+        compile_block_statement(env, block, loop->body);
 }
 
 static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
-    ast_t *ast = data;
-    if (ast->loop.between)
-        compile_block_statement(env, block, ast->loop.between);
+    auto loop = Match((ast_t*)data, While);
+    if (loop->between)
+        compile_block_statement(env, block, loop->between);
 }
 
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
 {
-    switch (ast->kind) {
+    switch (ast->tag) {
     case Var: {
-        binding_t *binding = hashmap_get(env->bindings, ast->str);
+        auto var = Match(ast, Var);
+        binding_t *binding = hashmap_get(env->bindings, var->name);
         if (!binding) {
             ERROR(env, ast, "I can't find a definition for this variable"); 
         } else if (!binding->is_constant) {
@@ -70,16 +71,17 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         break;
     }
     case FieldAccess: {
-        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->fielded);
+        auto access = Match(ast, FieldAccess);
+        bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
         istr_t type_name;
-        if (indexed_t->kind == TypeType)
-            type_name = ast->fielded->str;
+        if (fielded_t->tag == TypeType)
+            type_name = type_to_string(get_binding(env->bindings, access->fielded)->type_value);
         else
-            type_name = type_to_string(indexed_t);
+            type_name = type_to_string(fielded_t);
         binding_t *type_binding = hashmap_get(env->bindings, type_name);
-        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
         if (!binding) {
-            ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", ast->field, type_to_string(indexed_t));
+            ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", access->field, type_to_string(fielded_t));
         } else if (!binding->is_constant) {
             ERROR(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
         } else if (binding->rval) {
@@ -93,10 +95,10 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         return binding->rval;
     }
     case Int: {
-        return gcc_int64(env->ctx, ast->i);
+        return gcc_int64(env->ctx, Match(ast, Int)->i);
     }
     case Num: {
-        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
+        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), Match(ast, Num)->n);
     }
     default: break;
     }
@@ -105,9 +107,10 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
 
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    switch (ast->kind) {
+    switch (ast->tag) {
     case Var: {
-        binding_t *binding = hashmap_get(env->bindings, ast->str);
+        auto var = Match(ast, Var);
+        binding_t *binding = hashmap_get(env->bindings, var->name);
         if (binding) {
             if (binding->rval)
                 return binding->rval;
@@ -119,19 +122,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ERROR(env, ast, "I can't find a definition for this variable"); 
     }
     case Declare: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->rhs);
+        auto decl = Match(ast, Declare);
+        bl_type_t *t = get_type(env->file, env->bindings, decl->value);
         assert(t);
-        if (t->kind == VoidType)
-            ERROR(env, ast->rhs, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
-        gcc_rvalue_t *rval = compile_expr(env, block, ast->rhs);
+        if (t->tag == VoidType)
+            ERROR(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
+        gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast->lhs), gcc_t, fresh(ast->lhs->str));
-        binding_t *clobbered = hashmap_get_raw(env->bindings, ast->lhs->str);
+        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(decl->name));
+        binding_t *clobbered = hashmap_get_raw(env->bindings, decl->name);
         if (clobbered && clobbered->namespace)
-            ERROR(env, ast->lhs, "This name is already being used for a namespace (struct or enum) in the same block, "
+            ERROR(env, ast, "This name is already being used for a namespace (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        hashmap_set(env->bindings, ast->lhs->str,
+        hashmap_set(env->bindings, decl->name,
                     new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
@@ -139,41 +143,43 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 
     case Extern: {
-        bl_type_t *t = parse_type(env->file, env->bindings, ast->type);
-        if (t->kind == FunctionType) {
-            gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, t->ret);
+        auto ext = Match(ast, Extern);
+        bl_type_t *t = parse_type(env->file, env->bindings, ext->type);
+        if (t->tag == FunctionType) {
+            auto fn = Match(t, FunctionType); 
+            gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, fn->ret);
             NEW_LIST(gcc_param_t*, params);
-            foreach (t->args, arg, _) {
+            foreach (fn->args, arg, _) {
                 gcc_type_t *arg_t = bl_type_to_gcc(env, *arg);
                 APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, fresh("arg")));
             }
-            assert(ast->expr->kind == Var);
             gcc_func_t *func = gcc_new_func(
-                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ast->expr->str, LIST_LEN(params), params[0], 0);
-            hashmap_set(env->bindings, ast->expr->str, new(binding_t, .func=func, .type=t, .is_global=true));
+                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, LIST_LEN(params), params[0], 0);
+            hashmap_set(env->bindings, ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            assert(ast->expr->kind == Var);
-            gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ast->expr->str));
-            hashmap_set(env->bindings, ast->expr->str,
-                        new(binding_t, .rval=glob, .type=t, .is_global=true));
+            gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
+            hashmap_set(env->bindings, ext->name, new(binding_t, .rval=glob, .type=t, .is_global=true));
         }
         return NULL;
     }
 
     case Assign: {
-        int64_t len = length(ast->multiassign.lhs);
+        auto assignment = Match(ast, Assign);
+        List(ast_t*) targets = assignment->targets;
+        List(ast_t*) values = assignment->values;
+        int64_t len = length(targets);
         NEW_LIST(gcc_lvalue_t*, lvals);
-        foreach (ast->multiassign.lhs, lhs, _) {
+        foreach (targets, lhs, _) {
             append(lvals, get_lvalue(env, block, *lhs));
         }
         gcc_func_t *func = gcc_block_func(*block);
         NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
-            ast_t *rhs = ith(ast->multiassign.rhs, i);
-            bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(ast->multiassign.lhs, i));
+            ast_t *rhs = ith(values, i);
+            bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(targets, i));
             bl_type_t *t_rhs = get_type(env->file, env->bindings, rhs);
-            gcc_rvalue_t *rval = compile_expr(env, block, ith(ast->multiassign.rhs, i));
+            gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
             if (!promote(env, block, t_rhs, &rval, t_lhs))
                 ERROR(env, rhs, "You're assigning this value with type %s to a variable with type %s and I can't figure out how to make that work.",
@@ -193,10 +199,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return ith(rvals, length(rvals)-1);
     }
     case Do: {
+        auto blocks = Match(ast, Do)->blocks;
         // TODO: support do/else?
-        if (length(ast->children) > 1)
-            ERROR(env, ith(ast->children, 1), "`do` statments with else clauses are not currently supported");
-        return compile_expr(env, block, ith(ast->children, 0));
+        if (length(blocks) > 1)
+            ERROR(env, ith(blocks, 1), "`do` statments with else clauses are not currently supported");
+        return compile_expr(env, block, ith(blocks, 0));
     }
     case Block: {
         // Create scope:
@@ -205,35 +212,35 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         block_env.bindings->fallback = env->bindings;
         return compile_block_expr(&block_env, block, ast);
     }
-    case FunctionDef: case Lambda: {
-        binding_t *binding = hashmap_get(env->bindings, ast->fn.name);
-        if (binding && binding->func) {
-            compile_function(env, binding->func, ast);
-            return binding->rval;
-        } else {
-            // At this point, either this is a lambda or a function def used as a value
-            // instead of a statement
-            gcc_func_t *func = get_function_def(env, ast, fresh(ast->fn.name ? ast->fn.name : "lambda"), false);
-            compile_function(env, func, ast);
-            return gcc_get_func_address(func, NULL);
-        }
+    case FunctionDef: {
+        auto fn = Match(ast, FunctionDef);
+        binding_t *binding = hashmap_get(env->bindings, fn->name);
+        assert(binding && binding->func);
+        compile_function(env, binding->func, ast);
+        return binding->rval;
+    }
+    case Lambda: {
+        gcc_func_t *func = get_function_def(env, ast, fresh("lambda"), false);
+        compile_function(env, func, ast);
+        return gcc_get_func_address(func, NULL);
     }
     case Return: {
+        auto ret = Match(ast, Return);
         assert(env->return_type);
-        if (env->return_type->kind == VoidType) {
-            if (ast->child) {
-                bl_type_t *child_type = get_type(env->file, env->bindings, ast->child);
-                if (child_type->kind != VoidType)
+        if (env->return_type->tag == VoidType) {
+            if (ret->value) {
+                bl_type_t *child_type = get_type(env->file, env->bindings, ret->value);
+                if (child_type->tag != VoidType)
                     ERROR(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
-                compile_statement(env, block, ast->child);
+                compile_statement(env, block, ret->value);
             }
             gcc_return_void(*block, NULL);
         } else {
-            if (!ast->child)
+            if (!ret->value)
                 ERROR(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
                       type_to_string(env->return_type));
-            bl_type_t *t = get_type(env->file, env->bindings, ast->child);
-            gcc_rvalue_t *val = compile_expr(env, block, ast->child);
+            bl_type_t *t = get_type(env->file, env->bindings, ret->value);
+            gcc_rvalue_t *val = compile_expr(env, block, ret->value);
             if (!promote(env, block, t, &val, env->return_type))
                 ERROR(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
@@ -244,28 +251,29 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Int: {
-        return gcc_int64(env->ctx, ast->i);
+        return gcc_int64(env->ctx, Match(ast, Int)->i);
     }
     case Num: {
-        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), ast->n);
+        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), Match(ast, Num)->n);
     }
     case StringLiteral: {
-        return gcc_new_string(env->ctx, ast->str);
+        return gcc_new_string(env->ctx, Match(ast, StringLiteral)->str);
     }
     case StringJoin: {
-        foreach (ast->children, chunk, _) {
+        auto chunks = Match(ast, StringJoin)->children;
+        foreach (chunks, chunk, _) {
             bl_type_t *t = get_type(env->file, env->bindings, *chunk);
-            if (t->kind == VoidType)
+            if (t->tag == VoidType)
                 ERROR(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
-        if (length(ast->children) == 0) {
+        if (length(chunks) == 0) {
             gcc_rvalue_t *empty = gcc_new_string(env->ctx, "");
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &empty);
-        } else if (length(ast->children) == 1) {
-            ast_t *child = ith(ast->children, 0);
+        } else if (length(chunks) == 1) {
+            ast_t *child = ith(chunks, 0);
             gcc_rvalue_t *str = compile_expr(env, block, child);
             bl_type_t *t = get_type(env->file, env->bindings, child);
             gcc_func_t *tostring = get_tostring_func(env, t);
@@ -277,10 +285,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
         gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 
-        foreach (ast->children, chunk, _) {
+        foreach (chunks, chunk, _) {
             gcc_rvalue_t *val;
             bl_type_t *t = get_type(env->file, env->bindings, *chunk);
-            if (t->kind == StringType) {
+            if (t->tag == StringType) {
                 val = compile_expr(env, block, *chunk);
             } else {
                 gcc_func_t *tostring = get_tostring_func(env, t);
@@ -303,7 +311,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case StructDef: {
-        binding_t *b = hashmap_get(env->bindings, ast->struct_def.name);
+        auto struct_def = Match(ast, StructDef);
+        binding_t *b = hashmap_get(env->bindings, struct_def->name);
         assert(b && b->namespace);
         hashmap_t *namespace = b->namespace;
         hashmap_t *globals = global_bindings(env->bindings);
@@ -313,47 +322,50 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         struct_env.bindings = namespace;
         env = &struct_env;
 
-        foreach (ast->struct_def.members, member, _) {
-            if ((*member)->kind == FunctionDef) {
-                binding_t *binding = hashmap_get(env->bindings, (*member)->fn.name);
+        foreach (struct_def->members, member, _) {
+            if ((*member)->tag == FunctionDef) {
+                auto fndef = Match((*member), FunctionDef);
+                binding_t *binding = hashmap_get(env->bindings, fndef->name);
                 assert(binding);
                 compile_function(env, binding->func, *member);
-            } else if ((*member)->kind == Declare) {
-                ast_t *decl = *member;
-                gcc_rvalue_t *rval = compile_expr(env, block, decl->rhs);
-                bl_type_t *t = get_type(env->file, env->bindings, decl->rhs);
+            } else if ((*member)->tag == Declare) {
+                auto decl = Match((*member), Declare);
+                gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
+                bl_type_t *t = get_type(env->file, env->bindings, decl->value);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                istr_t global_name = intern_strf("%s__%s", ast->struct_def.name, decl->lhs->str);
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, decl->lhs), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
-                hashmap_set(env->bindings, decl->lhs->str,
+                istr_t global_name = intern_strf("%s__%s", struct_def->name, decl->name);
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
+                hashmap_set(env->bindings, decl->name,
                             new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t, .is_global=true));
                 assert(rval);
-                gcc_assign(*block, ast_loc(env, decl), lval, rval);
+                gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             }
         }
 
         return NULL;
     }
     case Struct: {
-        binding_t *binding = get_binding(env->bindings, ast->struct_.type);
+        auto struct_ = Match(ast, Struct);
+        binding_t *binding = get_binding(env->bindings, struct_->type);
         bl_type_t *t = binding->type_value;
-        if (length(t->struct_.field_names) == 0)
+        auto struct_type = Match(t, StructType);
+        if (length(struct_type->field_names) == 0)
             ERROR(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
-        if (length(ast->struct_.members) > length(t->struct_.field_names))
+        if (length(struct_->members) > length(struct_type->field_names))
             ERROR(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
                   type_to_string(t),
-                  length(t->struct_.field_names), length(ast->struct_.members));
+                  length(struct_type->field_names), length(struct_->members));
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
         size_t num_fields = gcc_field_count(gcc_struct);
-        assert(num_fields == (size_t)length(t->struct_.field_names));
+        assert(num_fields == (size_t)length(struct_type->field_names));
         gcc_field_t *unused_fields[num_fields];
         for (size_t i = 0, count = gcc_field_count(gcc_struct); i < count; i++)
             unused_fields[i] = gcc_get_field(gcc_struct, i);
 
-        size_t num_values = length(ast->struct_.members);
+        size_t num_values = length(struct_->members);
 
         struct {
             size_t field_num;
@@ -363,23 +375,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } entries[num_values];
 
         for (size_t i = 0; i < num_values; i++) {
-            ast_t *member = ith(ast->struct_.members, i);
-            assert(member->kind == StructField);
-            entries[i].ast = member->named.value;
-            entries[i].value = compile_expr(env, block, member->named.value);
+            auto member = Match(ith(struct_->members, i), StructField);
+            entries[i].ast = member->value;
+            entries[i].value = compile_expr(env, block, member->value);
         }
 
         // Put in named fields first:
         for (size_t value_index = 0; value_index < num_values; value_index++) {
-            ast_t *member = ith(ast->struct_.members, value_index);
-            if (!member->named.name) continue;
+            ast_t *member_ast = ith(struct_->members, value_index);
+            auto member = Match(member_ast, StructField);
+            if (!member->name) continue;
             for (size_t field_index = 0; field_index < num_fields; field_index++) {
-                if (ith(t->struct_.field_names, field_index) != member->named.name)
+                if (ith(struct_type->field_names, field_index) != member->name)
                     continue;
 
                 gcc_field_t *field = unused_fields[field_index];
                 if (!field)
-                    ERROR(env, member, "You already provided a value for this field earlier in this struct.");
+                    ERROR(env, member_ast, "You already provided a value for this field earlier in this struct.");
 
                 // Found the field:
                 entries[value_index].field = field;
@@ -388,15 +400,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 goto found_name;
             }
 
-            ERROR(env, member, "There is no struct field with this name");
+            ERROR(env, member_ast, "There is no struct field with this name");
 
           found_name: continue;
         }
 
         // Now put in unnamed fields:
         for (size_t value_index = 0; value_index < num_values; value_index++) {
-            ast_t *member = ith(ast->struct_.members, value_index);
-            if (member->named.name) continue;
+            ast_t *member_ast = ith(struct_->members, value_index);
+            auto member = Match(member_ast, StructField);
+            if (member->name) continue;
             for (size_t field_index = 0; field_index < num_fields; field_index++) {
                 if (!unused_fields[field_index])
                     continue;
@@ -409,18 +422,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             // Unreachable, this should be handled earlier
-            ERROR(env, member, "This field is beyond the number of fields in this struct.");
+            ERROR(env, member_ast, "This field is beyond the number of fields in this struct.");
 
           found_index: continue;
         }
 
         for (size_t field_index = 0; field_index < num_fields; field_index++) {
-            bl_type_t *ft = ith(t->struct_.field_types, field_index);
-            if (ft->kind == OptionalType) continue;
+            bl_type_t *ft = ith(struct_type->field_types, field_index);
+            if (ft->tag == OptionalType) continue;
             if (unused_fields[field_index])
                 ERROR(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
                       type_to_string(t),
-                      ith(t->struct_.field_names, field_index), type_to_string(ft));
+                      ith(struct_type->field_names, field_index), type_to_string(ft));
         }
 
         // GCC is dumb and requires sorting the fields:
@@ -429,12 +442,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rvalues[num_values];
         for (size_t i = 0; i < num_values; i++) {
             // Check type:
-            bl_type_t *expected = ith(t->struct_.field_types, entries[i].field_num);
+            bl_type_t *expected = ith(struct_type->field_types, entries[i].field_num);
             bl_type_t *actual = get_type(env->file, env->bindings, entries[i].ast);
             rvalues[i] = entries[i].value;
             if (!promote(env, block, actual, &rvalues[i], expected))
                 ERROR(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
-                      type_to_string(expected), type_to_string(t), ith(t->struct_.field_names, entries[i].field_num),
+                      type_to_string(expected), type_to_string(t), ith(struct_type->field_names, entries[i].field_num),
                       type_to_string(actual));
 
             populated_fields[i] = entries[i].field;
@@ -447,16 +460,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, binding->enum_type);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
 
-            bl_type_t *union_type = binding->enum_type->tagged.data;
+            auto tagged = Match(binding->enum_type, TaggedUnionType);
+            bl_type_t *union_type = tagged->data;
+            auto union_ = Match(union_type, UnionType);
 
             int64_t field_index = 0;
-            for (int64_t i = 0, len = length(union_type->union_.field_types); i < len; i++) {
-                if (ith(union_type->union_.field_types, i) == t) {
+            for (int64_t i = 0, len = length(union_->field_types); i < len; i++) {
+                if (ith(union_->field_types, i) == t) {
                     field_index = i;
                     break;
                 }
             }
-            gcc_field_t *union_field = ith(union_type->union_.fields, field_index);//gcc_get_field((gcc_struct_t*)bl_type_to_gcc(env, union_type), field_index);
+            gcc_field_t *union_field = ith(union_->fields, field_index);
             gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
             gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
             gcc_field_t *fields[] = {
@@ -470,24 +485,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return rval;
     }
     case FunctionCall: {
+        auto call = Match(ast, FunctionCall);
         gcc_rvalue_t *fn_ptr = NULL;
         gcc_func_t *fn = NULL;
-        bl_type_t *fn_t = get_type(env->file, env->bindings, ast->call.fn);
+        auto fn_t = Match(get_type(env->file, env->bindings, call->fn), FunctionType);
         NEW_LIST(gcc_rvalue_t*, arg_vals);
         int64_t num_selfs = 0;
         // Method calls:
-        if (ast->call.fn->kind == FieldAccess) {
-            ast_t *self = ast->call.fn->fielded;
+        if (call->fn->tag == FieldAccess) {
+            auto access = Match(call->fn, FieldAccess);
+            ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
-            switch (self_t->kind) {
+            switch (self_t->tag) {
             case TypeType: {
-                if (ast->call.fn->fielded->kind != Var)
-                    ERROR(env, ast->call.fn, "I only know how to access type members by referencing the type directly like Foo.baz()");
-                istr_t type_name = ast->call.fn->fielded->str;
+                if (access->fielded->tag != Var)
+                    ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like Foo.baz()");
+                istr_t type_name = access->field;
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
-                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->field) : NULL;
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find any method called %s for %s.", ast->call.fn->field, type_name);
+                    ERROR(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_name);
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -495,9 +512,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             default: {
                 istr_t type_name = type_to_string(self_t);
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
-                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->call.fn->field) : NULL;
+                binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, ast->call.fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                    ERROR(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 append(arg_vals, self_val);
                 num_selfs += 1;
@@ -507,14 +524,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             }
         } else {
-            fn_ptr = compile_expr(env, block, ast->call.fn);
+            fn_ptr = compile_expr(env, block, call->fn);
             fn = NULL;
         }
         // TODO: keyword args
-        foreach (ast->call.args, arg, _) {
+        foreach (call->args, arg, _) {
             gcc_rvalue_t *val = compile_expr(env, block, *arg);
             bl_type_t *actual = get_type(env->file, env->bindings, *arg);
-            bl_type_t *expected = ith(fn_t->args, num_selfs + (int64_t)(arg - *ast->call.args));
+            bl_type_t *expected = ith(fn_t->args, num_selfs + (int64_t)(arg - *call->args));
             if (!promote(env, block, actual, &val, expected))
                 ERROR(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
@@ -536,23 +553,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert(false);
     }
     case KeywordArg: {
-        return compile_expr(env, block, ast->named.value);
+        return compile_expr(env, block, Match(ast, KeywordArg)->arg);
     }
     case Bool: {
-        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), ast->b ? 1 : 0);
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), Match(ast, Bool)->b ? 1 : 0);
     }
     case Maybe: {
-        gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
-        bl_type_t *nonnil_t = get_type(env->file, env->bindings, ast->child);
+        ast_t *value = Match(ast, Maybe)->value;
+        gcc_rvalue_t *rval = compile_expr(env, block, value);
+        bl_type_t *nonnil_t = get_type(env->file, env->bindings, value);
         gcc_type_t *gcc_nonnil_t = bl_type_to_gcc(env, nonnil_t);
         if (!gcc_type_if_pointer(gcc_nonnil_t))
             rval = move_to_heap(env, block, nonnil_t, rval);
         return rval;
     }
     case Len: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
-        gcc_rvalue_t *obj = compile_expr(env, block, ast->child);
-        switch (t->kind) {
+        ast_t *value = Match(ast, Len)->value;
+        bl_type_t *t = get_type(env->file, env->bindings, value);
+        gcc_rvalue_t *obj = compile_expr(env, block, value);
+        switch (t->tag) {
         case ListType: {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
@@ -589,12 +608,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FieldAccess: {
         (void)get_type(env->file, env->bindings, ast); // typecheck
-        bl_type_t *fielded_t = get_type(env->file, env->bindings, ast->fielded);
+        auto access = Match(ast, FieldAccess);
+        bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
-        gcc_rvalue_t *obj = compile_expr(env, block, ast->fielded);
-        if (fielded_t->kind == StructType) {
-            for (int64_t i = 0, len = LIST_LEN(fielded_t->struct_.field_names); i < len; i++) {
-                if (LIST_ITEM(fielded_t->struct_.field_names, i) == ast->field) {
+        gcc_rvalue_t *obj = compile_expr(env, block, access->fielded);
+        if (fielded_t->tag == StructType) {
+            auto struct_type = Match(fielded_t, StructType);
+            for (int64_t i = 0, len = LIST_LEN(struct_type->field_names); i < len; i++) {
+                if (LIST_ITEM(struct_type->field_names, i) == access->field) {
                     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, NULL, field);
@@ -602,29 +623,30 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
         }
         binding_t *binding;
-        if (fielded_t->kind == TypeType) {
-            hashmap_t *ns = get_namespace(env->bindings, ast->fielded);
-            binding = hashmap_get(ns, ast->field);
+        if (fielded_t->tag == TypeType) {
+            hashmap_t *ns = get_namespace(env->bindings, access->fielded);
+            binding = hashmap_get(ns, access->field);
         } else {
             binding_t *type_binding = hashmap_get(env->bindings, type_to_string(fielded_t));
-            binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, ast->field) : NULL;
+            binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
         }
         if (binding)
             return binding->rval;
         else
-            ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", ast->field, type_to_string(fielded_t));
+            ERROR(env, ast, "I can't find any field or method called \"%s\" on a %s.", access->field, type_to_string(fielded_t));
     }
     case Index: {
         // (void)get_type(env->file, env->bindings, ast); // typecheck
-        bl_type_t *indexed_t = get_type(env->file, env->bindings, ast->indexed);
+        auto indexing = Match(ast, Index);
+        bl_type_t *indexed_t = get_type(env->file, env->bindings, indexing->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
-        gcc_rvalue_t *obj = compile_expr(env, block, ast->indexed);
-        if (indexed_t->kind != ListType)
+        gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
+        if (indexed_t->tag != ListType)
             ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
         gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
         gcc_rvalue_t *items = gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 0)));
-        gcc_rvalue_t *index = compile_expr(env, block, ast->index);
+        gcc_rvalue_t *index = compile_expr(env, block, indexing->index);
         // Bounds check:
         gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
         gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
@@ -657,23 +679,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
     }
     case TypeOf: {
+        auto value = Match(ast, TypeOf)->value;
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
-        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        bl_type_t *t = get_type(env->file, env->bindings, value);
         return gcc_call(env->ctx, NULL, intern_str_func, 1,
                         (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t))});
     }
     case SizeOf: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        auto value = Match(ast, SizeOf)->value;
+        bl_type_t *t = get_type(env->file, env->bindings, value);
         ssize_t size = gcc_sizeof(env, t);
         return gcc_int64(env->ctx, size);
     }
     case Cast: {
-        gcc_rvalue_t *val = compile_expr(env, block, ast->expr);
+        auto cast = Match(ast, Cast);
+        gcc_rvalue_t *val = compile_expr(env, block, cast->value);
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         return gcc_bitcast(env->ctx, NULL, val, bl_type_to_gcc(env, t));
     }
     case As: {
-        gcc_rvalue_t *val = compile_expr(env, block, ast->expr);
+        auto as = Match(ast, As);
+        gcc_rvalue_t *val = compile_expr(env, block, as->value);
         bl_type_t *t = get_type(env->file, env->bindings, ast);
         return gcc_cast(env->ctx, NULL, val, bl_type_to_gcc(env, t));
     }
@@ -686,10 +712,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_zero(env->ctx, bl_type_to_gcc(env, t));
     }
     case Not: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        auto value = Match(ast, Not)->value;
+        bl_type_t *t = get_type(env->file, env->bindings, value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_rvalue_t *val = compile_expr(env, block, ast->child);
-        if (t->kind == BoolType)
+        gcc_rvalue_t *val = compile_expr(env, block, value);
+        if (t->tag == BoolType)
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
         else if (is_integral(t))
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
@@ -698,32 +725,39 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Equal: case NotEqual: {
         (void)get_type(env->file, env->bindings, ast); // Check type
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
+        ast_t *lhs = (ast->tag == Equal) ? Match(ast, Equal)->lhs : Match(ast, NotEqual)->lhs;
+        ast_t *rhs = (ast->tag == Equal) ? Match(ast, Equal)->rhs : Match(ast, NotEqual)->rhs;
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
         coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
         // TODO: support comparing optional values
-        if ((lhs_t->kind == OptionalType) != (rhs_t->kind == OptionalType))
+        if ((lhs_t->tag == OptionalType) != (rhs_t->tag == OptionalType))
             ERROR(env, ast, "I don't currently support direct comparisons between %s and %s, you may have to add a question mark to make it explicitly optional.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
-        return gcc_comparison(env->ctx, NULL, ast->kind == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
+        return gcc_comparison(env->ctx, NULL, ast->tag == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        // Unsafe! This is a hack to avoid duplicate code, based on the assumption that each of these types
+        // has the same struct layout:
+        ast_t *lhs = ast->__data.Less.lhs,
+              *rhs = ast->__data.Less.rhs;
+        // End of unsafe
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
         gcc_comparison_e cmp;
-        switch (ast->kind) {
+        switch (ast->tag) {
         case Less: cmp = GCC_COMPARISON_LT; break;
         case LessEqual: cmp = GCC_COMPARISON_LE; break;
         case Greater: cmp = GCC_COMPARISON_GT; break;
         case GreaterEqual: cmp = GCC_COMPARISON_GE; break;
         default: assert(false);
         }
-        if (lhs_t == rhs_t && (lhs_t->kind == StringType || lhs_t->kind == DSLType)) {
+        if (lhs_t == rhs_t && (lhs_t->tag == StringType || lhs_t->tag == DSLType)) {
             gcc_param_t *cmp_params[] = {
                 gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, lhs_t), "str1"),
                 gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, rhs_t), "str2"),
@@ -738,23 +772,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ERROR(env, ast, "I don't know how to do ordered comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case Negative: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast->child);
+        ast_t *value = Match(ast, Negative)->value;
+        bl_type_t *t = get_type(env->file, env->bindings, value);
         if (!is_numeric(t))
             ERROR(env, ast, "I only know how to negate numbers, not %s", type_to_string(t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_rvalue_t *rval = compile_expr(env, block, ast->child);
+        gcc_rvalue_t *rval = compile_expr(env, block, value);
         return gcc_unary_op(env->ctx, NULL, GCC_UNOP_MINUS, gcc_t, rval);
     }
     case And: {
+        ast_t *lhs = Match(ast, And)->lhs,
+              *rhs = Match(ast, And)->rhs;
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        if (t->kind == BoolType && rhs_t->kind == BoolType) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        if (t->tag == BoolType && rhs_t->tag == BoolType) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
             if (!promote(env, block, lhs_t, &lhs_val, rhs_t))
                 assert(promote(env, block, rhs_t, &rhs_val, lhs_t));
@@ -768,16 +805,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_rvalue_t *bool_val = lhs_val;
-        if (t->kind != BoolType) {
+        if (t->tag != BoolType) {
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
         }
         gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
 
-        if (rhs_t->kind == AbortType) {
-            compile_statement(env, &if_truthy, ast->rhs);
+        if (rhs_t->tag == AbortType) {
+            compile_statement(env, &if_truthy, rhs);
         } else {
-            gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, ast->rhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, rhs);
             if (if_truthy)
                 gcc_assign(if_truthy, NULL, result, rhs_val);
         }
@@ -791,15 +828,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_lvalue_as_rvalue(result);
     }
     case Or: {
+        ast_t *lhs = Match(ast, Or)->lhs,
+              *rhs = Match(ast, Or)->rhs;
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        if (t->kind == BoolType && rhs_t->kind == BoolType) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        if (t->tag == BoolType && rhs_t->tag == BoolType) {
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
                 && !promote(env, block, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
@@ -813,11 +852,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_rvalue_t *bool_val = lhs_val;
-        if (t->kind != BoolType) {
+        if (t->tag != BoolType) {
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
 
-            if (lhs_t->kind == OptionalType && t->kind != OptionalType
+            if (lhs_t->tag == OptionalType && t->tag != OptionalType
                 && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
                 lhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(lhs_val, NULL));
         }
@@ -826,11 +865,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(if_truthy, NULL, result, lhs_val);
         gcc_jump(if_truthy, NULL, done);
 
-        if (rhs_t->kind == AbortType) {
-            compile_statement(env, &if_falsey, ast->rhs);
+        if (rhs_t->tag == AbortType) {
+            compile_statement(env, &if_falsey, rhs);
         } else {
-            gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, ast->rhs);
-            if (rhs_t->kind == OptionalType && t->kind != OptionalType
+            gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, rhs);
+            if (rhs_t->tag == OptionalType && t->tag != OptionalType
                 && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
                 rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
             if (if_falsey)
@@ -843,9 +882,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_lvalue_as_rvalue(result);
     }
     case Xor: {
+        ast_t *lhs = Match(ast, Xor)->lhs, *rhs = Match(ast, Xor)->rhs;
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_XOR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
@@ -855,7 +895,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ERROR(env, ast, "I don't yet know how to do math operations on non-numeric types like %s", type_to_string(t));
 
         gcc_binary_op_e op;
-        switch (ast->kind) {
+        switch (ast->tag) {
         case Add: case AddUpdate: op = GCC_BINOP_PLUS; break;
         case Subtract: case SubtractUpdate: op = GCC_BINOP_MINUS; break;
         case Multiply: case MultiplyUpdate: op = GCC_BINOP_MULT; break;
@@ -863,11 +903,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         default: ERROR(env, ast, "Unsupported math operation");
         }
 
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        if (AddUpdate <= ast->kind && ast->kind <= DivideUpdate) {
-            gcc_lvalue_t *lhs_val = get_lvalue(env, block, ast->lhs);
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        // Unsafe! This assumes each of these types has the same tagged union struct layout. It saves some duplicated code.
+        ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
+        // End unsafe
+
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        if (AddUpdate <= ast->tag && ast->tag <= DivideUpdate) {
+            gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
             if (!promote(env, block, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them without losing precision.",
@@ -875,8 +919,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_update(*block, ast_loc(env, ast), lhs_val, op, rhs_val);
             return gcc_lvalue_as_rvalue(lhs_val);
         } else {
-            gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+            gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
             if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
                 && !promote(env, block, rhs_t, &rhs_val, lhs_t))
@@ -886,16 +930,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Modulus: {
+        ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
         bl_type_t *t = get_type(env->file, env->bindings, ast);
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, ast->lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, ast->rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, ast->lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, ast->rhs);
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
             && !promote(env, block, rhs_t, &rhs_val, lhs_t))
             ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
-        if (t->kind == NumType || t->kind == Num32Type) {
+        if (t->tag == NumType || t->tag == Num32Type) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
             return gcc_call(env->ctx, NULL, sane_fmod_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val});
         } else {
@@ -903,17 +948,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case If: {
+        auto if_ = Match(ast, If);
         bl_type_t *if_t = get_type(env->file, env->bindings, ast);
-        bl_type_t *nonnil_t = if_t->kind == OptionalType ? if_t->nonnil : if_t;
-        bool has_value = !(nonnil_t->kind == AbortType || nonnil_t->kind == VoidType);
+        bl_type_t *nonnil_t = if_t->tag == OptionalType ? Match(if_t, OptionalType)->nonnil : if_t;
+        bool has_value = !(nonnil_t->tag == AbortType || nonnil_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
-        gcc_block_t *end_if = if_t->kind == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
+        gcc_block_t *end_if = if_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
-        foreach (ast->clauses, clause, last_clause) {
+        foreach (if_->clauses, clause, last_clause) {
             gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
-            gcc_block_t *if_falsey = (clause < last_clause || ast->else_body) ? gcc_new_block(func, fresh("elseif")) : end_if;
+            gcc_block_t *if_falsey = (clause < last_clause || if_->else_body) ? gcc_new_block(func, fresh("elseif")) : end_if;
 
             ast_t *condition = clause->condition, *body = clause->body;
             env_t branch_env = *env;
@@ -938,13 +984,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             *block = if_falsey;
         }
-        if (ast->else_body) {
-            gcc_rvalue_t *branch_val = compile_expr(env, block, ast->else_body);
+        if (if_->else_body) {
+            gcc_rvalue_t *branch_val = compile_expr(env, block, if_->else_body);
             if (branch_val) {
                 if (if_ret) {
-                    bl_type_t *actual = get_type(env->file, env->bindings, ast->else_body);
+                    bl_type_t *actual = get_type(env->file, env->bindings, if_->else_body);
                     if (!promote(env, block, actual, &branch_val, if_t))
-                        ERROR(env, ast->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                        ERROR(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(if_t), type_to_string(actual));
                     gcc_assign(*block, NULL, if_ret, branch_val);
                 } else {
@@ -959,16 +1005,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case When: {
         // TODO: support `when "foo"` and `when x is (2+3)` by falling back to if/else when switch doesn't work
-        gcc_rvalue_t *subject = compile_expr(env, block, ast->subject);
+        auto when = Match(ast, When);
+        gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
         bl_type_t *result_t = get_type(env->file, env->bindings, ast);
-        bl_type_t *nonnil_t = result_t->kind == OptionalType ? result_t->nonnil : result_t;
-        bool has_value = !(nonnil_t->kind == AbortType || nonnil_t->kind == VoidType);
+        bl_type_t *nonnil_t = result_t->tag == OptionalType ? Match(result_t, OptionalType)->nonnil : result_t;
+        bool has_value = !(nonnil_t->tag == AbortType || nonnil_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
-        gcc_block_t *end_when = result_t->kind == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
+        gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
         NEW_LIST(gcc_case_t*, gcc_cases);
-        foreach (ast->cases, case_, _) {
+        foreach (when->cases, case_, _) {
             gcc_block_t *case_block = gcc_new_block(func, fresh("case"));
             gcc_rvalue_t *branch_val = compile_expr(env, &case_block, case_->body);
             foreach (case_->cases, val, __) {
@@ -991,14 +1038,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(case_block, NULL, end_when);
         }
         gcc_block_t *default_block;
-        if (ast->default_body) {
+        if (when->default_body) {
             default_block = gcc_new_block(func, fresh("default"));
-            gcc_rvalue_t *branch_val = compile_expr(env, &default_block, ast->default_body);
+            gcc_rvalue_t *branch_val = compile_expr(env, &default_block, when->default_body);
             if (branch_val) {
                 if (when_value) {
-                    bl_type_t *actual = get_type(env->file, env->bindings, ast->default_body);
+                    bl_type_t *actual = get_type(env->file, env->bindings, when->default_body);
                     if (!promote(env, &default_block, actual, &branch_val, result_t))
-                        ERROR(env, ast->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                        ERROR(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(default_block, NULL, when_value, branch_val);
                 } else {
@@ -1027,11 +1074,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Skip: case Stop: {
         gcc_block_t *jump_dest = NULL;
-        if (ast->str) {
+        istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
+        if (target) {
             for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
                 foreach (lbl->names, name, _) {
-                    if (*name == ast->str) {
-                        if (ast->kind == Skip) {
+                    if (*name == target) {
+                        if (ast->tag == Skip) {
                             jump_dest = lbl->skip_label;
                             lbl->skip_reachable = true;
                         } else {
@@ -1045,7 +1093,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
           found_label:;
         } else {
             if (env->loop_label) {
-                if (ast->kind == Skip) {
+                if (ast->tag == Skip) {
                     jump_dest = env->loop_label->skip_label;
                     env->loop_label->skip_reachable = true;
                 } else {
@@ -1054,15 +1102,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 }
             }
         }
-        if (!jump_dest) ERROR(env, ast, "I'm not sure what %s is referring to", ast->str);
+        if (!jump_dest) ERROR(env, ast, "I'm not sure what %s is referring to", target);
         gcc_jump(*block, NULL, jump_dest);
         *block = NULL;
         return NULL;
     }
     case Fail: {
+        ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
-        if (ast->child) {
-            msg = compile_expr(env, block, ast->child);
+        if (message) {
+            msg = compile_expr(env, block, message);
         } else {
             msg = gcc_new_string(env->ctx, "A failure occurred");
         }
@@ -1083,7 +1132,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     default: break;
     }
-    ERROR(env, ast, "I haven't yet implemented compiling for %s", get_ast_kind_name(ast->kind)); 
+    ERROR(env, ast, "I haven't yet implemented compiling for %s", get_ast_tag_name(ast->tag)); 
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

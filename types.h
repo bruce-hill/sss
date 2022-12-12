@@ -6,55 +6,66 @@
 
 #include "libblang/list.h"
 
-typedef enum {
-    UnknownType,
-    AbortType, VoidType,
-    BoolType,
-    IntType, Int32Type, Int16Type, Int8Type,
-    NumType, Num32Type,
-    StringType, DSLType,
-    NamedType,
-    TypeType,
-    RangeType,
-    ListType,
-    TableType,
-    FunctionType,
-    OptionalType,
-    StructType,
-    TaggedUnionType,
-    UnionType,
-} typekind_e;
-
 typedef const struct bl_type_s {
-    typekind_e kind;
+    enum {
+        UnknownType,
+        AbortType, VoidType,
+        BoolType,
+        IntType, Int32Type, Int16Type, Int8Type,
+        NumType, Num32Type,
+        StringType, DSLType,
+        NamedType,
+        TypeType,
+        RangeType,
+        ListType,
+        TableType,
+        FunctionType,
+        OptionalType,
+        StructType,
+        TaggedUnionType,
+        UnionType,
+    } tag;
+
     union {
-        istr_t name;
-        const struct bl_type_s *item_type;
-        const struct bl_type_s *nonnil;
         struct {
-            const struct bl_type_s *key, *value;
-        };
+        } UnknownType, AbortType, VoidType, BoolType, IntType,
+            Int32Type, Int16Type, Int8Type, NumType, Num32Type,
+            StringType;
+        struct {
+            istr_t name;
+        } DSLType, NamedType;
+        struct {
+        } TypeType, RangeType;
+        struct {
+            const struct bl_type_s *item_type;
+        } ListType;
+        struct {
+            const struct bl_type_s *key_type, *value_type;
+        } TableType;
         struct {
             List(const struct bl_type_s*) args;
             const struct bl_type_s *ret;
-        };
+        } FunctionType;
+        struct {
+            const struct bl_type_s *nonnil;
+        } OptionalType;
         struct {
             istr_t name;
             List(istr_t) field_names;
             List(const struct bl_type_s*) field_types;
-        } struct_;
+        } StructType;
         struct {
             istr_t name;
             List(istr_t) tag_names;
             List(int64_t) tag_values;
             const struct bl_type_s *data;
-        } tagged;
+        } TaggedUnionType;
         struct {
             List(istr_t) field_names;
             List(const struct bl_type_s*) field_types;
             List(gcc_jit_field*) fields;
-        } union_;
-    };
+        } UnionType;
+    } __data;
 } bl_type_t;
 
 typedef struct {
@@ -71,7 +82,7 @@ typedef struct {
     bool is_global:1, is_constant:1;
 } binding_t;
 
-#define Type(mykind, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.kind=mykind, __VA_ARGS__}, sizeof(bl_type_t)))
+#define Type(typetag, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.tag=typetag, .__data.typetag={__VA_ARGS__}}, sizeof(bl_type_t)))
 
 istr_t type_to_string(bl_type_t *t);
 bool type_is_a(bl_type_t *t, bl_type_t *req);

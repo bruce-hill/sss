@@ -1,5 +1,7 @@
 enum Foo { A, B, C, D }
 
+say "$A"
+say "$(Foo.A)"
 fail unless "$A" == "Foo.A" and "$(Foo.A)" == "Foo.A"
 
 for x in [A, B, C, D]
