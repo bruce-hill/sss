@@ -180,9 +180,11 @@ TupleType:: `{(__
   @members=@(*@:StructFieldDef=([@names=@*([@inline=".."_] FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,]
 __)`}
 If:: \b"if"\b @curdent:\C _ (
-    @:Clause=(@condition=(Declaration / required-extended-expr) @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock))
-    *@:Clause=((nl curdent/_) \b"elseif"\b _ @condition=(Declaration / required-extended-expr) @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock))
-    [(nl curdent/_) \b"else"\b @elseBody=maybeIndentedBlock]
+    @:Clause=(@condition=(Declaration / required-extended-expr)
+      @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock / @:ParseError=(=>"Expected a block after this 'if'")))
+    *@:Clause=((nl curdent/_) \b"elseif"\b _ @condition=(Declaration / required-extended-expr)
+      @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock / @:ParseError=(=>"Expected a block after this 'elseif'")))
+    [(nl curdent/_) \b"else"\b @elseBody=(maybeIndentedBlock / @:ParseError=(=>"Expected a block after this 'else'"))]
 )
 Do:: \b"do"\b @curdent:\C _ maybeIndentedBlock *(nl curdent \b"else"\b maybeIndentedBlock)
 PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement / extended-expr) _ postfixConditional _ [comment]))
