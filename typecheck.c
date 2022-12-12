@@ -235,7 +235,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             if (binding)
                 return binding->type;
             else
-                TYPE_ERR(f, ast, "I can't find any method called %s on type %s", access->field, type_to_string(fielded_t));
+                TYPE_ERR(f, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
         }
         }
     }
