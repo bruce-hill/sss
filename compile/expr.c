@@ -93,7 +93,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         else
             type_name = type_to_string(fielded_t);
         binding_t *type_binding = hashmap_get(env->bindings, type_name);
-        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
+        binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get_raw(type_binding->namespace, access->field) : NULL;
         if (!binding) {
             ERROR(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", access->field, type_to_string(fielded_t));
         } else if (!binding->is_constant) {
