@@ -163,9 +163,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto fn = Match(t, FunctionType); 
             gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, fn->ret);
             NEW_LIST(gcc_param_t*, params);
-            foreach (fn->args, arg, _) {
-                gcc_type_t *arg_t = bl_type_to_gcc(env, *arg);
-                APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, fresh("arg")));
+            for (int64_t i = 0, len = length(fn->arg_types); i < len; i++) {
+                gcc_type_t *arg_t = bl_type_to_gcc(env, ith(fn->arg_types, i));
+                istr_t arg_name = fn->arg_names ? ith(fn->arg_names, i) : fresh("arg");
+                APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
                 env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
@@ -505,9 +506,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *fn_ptr = NULL;
         gcc_func_t *fn = NULL;
         auto fn_t = Match(get_type(env->file, env->bindings, call->fn), FunctionType);
-        NEW_LIST(gcc_rvalue_t*, arg_vals);
-        int64_t num_selfs = 0;
-        // Method calls:
+        int64_t num_args = length(fn_t->arg_types);
+        gcc_rvalue_t **arg_vals = GC_MALLOC(sizeof(gcc_rvalue_t*)*num_args);
+        // method calls:
         if (call->fn->tag == FieldAccess) {
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
@@ -515,12 +516,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             switch (self_t->tag) {
             case TypeType: {
                 if (access->fielded->tag != Var)
-                    ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like Foo.baz()");
+                    ERROR(env, call->fn, "i only know how to access type members by referencing the type directly like foo.baz()");
                 istr_t type_name = access->field;
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_name);
+                    ERROR(env, call->fn, "i couldn't find any method called %s for %s.", access->field, type_name);
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -530,10 +531,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                    ERROR(env, call->fn, "i couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
-                append(arg_vals, self_val);
-                num_selfs += 1;
+                arg_vals[0] = self_val;
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -543,28 +543,68 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             fn_ptr = compile_expr(env, block, call->fn);
             fn = NULL;
         }
-        // TODO: keyword args
+
+        const int64_t MASK = -1; // mask is because the hashmap api returns 0 for missing keys
+        hashmap_t *arg_positions = hashmap_new();
+        if (fn_t->arg_names) {
+            for (int64_t i = 0; i < num_args; i++)
+                hashmap_set(arg_positions, ith(fn_t->arg_names, i), (void*)(i^MASK));
+        }
+
+        // // First: keyword args
         foreach (call->args, arg, _) {
-            gcc_rvalue_t *val = compile_expr(env, block, *arg);
-            bl_type_t *actual = get_type(env->file, env->bindings, *arg);
-            bl_type_t *expected = ith(fn_t->args, num_selfs + (int64_t)(arg - *call->args));
+            if ((*arg)->tag != KeywordArg) continue;
+            auto kwarg = Match((*arg), KeywordArg);
+            int64_t arg_index = (int64_t)hashmap_get(arg_positions, kwarg->name);
+            if (arg_index == 0) // missing key
+                ERROR(env, *arg, "\"%s\" is not the name of any argument for this function that I'm aware of",
+                      kwarg->name);
+            arg_index ^= MASK;
+            if (arg_vals[arg_index])
+                ERROR(env, *arg, "This argument was already passed in earlier to this function call");
+            gcc_rvalue_t *val = compile_expr(env, block, kwarg->arg);
+                bl_type_t *actual = get_type(env->file, env->bindings, *arg);
+            bl_type_t *expected = ith(fn_t->arg_types, arg_index);
             if (!promote(env, block, actual, &val, expected))
                 ERROR(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
-
-            append(arg_vals, val);
+            arg_vals[arg_index] = val;
         }
 
+        // Then positional args
+        int64_t pos = 0;
+        for (int64_t call_index = 0, len = length(call->args); call_index < len; call_index++) {
+            ast_t *arg = ith(call->args, call_index);
+            if (arg->tag == KeywordArg) continue;
+            // Find the next unspecified arg:
+            while (arg_vals[pos]) {
+                ++pos;
+                assert(pos < num_args);
+            }
+            gcc_rvalue_t *val = compile_expr(env, block, arg);
+            bl_type_t *actual = get_type(env->file, env->bindings, arg);
+            bl_type_t *expected = ith(fn_t->arg_types, pos);
+            if (!promote(env, block, actual, &val, expected))
+                ERROR(env, arg, "This function expected this argument to have type %s, but this value is a %s",
+                      type_to_string(expected), type_to_string(actual));
+            arg_vals[pos] = val;
+        }
+
+        // TODO: default argument values
         // Optional values get passed as nil:
-        for (int64_t i = length(arg_vals); i < length(fn_t->args); i++) {
-            gcc_rvalue_t *nil = gcc_null(env->ctx, bl_type_to_gcc(env, ith(fn_t->args, i)));
-            append(arg_vals, nil);
+        for (int64_t len = num_args; pos < len; pos++) {
+            if (arg_vals[pos]) continue;
+            bl_type_t *arg_t = ith(fn_t->arg_types, pos);
+            if (arg_t->tag != OptionalType)
+                ERROR(env, ast, "The non-optional argument %s was not provided",
+                      fn_t->arg_names ? ith(fn_t->arg_names, pos) : intern_strf("%ld", pos));
+            arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
         }
 
         if (fn)
-            return gcc_call(env->ctx, ast_loc(env, ast), fn, length(arg_vals), arg_vals[0]);
+            return gcc_call(env->ctx, ast_loc(env, ast), fn, num_args, arg_vals);
         else if (fn_ptr)
-            return gcc_call_ptr(env->ctx, ast_loc(env, ast), fn_ptr, length(arg_vals), arg_vals[0]);
+            return gcc_call_ptr(env->ctx, ast_loc(env, ast), fn_ptr, num_args, arg_vals);
         else
             assert(false);
     }

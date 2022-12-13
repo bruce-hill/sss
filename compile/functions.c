@@ -32,7 +32,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : Match(def, Lambda)->body;
     for (int64_t i = 0; i < length(arg_names); i++) {
         istr_t argname = ith(arg_names, i);
-        bl_type_t *argtype = ith(t->args, i);
+        bl_type_t *argtype = ith(t->arg_types, i);
         if (argtype->tag == VoidType)
             ERROR(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
@@ -58,7 +58,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
     for (int64_t i = 0; i < length(arg_names); i++) {
         istr_t argname = ith(arg_names, i);
-        bl_type_t *argtype = ith(t->args, i);
+        bl_type_t *argtype = ith(t->arg_types, i);
         gcc_param_t *param = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, argtype), fresh(argname));
         append(params, param);
     }

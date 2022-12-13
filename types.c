@@ -39,9 +39,9 @@ static CORD type_to_cord(bl_type_t *t) {
         case FunctionType: {
             CORD c = "(";
             auto fn = Match(t, FunctionType);
-            for (int64_t i = 0; i < LIST_LEN(fn->args); i++) {
+            for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ",");
-                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->args, i)));
+                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i)));
             }
             c = CORD_cat(c, ")=>");
             c = CORD_cat(c, type_to_cord(fn->ret));

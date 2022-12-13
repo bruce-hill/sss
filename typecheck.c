@@ -86,7 +86,7 @@ bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             bl_type_t *bl_arg_t = parse_type(f, bindings, *arg_t);
             APPEND(arg_types, bl_arg_t);
         }
-        return Type(FunctionType, .args=arg_types, .ret=ret_t);
+        return Type(FunctionType, .arg_types=arg_types, .ret=ret_t);
     }
     default: TYPE_ERR(f, ast, "This is not a Type value");
     }
@@ -268,45 +268,45 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             TYPE_ERR(f, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
         }
         auto fn_type = Match(fn_type_t, FunctionType);
-        int64_t max_args = LIST_LEN(fn_type->args);
-        int64_t min_args = max_args;
-        while (min_args > 0 && LIST_ITEM(fn_type->args, min_args-1)->tag == OptionalType)
-            --min_args;
-        int64_t len_args = LIST_LEN(call->args);
-        int64_t num_selfs = 0;
-        if (call->fn->tag == FieldAccess) {
-            // Insert "self" argument
-            auto access = Match(call->fn, FieldAccess);
-            ast_t *self = access->fielded;
-            bl_type_t *self_t = get_type(f, bindings, self);
-            if (self_t->tag != TypeType) {
-                bl_type_t *expected = LIST_ITEM(fn_type->args, 0);
-                if (is_numeric(self_t) && is_numeric(expected) && numtype_priority(self_t) < numtype_priority(expected))
-                    self_t = expected;
-                if (!type_is_a(self_t, expected)) {
-                    TYPE_ERR(f, self, "I was expecting this argument to be a %s, but this value is a %s",
-                             type_to_string(expected), type_to_string(self_t));
-                }
-                num_selfs += 1;
-            }
-        }
-        if (num_selfs + len_args < min_args) {
-            TYPE_ERR(f, ast, "I expected this function to have at least %ld arguments, but there's only %ld arguments here.", min_args, num_selfs + len_args);
-        } else if (num_selfs + len_args > max_args) {
-            TYPE_ERR(f, LIST_ITEM(call->args, max_args), "I was only expecting %ld arguments for this function call, but everything from here on is too much.",
-                     max_args);
-        }
-        for (int64_t i = 0; i < len_args; i++) {
-            ast_t *arg = LIST_ITEM(call->args, i);
-            bl_type_t *arg_t = get_type(f, bindings, arg);
-            bl_type_t *expected = LIST_ITEM(fn_type->args, num_selfs + i);
-            if (is_numeric(arg_t) && is_numeric(expected) && numtype_priority(arg_t) < numtype_priority(expected))
-                arg_t = expected;
-            if (!type_is_a(arg_t, expected)) {
-                TYPE_ERR(f, arg, "I was expecting this argument to be a %s, but this value is a %s",
-                         type_to_string(expected), type_to_string(arg_t));
-            }
-        }
+        // int64_t max_args = LIST_LEN(fn_type->arg_types);
+        // int64_t min_args = max_args;
+        // while (min_args > 0 && LIST_ITEM(fn_type->arg_types, min_args-1)->tag == OptionalType)
+        //     --min_args;
+        // int64_t len_args = LIST_LEN(call->args);
+        // int64_t num_selfs = 0;
+        // if (call->fn->tag == FieldAccess) {
+        //     // Insert "self" argument
+        //     auto access = Match(call->fn, FieldAccess);
+        //     ast_t *self = access->fielded;
+        //     bl_type_t *self_t = get_type(f, bindings, self);
+        //     if (self_t->tag != TypeType) {
+        //         bl_type_t *expected = LIST_ITEM(fn_type->arg_types, 0);
+        //         if (is_numeric(self_t) && is_numeric(expected) && numtype_priority(self_t) < numtype_priority(expected))
+        //             self_t = expected;
+        //         if (!type_is_a(self_t, expected)) {
+        //             TYPE_ERR(f, self, "I was expecting this argument to be a %s, but this value is a %s",
+        //                      type_to_string(expected), type_to_string(self_t));
+        //         }
+        //         num_selfs += 1;
+        //     }
+        // }
+        // if (num_selfs + len_args < min_args) {
+        //     TYPE_ERR(f, ast, "I expected this function to have at least %ld arguments, but there's only %ld arguments here.", min_args, num_selfs + len_args);
+        // } else if (num_selfs + len_args > max_args) {
+        //     TYPE_ERR(f, LIST_ITEM(call->args, max_args), "I was only expecting %ld arguments for this function call, but everything from here on is too much.",
+        //              max_args);
+        // }
+        // for (int64_t i = 0; i < len_args; i++) {
+        //     ast_t *arg = LIST_ITEM(call->args, i);
+        //     bl_type_t *arg_t = get_type(f, bindings, arg);
+        //     bl_type_t *expected = LIST_ITEM(fn_type->arg_types, num_selfs + i);
+        //     if (is_numeric(arg_t) && is_numeric(expected) && numtype_priority(arg_t) < numtype_priority(expected))
+        //         arg_t = expected;
+        //     if (!type_is_a(arg_t, expected)) {
+        //         TYPE_ERR(f, arg, "I was expecting this argument to be a %s, but this value is a %s",
+        //                  type_to_string(expected), type_to_string(arg_t));
+        //     }
+        // }
         return fn_type->ret;
     }
     case Block: {
@@ -463,11 +463,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
     case Lambda: {
         auto lambda = Match(ast, Lambda);
-        NEW_LIST(bl_type_t*, args);
+        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(bl_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
             bl_type_t *t = parse_type(f, bindings, arg_def);
-            APPEND(args, t);
+            APPEND(arg_names, LIST_ITEM(lambda->arg_names, i));
+            APPEND(arg_types, t);
         }
 
         // Include only global bindings:
@@ -482,23 +484,25 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
 
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
-            hashmap_set(body_bindings, LIST_ITEM(lambda->arg_names, i), new(binding_t, .type=LIST_ITEM(args, i)));
+            hashmap_set(body_bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
         bl_type_t *ret = get_type(f, body_bindings, Match(lambda->body, Return)->value);
-        return Type(FunctionType, .args=args, .ret=ret);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 
     case FunctionDef: {
         auto def = Match(ast, FunctionDef);
-        NEW_LIST(bl_type_t*, args);
+        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(bl_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(def->arg_types, i);
             bl_type_t *t = parse_type(f, bindings, arg_def);
-            APPEND(args, t);
+            APPEND(arg_names, LIST_ITEM(def->arg_names, i));
+            APPEND(arg_types, t);
         }
 
         bl_type_t *ret = def->ret_type ? parse_type(f, bindings, def->ret_type) : Type(VoidType);
-        return Type(FunctionType, .args=args, .ret=ret);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 
     case StructDef: case EnumDef: {

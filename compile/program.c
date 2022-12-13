@@ -53,13 +53,16 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
 static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
 {
     auto fn = Match(fn_type, FunctionType);
-    gcc_param_t *params[LIST_LEN(fn->args)];
+    gcc_param_t *params[LIST_LEN(fn->arg_types)];
     binding_t *type_binding = hashmap_get(env->bindings, type_to_string(t));
     assert(type_binding && type_binding->namespace);
-    for (int64_t i = 0; i < LIST_LEN(fn->args); i++)
-        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, LIST_ITEM(fn->args, i)), fresh("arg"));
+    for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
+        istr_t arg_name = fn->arg_names ? LIST_ITEM(fn->arg_names, i) : fresh("arg");
+        bl_type_t *arg_type = LIST_ITEM(fn->arg_types, i);
+        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, arg_type), arg_name);
+    }
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn->ret),
-                                    extern_name, LIST_LEN(fn->args), params, is_vararg);
+                                    extern_name, LIST_LEN(fn->arg_types), params, is_vararg);
     hashmap_set(type_binding->namespace, method_name,
                 new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
@@ -67,19 +70,19 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
 static void load_string_methods(env_t *env)
 {
     extern_method(env, "bl_string_uppercased", Type(StringType), "uppercased",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
     extern_method(env, "bl_string_lowercased", Type(StringType), "lowercased",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
     extern_method(env, "bl_string_capitalized", Type(StringType), "capitalized",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
     extern_method(env, "bl_string_titlecased", Type(StringType), "titlecased",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
     extern_method(env, "bl_string_starts_with", Type(StringType), "starts_with",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
     extern_method(env, "bl_string_ends_with", Type(StringType), "ends_with",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
     extern_method(env, "bl_string_replace", Type(StringType), "replace",
-                  Type(FunctionType, .args=LIST(bl_type_t*, Type(StringType), Type(StringType), Type(StringType), Type(OptionalType, .nonnil=Type(IntType))), .ret=Type(StringType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType), Type(StringType), Type(OptionalType, .nonnil=Type(IntType))), .ret=Type(StringType)), 0);
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
@@ -97,7 +100,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     bl_type_t *string_type = Type(StringType);
     bl_type_t *say_type = Type(
         FunctionType,
-        .args=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=Type(BoolType))),
+        .arg_types=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=Type(BoolType))),
         .ret=Type(VoidType));
 
     gcc_param_t *gcc_say_params[] = {

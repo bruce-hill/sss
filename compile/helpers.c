@@ -132,7 +132,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case FunctionType: {
         NEW_LIST(gcc_type_t*, arg_types);
         auto fn = Match(t, FunctionType);
-        foreach (fn->args, arg_t, _)
+        foreach (fn->arg_types, arg_t, _)
             append(arg_types, bl_type_to_gcc(env, *arg_t));
         gcc_type_t *ret_type = bl_type_to_gcc(env, fn->ret);
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);

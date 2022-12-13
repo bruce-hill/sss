@@ -46,7 +46,8 @@ struct bl_type_s {
             bl_type_t *key_type, *value_type;
         } TableType;
         struct {
-            List(bl_type_t*) args;
+            List(istr_t) arg_names;
+            List(bl_type_t*) arg_types;
             bl_type_t *ret;
         } FunctionType;
         struct {
