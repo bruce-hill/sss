@@ -42,7 +42,9 @@ static void predeclare_def_types(env_t *env, ast_t *def)
 
         hashmap_t *namespace = hashmap_new();
         namespace->fallback = env->bindings;
-        hashmap_set(env->bindings, name, new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=gcc_lvalue_as_rvalue(lval), .namespace=namespace));
+        binding_t *b = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=gcc_lvalue_as_rvalue(lval), .namespace=namespace);
+        hashmap_set(env->bindings, name, b);
+        hashmap_set(env->bindings, t, b);
 
         env_t struct_env = *env;
         struct_env.bindings = namespace;
@@ -70,13 +72,14 @@ static void predeclare_def_types(env_t *env, ast_t *def)
 
         // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=rval, .namespace=namespace);
+        hashmap_set(env->bindings, t, binding);
         hashmap_set(env->bindings, enum_name, binding);
 
         hashmap_t *tag_namespace = hashmap_new();
         tag_namespace->fallback = namespace;
-        hashmap_set(namespace, intern_str("Tag"),
-                    new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true, .namespace=tag_namespace,
-                        .rval=gcc_new_string(env->ctx, intern_strf("%s.Tag", enum_name))));
+        binding_t *tag_binding = new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true, .namespace=tag_namespace,
+                                     .rval=gcc_new_string(env->ctx, intern_strf("%s.Tag", enum_name)));
+        hashmap_set(namespace, intern_str("Tag"), tag_binding);
 
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
 

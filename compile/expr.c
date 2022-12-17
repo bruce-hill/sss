@@ -513,26 +513,37 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
-            switch (self_t->tag) {
+            bl_type_t *nonnil_self = (self_t->tag == OptionalType) ? Match(self_t, OptionalType)->nonnil : self_t;
+            switch (nonnil_self->tag) {
             case TypeType: {
                 if (access->fielded->tag != Var)
-                    ERROR(env, call->fn, "i only know how to access type members by referencing the type directly like foo.baz()");
+                    ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
                 istr_t type_name = access->field;
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, call->fn, "i couldn't find any method called %s for %s.", access->field, type_name);
+                    ERROR(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_name);
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
             }
             default: {
-                istr_t type_name = type_to_string(self_t);
-                binding_t *type_binding = hashmap_get(env->bindings, type_name);
+                binding_t *type_binding = hashmap_get(env->bindings, nonnil_self);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
-                    ERROR(env, call->fn, "i couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                    ERROR(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                if (binding->type->tag != FunctionType)
+                    ERROR(env, call->fn, "This value isn't a function, it's a %s", type_to_string(binding->type));
+                auto fn_info = Match(binding->type, FunctionType);
+                if (length(fn_info->arg_types) < 1)
+                    ERROR(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %s.%s()",
+                          type_to_string(nonnil_self), access->field);
+
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
+                bl_type_t *expected_self = ith(fn_info->arg_types, 0);
+                if (self_t != expected_self && !promote(env, block, self_t, &self_val, expected_self))
+                    ERROR(env, ast, "The method %s.%s(...) is being called on a %s, but it wants a %s.",
+                          type_to_string(nonnil_self), access->field, type_to_string(self_t), type_to_string(expected_self));
                 arg_vals[0] = self_val;
                 fn = binding->func;
                 fn_ptr = binding->rval;

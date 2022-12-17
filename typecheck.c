@@ -230,7 +230,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         default: {
           class_lookup:;
-            binding_t *type_binding = hashmap_get(bindings, type_to_string(fielded_t));
+            if (fielded_t->tag == OptionalType)
+                fielded_t = Match(fielded_t, OptionalType)->nonnil;
+            binding_t *type_binding = hashmap_get(bindings, fielded_t);
             binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
             if (binding)
                 return binding->type;
