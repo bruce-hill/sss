@@ -202,20 +202,27 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(f, bindings, access->fielded);
-        switch (fielded_t->tag) {
+        bl_type_t *nonnil = (fielded_t->tag == OptionalType) ? Match(fielded_t, OptionalType)->nonnil : fielded_t;
+        switch (nonnil->tag) {
         case StructType: {
-            auto struct_t = Match(fielded_t, StructType);
+            auto struct_t = Match(nonnil, StructType);
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
-                if (LIST_ITEM(struct_t->field_names, i) == access->field)
+                if (LIST_ITEM(struct_t->field_names, i) == access->field) {
+                    if (nonnil != fielded_t)
+                        TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(struct_t->field_types, i);
+                }
             }
             goto class_lookup;
         }
         case TaggedUnionType: {
             auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
             for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
-                if (LIST_ITEM(union_t->field_names, i) == access->field)
+                if (LIST_ITEM(union_t->field_names, i) == access->field) {
+                    if (nonnil != fielded_t)
+                        TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(union_t->field_types, i);
+                }
             }
             goto class_lookup;
         }
@@ -230,9 +237,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         default: {
           class_lookup:;
-            if (fielded_t->tag == OptionalType)
-                fielded_t = Match(fielded_t, OptionalType)->nonnil;
-            binding_t *type_binding = hashmap_get(bindings, fielded_t);
+            binding_t *type_binding = hashmap_get(bindings, nonnil);
             binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
             if (binding)
                 return binding->type;

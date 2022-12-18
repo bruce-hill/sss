@@ -275,12 +275,19 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
 {
     bl_type_t *t = get_type(env->file, env->bindings, obj);
     gcc_rvalue_t *bool_val = compile_expr(env, block, obj); 
-    if (t->tag != BoolType) {
+    switch (t->tag) {
+    case BoolType: break;
+    case StructType: {
+        ERROR(env, obj, "This value is a struct and can't be used as a conditional.");
+        break;
+    }
+    default: {
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         if (gcc_type_if_pointer(gcc_t))
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
         else
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, gcc_t));
+    }
     }
     gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
     *block = NULL;
