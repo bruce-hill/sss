@@ -71,9 +71,11 @@ struct ast_s {
         } Var;
         struct {
             int64_t i;
+            uint8_t precision;
         } Int;
         struct {
             double n;
+            uint8_t precision;
         } Num;
         struct {
             ast_t *first, *last, *step;

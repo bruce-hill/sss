@@ -227,11 +227,31 @@ ast_t *match_to_ast(match_t *m)
             else
                 i = strtol(buf, NULL, 10);
 
-            return AST(m, Int, .i=negative ? -i : i);
+            istr_t precision_str = capture_istr(m, "precision");
+            uint8_t precision;
+            if (precision_str == intern_str("i8"))
+                precision = 8;
+            else if (precision_str == intern_str("i16"))
+                precision = 16;
+            else if (precision_str == intern_str("i32"))
+                precision = 32;
+            else
+                precision = 64;
+            return AST(m, Int, .i=negative ? -i : i, .precision=precision);
         }
         case Num: {
             double n = strtod(m->start, NULL);
-            return AST(m, Num, .n=n);
+            istr_t precision_str = capture_istr(m, "precision");
+            uint8_t precision;
+            if (precision_str == intern_str("i8"))
+                precision = 8;
+            else if (precision_str == intern_str("i16"))
+                precision = 16;
+            else if (precision_str == intern_str("i32"))
+                precision = 32;
+            else
+                precision = 64;
+            return AST(m, Num, .n=n, .precision=precision);
         }
         case Range: {
             return AST(m, Range,

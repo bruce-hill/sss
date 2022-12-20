@@ -109,10 +109,13 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         return binding->rval;
     }
     case Int: {
-        return gcc_int64(env->ctx, Match(ast, Int)->i);
+        // TODO: check if literal exceeds numeric precision
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env->file, env->bindings, ast));
+        return gcc_rvalue_from_long(env->ctx, gcc_t, Match(ast, Int)->i);
     }
     case Num: {
-        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), Match(ast, Num)->n);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env->file, env->bindings, ast));
+        return gcc_rvalue_from_double(env->ctx, gcc_t, Match(ast, Num)->n);
     }
     default: break;
     }
@@ -265,11 +268,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
         return NULL;
     }
-    case Int: {
-        return gcc_int64(env->ctx, Match(ast, Int)->i);
-    }
-    case Num: {
-        return gcc_rvalue_from_double(env->ctx, gcc_type(env->ctx, DOUBLE), Match(ast, Num)->n);
+    case Int: case Num: {
+        return compile_constant(env, ast);
     }
     case StringLiteral: {
         return gcc_new_string(env->ctx, Match(ast, StringLiteral)->str);

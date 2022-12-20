@@ -121,10 +121,20 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return Type(BoolType);
     }
     case Int: {
-        return Type(IntType);
+        switch (Match(ast, Int)->precision) {
+        case 64: return Type(IntType);
+        case 32: return Type(Int32Type);
+        case 16: return Type(Int16Type);
+        case 8: return Type(Int8Type);
+        default: TYPE_ERR(f, ast, "Unsupported precision");
+        }
     }
     case Num: {
-        return Type(NumType);
+        switch (Match(ast, Num)->precision) {
+        case 64: return Type(NumType);
+        case 32: return Type(Num32Type);
+        default: TYPE_ERR(f, ast, "Unsupported precision");
+        }
     }
     case TypeOf: {
         return Type(TypeType);
