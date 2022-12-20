@@ -75,7 +75,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast);
 // Move a value to the heap
 gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val);
 // Apply optional/numeric promotion when possible
-bool promote(env_t *env, gcc_block_t **block, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
+bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 
 // ============================== program.c ==============================
 gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug);

@@ -72,12 +72,26 @@ bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return Type(ListType, .item_type=item_t);
     }
 
-    case TypeOption: {
-        ast_t *nonnil = Match(ast, TypeOption)->nonnil;
-        bl_type_t *nonnil_t = parse_type(f, bindings, nonnil);
-        if (!nonnil_t) TYPE_ERR(f, nonnil, "I can't figure out what this type is.");
-        return Type(OptionalType, .nonnil=nonnil_t);
+    case TypePointer: {
+        auto ptr = Match(ast, TypePointer);
+        if (ptr->pointed->tag == TypeOptional) {
+            bl_type_t *pointed_t = parse_type(f, bindings, Match(ptr->pointed, TypeOptional)->type);
+            return Type(PointerType, .is_optional=true, .pointed=pointed_t);
+        } else {
+            bl_type_t *pointed_t = parse_type(f, bindings, ptr->pointed);
+            return Type(PointerType, .is_optional=false, .pointed=pointed_t);
+        }
     }
+
+    case TypeOptional: {
+        auto opt = Match(ast, TypeOptional);
+        bl_type_t *t = parse_type(f, bindings, opt->type);
+        if (t->tag != PointerType)
+            TYPE_ERR(f, ast, "I only know how to do optional types for pointers like @%s (because NULL is used to represent the absence of a value), "
+                     "but this type isn't a pointer", type_to_string(t));
+        return Type(PointerType, .is_optional=true, .pointed=Match(t, PointerType)->pointed);
+    }
+
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
         bl_type_t *ret_t = parse_type(f, bindings, fn->ret_type);
@@ -96,8 +110,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 {
     switch (ast->tag) {
     case Nil: {
-        bl_type_t *nonnil = parse_type(f, bindings, Match(ast, Nil)->type);
-        return nonnil->tag == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
+        bl_type_t *pointed = parse_type(f, bindings, Match(ast, Nil)->type);
+        if (pointed->tag != PointerType)
+            TYPE_ERR(f, ast, "For clarity and consistency, I need you to mark this explicitly as a pointer type (@%s)",
+                     type_to_string(pointed));
+        auto ptr = Match(pointed, PointerType);
+        return Type(PointerType, .is_optional=true, .pointed=ptr->pointed);
     }
     case Bool: {
         return Type(BoolType);
@@ -114,15 +132,23 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case SizeOf: {
         return Type(IntType);
     }
+    case HeapAllocate: {
+        bl_type_t *pointed = get_type(f, bindings, Match(ast, HeapAllocate)->value);
+        if (pointed->tag != StructType && pointed->tag != TaggedUnionType)
+            TYPE_ERR(f, ast, "I only support heap allocation for structs and tagged unions right now.");
+        return Type(PointerType, .is_optional=false, .pointed=pointed);
+    }
     case Maybe: {
-        bl_type_t *nonnil = get_type(f, bindings, Match(ast, Maybe)->value);
-        return nonnil->tag == OptionalType ? nonnil : Type(OptionalType, .nonnil=nonnil);
+        bl_type_t *pointed = get_type(f, bindings, Match(ast, Maybe)->value);
+        if (pointed->tag == PointerType)
+            pointed = Match(pointed, PointerType)->pointed;
+        return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Range: {
         return Type(RangeType);
     }
     case StringJoin: case StringLiteral: {
-        return Type(StringType);
+        return Type(PointerType, .pointed=Type(CharType), .is_optional=false);
     }
     case Var: {
         istr_t name = Match(ast, Var)->name;
@@ -149,7 +175,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             case For: {
                 auto for_loop = Match(item, For);
                 bl_type_t *iter_t = get_type(f, bindings, for_loop->iter);
-                if (iter_t->tag == OptionalType) iter_t = Match(iter_t, OptionalType)->nonnil;
+                if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
                 hashmap_t *loop_bindings = hashmap_new();
                 loop_bindings->fallback = bindings;
                 switch (iter_t->tag) {
@@ -202,13 +228,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(f, bindings, access->fielded);
-        bl_type_t *nonnil = (fielded_t->tag == OptionalType) ? Match(fielded_t, OptionalType)->nonnil : fielded_t;
-        switch (nonnil->tag) {
+        bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
+        switch (value_t->tag) {
         case StructType: {
-            auto struct_t = Match(nonnil, StructType);
+            auto struct_t = Match(value_t, StructType);
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
                 if (LIST_ITEM(struct_t->field_names, i) == access->field) {
-                    if (nonnil != fielded_t)
+                    if (value_t != fielded_t)
                         TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(struct_t->field_types, i);
                 }
@@ -219,7 +245,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
             for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
                 if (LIST_ITEM(union_t->field_names, i) == access->field) {
-                    if (nonnil != fielded_t)
+                    if (value_t != fielded_t)
                         TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(union_t->field_types, i);
                 }
@@ -237,7 +263,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         default: {
           class_lookup:;
-            binding_t *type_binding = hashmap_get(bindings, nonnil);
+            binding_t *type_binding = hashmap_get(bindings, value_t);
             binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
             if (binding)
                 return binding->type;
@@ -253,7 +279,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case ListType: {
             bl_type_t *index_t = get_type(f, bindings, indexing->index);
             switch (index_t->tag) {
-            case IntType: case Int32Type: case Int16Type: case Int8Type: break;
+            case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType: break;
             default: TYPE_ERR(f, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
             return Match(indexed_t, ListType)->item_type;
@@ -275,45 +301,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             TYPE_ERR(f, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
         }
         auto fn_type = Match(fn_type_t, FunctionType);
-        // int64_t max_args = LIST_LEN(fn_type->arg_types);
-        // int64_t min_args = max_args;
-        // while (min_args > 0 && LIST_ITEM(fn_type->arg_types, min_args-1)->tag == OptionalType)
-        //     --min_args;
-        // int64_t len_args = LIST_LEN(call->args);
-        // int64_t num_selfs = 0;
-        // if (call->fn->tag == FieldAccess) {
-        //     // Insert "self" argument
-        //     auto access = Match(call->fn, FieldAccess);
-        //     ast_t *self = access->fielded;
-        //     bl_type_t *self_t = get_type(f, bindings, self);
-        //     if (self_t->tag != TypeType) {
-        //         bl_type_t *expected = LIST_ITEM(fn_type->arg_types, 0);
-        //         if (is_numeric(self_t) && is_numeric(expected) && numtype_priority(self_t) < numtype_priority(expected))
-        //             self_t = expected;
-        //         if (!type_is_a(self_t, expected)) {
-        //             TYPE_ERR(f, self, "I was expecting this argument to be a %s, but this value is a %s",
-        //                      type_to_string(expected), type_to_string(self_t));
-        //         }
-        //         num_selfs += 1;
-        //     }
-        // }
-        // if (num_selfs + len_args < min_args) {
-        //     TYPE_ERR(f, ast, "I expected this function to have at least %ld arguments, but there's only %ld arguments here.", min_args, num_selfs + len_args);
-        // } else if (num_selfs + len_args > max_args) {
-        //     TYPE_ERR(f, LIST_ITEM(call->args, max_args), "I was only expecting %ld arguments for this function call, but everything from here on is too much.",
-        //              max_args);
-        // }
-        // for (int64_t i = 0; i < len_args; i++) {
-        //     ast_t *arg = LIST_ITEM(call->args, i);
-        //     bl_type_t *arg_t = get_type(f, bindings, arg);
-        //     bl_type_t *expected = LIST_ITEM(fn_type->arg_types, num_selfs + i);
-        //     if (is_numeric(arg_t) && is_numeric(expected) && numtype_priority(arg_t) < numtype_priority(expected))
-        //         arg_t = expected;
-        //     if (!type_is_a(arg_t, expected)) {
-        //         TYPE_ERR(f, arg, "I was expecting this argument to be a %s, but this value is a %s",
-        //                  type_to_string(expected), type_to_string(arg_t));
-        //     }
-        // }
         return fn_type->ret;
     }
     case Block: {
@@ -343,7 +330,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case As: {
         return parse_type(f, bindings, Match(ast, As)->type);
     }
-    case TypeList: case TypeOption: case TypeFunction: {
+    case TypeList: case TypePointer: case TypeFunction: {
         return Type(TypeType);
     }
     case Negative: {
@@ -357,16 +344,20 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         bl_type_t *lhs_t = get_type(f, bindings, and_->lhs),
                   *rhs_t = get_type(f, bindings, and_->rhs);
 
-        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
+        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
             return lhs_t;
-        else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType)
+        } else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType) {
             return lhs_t;
-        else if (rhs_t->tag == AbortType)
+        } else if (rhs_t->tag == AbortType) {
             return lhs_t;
-        else if (lhs_t->tag == OptionalType && rhs_t == Match(lhs_t, OptionalType)->nonnil)
-            return lhs_t;
-        else if (is_integral(lhs_t) && is_integral(rhs_t))
+        } else if (lhs_t->tag == PointerType && rhs_t->tag == PointerType) {
+            auto lhs_ptr = Match(lhs_t, PointerType);
+            auto rhs_ptr = Match(rhs_t, PointerType);
+            if (lhs_ptr->pointed == rhs_ptr->pointed)
+                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional);
+        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        }
 
         TYPE_ERR(f, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
                  type_to_string(lhs_t), type_to_string(rhs_t));
@@ -383,12 +374,15 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         else if (is_integral(lhs_t) && is_integral(rhs_t))
             return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
-        if (lhs_t->tag == OptionalType) {
-            auto lhs_option = Match(lhs_t, OptionalType);
-            if (rhs_t == lhs_option->nonnil || rhs_t->tag == AbortType)
-                return lhs_option->nonnil;
-            else if (rhs_t == lhs_t)
-                return lhs_t;
+        if (lhs_t->tag == PointerType) {
+            auto lhs_ptr = Match(lhs_t, PointerType);
+            if (rhs_t->tag == AbortType) {
+                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false);
+            } else if (rhs_t->tag == PointerType) {
+                auto rhs_ptr = Match(rhs_t, PointerType);
+                if (rhs_ptr->pointed == lhs_ptr->pointed)
+                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional);
+            }
         }
         TYPE_ERR(f, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
                  type_to_string(lhs_t), type_to_string(rhs_t));
@@ -426,7 +420,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         if (t1 == t2) {
             if (is_numeric(t1))
                 return t1;
-            else if (t1->tag == DSLType || t1->tag == StringType)
+            else if (t1->tag == DSLType || t1 == Type(PointerType, .pointed=Type(CharType), .is_optional=false))
                 return t1;
         } else if (is_numeric(t1)) {
             TYPE_ERR(f, ast, "I only know how to do math operations on numeric types, but the right side of this operation is a %s.",
@@ -563,8 +557,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          type_to_string(t), type_to_string(else_type));
             t = t2;
         } else {
-            if (t->tag != OptionalType)
-                t = Type(OptionalType, .nonnil=t);
+            if (t->tag == PointerType)
+                t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
+            else if (t->tag == AbortType)
+                t = Type(VoidType);
+            else if (t->tag != VoidType)
+                TYPE_ERR(f, ast, "This 'if' conditional has type %s on its branches, but no value for the 'else' condition",
+                         type_to_string(t));
         }
         return t;
     }
@@ -590,8 +589,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          type_to_string(t), type_to_string(else_type));
             t = t2;
         } else {
-            if (t->tag != OptionalType)
-                t = Type(OptionalType, .nonnil=t);
+            if (t->tag == PointerType)
+                t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
+            else if (t->tag == AbortType)
+                t = Type(VoidType);
+            else if (t->tag != VoidType)
+                TYPE_ERR(f, ast, "This 'when' block has type %s on its branches, but no value for the 'else' condition",
+                         type_to_string(t));
         }
         return t;
     }
@@ -613,9 +617,6 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);
-        if (t->tag == OptionalType)
-            t = Match(t, OptionalType)->nonnil;
-
         if (!(t->tag == VoidType || t->tag == AbortType)) {
             TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
                      type_to_string(t));

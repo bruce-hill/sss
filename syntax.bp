@@ -19,7 +19,8 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term / Var)
 maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term / Var
 expr: Range / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
 extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / splatMethodCall / expr
-unaryOp: Negative / Len / Maybe / Not
+unaryOp: Negative / Len / Maybe / Not / HeapAllocate
+HeapAllocate:: `@_ @value=maybe-index-term
 Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
 Maybe:: `? _ @value=maybe-index-term
@@ -167,8 +168,8 @@ DivUpdate:: @lhs=varNotKeyword _ "/=" _ @rhs=required-extended-expr
 AndUpdate:: @lhs=varNotKeyword _ "and=" _ @rhs=required-extended-expr
 OrUpdate:: @lhs=varNotKeyword _ "or=" _ @rhs=required-extended-expr
 required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
-type: @:OptionalType=(@nonnil=nonoptional-type `?) / nonoptional-type
-nonoptional-type: (
+type: @:OptionalType=(`?_@type=type) / @:PointerType=(`@_@pointed=value-type) / value-type
+value-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
   / MeasureType
   / TupleType

@@ -12,17 +12,17 @@ struct bl_type_s {
     enum {
         UnknownType,
         AbortType, VoidType,
-        BoolType,
+        BoolType, CharType,
         IntType, Int32Type, Int16Type, Int8Type,
         NumType, Num32Type,
-        StringType, DSLType,
+        DSLType,
         NamedType,
         TypeType,
         RangeType,
         ListType,
         TableType,
         FunctionType,
-        OptionalType,
+        PointerType,
         StructType,
         TagType,
         TaggedUnionType,
@@ -31,9 +31,8 @@ struct bl_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, BoolType, IntType,
-            Int32Type, Int16Type, Int8Type, NumType, Num32Type,
-            StringType;
+        } UnknownType, AbortType, VoidType, BoolType, CharType, IntType,
+            Int32Type, Int16Type, Int8Type, NumType, Num32Type;
         struct {
             istr_t name;
         } DSLType, NamedType;
@@ -51,8 +50,9 @@ struct bl_type_s {
             bl_type_t *ret;
         } FunctionType;
         struct {
-            bl_type_t *nonnil;
-        } OptionalType;
+            bool is_optional;
+            bl_type_t *pointed;
+        } PointerType;
         struct {
             istr_t name;
             List(istr_t) field_names;

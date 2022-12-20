@@ -50,7 +50,8 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     switch (bl_t->tag) {
     case ListType: return sizeof(list_t*);
     case RangeType: return 24;
-    case StringType: case DSLType: case TypeType: return sizeof(char*);
+    case PointerType: return sizeof(void*);
+    case DSLType: case TypeType: return sizeof(char*);
     case StructType: {
         ssize_t size = 0;
         ssize_t max_align = 0;
@@ -97,15 +98,14 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case Int32Type: gcc_t = gcc_type(env->ctx, INT32); break;
     case Int16Type: gcc_t = gcc_type(env->ctx, INT16); break;
     case Int8Type: gcc_t = gcc_type(env->ctx, INT8); break;
+    case CharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = gcc_type(env->ctx, DOUBLE); break;
     case Num32Type: gcc_t = gcc_type(env->ctx, FLOAT); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
-    case StringType: gcc_t = gcc_type(env->ctx, STRING); break;
-    case OptionalType: {
-        gcc_t = bl_type_to_gcc(env, Match(t, OptionalType)->nonnil);
-        if (!gcc_type_if_pointer(gcc_t))
-            gcc_t = gcc_get_ptr_type(gcc_t);
+    case PointerType: {
+        gcc_t = bl_type_to_gcc(env, Match(t, PointerType)->pointed);
+        gcc_t = gcc_get_ptr_type(gcc_t);
         break;
     }
     case RangeType: {
@@ -208,7 +208,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     case TypeType: {
-        gcc_t = gcc_type(env->ctx, STRING);
+        gcc_t = gcc_get_ptr_type(gcc_type(env->ctx, CHAR));
         break;
     }
     default: {
@@ -233,7 +233,7 @@ gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     return gcc_lvalue_as_rvalue(tmp);
 }
 
-bool promote(env_t *env, gcc_block_t **block, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed)
+bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed)
 {
     // No promotion necessary:
     if (actual == needed)
@@ -246,10 +246,10 @@ bool promote(env_t *env, gcc_block_t **block, bl_type_t *actual, gcc_rvalue_t **
     }
 
     // Optional promotion:
-    if (needed->tag == OptionalType && actual->tag != OptionalType && Match(needed, OptionalType)->nonnil == actual) {
-        if (!gcc_type_if_pointer(bl_type_to_gcc(env, actual)))
-            *val = move_to_heap(env, block, actual, *val);
-        return true;
+    if (needed->tag == PointerType && actual->tag == PointerType) {
+        auto needed_ptr = Match(needed, PointerType);
+        auto actual_ptr = Match(actual, PointerType);
+        return needed_ptr->pointed == actual_ptr->pointed && needed_ptr->is_optional;
     }
 
     // TODO: Struct promotion?
@@ -295,8 +295,12 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
 
 gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
 {
-    if (t->tag == StringType || t->tag == TypeType)
+    if (t == Type(PointerType, .pointed=Type(CharType), .is_optional=false) || t->tag == TypeType)
         return NULL;
+
+    // tostring() is the same for optional/non-optional pointers:
+    if (t->tag == PointerType)
+        t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
 
     gcc_func_t *func = hashmap_get(env->tostring_funcs, t);
     if (func) return func;
@@ -308,7 +312,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("stack")),
     };
     func = gcc_new_func(
-        env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, STRING),
+        env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)),
         fresh("tostring"), 2, params, 0);
     hashmap_set(env->tostring_funcs, t, func);
 
@@ -326,10 +330,11 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_return(no_block, NULL, LITERAL("no"));
         break;
     }
-    case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
+    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType: case NumType: case Num32Type: {
         const char *fmt;
         switch (t->tag) {
         case Int32Type: case Int16Type: case Int8Type: fmt = "%d"; break;
+        case CharType: fmt = "%c"; break;
         case NumType: case Num32Type: fmt = "%g"; break;
         default: fmt = "%ld"; break;
         }
@@ -410,7 +415,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
     case RangeType: {
         errx(1, "This should be handled by an externally defined function.");
     }
-    case OptionalType: {
+    case PointerType: {
         gcc_block_t *nil_block = gcc_new_block(func, fresh("nil"));
         gcc_block_t *nonnil_block = gcc_new_block(func, fresh("nonnil"));
 
@@ -420,19 +425,21 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
-        gcc_return(nil_block, NULL, LITERAL("(nil)"));
+        bl_type_t *pointed_type = Match(t, PointerType)->pointed;
+        gcc_return(nil_block, NULL, LITERAL(intern_strf("(nil @%s)", type_to_string(pointed_type))));
 
         gcc_rvalue_t *args[] = {
-            obj,
+            gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL)),
             gcc_param_as_rvalue(params[1]),
         };
 
-        bl_type_t *nonnil_t = Match(t, OptionalType)->nonnil;
-        if (!gcc_type_if_pointer(bl_type_to_gcc(env, nonnil_t)))
-            args[0] = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(args[0], NULL));
-
-        gcc_func_t *tostring = get_tostring_func(env, nonnil_t);
+        gcc_func_t *tostring = get_tostring_func(env, pointed_type);
         gcc_rvalue_t *ret = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
+
+        // Prepend "@"
+        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+        ret = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){LITERAL("@"), ret});
+
         gcc_return(nonnil_block, NULL, ret);
         break;
     }
@@ -444,7 +451,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
-        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
         if (struct_t->name) {
             str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
                            (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, struct_t->name)});

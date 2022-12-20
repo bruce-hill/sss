@@ -110,7 +110,7 @@ istr_t bl_string_slice(istr_t s, range_t *r) {
     return ret;
 }
 
-istr_t bl_string_replace(char *text, char *pat_text, char *rep_text, int64_t *limit_option) {
+istr_t bl_string_replace(char *text, char *pat_text, char *rep_text) {
     maybe_pat_t maybe_pat = bp_stringpattern(pat_text, pat_text + strlen(pat_text));
     if (!maybe_pat.success) {
         return text;
@@ -128,17 +128,10 @@ istr_t bl_string_replace(char *text, char *pat_text, char *rep_text, int64_t *li
     const char *prev = text;
     pat_t *rep_pat = maybe_replacement.value.pat;
     size_t textlen = strlen(text);
-    int64_t limit = limit_option ? *limit_option : (int64_t)textlen + 1;
-    if (limit > 0) {
-        for (match_t *m = NULL; next_match(&m, text, &text[textlen], rep_pat, NULL, NULL, false); ) {
-            fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
-            fprint_match(out, text, m, NULL);
-            prev = m->end;
-            if (--limit == 0) {
-                stop_matching(&m);
-                break;
-            }
-        }
+    for (match_t *m = NULL; next_match(&m, text, &text[textlen], rep_pat, NULL, NULL, false); ) {
+        fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
+        fprint_match(out, text, m, NULL);
+        prev = m->end;
     }
     fwrite(prev, sizeof(char), (size_t)(&text[textlen] - prev) + 1, out);
     fflush(out);

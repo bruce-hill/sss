@@ -14,9 +14,9 @@ static CORD type_to_cord(bl_type_t *t) {
         case Int32Type: return "Int32";
         case Int16Type: return "Int16";
         case Int8Type: return "Int8";
+        case CharType: return "Char";
         case NumType: return "Num";
         case Num32Type: return "Num32";
-        case StringType: return "String";
         case NamedType: {
             auto named = Match(t, NamedType);
             return named->name;
@@ -67,9 +67,9 @@ static CORD type_to_cord(bl_type_t *t) {
             c = CORD_cat(c, "}");
             return c;
         }
-        case OptionalType: {
-            auto opt = Match(t, OptionalType);
-            return CORD_cat(type_to_cord(opt->nonnil), "?");
+        case PointerType: {
+            auto ptr = Match(t, PointerType);
+            return CORD_cat(ptr->is_optional ? "@?" : "@", type_to_cord(ptr->pointed));
         }
         case TagType: {
             auto tag = Match(t, TagType);
@@ -95,9 +95,20 @@ istr_t type_to_string(bl_type_t *t) {
 bool type_is_a(bl_type_t *t, bl_type_t *req)
 {
     if (t == req) return true;
-    if (req->tag == OptionalType && type_is_a(t, Match(req, OptionalType)->nonnil))
-        return true;
+    if (t->tag == PointerType && req->tag == PointerType) {
+        auto t_ptr = Match(t, PointerType);
+        auto req_ptr = Match(req, PointerType);
+        if (t_ptr->pointed == req_ptr->pointed && req_ptr->is_optional)
+            return true;
+    }
     return false;
+}
+
+static bl_type_t *non_optional(bl_type_t *t)
+{
+    if (t->tag != PointerType) return t;
+    auto ptr = Match(t, PointerType);
+    return ptr->is_optional ? Type(PointerType, .is_optional=false, .pointed=ptr->pointed) : t;
 }
 
 bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
@@ -106,17 +117,15 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (!b) return a;
     if (type_is_a(b, a)) return a;
     if (type_is_a(a, b)) return b;
-    if (a->tag == AbortType && b->tag == OptionalType) return Match(b, OptionalType)->nonnil;
-    if (b->tag == AbortType && a->tag == OptionalType) return Match(a, OptionalType)->nonnil;
-    if (a->tag == AbortType) return b;
-    if (b->tag == AbortType) return a;
+    if (a->tag == AbortType) return non_optional(b);
+    if (b->tag == AbortType) return non_optional(a);
     return NULL;
 }
 
 bool is_integral(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case Int32Type: case Int16Type: case Int8Type:
+    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
         return true;
     default:
         return false;
@@ -126,7 +135,7 @@ bool is_integral(bl_type_t *t)
 bool is_numeric(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case Int32Type: case Int16Type: case Int8Type:
+    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
     case NumType: case Num32Type:
         return true;
     default:
@@ -137,7 +146,7 @@ bool is_numeric(bl_type_t *t)
 int numtype_priority(bl_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: case Int8Type: return 1;
+    case BoolType: case CharType: case Int8Type: return 1;
     case Int16Type: return 2;
     case Int32Type: return 3;
     case IntType: return 4;

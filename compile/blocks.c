@@ -37,7 +37,7 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         if (hashmap_get(env->bindings, name))
             ERROR(env, def, "Something called %s is already defined.", name);
         bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types);
-        gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, STRING), name);
+        gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
         lval = gcc_global_set_initializer_rvalue(lval, gcc_new_string(env->ctx, name));
 
         hashmap_t *namespace = hashmap_new();

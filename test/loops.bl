@@ -4,14 +4,14 @@ repeat
 nums := [10,20,30,40]
 tmp := 1
 while tmp <= #nums
-    say "$(nums[tmp])", no
+    say "$(nums[tmp])", end=""
     tmp += 1
-between say ", ", no
+between say ", ", end=""
 say ""
 
 for i,num in nums
-    say "[$i]$num", no
-between say ", ", no
+    say "[$i]$num", end=""
+between say ", ", end=""
 say ""
 
 say "$i" for i in 100..102

@@ -14,12 +14,12 @@
 
 #include "utils.h"
 
-void say(const char *str, bool *nl)
+void say(const char *str, const char *end)
 {
-    if (!nl || *nl == true)
+    if (!end)
         puts(str);
     else
-        printf("%s", str);
+        printf("%s%s", str, end);
 }
 
 void fail(const char *fmt, ...)

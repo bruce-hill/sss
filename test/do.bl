@@ -1,8 +1,9 @@
-def sqr_optional(n:Num):Num?
+def SqrRet {n:Num}
+def sqr_optional(n:Num):?@SqrRet
     if n < 0.
-        return nil Num
+        return nil @SqrRet
     else
-        return (n*n)
+        return ?@SqrRet{n*n}
 
 for x in [9.,-1.,-2.,-3.,-999.,4.]
     say "x = $x"

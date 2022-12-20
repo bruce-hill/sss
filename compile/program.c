@@ -19,7 +19,7 @@
 // Load a bunch of global (external) functions
 static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
 {
-    gcc_type_t *t_str = gcc_get_type(ctx, GCC_T_STRING),
+    gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
@@ -54,7 +54,7 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
 {
     auto fn = Match(fn_type, FunctionType);
     gcc_param_t *params[LIST_LEN(fn->arg_types)];
-    binding_t *type_binding = hashmap_get(env->bindings, type_to_string(t));
+    binding_t *type_binding = hashmap_get(env->bindings, t);
     assert(type_binding && type_binding->namespace);
     for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
         istr_t arg_name = fn->arg_names ? LIST_ITEM(fn->arg_names, i) : fresh("arg");
@@ -69,20 +69,21 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
 
 static void load_string_methods(env_t *env)
 {
-    extern_method(env, "bl_string_uppercased", Type(StringType), "uppercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
-    extern_method(env, "bl_string_lowercased", Type(StringType), "lowercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
-    extern_method(env, "bl_string_capitalized", Type(StringType), "capitalized",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
-    extern_method(env, "bl_string_titlecased", Type(StringType), "titlecased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType)), .ret=Type(StringType)), 0);
-    extern_method(env, "bl_string_starts_with", Type(StringType), "starts_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
-    extern_method(env, "bl_string_ends_with", Type(StringType), "ends_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType)), .ret=Type(BoolType)), 0);
-    extern_method(env, "bl_string_replace", Type(StringType), "replace",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(StringType), Type(StringType), Type(StringType), Type(OptionalType, .nonnil=Type(IntType))), .ret=Type(StringType)), 0);
+    bl_type_t *str_type = Type(PointerType, .pointed=Type(CharType), .is_optional=false);
+    extern_method(env, "bl_string_uppercased", str_type, "uppercased",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+    extern_method(env, "bl_string_lowercased", str_type, "lowercased",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+    extern_method(env, "bl_string_capitalized", str_type, "capitalized",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+    extern_method(env, "bl_string_titlecased", str_type, "titlecased",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+    extern_method(env, "bl_string_starts_with", str_type, "starts_with",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type), .ret=Type(BoolType)), 0);
+    extern_method(env, "bl_string_ends_with", str_type, "ends_with",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type), .ret=Type(BoolType)), 0);
+    extern_method(env, "bl_string_replace", str_type, "replace",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type, str_type), .ret=str_type), 0);
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
@@ -97,15 +98,17 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         .debug = debug,
     };
 
-    bl_type_t *string_type = Type(StringType);
+    bl_type_t *string_type = Type(PointerType, .pointed=Type(CharType), .is_optional=false);
     bl_type_t *say_type = Type(
         FunctionType,
-        .arg_types=LIST(bl_type_t*, string_type, Type(OptionalType, .nonnil=Type(BoolType))),
+        .arg_names=LIST(istr_t, intern_str("str"), intern_str("end")),
+        .arg_types=LIST(bl_type_t*, string_type, Type(PointerType, .is_optional=true, .pointed=Type(CharType))),
         .ret=Type(VoidType));
 
+    gcc_type_t *gcc_string_t = bl_type_to_gcc(&env, string_type);
     gcc_param_t *gcc_say_params[] = {
-        gcc_new_param(ctx, NULL, gcc_type(ctx, STRING), "str"),
-        gcc_new_param(ctx, NULL, gcc_get_ptr_type(gcc_type(ctx, BOOL)), "nl"),
+        gcc_new_param(ctx, NULL, gcc_string_t, "str"),
+        gcc_new_param(ctx, NULL, gcc_string_t, "end"),
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
@@ -113,13 +116,16 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type), .namespace=hashmap_new()));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
-    DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8);
+    DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
     DEFTYPE(Num); DEFTYPE(Num32);
-    DEFTYPE(String);
 #undef DEFTYPE
+    hashmap_set(env.bindings, intern_str("String"),
+                new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, "String"), .type=Type(TypeType), .type_value=string_type, .namespace=hashmap_new()));
+    hashmap_set(env.bindings, string_type,
+                new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, "String"), .type=Type(TypeType), .type_value=string_type, .namespace=hashmap_new()));
 
     gcc_func_t *range_tostring_func = gcc_new_func(
-        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env.ctx, STRING),
+        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
         "range_tostring", 2, (gcc_param_t*[]){
             gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
             gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
@@ -130,7 +136,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
 
     gcc_param_t* main_params[] = {
         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),
-        gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_type(env.ctx, STRING)), "argv"),
+        gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
     };
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, INT),
@@ -138,19 +144,19 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
 
     // Set up `PROGRAM_NAME`
-    gcc_lvalue_t *program_name = gcc_local(main_func, NULL, gcc_type(env.ctx, STRING), "PROGRAM_NAME");
+    gcc_lvalue_t *program_name = gcc_local(main_func, NULL, gcc_string_t, "PROGRAM_NAME");
     gcc_lvalue_t *name_lval = gcc_rvalue_dereference(gcc_param_as_rvalue(main_params[1]), NULL);
     gcc_assign(block, NULL, program_name, gcc_lvalue_as_rvalue(name_lval));
     hashmap_set(env.bindings, intern_str("PROGRAM_NAME"),
-                new(binding_t, .rval=gcc_lvalue_as_rvalue(program_name), .type=Type(StringType)));
+                new(binding_t, .rval=gcc_lvalue_as_rvalue(program_name), .type=string_type));
 
     // Set up `args`
-    bl_type_t *args_t = Type(ListType, .item_type=Type(StringType));
+    bl_type_t *args_t = Type(ListType, .item_type=string_type);
     gcc_type_t *args_gcc_t = bl_type_to_gcc(&env, args_t);
     gcc_func_t *arg_func = gcc_new_func(
         env.ctx, NULL, GCC_FUNCTION_IMPORTED, args_gcc_t, "arg_list", 2, (gcc_param_t*[]){
             gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),
-            gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_type(env.ctx, STRING)), "argv"),
+            gcc_new_param(env.ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
         }, 0);
 
     gcc_lvalue_t *args = gcc_local(main_func, NULL, args_gcc_t, "args");

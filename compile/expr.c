@@ -196,7 +196,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *t_rhs = get_type(env->file, env->bindings, rhs);
             gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
-            if (!promote(env, block, t_rhs, &rval, t_lhs))
+            if (!promote(env, t_rhs, &rval, t_lhs))
                 ERROR(env, rhs, "You're assigning this value with type %s to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
 
@@ -256,7 +256,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                       type_to_string(env->return_type));
             bl_type_t *t = get_type(env->file, env->bindings, ret->value);
             gcc_rvalue_t *val = compile_expr(env, block, ret->value);
-            if (!promote(env, block, t, &val, env->return_type))
+            if (!promote(env, t, &val, env->return_type))
                 ERROR(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
@@ -296,14 +296,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             str = tostring ? gcc_call(env->ctx, ast_loc(env, child), tostring, 2, args) : args[0];
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
         }
-        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
         gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
         gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 
         foreach (chunks, chunk, _) {
             gcc_rvalue_t *val;
             bl_type_t *t = get_type(env->file, env->bindings, *chunk);
-            if (t->tag == StringType) {
+            if (t == Type(PointerType, .pointed=Type(CharType), .is_optional=false)) {
                 val = compile_expr(env, block, *chunk);
             } else {
                 gcc_func_t *tostring = get_tostring_func(env, t);
@@ -446,7 +446,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         for (size_t field_index = 0; field_index < num_fields; field_index++) {
             bl_type_t *ft = ith(struct_type->field_types, field_index);
-            if (ft->tag == OptionalType) continue;
+            if (ft->tag == PointerType && Match(ft, PointerType)->is_optional) continue;
             if (unused_fields[field_index])
                 ERROR(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
                       type_to_string(t),
@@ -462,7 +462,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *expected = ith(struct_type->field_types, entries[i].field_num);
             bl_type_t *actual = get_type(env->file, env->bindings, entries[i].ast);
             rvalues[i] = entries[i].value;
-            if (!promote(env, block, actual, &rvalues[i], expected))
+            if (!promote(env, actual, &rvalues[i], expected))
                 ERROR(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
                       type_to_string(expected), type_to_string(t), ith(struct_type->field_names, entries[i].field_num),
                       type_to_string(actual));
@@ -513,8 +513,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
-            bl_type_t *nonnil_self = (self_t->tag == OptionalType) ? Match(self_t, OptionalType)->nonnil : self_t;
-            switch (nonnil_self->tag) {
+            switch (self_t->tag) {
             case TypeType: {
                 if (access->fielded->tag != Var)
                     ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
@@ -528,7 +527,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
-                binding_t *type_binding = hashmap_get(env->bindings, nonnil_self);
+                binding_t *type_binding = hashmap_get(env->bindings, self_t);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
                     ERROR(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
@@ -537,13 +536,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 auto fn_info = Match(binding->type, FunctionType);
                 if (length(fn_info->arg_types) < 1)
                     ERROR(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %s.%s()",
-                          type_to_string(nonnil_self), access->field);
+                          type_to_string(self_t), access->field);
 
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 bl_type_t *expected_self = ith(fn_info->arg_types, 0);
-                if (self_t != expected_self && !promote(env, block, self_t, &self_val, expected_self))
+                if (self_t != expected_self && !promote(env, self_t, &self_val, expected_self))
                     ERROR(env, ast, "The method %s.%s(...) is being called on a %s, but it wants a %s.",
-                          type_to_string(nonnil_self), access->field, type_to_string(self_t), type_to_string(expected_self));
+                          type_to_string(self_t), access->field, type_to_string(self_t), type_to_string(expected_self));
                 arg_vals[0] = self_val;
                 fn = binding->func;
                 fn_ptr = binding->rval;
@@ -576,7 +575,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val = compile_expr(env, block, kwarg->arg);
                 bl_type_t *actual = get_type(env->file, env->bindings, *arg);
             bl_type_t *expected = ith(fn_t->arg_types, arg_index);
-            if (!promote(env, block, actual, &val, expected))
+            if (!promote(env, actual, &val, expected))
                 ERROR(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
             arg_vals[arg_index] = val;
@@ -595,7 +594,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val = compile_expr(env, block, arg);
             bl_type_t *actual = get_type(env->file, env->bindings, arg);
             bl_type_t *expected = ith(fn_t->arg_types, pos);
-            if (!promote(env, block, actual, &val, expected))
+            if (!promote(env, actual, &val, expected))
                 ERROR(env, arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
             arg_vals[pos] = val;
@@ -606,7 +605,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (int64_t len = num_args; pos < len; pos++) {
             if (arg_vals[pos]) continue;
             bl_type_t *arg_t = ith(fn_t->arg_types, pos);
-            if (arg_t->tag != OptionalType)
+            if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional)
                 ERROR(env, ast, "The non-optional argument %s was not provided",
                       fn_t->arg_names ? ith(fn_t->arg_names, pos) : intern_strf("%ld", pos));
             arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
@@ -625,14 +624,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Bool: {
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), Match(ast, Bool)->b ? 1 : 0);
     }
-    case Maybe: {
-        ast_t *value = Match(ast, Maybe)->value;
+    case HeapAllocate: {
+        ast_t *value = Match(ast, HeapAllocate)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *nonnil_t = get_type(env->file, env->bindings, value);
-        gcc_type_t *gcc_nonnil_t = bl_type_to_gcc(env, nonnil_t);
-        if (!gcc_type_if_pointer(gcc_nonnil_t))
-            rval = move_to_heap(env, block, nonnil_t, rval);
-        return rval;
+        return move_to_heap(env, block, nonnil_t, rval);
+    }
+    case Maybe: {
+        ast_t *value = Match(ast, Maybe)->value;
+        return compile_expr(env, block, value);
     }
     case Len: {
         ast_t *value = Match(ast, Len)->value;
@@ -644,7 +644,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
             return gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
         }
-        case StringType: case DSLType: case TypeType: {
+        case PointerType: {
+            auto ptr = Match(t, PointerType);
+            if (ptr->pointed == Type(CharType))
+                goto string_len;
+            else
+                goto unknown_len;
+        }
+        case DSLType: case TypeType: {
+          string_len:;
             gcc_func_t *len_func = hashmap_gets(env->global_funcs, "intern_len");
             gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), len_func, 1, &obj);
             return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
@@ -670,7 +678,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 #undef BINOP
             return len;
         }
-        default: ERROR(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
+        default: {
+          unknown_len:
+            ERROR(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
+        }
         }
     }
     case FieldAccess: {
@@ -848,10 +859,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
         coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
-        // TODO: support comparing optional values
-        if ((lhs_t->tag == OptionalType) != (rhs_t->tag == OptionalType))
-            ERROR(env, ast, "I don't currently support direct comparisons between %s and %s, you may have to add a question mark to make it explicitly optional.",
-                  type_to_string(lhs_t), type_to_string(rhs_t));
         return gcc_comparison(env->ctx, NULL, ast->tag == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
@@ -873,7 +880,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case GreaterEqual: cmp = GCC_COMPARISON_GE; break;
         default: assert(false);
         }
-        if (lhs_t == rhs_t && (lhs_t->tag == StringType || lhs_t->tag == DSLType)) {
+        if (lhs_t == rhs_t && (lhs_t == Type(PointerType, .pointed=Type(CharType), .is_optional=false) || lhs_t->tag == DSLType)) {
             gcc_param_t *cmp_params[] = {
                 gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, lhs_t), "str1"),
                 gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, rhs_t), "str2"),
@@ -909,8 +916,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
-            if (!promote(env, block, lhs_t, &lhs_val, rhs_t))
-                assert(promote(env, block, rhs_t, &rhs_val, lhs_t));
+            if (!promote(env, lhs_t, &lhs_val, rhs_t))
+                assert(promote(env, rhs_t, &rhs_val, lhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_func_t *func = gcc_block_func(*block);
@@ -955,8 +962,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-            if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
-                && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+            if (!promote(env, lhs_t, &lhs_val, rhs_t)
+                && !promote(env, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
@@ -971,10 +978,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag != BoolType) {
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, lhs_val, zero);
-
-            if (lhs_t->tag == OptionalType && t->tag != OptionalType
-                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
-                lhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(lhs_val, NULL));
         }
         gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
 
@@ -985,9 +988,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, &if_falsey, rhs);
         } else {
             gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, rhs);
-            if (rhs_t->tag == OptionalType && t->tag != OptionalType
-                && !gcc_type_if_pointer(bl_type_to_gcc(env, t)))
-                rhs_val = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rhs_val, NULL));
             if (if_falsey)
                 gcc_assign(if_falsey, NULL, result, rhs_val);
         }
@@ -1029,7 +1029,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
-            if (!promote(env, block, rhs_t, &rhs_val, lhs_t))
+            if (!promote(env, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them without losing precision.",
                       type_to_string(lhs_t), type_to_string(rhs_t));
             gcc_update(*block, ast_loc(env, ast), lhs_val, op, rhs_val);
@@ -1038,8 +1038,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
-            if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
-                && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+            if (!promote(env, lhs_t, &lhs_val, rhs_t)
+                && !promote(env, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                       type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env, t), lhs_val, rhs_val);
@@ -1052,8 +1052,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        if (!promote(env, block, lhs_t, &lhs_val, rhs_t)
-            && !promote(env, block, rhs_t, &rhs_val, lhs_t))
+        if (!promote(env, lhs_t, &lhs_val, rhs_t)
+            && !promote(env, rhs_t, &rhs_val, lhs_t))
             ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType || t->tag == Num32Type) {
@@ -1066,8 +1066,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case If: {
         auto if_ = Match(ast, If);
         bl_type_t *if_t = get_type(env->file, env->bindings, ast);
-        bl_type_t *nonnil_t = if_t->tag == OptionalType ? Match(if_t, OptionalType)->nonnil : if_t;
-        bool has_value = !(nonnil_t->tag == AbortType || nonnil_t->tag == VoidType);
+        bool has_value = !(if_t->tag == AbortType || if_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
@@ -1088,7 +1087,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (branch_val) {
                     if (if_ret) {
                         bl_type_t *actual = get_type(env->file, env->bindings, body);
-                        if (!promote(env, block, actual, &branch_val, if_t))
+                        if (!promote(env, actual, &branch_val, if_t))
                             ERROR(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                                   type_to_string(if_t), type_to_string(actual));
                         gcc_assign(if_truthy, NULL, if_ret, branch_val);
@@ -1096,6 +1095,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         gcc_eval(if_truthy, NULL, branch_val);
                     }
                 }
+                assert(end_if);
                 gcc_jump(if_truthy, NULL, end_if);
             }
             *block = if_falsey;
@@ -1105,7 +1105,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (branch_val) {
                 if (if_ret) {
                     bl_type_t *actual = get_type(env->file, env->bindings, if_->else_body);
-                    if (!promote(env, block, actual, &branch_val, if_t))
+                    if (!promote(env, actual, &branch_val, if_t))
                         ERROR(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(if_t), type_to_string(actual));
                     gcc_assign(*block, NULL, if_ret, branch_val);
@@ -1131,8 +1131,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         bl_type_t *result_t = get_type(env->file, env->bindings, ast);
-        bl_type_t *nonnil_t = result_t->tag == OptionalType ? Match(result_t, OptionalType)->nonnil : result_t;
-        bool has_value = !(nonnil_t->tag == AbortType || nonnil_t->tag == VoidType);
+        bool has_value = !(result_t->tag == AbortType || result_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
         gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
@@ -1150,7 +1149,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (branch_val) {
                 if (when_value) {
                     bl_type_t *actual = get_type(env->file, env->bindings, case_->body);
-                    if (!promote(env, &case_block, actual, &branch_val, result_t))
+                    if (!promote(env, actual, &branch_val, result_t))
                         ERROR(env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(case_block, NULL, when_value, branch_val);
@@ -1167,7 +1166,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (branch_val) {
                 if (when_value) {
                     bl_type_t *actual = get_type(env->file, env->bindings, when->default_body);
-                    if (!promote(env, &default_block, actual, &branch_val, result_t))
+                    if (!promote(env, actual, &branch_val, result_t))
                         ERROR(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(default_block, NULL, when_value, branch_val);

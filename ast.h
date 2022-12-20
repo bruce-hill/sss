@@ -20,6 +20,7 @@ typedef enum {
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
+    HeapAllocate,
     List, Table,
     FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,
@@ -30,7 +31,7 @@ typedef enum {
     Fail,
     Extern,
     TypeList, TypeTable,
-    TypeFunction, TypeOption,
+    TypeFunction, TypePointer, TypeOptional,
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
@@ -107,7 +108,7 @@ struct ast_s {
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
             ast_t *value;
-        } Not, Negative, Len, Maybe, TypeOf, SizeOf;
+        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate;
         struct {
             ast_t *type;
             List(ast_t*) items;
@@ -194,8 +195,11 @@ struct ast_s {
             ast_t *ret_type;
         } TypeFunction;
         struct {
-            ast_t *nonnil;
-        } TypeOption;
+            ast_t *pointed;
+        } TypePointer;
+        struct {
+            ast_t *type;
+        } TypeOptional;
         struct {
             ast_t *value, *type;
         } Cast, As;

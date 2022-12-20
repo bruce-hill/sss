@@ -124,7 +124,7 @@ const char *tag_names[] = {
     [And]="And", [Or]="Or", [Xor]="Xor",
     [Equal]="Equal", [NotEqual]="NotEqual", [Greater]="Greater", [GreaterEqual]="GreaterEq", [Less]="Less", [LessEqual]="LessEq",
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
-    [TypeOf]="TypeOf", [SizeOf]="SizeOf",
+    [TypeOf]="TypeOf", [SizeOf]="SizeOf", [HeapAllocate]="HeapAllocate",
     [List]="List", [Table]="Table",
     [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
@@ -134,7 +134,7 @@ const char *tag_names[] = {
     [Return]="Return",
     [Fail]="Fail",
     [TypeList]="ListType", [TypeTable]="TableType",
-    [TypeFunction]="FnType", [TypeOption]="OptionalType",
+    [TypeFunction]="FnType", [TypePointer]="PointerType", [TypeOptional]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
     [EnumDef]="EnumDef", [EnumField]="EnumField",
@@ -531,7 +531,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, Extern, .name=capture_istr(m, "name"), .type=capture_ast(m, "type"));
         }
 #define UNOP(t) case t: return AST(m, t, .value=capture_ast(m, "value"))
-        UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf);
+        UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf); UNOP(HeapAllocate);
 #undef UNOP
         case Assign: {
             NEW_LIST(ast_t*, lhs);
@@ -566,8 +566,11 @@ ast_t *match_to_ast(match_t *m)
         case Fail: {
             return AST(m, Fail, .message=capture_ast(m, "message"));
         }
-        case TypeOption: {
-            return AST(m, TypeOption, .nonnil=capture_ast(m, "nonnil"));
+        case TypePointer: {
+            return AST(m, TypePointer, .pointed=capture_ast(m, "pointed"));
+        }
+        case TypeOptional: {
+            return AST(m, TypeOptional, .type=capture_ast(m, "type"));
         }
         case TypeList: {
             return AST(m, TypeList, .item_type=capture_ast(m, "itemType"));

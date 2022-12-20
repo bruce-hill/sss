@@ -190,14 +190,18 @@ void compile_list_iteration(
     gcc_rvalue_t *list = compile_expr(env, block, list_ast);
     bl_type_t *list_t = get_type(env->file, env->bindings, list_ast);
     gcc_type_t *gcc_list_t = bl_type_to_gcc(env, list_t);
-    if (list_t->tag == OptionalType) {
-        gcc_rvalue_t *is_nil;
-        if (gcc_type_if_pointer(gcc_list_t))
-            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_null(env->ctx, gcc_list_t));
-        else
-            is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_zero(env->ctx, gcc_list_t));
-        gcc_jump_condition(*block, NULL, is_nil, loop_end, loop_preamble);
-        list_t = Match(list_t, OptionalType)->nonnil;
+    if (list_t->tag == PointerType) {
+        auto list_ptr = Match(list_t, PointerType);
+        if (list_ptr->is_optional) {
+            gcc_rvalue_t *is_nil;
+            if (gcc_type_if_pointer(gcc_list_t))
+                is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_null(env->ctx, gcc_list_t));
+            else
+                is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, list, gcc_zero(env->ctx, gcc_list_t));
+            gcc_jump_condition(*block, NULL, is_nil, loop_end, loop_preamble);
+        }
+        list = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(list, NULL));
+        list_t = list_ptr->pointed;
     } else {
         gcc_jump(*block, NULL, loop_preamble);
     }
@@ -280,10 +284,10 @@ void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *o
 #define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *str = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
+    gcc_lvalue_t *str = gcc_local(func, NULL, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), fresh("str"));
     gcc_assign(*block, NULL, str,
                gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                        gcc_null(env->ctx, gcc_type(env->ctx, STRING)),
+                        gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR))),
                         gcc_new_string(env->ctx, "["),
                }));
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));

@@ -44,10 +44,10 @@ say "Equality: $(Vec{1.,1.} == Vec{1.,1.})"
 // Recursive struct
 def Tree {
     value:Int
-    left,right:Tree?
+    left,right:?@Tree
 }
 
-t := Tree{5, Tree{0, nil Tree, nil Tree}, nil Tree}
+t := @Tree{5, left=@Tree{0}}
 // t.right = t
 // say "Recursive struct with cyclical references: $t"
 

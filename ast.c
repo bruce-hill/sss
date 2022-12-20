@@ -20,7 +20,7 @@ static const char *ast_tag_names[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [TypeList]="TypeList", [TypeTable]="TypeTable",
-    [TypeFunction]="TypeFunction", [TypeOption]="TypeOption",
+    [TypeFunction]="TypeFunction", [TypePointer]="TypePointer",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [StructDef]="StructDef",
     [EnumDef]="EnumDef",
