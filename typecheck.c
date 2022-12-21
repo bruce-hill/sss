@@ -238,13 +238,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(f, bindings, access->fielded);
+        bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
         bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
         switch (value_t->tag) {
         case StructType: {
             auto struct_t = Match(value_t, StructType);
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
                 if (LIST_ITEM(struct_t->field_names, i) == access->field) {
-                    if (value_t != fielded_t)
+                    if (is_optional)
                         TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(struct_t->field_types, i);
                 }
@@ -255,7 +256,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
             for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
                 if (LIST_ITEM(union_t->field_names, i) == access->field) {
-                    if (value_t != fielded_t)
+                    if (is_optional)
                         TYPE_ERR(f, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(union_t->field_types, i);
                 }

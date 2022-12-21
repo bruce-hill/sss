@@ -560,11 +560,6 @@ ast_t *match_to_ast(match_t *m)
             match_t *rhses = get_named_capture(m, "rhs", -1);
             for (int64_t i = 1; ; i++) {
                 ast_t *var = match_to_ast(get_numbered_capture(get_numbered_capture(lhses, 1), i));
-                if (var && var->tag != Var) {
-                    fprintf(stderr, "\x1b[31;7;1mOnly variables can be assigned to\x1b[m\n\n");
-                    highlight_match(stderr, parsing, var->match, 2);
-                    exit(1);
-                }
                 ast_t *val = match_to_ast(get_numbered_capture(get_numbered_capture(rhses, 1), i));
                 if (!var && !val) {
                     break;

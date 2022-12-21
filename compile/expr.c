@@ -282,6 +282,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ERROR(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
+        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
         if (length(chunks) == 0) {
@@ -294,11 +295,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *tostring = get_tostring_func(env, t);
             gcc_rvalue_t *args[] = {str, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
             str = tostring ? gcc_call(env->ctx, ast_loc(env, child), tostring, 2, args) : args[0];
+            str = gcc_call(env->ctx, ast_loc(env, ast), CORD_to_char_star_func, 1, &str);
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
         }
         gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
         gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
-        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 
         foreach (chunks, chunk, _) {
             gcc_rvalue_t *val;
@@ -513,7 +514,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env->file, env->bindings, self);
-            switch (self_t->tag) {
+            bl_type_t *value_type = self_t;
+            while (value_type->tag == PointerType)
+                value_type = Match(value_type, PointerType)->pointed;
+            switch (value_type->tag) {
             case TypeType: {
                 if (access->fielded->tag != Var)
                     ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
@@ -527,7 +531,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
-                binding_t *type_binding = hashmap_get(env->bindings, self_t);
+                binding_t *type_binding = hashmap_get(env->bindings, value_type);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
                     ERROR(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
@@ -536,7 +540,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 auto fn_info = Match(binding->type, FunctionType);
                 if (length(fn_info->arg_types) < 1)
                     ERROR(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %s.%s()",
-                          type_to_string(self_t), access->field);
+                          type_to_string(value_type), access->field);
 
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 bl_type_t *expected_self = ith(fn_info->arg_types, 0);
@@ -688,9 +692,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         get_type(env->file, env->bindings, ast); // typecheck
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
         gcc_rvalue_t *obj = compile_expr(env, block, access->fielded);
-        if (fielded_t->tag == StructType) {
+      get_field:
+        switch (fielded_t->tag) {
+        case PointerType: {
+            auto ptr = Match(fielded_t, PointerType);
+            if (ptr->is_optional)
+                ERROR(env, ast, "This field access is unsafe because the value may be nil");
+            obj = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL));
+            fielded_t = ptr->pointed;
+            goto get_field;
+        }
+        case StructType: {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
             auto struct_type = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
                 if (ith(struct_type->field_names, i) == access->field) {
@@ -699,7 +713,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     return gcc_rvalue_access_field(obj, NULL, field);
                 }
             }
-        } else if (fielded_t->tag == TaggedUnionType) {
+            break;
+        }
+        case TaggedUnionType: {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
             bl_type_t* tag_bl_type = Match(fielded_t, TaggedUnionType)->tag_type;
             auto tag_type = Match(tag_bl_type, TagType);
             auto union_type = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
@@ -748,13 +765,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     return gcc_rvalue_access_field(data, NULL, field);
                 }
             }
+            break;
+        }
+        default: break;
         }
         binding_t *binding;
         if (fielded_t->tag == TypeType) {
             hashmap_t *ns = get_namespace(env->bindings, access->fielded);
             binding = hashmap_get(ns, access->field);
         } else {
-            binding_t *type_binding = hashmap_get(env->bindings, type_to_string(fielded_t));
+            binding_t *type_binding = hashmap_get(env->bindings, fielded_t);
             binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
         }
         if (binding)

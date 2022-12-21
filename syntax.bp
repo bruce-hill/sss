@@ -131,7 +131,7 @@ EnumDef:: \b"enum"\b _ @name=varNotKeyword _ (`{__+(@:EnumField=(@name=FieldName
 taggedData: `{ __ *(StructFieldDef) % __ __`}
 Macro:: @curdent:\C \b"macro"\b _ @name=varNotKeyword _ `( __ @args=@(*varNotKeyword%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
 FnDef:: @curdent:\C \b"def"\b _ @name=varNotKeyword _ (
-  `( __ @args=(*((@:FnArg=(@name=varNotKeyword`:_@type=type) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
+  `( __ @args=(*((@:FnArg=(@name=varNotKeyword_`:_@type=type) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   [`: _ [@returnType=type]]_ [comment]
   ((`= _ @body=(@:Block=(
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)

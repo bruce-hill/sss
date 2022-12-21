@@ -90,7 +90,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {
-    gcc_type_t *gcc_t = hashmap_get(env->gcc_types, t);
+    gcc_type_t *gcc_t = hashmap_get(env->gcc_types, type_to_string(t));
     if (gcc_t) return gcc_t;
 
     switch (t->tag) {
@@ -142,7 +142,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         auto struct_t = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name);
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hashmap_set(env->gcc_types, t, gcc_t);
+        hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
         foreach (struct_t->field_types, bl_ft, _) {
@@ -179,7 +179,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         bl_type_t *tag_t = tagged->tag_type;
         gcc_field_t *tag_field = gcc_new_field(env->ctx, NULL, bl_type_to_gcc(env, tag_t), "tag");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hashmap_set(env->gcc_types, t, gcc_t);
+        hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
 
         gcc_type_t *gcc_data_t = bl_type_to_gcc(env, tagged->data);
         if (gcc_data_t) {
@@ -216,7 +216,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     }
 
-    hashmap_set(env->gcc_types, t, gcc_t);
+    hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
     return gcc_t;
 }
 
@@ -250,6 +250,21 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
         return needed_ptr->pointed == actual_ptr->pointed && needed_ptr->is_optional;
+    }
+
+    // Function promotion:
+    if (needed->tag == FunctionType && actual->tag == FunctionType) {
+        auto needed_fn = Match(needed, FunctionType);
+        auto actual_fn = Match(actual, FunctionType);
+        if (length(needed_fn->arg_types) != length(actual_fn->arg_types) || needed_fn->ret != actual_fn->ret)
+            return false;
+        for (int64_t i = 0, len = length(needed_fn->arg_types); i < len; i++) {
+            if (ith(actual_fn->arg_types, i) != ith(needed_fn->arg_types, i))
+                return false;
+        }
+        // GCC is dumb and needs this function to be cast, even though it has the same type:
+        *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
+        return true;
     }
 
     // TODO: Struct promotion?
@@ -531,6 +546,40 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
             ERROR(env, ast, "I don't know what this variable is referring to."); 
         }
     }
+    case FieldAccess: {
+        auto access = Match(ast, FieldAccess);
+        gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded);
+        bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
+      keep_going:
+        switch (fielded_t->tag) { 
+        case StructType: {
+            auto fielded_struct = Match(fielded_t, StructType);
+            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+                if (ith(fielded_struct->field_names, i) == access->field) {
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_t));
+                    gcc_field_t *field = gcc_get_field(gcc_struct, i);
+                    return gcc_lvalue_access_field(fielded_lval, NULL, field);
+                }
+            }
+            ERROR(env, ast, "The struct %s doesn't have a mutable field called '%s'",
+                  type_to_string(fielded_t), access->field);
+        }
+        case PointerType: {
+            auto fielded_ptr = Match(fielded_t, PointerType);
+            if (fielded_ptr->is_optional)
+                ERROR(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+            fielded_lval = gcc_rvalue_dereference(gcc_lvalue_as_rvalue(fielded_lval), NULL);
+            fielded_t = fielded_ptr->pointed;
+            goto keep_going;
+        }
+        default: {
+            ERROR(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
+                  type_to_string(fielded_t));
+        }
+        }
+    }
+    // case Index: {
+    // }
     default:
         ERROR(env, ast, "This is not a valid Lvalue");
     }
