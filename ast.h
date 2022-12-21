@@ -21,7 +21,7 @@ typedef enum {
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
     HeapAllocate,
-    List, Table,
+    Array, Table,
     FunctionDef, MethodDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
@@ -30,7 +30,7 @@ typedef enum {
     Return,
     Fail,
     Extern,
-    TypeList, TypeTable,
+    TypeArray, TypeTable,
     TypeFunction, TypePointer, TypeOptional,
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
@@ -114,7 +114,7 @@ struct ast_s {
         struct {
             ast_t *type;
             List(ast_t*) items;
-        } List;
+        } Array;
         struct {
             ast_t *key_type, *value_type;
             List(ast_t*) items;
@@ -187,7 +187,7 @@ struct ast_s {
         } Extern;
         struct {
             ast_t *item_type;
-        } TypeList;
+        } TypeArray;
         struct {
             ast_t *key_type, *val_type;
         } TypeTable;

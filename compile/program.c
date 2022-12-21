@@ -151,7 +151,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
                 new(binding_t, .rval=gcc_lvalue_as_rvalue(program_name), .type=string_type));
 
     // Set up `args`
-    bl_type_t *args_t = Type(ListType, .item_type=string_type);
+    bl_type_t *args_t = Type(ArrayType, .item_type=string_type);
     gcc_type_t *args_gcc_t = bl_type_to_gcc(&env, args_t);
     gcc_func_t *arg_func = gcc_new_func(
         env.ctx, NULL, GCC_FUNCTION_IMPORTED, args_gcc_t, "arg_list", 2, (gcc_param_t*[]){

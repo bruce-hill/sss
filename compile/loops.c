@@ -92,7 +92,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
         bl_type_t *iter_t = get_type(env->file, env->bindings, for_loop->iter);
         if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
         switch (iter_t->tag) {
-        case ListType: {
+        case ArrayType: {
             compile_list_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
         }

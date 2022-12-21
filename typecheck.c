@@ -65,11 +65,11 @@ bl_type_t *parse_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return b ? b->type_value : NULL;
     }
 
-    case TypeList: {
-        ast_t *item_type = Match(ast, TypeList)->item_type;
+    case TypeArray: {
+        ast_t *item_type = Match(ast, TypeArray)->item_type;
         bl_type_t *item_t = parse_type(f, bindings, item_type);
         if (!item_t) TYPE_ERR(f, item_type, "I can't figure out what this type is.");
-        return Type(ListType, .item_type=item_t);
+        return Type(ArrayType, .item_type=item_t);
     }
 
     case TypePointer: {
@@ -172,8 +172,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case Len: {
         return Type(IntType);
     }
-    case List: {
-        auto list = Match(ast, List);
+    case Array: {
+        auto list = Match(ast, Array);
         if (list->type)
             return parse_type(f, bindings, list->type);
 
@@ -189,8 +189,8 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 hashmap_t *loop_bindings = hashmap_new();
                 loop_bindings->fallback = bindings;
                 switch (iter_t->tag) {
-                case ListType: {
-                    auto list_t = Match(iter_t, ListType);
+                case ArrayType: {
+                    auto list_t = Match(iter_t, ArrayType);
                     if (for_loop->key)
                         hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
                     if (for_loop->value)
@@ -233,7 +233,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          type_to_string(t2),  type_to_string(item_type));
             item_type = merged;
         }
-        return Type(ListType, .item_type=item_type);
+        return Type(ArrayType, .item_type=item_type);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -287,13 +287,13 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         auto indexing = Match(ast, Index);
         bl_type_t *indexed_t = get_type(f, bindings, indexing->indexed);
         switch (indexed_t->tag) {
-        case ListType: {
+        case ArrayType: {
             bl_type_t *index_t = get_type(f, bindings, indexing->index);
             switch (index_t->tag) {
             case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType: break;
             default: TYPE_ERR(f, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
-            return Match(indexed_t, ListType)->item_type;
+            return Match(indexed_t, ArrayType)->item_type;
         }
         // TODO: support accessing fields by integer like (Vec{3,4})[1] --> 3
         // TODO: support ranges like (99..123)[5]
@@ -341,7 +341,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case As: {
         return parse_type(f, bindings, Match(ast, As)->type);
     }
-    case TypeList: case TypePointer: case TypeFunction: {
+    case TypeArray: case TypePointer: case TypeFunction: {
         return Type(TypeType);
     }
     case Negative: {

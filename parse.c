@@ -125,7 +125,7 @@ const char *tag_names[] = {
     [Equal]="Equal", [NotEqual]="NotEqual", [Greater]="Greater", [GreaterEqual]="GreaterEq", [Less]="Less", [LessEqual]="LessEq",
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
     [TypeOf]="TypeOf", [SizeOf]="SizeOf", [HeapAllocate]="HeapAllocate",
-    [List]="List", [Table]="Table",
+    [Array]="Array", [Table]="Table",
     [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
     [Block]="Block",
@@ -133,7 +133,7 @@ const char *tag_names[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
-    [TypeList]="ListType", [TypeTable]="TableType",
+    [TypeArray]="ListArray", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypePointer]="PointerType", [TypeOptional]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
@@ -282,10 +282,10 @@ ast_t *match_to_ast(match_t *m)
         case Interp: {
             return match_to_ast(get_named_capture(m, "value", -1));
         }
-        case List: {
+        case Array: {
             match_t *type_m = get_named_capture(m, "type", -1);
             if (type_m)
-                return AST(m, List, .type=match_to_ast(type_m));
+                return AST(m, Array, .type=match_to_ast(type_m));
             
             List(ast_t*) items = EMPTY_LIST(ast_t*);
             for (int i = 1; ; i++) {
@@ -299,7 +299,7 @@ ast_t *match_to_ast(match_t *m)
                     Match(item, If)->else_body = AST(item->match, Skip);
                 APPEND(items, item);
             }
-            return AST(m, List, .items=items);
+            return AST(m, Array, .items=items);
         }
         case Do: {
             NEW_LIST(ast_t*, blocks);
@@ -587,8 +587,8 @@ ast_t *match_to_ast(match_t *m)
         case TypeOptional: {
             return AST(m, TypeOptional, .type=capture_ast(m, "type"));
         }
-        case TypeList: {
-            return AST(m, TypeList, .item_type=capture_ast(m, "itemType"));
+        case TypeArray: {
+            return AST(m, TypeArray, .item_type=capture_ast(m, "itemType"));
         }
         case TypeFunction: {
             ast_t *ret = capture_ast(m, "returnType");

@@ -320,7 +320,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         str = gcc_call(env->ctx, ast_loc(env, ast), intern_str_func, 1, &str);
         return str;
     }
-    case List: {
+    case Array: {
         return compile_list(env, block, ast);
     }
     case EnumDef: {
@@ -643,7 +643,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env->file, env->bindings, value);
         gcc_rvalue_t *obj = compile_expr(env, block, value);
         switch (t->tag) {
-        case ListType: {
+        case ArrayType: {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));
             return gcc_lvalue_as_rvalue(gcc_rvalue_dereference_field(obj, NULL, gcc_get_field(list_struct, 1)));
@@ -788,7 +788,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *indexed_t = get_type(env->file, env->bindings, indexing->indexed);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
         gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
-        if (indexed_t->tag != ListType)
+        if (indexed_t->tag != ArrayType)
             ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
         gcc_struct_t *list_struct = gcc_type_if_struct(gcc_type_if_pointer(gcc_t));

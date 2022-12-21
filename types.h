@@ -19,7 +19,7 @@ struct bl_type_s {
         NamedType,
         TypeType,
         RangeType,
-        ListType,
+        ArrayType,
         TableType,
         FunctionType,
         PointerType,
@@ -40,7 +40,7 @@ struct bl_type_s {
         } TypeType, RangeType;
         struct {
             bl_type_t *item_type;
-        } ListType;
+        } ArrayType;
         struct {
             bl_type_t *key_type, *value_type;
         } TableType;

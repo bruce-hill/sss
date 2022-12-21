@@ -10,7 +10,7 @@ term: (
     / Var !(_`(,{,.)
     / Percent / Measure / Num / Int
     / String / DSL
-    / List / Table
+    / Array / Table
     / FnCall
     / `(__extended-expr__`)
 )
@@ -76,7 +76,7 @@ DSL:: `% [@name=typeName] (
   / @delim:. @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent delim)
   / @delm:. @content=..%(Escape/Interp) delim / @:ParseError=(..$ =>"This string has no closing delimiter")
   / @:ParseError=(=> "No DSL string content found"))
-List:: `[__`:__@type=@:ListType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
+Array:: `[__`:__@type=@:ArrayType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
 listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
 Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] *tableEntry % (__`,__) __ [`,__] `}
 tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
@@ -174,7 +174,7 @@ value-type: (
   / MeasureType
   / TupleType
   / typeName
-  / @:ListType=(`[__@itemType=type__`])
+  / @:ArrayType=(`[__@itemType=type__`])
   / @:FnType=(`(__ @args=(*@:FnArg=([@name=FieldName __`:__] @type=type) % (__`,__)) __ `) _ arrow __ @returnType=type)
   / `(__type__`)
 )

@@ -76,11 +76,11 @@ static void compile_list_between(env_t *env, gcc_block_t **block, iterator_info_
 
 gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    auto list = Match(ast, List);
+    auto list = Match(ast, Array);
     gcc_ctx_t *ctx = env->ctx;
     bl_type_t *t = get_type(env->file, env->bindings, ast);
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    bl_type_t *item_type = Match(t, ListType)->item_type;
+    bl_type_t *item_type = Match(t, ArrayType)->item_type;
     gcc_type_t *item_gcc_type = bl_type_to_gcc(env, item_type);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *list_lval = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("list"));
@@ -206,7 +206,7 @@ void compile_list_iteration(
         gcc_jump(*block, NULL, loop_preamble);
     }
     *block = NULL;
-    bl_type_t *item_t = Match(list_t, ListType)->item_type;
+    bl_type_t *item_t = Match(list_t, ArrayType)->item_type;
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
 
     // item_ptr = list->items
@@ -308,7 +308,7 @@ void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *o
     // add_next_item:
     gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, gcc_lvalue_as_rvalue(i)));
     gcc_rvalue_t *item_str;
-    gcc_func_t *item_tostring = get_tostring_func(env, Match(t, ListType)->item_type);
+    gcc_func_t *item_tostring = get_tostring_func(env, Match(t, ArrayType)->item_type);
     gcc_rvalue_t *args[] = {
         item,
         gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
