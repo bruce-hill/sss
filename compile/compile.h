@@ -99,16 +99,16 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast,
 void compile_while_iteration(
     env_t *env, gcc_block_t **block, ast_t *condition,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
-void compile_list_iteration(
-    env_t *env, gcc_block_t **block, ast_t *list,
+void compile_array_iteration(
+    env_t *env, gcc_block_t **block, ast_t *array,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_range_iteration(
     env_t *env, gcc_block_t **block, ast_t *range,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 
-// ============================== lists.c ==============================
-gcc_rvalue_t *compile_list(env_t *env, gcc_block_t **block, ast_t *ast);
-void compile_list_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, bl_type_t *t);
+// ============================== arrays.c ==============================
+gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
+void compile_array_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, bl_type_t *t);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);

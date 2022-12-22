@@ -14,6 +14,16 @@
 
 #include "utils.h"
 
+array_t arg_list(int argc, char *argv[]) {
+    // Skip program name:
+    --argc;
+    ++argv;
+    array_t args = {.length=argc, .stride=1, .items=GC_MALLOC_ATOMIC(sizeof(char*)*argc)};
+    for (int i = 0; i < argc; i++)
+        args.items[i] = intern_str(argv[i]);
+    return args;
+}
+
 void say(const char *str, const char *end)
 {
     if (!end)

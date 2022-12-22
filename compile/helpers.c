@@ -48,8 +48,8 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         return gcc_type_size(gcc_t);
 
     switch (bl_t->tag) {
-    case ArrayType: return sizeof(list_t*);
-    case RangeType: return 24;
+    case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
+    case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case PointerType: return sizeof(void*);
     case DSLType: case TypeType: return sizeof(char*);
     case StructType: {
@@ -122,11 +122,11 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case ArrayType: {
         gcc_field_t *fields[3] = {
             gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, Match(t, ArrayType)->item_type)), "items"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT64), "len"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT64), "slack"),
+            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
+            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "stride"),
         };
-        gcc_struct_t *list = gcc_new_struct_type(env->ctx, NULL, "Array", 3, fields);
-        gcc_t = gcc_get_ptr_type(gcc_struct_as_type(list));
+        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, "Array", 3, fields);
+        gcc_t = gcc_struct_as_type(array);
         break;
     }
     case FunctionType: {
@@ -507,7 +507,7 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         break;
     }
     case ArrayType: {
-        compile_list_tostring_func(env, &block, obj, t);
+        compile_array_tostring_func(env, &block, obj, t);
         break;
     }
     case FunctionType: {

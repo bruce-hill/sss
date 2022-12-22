@@ -19,18 +19,6 @@ list_t *list_new_items(size_t item_size, size_t len, void *items) {
     return list;
 }
 
-list_t *arg_list(int argc, char *argv[]) {
-    // Skip program name:
-    --argc;
-    ++argv;
-    list_t *list = new(list_t, .items=GC_MALLOC(sizeof(char*) * argc), .len=argc);
-    const char **args = list->items;
-    for (int i = 0; i < argc; i++) {
-        args[i] = intern_str(argv[i]);
-    }
-    return list;
-}
-
 void list_append(list_t *list, size_t item_size, void *item) {
     if (list->slack > 0) {
         list->slack -= 1;

@@ -133,7 +133,7 @@ const char *tag_names[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
-    [TypeArray]="ListArray", [TypeTable]="TableType",
+    [TypeArray]="ArrayType", [TypeTable]="TableType",
     [TypeFunction]="FnType", [TypePointer]="PointerType", [TypeOptional]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",

@@ -36,6 +36,7 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
                  (gcc_param_t*[]){__VA_ARGS__}, variadic))
     MAKE_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
     MAKE_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
+    MAKE_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
     MAKE_FUNC(t_str, "CORD_cat", 0, PARAM(t_str, "str"), PARAM(t_str, "str2"));
     MAKE_FUNC(t_int, "CORD_sprintf", 1, PARAM(t_str_ptr, "cord"), PARAM(t_str, "fmt"));
     MAKE_FUNC(t_str, "CORD_to_char_star", 0, PARAM(t_str, "cord"));
