@@ -610,6 +610,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (fn_t->arg_defaults) {
                 ast_t *default_val = ith(fn_t->arg_defaults, pos);
                 if (default_val) {
+                    // TODO: maybe manually restrict the bindings in `env`
                     arg_vals[pos] = compile_expr(env, block, default_val);
                     continue;
                 }
