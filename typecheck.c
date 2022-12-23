@@ -506,15 +506,22 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         auto def = Match(ast, FunctionDef);
         NEW_LIST(istr_t, arg_names);
         NEW_LIST(bl_type_t*, arg_types);
+        NEW_LIST(ast_t*, arg_defaults);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(def->arg_types, i);
-            bl_type_t *t = parse_type(f, bindings, arg_def);
             APPEND(arg_names, LIST_ITEM(def->arg_names, i));
-            APPEND(arg_types, t);
+            if (arg_def) {
+                APPEND(arg_types, parse_type(f, bindings, arg_def));
+                APPEND(arg_defaults, NULL);
+            } else {
+                ast_t *default_val = LIST_ITEM(def->arg_defaults, i);
+                APPEND(arg_types, get_type(f, bindings, default_val));
+                APPEND(arg_defaults, default_val);
+            }
         }
 
         bl_type_t *ret = def->ret_type ? parse_type(f, bindings, def->ret_type) : Type(VoidType);
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .default_values=arg_defaults, .ret=ret);
     }
 
     case StructDef: case EnumDef: {

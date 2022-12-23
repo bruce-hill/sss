@@ -123,6 +123,7 @@ struct ast_s {
             istr_t name;
             List(istr_t) arg_names;
             List(ast_t*) arg_types;
+            List(ast_t*) arg_defaults;
             ast_t *ret_type;
             ast_t *body;
         } FunctionDef;

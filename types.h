@@ -4,6 +4,7 @@
 #include <libgccjit.h>
 #include <stdlib.h>
 
+#include "ast.h"
 #include "libblang/list.h"
 
 typedef const struct bl_type_s bl_type_t;
@@ -47,6 +48,7 @@ struct bl_type_s {
         struct {
             List(istr_t) arg_names;
             List(bl_type_t*) arg_types;
+            List(ast_t*) default_values;
             bl_type_t *ret;
         } FunctionType;
         struct {
