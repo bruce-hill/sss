@@ -280,7 +280,8 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, StringJoin, .children=chunks);
         }
         case Interp: {
-            return match_to_ast(get_named_capture(m, "value", -1));
+            bool labelled = get_named_capture(m, "label", -1) != NULL;
+            return AST(m, Interp, .labelled=labelled, .value=match_to_ast(get_named_capture(m, "value", -1)));
         }
         case Array: {
             match_t *type_m = get_named_capture(m, "type", -1);

@@ -3,6 +3,7 @@
 #include <bhash.h>
 #include <libgccjit.h>
 #include <bp/files.h>
+#include <bp/printmatch.h>
 #include <ctype.h>
 #include <err.h>
 #include <gc/cord.h>
@@ -271,6 +272,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Int: case Num: {
         return compile_constant(env, ast);
     }
+    case Interp: {
+        return compile_expr(env, block, Match(ast, Interp)->value);
+    }
     case StringLiteral: {
         return gcc_new_string(env->ctx, Match(ast, StringLiteral)->str);
     }
@@ -288,14 +292,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (length(chunks) == 0) {
             gcc_rvalue_t *empty = gcc_new_string(env->ctx, "");
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &empty);
-        } else if (length(chunks) == 1) {
+        } else if (length(chunks) == 1 && ith(chunks, 0)->tag == StringLiteral) {
             ast_t *child = ith(chunks, 0);
             gcc_rvalue_t *str = compile_expr(env, block, child);
-            bl_type_t *t = get_type(env->file, env->bindings, child);
-            gcc_func_t *tostring = get_tostring_func(env, t);
-            gcc_rvalue_t *args[] = {str, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
-            str = tostring ? gcc_call(env->ctx, ast_loc(env, child), tostring, 2, args) : args[0];
-            str = gcc_call(env->ctx, ast_loc(env, ast), CORD_to_char_star_func, 1, &str);
             return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
         }
         gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
@@ -313,6 +312,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                 };
                 val = tostring ? gcc_call(env->ctx, ast_loc(env, *chunk), tostring, 2, args) : args[0];
+            }
+            if ((*chunk)->tag == Interp) {
+                auto interp = Match(*chunk, Interp);
+                if (interp->labelled) {
+                    match_t *m = interp->value->match;
+                    FILE *f = fmemopen(NULL, (size_t)(m->end - m->start) + 4, "r+");
+                    fprint_match(f, m->start, m, NULL);
+                    fprintf(f, " = ");
+                    fputc('\0', f);
+                    fseek(f, 0, SEEK_SET);
+                    CORD c = CORD_from_file_eager(f);
+                    const char *code = CORD_to_const_char_star(c);
+                    str = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, code)});
+                }
             }
             str = gcc_call(env->ctx, ast_loc(env, *chunk), CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
         }

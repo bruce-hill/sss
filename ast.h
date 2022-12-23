@@ -92,6 +92,7 @@ struct ast_s {
         } DSL;
         struct {
             ast_t *value;
+            bool labelled;
         } Interp;
         struct {
             istr_t name;

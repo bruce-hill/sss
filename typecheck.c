@@ -157,6 +157,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     case Range: {
         return Type(RangeType);
     }
+    case Interp: {
+        return get_type(f, bindings, Match(ast, Interp)->value);
+    }
     case StringJoin: case StringLiteral: {
         return Type(PointerType, .pointed=Type(CharType), .is_optional=false);
     }
