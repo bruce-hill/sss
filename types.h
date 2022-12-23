@@ -48,7 +48,7 @@ struct bl_type_s {
         struct {
             List(istr_t) arg_names;
             List(bl_type_t*) arg_types;
-            List(ast_t*) default_values;
+            List(ast_t*) arg_defaults;
             bl_type_t *ret;
         } FunctionType;
         struct {

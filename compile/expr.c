@@ -607,8 +607,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // Optional values get passed as nil or default values are used:
         for (int64_t len = num_args; pos < len; pos++) {
             if (arg_vals[pos]) continue;
-            if (fn_t->default_values) {
-                ast_t *default_val = ith(fn_t->default_values, pos);
+            if (fn_t->arg_defaults) {
+                ast_t *default_val = ith(fn_t->arg_defaults, pos);
                 if (default_val) {
                     arg_vals[pos] = compile_expr(env, block, default_val);
                     continue;

@@ -323,14 +323,14 @@ ast_t *match_to_ast(match_t *m)
             istr_t name = tag == Lambda ? NULL : capture_istr(m, "name");
             NEW_LIST(istr_t, arg_names);
             NEW_LIST(ast_t*, arg_types);
-            NEW_LIST(ast_t*, default_values);
+            NEW_LIST(ast_t*, arg_defaults);
             match_t *args_m = get_named_capture(m, "args", -1);
             for (int i = 1; ; i++) {
                 match_t *arg_m = get_numbered_capture(args_m, i);
                 if (!arg_m) break;
                 APPEND(arg_names, capture_istr(arg_m, "name"));
                 APPEND(arg_types, capture_ast(arg_m, "type"));
-                APPEND(default_values, capture_ast(arg_m, "default"));
+                APPEND(arg_defaults, capture_ast(arg_m, "default"));
             }
             ast_t *ret_type = capture_ast(m, "returnType");
             match_t *body_m = get_named_capture(m, "body", -1);
@@ -345,7 +345,7 @@ ast_t *match_to_ast(match_t *m)
 
             if (tag == FunctionDef) {
                 return AST(m, FunctionDef, .name=name,
-                           .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=default_values,
+                           .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults,
                            .ret_type=ret_type, .body=body);
             } else if (tag == MethodDef) {
                 return AST(m, MethodDef, .name=name, .self=self,

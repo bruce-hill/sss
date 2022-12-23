@@ -521,7 +521,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
 
         bl_type_t *ret = def->ret_type ? parse_type(f, bindings, def->ret_type) : Type(VoidType);
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .default_values=arg_defaults, .ret=ret);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
     case StructDef: case EnumDef: {
