@@ -317,9 +317,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 auto interp = Match(*chunk, Interp);
                 if (interp->labelled) {
                     match_t *m = interp->value->match;
-                    FILE *f = fmemopen(NULL, (size_t)(m->end - m->start) + 4, "r+");
+                    const char *prefix = ": ";
+                    FILE *f = fmemopen(NULL, (size_t)(m->end - m->start) + strlen(prefix) + 1, "r+");
                     fprint_match(f, m->start, m, NULL);
-                    fprintf(f, " = ");
+                    fprintf(f, "%s", prefix);
                     fputc('\0', f);
                     fseek(f, 0, SEEK_SET);
                     CORD c = CORD_from_file_eager(f);

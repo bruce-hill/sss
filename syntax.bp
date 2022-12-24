@@ -85,8 +85,8 @@ postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_
 Cast:: @expr=(Cast / methodCall / IndexedTerm / term)_`:_@type=type
 As:: @expr=(Cast / methodCall / IndexedTerm / term)_\b"as"\b_@type=type
 interpValue: IndexedTerm / Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation")
-Interp:: `$ [@label=`=] @value=(interpValue / @:String=@content=`$)
-atInterp: @:Interp=(`@ [@label=`=] @value=(interpValue / @:String=@content=`@))
+Interp:: `$ [@label=`:] @value=(interpValue / @:String=@content=`$)
+atInterp: @:Interp=(`@ [@label=`:] @value=(interpValue / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-7 / .)
 Num:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_] [@precision=("f64"/"f32")]
 Measure:: @amount=(Num/Int) @units=MeasureType
