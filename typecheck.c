@@ -183,52 +183,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         bl_type_t *item_type = NULL;
         for (int64_t i = 0; i < LIST_LEN(list->items); i++) {
             ast_t *item = LIST_ITEM(list->items, i);
-            bl_type_t *t2;
-            switch (item->tag) {
-            case For: {
-                auto for_loop = Match(item, For);
-                bl_type_t *iter_t = get_type(f, bindings, for_loop->iter);
-                if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
-                hashmap_t *loop_bindings = hashmap_new();
-                loop_bindings->fallback = bindings;
-                switch (iter_t->tag) {
-                case ArrayType: {
-                    auto list_t = Match(iter_t, ArrayType);
-                    if (for_loop->key)
-                        hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
-                    if (for_loop->value)
-                        hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=list_t->item_type));
-                    break;
-                }
-                case RangeType: {
-                    if (for_loop->key)
-                        hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
-                    if (for_loop->value)
-                        hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(IntType)));
-                    break;
-                }
-                default:
-                    TYPE_ERR(f, for_loop->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
-                    break;
-                }
-                t2 = get_type(f, loop_bindings, for_loop->body);
-                break;
-            }
-            case While: {
-                auto loop = Match(item, While);
-                t2 = get_type(f, bindings, loop->body);
-                break;
-            }
-            case Repeat: {
-                auto loop = Match(item, Repeat);
-                t2 = get_type(f, bindings, loop->body);
-                break;
-            }
-            default: {
-                t2 = get_type(f, bindings, item);
-                break;
-            }
-            }
+            bl_type_t *t2 = get_type(f, bindings, item);
+            while (t2->tag == GeneratorType)
+                t2 = Match(t2, GeneratorType)->generated;
             bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
                 TYPE_ERR(f, LIST_ITEM(list->items, i),
@@ -327,7 +284,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return get_type(f, bindings, LIST_ITEM(do_->blocks, 0));
     }
     case Declare: {
-        return get_type(f, bindings, Match(ast, Declare)->value);
+        return Type(VoidType);
     }
     case Extern: {
         return Type(VoidType);
@@ -414,7 +371,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         TYPE_ERR(f, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                  type_to_string(lhs_t), type_to_string(rhs_t));
     }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
+        return Type(VoidType);
+    }
     case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
         ast_t *lhs = ast->__data.Add.lhs,
@@ -433,8 +392,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
 
         if (t1 == t2) {
             if (is_numeric(t1))
-                return t1;
-            else if (t1->tag == DSLType || t1 == Type(PointerType, .pointed=Type(CharType), .is_optional=false))
                 return t1;
         } else if (is_numeric(t1)) {
             TYPE_ERR(f, ast, "I only know how to do math operations on numeric types, but the right side of this operation is a %s.",
@@ -542,19 +499,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         }
         TYPE_ERR(f, ast, "I haven't implemented anonymous structs yet");
         // TODO: anonymous structs
-
-        //             istr_t name = ast->struct_.name;
-        //             NEW_LIST(istr_t, field_names);
-        //             NEW_LIST(bl_type_t*, field_types);
-        //             LIST_FOR (ast->struct_.members, member, _) {
-        //                 if ((*member)->tag == StructField) {
-        //                     APPEND(field_names, (*member)->named.name);
-        //                     APPEND(field_types, get_type(f, bindings, (*member)->named.value));
-        //                 } else {
-        //                     assert(false);
-        //                 }
-        //             }
-        //             return Type(StructType, .struct_.name=name, .struct_.field_names=field_names, .struct_.field_types=field_types);
     }
 
     case If: {
@@ -578,13 +522,9 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          type_to_string(t), type_to_string(else_type));
             t = t2;
         } else {
-            if (t->tag == PointerType)
-                t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
-            else if (t->tag == AbortType)
-                t = Type(VoidType);
-            else if (t->tag != VoidType)
-                TYPE_ERR(f, ast, "This 'if' conditional has type %s on its branches, but no value for the 'else' condition",
-                         type_to_string(t));
+            if (t->tag == VoidType)
+                return t;
+            t = Type(GeneratorType, .generated=t);
         }
         return t;
     }
@@ -610,19 +550,47 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                          type_to_string(t), type_to_string(else_type));
             t = t2;
         } else {
-            if (t->tag == PointerType)
-                t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
-            else if (t->tag == AbortType)
-                t = Type(VoidType);
-            else if (t->tag != VoidType)
-                TYPE_ERR(f, ast, "This 'when' block has type %s on its branches, but no value for the 'else' condition",
-                         type_to_string(t));
+            if (t->tag == VoidType)
+                return t;
+            t = Type(GeneratorType, .generated=t);
         }
         return t;
     }
 
-    case While: case Repeat: case For: {
-        return Type(VoidType);
+    case While: {
+        return Type(GeneratorType, .generated=get_type(f, bindings, Match(ast, While)->body));
+    }
+    case Repeat: {
+        return Type(GeneratorType, .generated=get_type(f, bindings, Match(ast, Repeat)->body));
+    }
+    case For: {
+        auto for_loop = Match(ast, For);
+        bl_type_t *iter_t = get_type(f, bindings, for_loop->iter);
+        if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
+        hashmap_t *loop_bindings = hashmap_new();
+        loop_bindings->fallback = bindings;
+        switch (iter_t->tag) {
+        case ArrayType: {
+            auto list_t = Match(iter_t, ArrayType);
+            if (for_loop->key)
+                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+            if (for_loop->value)
+                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=list_t->item_type));
+            break;
+        }
+        case RangeType: {
+            if (for_loop->key)
+                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+            if (for_loop->value)
+                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(IntType)));
+            break;
+        }
+        default:
+            TYPE_ERR(f, for_loop->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
+            break;
+        }
+        bl_type_t *t = get_type(f, loop_bindings, for_loop->body);
+        return Type(GeneratorType, .generated=t);
     }
 
     default: break;
@@ -638,6 +606,8 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);
+        while (t->tag == GeneratorType)
+            t = Match(t, GeneratorType)->generated;
         if (!(t->tag == VoidType || t->tag == AbortType)) {
             TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
                      type_to_string(t));

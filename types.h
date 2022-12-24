@@ -24,6 +24,7 @@ struct bl_type_s {
         TableType,
         FunctionType,
         PointerType,
+        GeneratorType,
         StructType,
         TagType,
         TaggedUnionType,
@@ -55,6 +56,9 @@ struct bl_type_s {
             bool is_optional;
             bl_type_t *pointed;
         } PointerType;
+        struct {
+            bl_type_t *generated;
+        } GeneratorType;
         struct {
             istr_t name;
             List(istr_t) field_names;

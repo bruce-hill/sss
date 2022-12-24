@@ -143,7 +143,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto decl = Match(ast, Declare);
         bl_type_t *t = get_type(env->file, env->bindings, decl->value);
         assert(t);
-        if (t->tag == VoidType)
+        if (t->tag == GeneratorType)
+            ERROR(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
+        else if (t->tag == VoidType)
             ERROR(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -198,6 +200,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *rhs = ith(values, i);
             bl_type_t *t_lhs = get_type(env->file, env->bindings, ith(targets, i));
             bl_type_t *t_rhs = get_type(env->file, env->bindings, rhs);
+            // TODO: maybe allow generators to assign the *last* value, if any
+            if (t_rhs->tag == GeneratorType)
+                ERROR(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
             gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
             if (!promote(env, t_rhs, &rval, t_lhs))
@@ -1049,16 +1054,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
     case Add: case Subtract: case Divide: case Multiply: {
-        bl_type_t *t = get_type(env->file, env->bindings, ast);
-        if (!is_numeric(t))
-            ERROR(env, ast, "I don't yet know how to do math operations on non-numeric types like %s", type_to_string(t));
-
+        bool is_update = false;
         gcc_binary_op_e op;
         switch (ast->tag) {
-        case Add: case AddUpdate: op = GCC_BINOP_PLUS; break;
-        case Subtract: case SubtractUpdate: op = GCC_BINOP_MINUS; break;
-        case Multiply: case MultiplyUpdate: op = GCC_BINOP_MULT; break;
-        case Divide: case DivideUpdate: op = GCC_BINOP_DIVIDE; break;
+        case AddUpdate: op = GCC_BINOP_PLUS; is_update = true; break;
+        case Add: op = GCC_BINOP_PLUS; break;
+        case SubtractUpdate: op = GCC_BINOP_MINUS; is_update = true; break;
+        case Subtract: op = GCC_BINOP_MINUS; break;
+        case MultiplyUpdate: op = GCC_BINOP_MULT; is_update = true; break;
+        case Multiply: op = GCC_BINOP_MULT; break;
+        case DivideUpdate: op = GCC_BINOP_DIVIDE; is_update = true; break;
+        case Divide: op = GCC_BINOP_DIVIDE; break;
         default: ERROR(env, ast, "Unsupported math operation");
         }
 
@@ -1068,23 +1074,31 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
         bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
-        if (AddUpdate <= ast->tag && ast->tag <= DivideUpdate) {
+        if (is_update) {
             gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
             if (!promote(env, rhs_t, &rhs_val, lhs_t))
                 ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them without losing precision.",
                       type_to_string(lhs_t), type_to_string(rhs_t));
+            if (!is_numeric(lhs_t))
+                ERROR(env, lhs, "I've only implemented numeric math operations, but this type is %s", type_to_string(lhs_t));
             gcc_update(*block, ast_loc(env, ast), lhs_val, op, rhs_val);
             return gcc_lvalue_as_rvalue(lhs_val);
         } else {
             gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
-            if (!promote(env, lhs_t, &lhs_val, rhs_t)
-                && !promote(env, rhs_t, &rhs_val, lhs_t))
+            bl_type_t *t = NULL;
+            if (promote(env, lhs_t, &lhs_val, rhs_t))
+                t = rhs_t;
+            else if (promote(env, rhs_t, &rhs_val, lhs_t))
+                t = lhs_t;
+            else
                 ERROR(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                       type_to_string(lhs_t), type_to_string(rhs_t));
+            if (!is_numeric(t))
+                ERROR(env, ast, "I've only implemented numeric math operations, but this type is %s", type_to_string(t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), op, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
     }
@@ -1109,7 +1123,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case If: {
         auto if_ = Match(ast, If);
         bl_type_t *if_t = get_type(env->file, env->bindings, ast);
-        bool has_value = !(if_t->tag == AbortType || if_t->tag == VoidType);
+        bool has_value = !(if_t->tag == GeneratorType || if_t->tag == AbortType || if_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
 
@@ -1117,18 +1131,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         foreach (if_->clauses, clause, last_clause) {
             gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
-            gcc_block_t *if_falsey = (clause < last_clause || if_->else_body) ? gcc_new_block(func, fresh("elseif")) : end_if;
+            gcc_block_t *if_falsey = gcc_new_block(func, fresh("elseif"));
 
             ast_t *condition = clause->condition, *body = clause->body;
             env_t branch_env = *env;
             branch_env.bindings = hashmap_new();
             branch_env.bindings->fallback = env->bindings;
+            assert(if_truthy && if_falsey);
             check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
             gcc_rvalue_t *branch_val = compile_expr(&branch_env, &if_truthy, body);
 
             if (if_truthy) {
                 if (branch_val) {
-                    if (if_ret) {
+                    if (has_value) {
                         bl_type_t *actual = get_type(env->file, env->bindings, body);
                         if (!promote(env, actual, &branch_val, if_t))
                             ERROR(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
@@ -1146,7 +1161,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (if_->else_body) {
             gcc_rvalue_t *branch_val = compile_expr(env, block, if_->else_body);
             if (branch_val) {
-                if (if_ret) {
+                if (has_value) {
                     bl_type_t *actual = get_type(env->file, env->bindings, if_->else_body);
                     if (!promote(env, actual, &branch_val, if_t))
                         ERROR(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
@@ -1156,11 +1171,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_eval(*block, NULL, branch_val);
                 }
             }
+            if (*block) {
+                assert(end_if); // AbortTypes shouldn't leave *block as non-null when compiling
+                gcc_jump(*block, NULL, end_if);
+            }
+            *block = NULL;
+        } else {
             if (*block)
                 gcc_jump(*block, NULL, end_if);
+            *block = NULL;
         }
         *block = end_if;
-        return if_ret ? gcc_lvalue_as_rvalue(if_ret) : NULL;
+        return has_value ? gcc_lvalue_as_rvalue(if_ret) : NULL;
     }
     case When: {
         // TODO: support `when "foo"` and `when x is (2+3)` by falling back to if/else when switch doesn't work
@@ -1174,7 +1196,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         bl_type_t *result_t = get_type(env->file, env->bindings, ast);
-        bool has_value = !(result_t->tag == AbortType || result_t->tag == VoidType);
+        bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
         gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
@@ -1190,7 +1212,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             if (branch_val) {
-                if (when_value) {
+                if (has_value) {
                     bl_type_t *actual = get_type(env->file, env->bindings, case_->body);
                     if (!promote(env, actual, &branch_val, result_t))
                         ERROR(env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
@@ -1205,20 +1227,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_block_t *default_block;
         if (when->default_body) {
             default_block = gcc_new_block(func, fresh("default"));
-            gcc_rvalue_t *branch_val = compile_expr(env, &default_block, when->default_body);
-            if (branch_val) {
-                if (when_value) {
+            gcc_block_t *end_of_default = default_block;
+            gcc_rvalue_t *branch_val = compile_expr(env, &end_of_default, when->default_body);
+            if (branch_val && end_of_default) {
+                if (has_value) {
                     bl_type_t *actual = get_type(env->file, env->bindings, when->default_body);
                     if (!promote(env, actual, &branch_val, result_t))
                         ERROR(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
-                    gcc_assign(default_block, NULL, when_value, branch_val);
+                    gcc_assign(end_of_default, NULL, when_value, branch_val);
                 } else {
-                    gcc_eval(default_block, NULL, branch_val);
+                    gcc_eval(end_of_default, NULL, branch_val);
                 }
             }
-            if (*block)
-                gcc_jump(default_block, NULL, end_when);
+            if (end_of_default)
+                gcc_jump(end_of_default, NULL, end_when);
         } else {
             default_block = end_when;
         }
@@ -1293,6 +1316,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
         gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, fail, 3, (gcc_rvalue_t*[]){fmt, msg, callstack});
         fclose(f);
+        gcc_jump(*block, NULL, *block);
+        *block = NULL;
         return ret;
     }
     default: break;

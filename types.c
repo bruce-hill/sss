@@ -71,6 +71,10 @@ static CORD type_to_cord(bl_type_t *t) {
             auto ptr = Match(t, PointerType);
             return CORD_cat(ptr->is_optional ? "@?" : "@", type_to_cord(ptr->pointed));
         }
+        case GeneratorType: {
+            auto gen = Match(t, GeneratorType);
+            return CORD_cat(type_to_cord(gen->generated), "(generator)");
+        }
         case TagType: {
             auto tag = Match(t, TagType);
             return CORD_cat(tag->name, ".Tag");

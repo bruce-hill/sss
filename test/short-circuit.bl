@@ -1,6 +1,5 @@
 def fail_bool(msg:String):Bool
     fail "Test failed: $msg"
-    return no
 
 if no or yes or fail_bool("or failed to short circuit")
     say "or pass"
@@ -26,7 +25,6 @@ def doop():String
     maybe_str := if yes then nil String else "ok"
     x := maybe_str or return "Successfully short circuited with return"
     fail "Failed to short circuit"
-    return "x"
 
 say doop()
 
