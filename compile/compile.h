@@ -11,9 +11,9 @@
 #include "../util.h"
 #include "libgccjit_abbrev.h"
 
-#define ERROR(env, ast, fmt, ...) { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
+#define ERROR(env, ast, fmt, ...) do { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
             highlight_match(stderr, env->file, (ast)->match, 2); \
-            exit(1); }
+            exit(1); } while(0)
 #define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
 
 #define foreach LIST_FOR
