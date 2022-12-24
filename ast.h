@@ -22,7 +22,7 @@ typedef enum {
     TypeOf, SizeOf,
     HeapAllocate,
     Array, Table,
-    FunctionDef, MethodDef, Lambda,
+    FunctionDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
     Do, If, For, While, Repeat, When,
@@ -128,13 +128,6 @@ struct ast_s {
             ast_t *ret_type;
             ast_t *body;
         } FunctionDef;
-        struct {
-            istr_t name, self;
-            List(istr_t) arg_names;
-            List(ast_t*) arg_types;
-            ast_t *ret_type;
-            ast_t *body;
-        } MethodDef;
         struct {
             List(istr_t) arg_names;
             List(ast_t*) arg_types;

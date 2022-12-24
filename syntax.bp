@@ -110,7 +110,7 @@ statements: @curdent:\C +(
   / !$ @:ParseError=(@dent:\C ..$ *(\n dent (` /\t)..$) =>"Invalid statement")) % (nl curdent !(` /\t))
 indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
-    Declaration / FnDef / ConvertDef / Extern / Macro / If / Do / When / For / While / Repeat
+    Declaration / FnDef / Extern / Macro / If / Do / When / For / While / Repeat
   / TypeDef / StructDef / UnitDef / EnumDef
   / PostfixIf / PostfixFor / PostfixWhile
   / Return / Skip / Stop / Export / Use
@@ -126,7 +126,7 @@ Fail:: \b"fail"\b _ [@message=extended-expr]
 Declaration:: @lhs=varNotKeyword _":=" _ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=varNotKeyword _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDef:: \b"unit"\b _ @name=varNotKeyword _ `= _ @measure=Measure
-StructDef:: \b"def"\b _ @name=varNotKeyword __ `{__ *(StructFieldDef / MethodDef / FnDef / StructDef / EnumDef / Declaration) % __ __`}
+StructDef:: \b"def"\b _ @name=varNotKeyword __ `{__ *(StructFieldDef / FnDef / StructDef / EnumDef / Declaration) % __ __`}
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
 EnumDef:: \b"enum"\b _ @name=varNotKeyword _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int] [__@data=taggedData__])) % (__[`,__]) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 taggedData: `{ __ *(StructFieldDef) % __ __`}
@@ -134,20 +134,6 @@ Macro:: @curdent:\C \b"macro"\b _ @name=varNotKeyword _ `( __ @args=@(*varNotKey
 FnDef:: @curdent:\C \b"def"\b _ @name=varNotKeyword _ (
   `( __ @args=(*((@:FnArg=(@name=varNotKeyword_(`:_@type=type / `=_@default=required-extended-expr)) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
   [`: _ [@returnType=type]]_ [comment]
-  ((`= _ @body=(@:Block=(
-      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
-      / @:Return=(@value=required-extended-expr) _ [comment])))
-   / @body=maybeIndentedBlock))
-MethodDef:: @curdent:\C \b"def"\b _ @selfVar=varNotKeyword _`._ @name=varNotKeyword _ (
-  `( __ @args=(*((@:FnArg=(@name=varNotKeyword_`:_@type=type) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
-  [`: _ @returnType=type]_ [comment]
-  ((`= _ @body=(@:Block=(
-      [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
-      / @:Return=(@value=required-extended-expr) _ [comment])))
-   / @body=maybeIndentedBlock))
-ConvertDef:: @curdent:\C \b"def"\b _ (
-  `( __ @args=@(@:FnArg=(@name=varNotKeyword_`:_@type=type) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type") / @:ParseError=(=>"Expected an argument here"))__`)_
-  (`: _ @returnType=type / @:ParseError(=>"Expected a return type here"))_ [comment]
   ((`= _ @body=(@:Block=(
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr) _ [comment])))

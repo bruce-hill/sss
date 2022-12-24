@@ -126,7 +126,7 @@ const char *tag_names[] = {
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
     [TypeOf]="TypeOf", [SizeOf]="SizeOf", [HeapAllocate]="HeapAllocate",
     [Array]="Array", [Table]="Table",
-    [FunctionDef]="FnDef", [MethodDef]="MethodDef", [Lambda]="Lambda",
+    [FunctionDef]="FnDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
     [Block]="Block",
     [Do]="Do", [If]="If", [For]="For", [While]="While", [Repeat]="Repeat", [When]="When",
@@ -320,7 +320,7 @@ ast_t *match_to_ast(match_t *m)
             }
             return AST(m, Block, .statements=stmts);
         }
-        case FunctionDef: case MethodDef: case Lambda: {
+        case FunctionDef: case Lambda: {
             istr_t name = tag == Lambda ? NULL : capture_istr(m, "name");
             NEW_LIST(istr_t, arg_names);
             NEW_LIST(ast_t*, arg_types);
@@ -340,17 +340,9 @@ ast_t *match_to_ast(match_t *m)
             if (tag == Lambda)
                 body = AST(body_m, Return, .value=body);
 
-            istr_t self = NULL;
-            if (tag == MethodDef)
-                self = match_to_istr(get_named_capture(m, "selfVar", -1));
-
             if (tag == FunctionDef) {
                 return AST(m, FunctionDef, .name=name,
                            .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults,
-                           .ret_type=ret_type, .body=body);
-            } else if (tag == MethodDef) {
-                return AST(m, MethodDef, .name=name, .self=self,
-                           .arg_names=arg_names, .arg_types=arg_types,
                            .ret_type=ret_type, .body=body);
             } else {
                 return AST(m, Lambda, .arg_names=arg_names, .arg_types=arg_types,
