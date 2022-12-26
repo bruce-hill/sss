@@ -23,9 +23,18 @@ typedef struct {
     gcc_rvalue_t *array_ptr;
 } array_insert_info_t;
 
-static void add_array_item(env_t *env, gcc_block_t **block, gcc_rvalue_t *array_ptr, ast_t *item)
+static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rvalue_t *array_ptr)
 {
     bl_type_t *t = get_type(env->file, env->bindings, item); // item type
+    if (t->tag == GeneratorType) {
+        gcc_rvalue_t *val = compile_expr(env, block, item);
+        assert(!val);
+        return;
+    }
+
+    gcc_rvalue_t *item_val = compile_expr(env, block, item);
+    if (!*block) return;
+
     gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=t));
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
     gcc_lvalue_t *array = gcc_rvalue_dereference(array_ptr, NULL);
@@ -53,48 +62,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, gcc_rvalue_t *array_
     // array.items[array.length-1] = item
     gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_lvalue_as_rvalue(length_field), one32);
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(data_field), index);
-    gcc_assign(*block, NULL, item_home, compile_expr(env, block, item));
-}
-
-static void iter_add_array_item(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
-    array_insert_info_t *array_info = data;
-    ast_t *ast = array_info->item;
-    switch (ast->tag) {
-    case For: {
-        auto for_loop = Match(ast, For);
-        istr_t key = for_loop->key, value = for_loop->value;
-        if (key)
-            hashmap_set(env->bindings, key, new(binding_t, .type=info->key_type, .rval=info->key_rval));
-        if (value)
-            hashmap_set(env->bindings, value, new(binding_t, .type=info->value_type, .rval=info->value_rval));
-        add_array_item(env, block, array_info->array_ptr, for_loop->body);
-        break;
-    }
-    case While: {
-        add_array_item(env, block, array_info->array_ptr, Match(ast, While)->body);
-        break;
-    }
-    case Repeat: {
-        add_array_item(env, block, array_info->array_ptr, Match(ast, Repeat)->body);
-        break;
-    }
-    default: assert(false);
-    }
-}
-
-static void compile_array_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
-    (void)info;
-    array_insert_info_t *array_info = data;
-    ast_t *between = NULL;
-    if (array_info->item->tag == For) {
-        between = Match(array_info->item, For)->between;
-    } else if (array_info->item->tag == While) {
-        between = Match(array_info->item, While)->between;
-    } else if (array_info->item->tag == Repeat) {
-        between = Match(array_info->item, Repeat)->between;
-    }
-    if (between)
-        compile_block_statement(env, block, between);
+    gcc_assign(*block, NULL, item_home, item_val);
 }
 
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
@@ -112,6 +80,8 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
                                       (gcc_rvalue_t*[]){gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
 
     env_t env2 = *env;
+    env2.comprehension_callback = (void*)add_array_item;
+    env2.comprehension_userdata = gcc_lvalue_address(array_var, NULL);
     env = &env2;
 
     if (array->items) {
@@ -125,21 +95,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
                     .stop_label = array_done,
             };
 
-            switch ((*item_ast)->tag) {
-            case For: case While: case Repeat: {
-                array_insert_info_t info = {
-                    .item=*item_ast,
-                    .array_ptr=gcc_lvalue_address(array_var, NULL),
-                };
-                // array comprehension:
-                compile_iteration(env, block, *item_ast, iter_add_array_item, compile_array_between, (void*)&info);
-                break;
-            }
-            default: {
-                add_array_item(env, block, gcc_lvalue_address(array_var, NULL), *item_ast);
-                break;
-            }
-            }
+            add_array_item(env, block, *item_ast, gcc_lvalue_address(array_var, NULL));
 
             if (*block)
                 gcc_jump(*block, NULL, item_done);

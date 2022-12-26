@@ -251,7 +251,9 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         if (stmt == last_stmt && give_expression) {
             return compile_expr(env, block, *stmt);
         } else {
-            compile_statement(env, block, *stmt);
+            env_t tmp = *env;
+            tmp.comprehension_callback = NULL;
+            compile_statement(&tmp, block, *stmt);
         }
     }
     return NULL;
@@ -264,8 +266,9 @@ gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    if (ast)
-        (void)_compile_block(env, block, ast, false);
+    if (!ast) return;
+    gcc_rvalue_t *rval = _compile_block(env, block, ast, env->comprehension_callback != NULL);
+    if (rval && *block) gcc_eval(*block, NULL, rval);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

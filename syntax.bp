@@ -77,9 +77,9 @@ DSL:: `% [@name=typeName] (
   / @delm:. @content=..%(Escape/Interp) delim / @:ParseError=(..$ =>"This string has no closing delimiter")
   / @:ParseError=(=> "No DSL string content found"))
 Array:: `[__`:__@type=@:ArrayType=(@itemType=type)__`] / `[ __ +listItem % (__`,__) __[`,__] `]
-listItem: PostfixFor / PostfixWhile / PostfixIf / extended-expr
+listItem: postfixFor / postfixWhile / postfixIf / extended-expr
 Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) __] *tableEntry % (__`,__) __ [`,__] `}
-tableEntry: PostfixFor / PostfixWhile / PostfixIf / TableEntry
+tableEntry: postfixFor / postfixWhile / postfixIf / TableEntry
 TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName) / @key=String) __`= __ @value=required-extended-expr
 postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
 Cast:: @expr=(Cast / methodCall / IndexedTerm / term)_`:_@type=type
@@ -112,14 +112,15 @@ indentedBlock: @:Block=([_comment] nl curdent +(` /\t) statements)
 statement: (
     Declaration / FnDef / Extern / Macro / If / Do / When / For / While / Repeat
   / TypeDef / StructDef / UnitDef / EnumDef
-  / PostfixIf / PostfixFor / PostfixWhile
-  / Return / Skip / Stop / Export / Use
+  / postfixIf / postfixFor / postfixWhile
   / line-statement
+  / Return / Skip / Stop / Export / Use
   ) _ [comment]
 Skip:: \b"skip"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
 Stop:: \b"stop"\b [_ @target=(\b"for"\b / \b"while"\b / \b"repeat"\b / \b"do"\b / Var)]
 line-statement: (
     @:Pass=(\b"pass"\b _ [comment]) / Fail / >'[' TableEntry
+  / postfixIf / postfixFor / postfixWhile
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
@@ -177,10 +178,10 @@ If:: \b"if"\b @curdent:\C _ (
     [(nl curdent/_) \b"else"\b @elseBody=(maybeIndentedBlock / @:ParseError=(=>"Expected a block after this 'else'"))]
 )
 Do:: \b"do"\b @curdent:\C _ maybeIndentedBlock *(nl curdent \b"else"\b maybeIndentedBlock)
-PostfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement / extended-expr) _ postfixConditional _ [comment]))
-PostfixFor: @:For=(@body=@:Block=@(line-statement / extended-expr) _
+postfixIf: @:If=(@:Clause=(@body=@:Block=@(Return / Skip / Stop / line-statement / extended-expr) _ postfixConditional _ [comment]))
+postfixFor: @:For=(@body=@:Block=@(line-statement / extended-expr) _
   \b"for"\b _ [@index=varNotKeyword_`,_] @val=varNotKeyword _ "in" _ @iterable=required-extended-expr _ [@filter=loopFilter] _ [comment])
-PostfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
+postfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
   \b"while"\b _ @condition=extended-expr _ [@filter=loopFilter] _ [comment])
 When:: ( \b"when"\b @curdent:\C _
   @subject=required-extended-expr _ [[comment] nl curdent]

@@ -3,6 +3,7 @@
 #include <gc.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <string.h>
 
 #include "ast.h"
@@ -13,7 +14,7 @@
 #define TYPE_ERR(f, ast, fmt, ...) do { \
     fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
     highlight_match(stderr, f, (ast)->match, 2); \
-    exit(1); } while (0)
+    raise(SIGABRT); exit(1); } while (0)
 
 static bl_type_t *get_clause_type(file_t *f, hashmap_t *bindings, ast_t *condition, ast_t *body)
 {
@@ -606,11 +607,15 @@ void check_discardable(file_t *f, hashmap_t *bindings, ast_t *ast)
         return;
     default: {
         bl_type_t *t = get_type(f, bindings, ast);
-        while (t->tag == GeneratorType)
-            t = Match(t, GeneratorType)->generated;
+        bool was_generator = (t->tag == GeneratorType);
+        while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
         if (!(t->tag == VoidType || t->tag == AbortType)) {
-            TYPE_ERR(f, ast, "This value has a return type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
-                     type_to_string(t));
+            if (was_generator)
+                TYPE_ERR(f, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
+                         type_to_string(t));
+            else
+                TYPE_ERR(f, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
+                         type_to_string(t));
         }
     }
     }

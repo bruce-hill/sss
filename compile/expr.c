@@ -27,8 +27,12 @@ static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *i
     if (for_loop->value)
         hashmap_set(env->bindings, for_loop->value, new(binding_t, .rval=info->value_rval, .type=info->value_type));
 
-    if (for_loop->body)
-        compile_block_statement(env, block, for_loop->body);
+    if (for_loop->body) {
+        if (get_type(env->file, env->bindings, for_loop->body)->tag != GeneratorType && env->comprehension_callback)
+            env->comprehension_callback(env, block, for_loop->body, env->comprehension_userdata);
+        else
+            compile_block_statement(env, block, for_loop->body);
+    }
 }
 
 static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
@@ -41,14 +45,12 @@ static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t
 static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data) {
     (void)info;
     ast_t *ast = (ast_t*)data;
-    if (ast->tag == While) {
-        auto loop = Match(ast, While);
-        if (loop->body)
-            compile_block_statement(env, block, loop->body);
-    } else {
-        auto loop = Match(ast, Repeat);
-        if (loop->body)
-            compile_block_statement(env, block, loop->body);
+    ast_t *body = ast->tag == While ? Match(ast, While)->body : Match(ast, Repeat)->body;
+    if (body) {
+        if (get_type(env->file, env->bindings, body)->tag != GeneratorType && env->comprehension_callback)
+            env->comprehension_callback(env, block, body, env->comprehension_userdata);
+        else
+            compile_block_statement(env, block, body);
     }
 }
 
@@ -1121,8 +1123,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case If: {
-        auto if_ = Match(ast, If);
         bl_type_t *if_t = get_type(env->file, env->bindings, ast);
+        auto if_ = Match(ast, If);
         bool has_value = !(if_t->tag == GeneratorType || if_t->tag == AbortType || if_t->tag == VoidType);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *if_ret = has_value ? gcc_local(func, NULL, bl_type_to_gcc(env, if_t), fresh("if_value")) : NULL;
@@ -1139,8 +1141,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             branch_env.bindings->fallback = env->bindings;
             assert(if_truthy && if_falsey);
             check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
-            gcc_rvalue_t *branch_val = compile_expr(&branch_env, &if_truthy, body);
 
+            if (if_t->tag == GeneratorType && env->comprehension_callback) {
+                if (!env->comprehension_callback)
+                    ERROR(env, ast, "This 'if' is being used as a value, but it might not have a value");
+                env->comprehension_callback(&branch_env, &if_truthy, body, env->comprehension_userdata);
+                assert(end_if);
+                if (if_truthy)
+                    gcc_jump(if_truthy, NULL, end_if);
+                *block = if_falsey;
+                continue;
+            }
+
+            gcc_rvalue_t *branch_val = compile_expr(&branch_env, &if_truthy, body);
             if (if_truthy) {
                 if (branch_val) {
                     if (has_value) {

@@ -293,12 +293,7 @@ ast_t *match_to_ast(match_t *m)
                 match_t *im = get_numbered_capture(m, i);
                 assert(im != m);
                 if (!im) break;
-                // Shim: [x if cond] is mapped to [x if cond else skip]
-                // `skip` in a list means "don't add this item"
-                ast_t *item = match_to_ast(im);
-                if (item->tag == If && !Match(item, If)->else_body)
-                    Match(item, If)->else_body = AST(item->match, Skip);
-                APPEND(items, item);
+                APPEND(items, match_to_ast(im));
             }
             return AST(m, Array, .items=items);
         }
