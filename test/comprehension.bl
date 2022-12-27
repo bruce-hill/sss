@@ -18,3 +18,7 @@ say "$p"
 
 // t2 := {[v]=k for k,v in t}
 // say "$t2"
+
+nested := [[1,2,3], [4,5,6]]
+x := [i if i mod 2 == 0 for i in row for row in nested]
+fail unless "$x" == "[2, 4, 6]"
