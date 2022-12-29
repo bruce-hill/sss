@@ -22,7 +22,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     check_discardable(env->file, env->bindings, ast);
     gcc_rvalue_t *val = compile_expr(env, block, ast);
-    if (val)
+    if (val && *block)
         gcc_eval(*block, ast_loc(env, ast), val);
 }
 
