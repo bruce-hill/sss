@@ -937,9 +937,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               *rhs = ast->__data.Less.rhs;
         // End of unsafe
         gcc_comparison_e cmp;
+        bool pointers_allowed = false;
         switch (ast->tag) {
-        case Equal: cmp = GCC_COMPARISON_EQ; break;
-        case NotEqual: cmp = GCC_COMPARISON_NE; break;
+        case Equal: cmp = GCC_COMPARISON_EQ; pointers_allowed = true; break;
+        case NotEqual: cmp = GCC_COMPARISON_NE; pointers_allowed = true; break;
         case Less: cmp = GCC_COMPARISON_LT; break;
         case LessEqual: cmp = GCC_COMPARISON_LE; break;
         case Greater: cmp = GCC_COMPARISON_GT; break;
@@ -954,6 +955,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         coerce_numbers(env, &lhs_t, &lhs_val, &rhs_t, &rhs_val);
         if (lhs_t != rhs_t)
             ERROR(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+
+        if (!pointers_allowed && has_pointer(lhs_t))
+            ERROR(env, ast, "Ordered comparisons between pointers is not supported and this type has a pointer: %s", type_to_string(lhs_t));
 
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
             return gcc_comparison(env->ctx, NULL, cmp, lhs_val, rhs_val);

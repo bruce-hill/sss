@@ -160,4 +160,22 @@ int numtype_priority(bl_type_t *t)
     }
 }
 
+bool has_pointer(bl_type_t *t)
+{
+    switch (t->tag) {
+    case PointerType: case ArrayType: case FunctionType: {
+        return true;
+    }
+    case StructType: {
+        auto struct_ = Match(t, StructType);
+        for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
+            if (has_pointer(LIST_ITEM(struct_->field_types, i)))
+                return true;
+        }
+        return false;
+    }
+    default: return false;
+    }
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

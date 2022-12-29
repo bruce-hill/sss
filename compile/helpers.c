@@ -533,10 +533,6 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 // Get a comparison function: -1 means lhs < rhs; 0 means lhs == rhs; 1 means lhs > rhs
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 {
-    // print() is the same for optional/non-optional pointers:
-    if (t->tag == PointerType)
-        t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
-
     // Memoize:
     gcc_func_t *func = hashmap_get(env->cmp_funcs, t);
     if (func) return func;
@@ -585,6 +581,53 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_return(done, NULL, gcc_lvalue_as_rvalue(cmp));
         break;
     }
+    // case TaggedUnionType: {
+    //     // if (lhs.tag != rhs.tag) return (lhs.tag - rhs.tag)
+    //     // switch (lhs.tag) { ... case Foo: return cmp(lhs.__data.Foo, rhs.__data.Foo); ... }
+    //     gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
+    //     gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
+    //     gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
+    //     auto tagged_t = Match(t, TaggedUnionType);
+    //     auto tags = Match(tagged_t->tag_type, TagType);
+    //     gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
+    //     istr_t type_prefix = intern_strf("%s.", tagged_t->name);
+    //     NEW_LIST(gcc_case_t*, cases);
+    //     for (int64_t i = 0, len = length(tags->names); i < len; i++) {
+    //         istr_t tag_name = ith(tags->names, i);
+    //         gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
+
+    //         auto union_t = Match(tagged_t->data, UnionType);
+    //         for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
+    //             if (ith(union_t->field_names, u) == tag_name) {
+    //                 bl_type_t *tag_data_type = ith(union_t->field_types, u);
+    //                 gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
+    //                 gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
+    //                 gcc_field_t *union_field = ith(union_t->fields, u);
+    //                 gcc_rvalue_t *args[] = {
+    //                     gcc_rvalue_access_field(data, NULL, union_field),
+    //                     f,
+    //                     gcc_param_as_rvalue(params[2]),
+    //                 };
+    //                 gcc_func_t *tag_print = get_print_func(env, tag_data_type);
+    //                 gcc_rvalue_t *prefix_len = WRITE_LITERAL(type_prefix);
+    //                 gcc_rvalue_t *suffix_len = gcc_call(env->ctx, NULL, tag_print, 3, args);
+    //                 gcc_return(tag_block, NULL,
+    //                            gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, prefix_len, suffix_len));
+    //                 goto found;
+    //             }
+    //         }
+    //         gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.%s", tagged_t->name, tag_name)));
+    //       found:;
+    //         int64_t tag_value = ith(tags->values, i);
+    //         gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
+    //         gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
+    //         APPEND(cases, case_);
+    //     }
+    //     gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
+    //     gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tagged_t->name)));
+    //     gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
+    //     break;
+    // }
     case ArrayType: {
         // for (i=0; i < lhs.len && i < rhs.len; i++) {
         //    int c = cmp(lhs[i], rhs[i])
