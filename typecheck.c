@@ -145,8 +145,6 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     }
     case HeapAllocate: {
         bl_type_t *pointed = get_type(f, bindings, Match(ast, HeapAllocate)->value);
-        if (pointed->tag != StructType && pointed->tag != TaggedUnionType)
-            TYPE_ERR(f, ast, "I only support heap allocation for structs and tagged unions right now.");
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
     case Dereference: {
