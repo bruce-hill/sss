@@ -530,6 +530,16 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef WRITE_LITERAL
 }
 
+// Helper function to make value comparison return an int that is one of [-1,0,1]
+static inline gcc_rvalue_t *compare_values(env_t *env, gcc_rvalue_t *a, gcc_rvalue_t *b)
+{
+    // (int)((a < b) - (a > b))
+    gcc_type_t *int_t = gcc_type(env->ctx, INT);
+    return gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int_t,
+                         gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, a, b), int_t),
+                         gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, a, b), int_t));
+}
+
 // Get a comparison function: -1 means lhs < rhs; 0 means lhs == rhs; 1 means lhs > rhs
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 {
@@ -581,125 +591,55 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_return(done, NULL, gcc_lvalue_as_rvalue(cmp));
         break;
     }
-    // case TaggedUnionType: {
-    //     // if (lhs.tag != rhs.tag) return (lhs.tag - rhs.tag)
-    //     // switch (lhs.tag) { ... case Foo: return cmp(lhs.__data.Foo, rhs.__data.Foo); ... }
-    //     gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
-    //     gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
-    //     gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
-    //     auto tagged_t = Match(t, TaggedUnionType);
-    //     auto tags = Match(tagged_t->tag_type, TagType);
-    //     gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
-    //     istr_t type_prefix = intern_strf("%s.", tagged_t->name);
-    //     NEW_LIST(gcc_case_t*, cases);
-    //     for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-    //         istr_t tag_name = ith(tags->names, i);
-    //         gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-
-    //         auto union_t = Match(tagged_t->data, UnionType);
-    //         for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
-    //             if (ith(union_t->field_names, u) == tag_name) {
-    //                 bl_type_t *tag_data_type = ith(union_t->field_types, u);
-    //                 gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
-    //                 gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
-    //                 gcc_field_t *union_field = ith(union_t->fields, u);
-    //                 gcc_rvalue_t *args[] = {
-    //                     gcc_rvalue_access_field(data, NULL, union_field),
-    //                     f,
-    //                     gcc_param_as_rvalue(params[2]),
-    //                 };
-    //                 gcc_func_t *tag_print = get_print_func(env, tag_data_type);
-    //                 gcc_rvalue_t *prefix_len = WRITE_LITERAL(type_prefix);
-    //                 gcc_rvalue_t *suffix_len = gcc_call(env->ctx, NULL, tag_print, 3, args);
-    //                 gcc_return(tag_block, NULL,
-    //                            gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, prefix_len, suffix_len));
-    //                 goto found;
-    //             }
-    //         }
-    //         gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.%s", tagged_t->name, tag_name)));
-    //       found:;
-    //         int64_t tag_value = ith(tags->values, i);
-    //         gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
-    //         gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
-    //         APPEND(cases, case_);
-    //     }
-    //     gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-    //     gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tagged_t->name)));
-    //     gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
-    //     break;
-    // }
+    case TaggedUnionType: {
+        // Compare tags, return if unequal
+        // Otherwise, switch to a comparison of the union member
+        errx(1, "Not implemented");
+        break;
+    }
     case ArrayType: {
-        // for (i=0; i < lhs.len && i < rhs.len; i++) {
-        //    int c = cmp(lhs[i], rhs[i])
-        //    if (c != 0) return c;
+        // cmp = a.data - b.data;
+        // if (cmp != 0) {
+        //     cmp = a.length - b.length;
+        //     if (cmp != 0)
+        //         cmp = a.stride - b.stride;
         // }
-        // return lhs.len - rhs.len
+        // return cmp
 
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1));
-        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
 
-        gcc_type_t *int32 = gcc_type(env->ctx, INT32);
-        gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, fresh("i"));
-        gcc_rvalue_t *index_rval = gcc_lvalue_as_rvalue(index_var);
-        gcc_assign(block, NULL, index_var, gcc_zero(env->ctx, int32));
+        gcc_block_t *data_equal = gcc_new_block(func, fresh("data_equal")),
+                    *length_equal = gcc_new_block(func, fresh("len_equal")),
+                    *done = gcc_new_block(func, fresh("done"));
+        gcc_lvalue_t *cmp_var = gcc_local(func, NULL, int_t, fresh("difference"));
+        gcc_rvalue_t *cmp_val = gcc_lvalue_as_rvalue(cmp_var);
 
-        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
-                    *loop_body = gcc_new_block(func, fresh("loop_body")),
-                    *loop_end = gcc_new_block(func, fresh("loop_end"));
-
-        gcc_jump(block, NULL, loop_condition);
-
-        // loop_condition:
-        gcc_rvalue_t *lhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, lhs_len);
-        gcc_rvalue_t *rhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, rhs_len);
-        gcc_rvalue_t *either_done = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_OR, gcc_type(env->ctx, BOOL),
-                                                  lhs_done, rhs_done);
-
-        gcc_jump_condition(loop_condition, NULL, either_done, loop_end, loop_body);
-
-        // loop_body:
-        bl_type_t *item_t = Match(t, ArrayType)->item_type;
-
-        gcc_func_t *cmp_fn = get_compare_func(env, item_t);
-        assert(cmp_fn);
         gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 0));
         gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 0));
-        gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval,
-                                           gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2)));
-        gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval,
-                                           gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2)));
-        gcc_rvalue_t *args[] = { // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
-            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
-            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)),
-        };
-        gcc_rvalue_t *difference = gcc_call(env->ctx, NULL, cmp_fn, 2, args);
+        gcc_assign(block, NULL, cmp_var, compare_values(env, lhs_data, rhs_data));
+        gcc_jump_condition(block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, cmp_val, gcc_zero(env->ctx, int_t)),
+                           data_equal, done);
 
-        gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
-                    *keep_going = gcc_new_block(func, fresh("keep_going"));
-        gcc_jump_condition(loop_body, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, difference, gcc_zero(env->ctx, int_t)),
-                           early_return, keep_going);
+        // data_equal:
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
+        gcc_assign(data_equal, NULL, cmp_var, compare_values(env, lhs_len, rhs_len));
+        gcc_jump_condition(data_equal, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, cmp_val, gcc_zero(env->ctx, int_t)),
+                           length_equal, done);
 
-        // early_return:
-        gcc_return(early_return, NULL, difference);
+        // length_equal:
+        gcc_rvalue_t *lhs_stride = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2));
+        gcc_rvalue_t *rhs_stride = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2));
+        gcc_assign(length_equal, NULL, cmp_var, compare_values(env, lhs_stride, rhs_stride));
+        gcc_jump(length_equal, NULL, done);
 
-        // keep_going:
-        gcc_update(keep_going, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, int32));
-        gcc_jump(keep_going, NULL, loop_condition);
-
-        // loop_end:
-        gcc_return(loop_end, NULL, gcc_cast(env->ctx, NULL, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int32, lhs_len, rhs_len), int_t));
+        // done:
+        gcc_return(done, NULL, cmp_val);
         break;
     }
     default: {
         if (is_numeric(t) || t->tag == PointerType) {
-            gcc_type_t *size = gcc_type(env->ctx, SIZE);
-            gcc_return(block, NULL,
-                       gcc_cast(env->ctx, NULL,
-                           gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, size,
-                                         gcc_cast(env->ctx, NULL, lhs, size),
-                                         gcc_cast(env->ctx, NULL, rhs, size)),
-                           int_t));
+            gcc_return(block, NULL, compare_values(env, lhs, rhs));
             break;
         }
         fprintf(stderr, "\x1b[31;1mcompare(%s,%s) function is not yet implemented!\n", type_to_string(t), type_to_string(t));
