@@ -25,7 +25,7 @@ enum Baz {
     Nil,
 }
 
-bazzes := [Baz.Text{"hi"}, Baz.Integer{5}, Baz.Vec2{2.4, 4.5}, Baz.Nil{}]
+bazzes := [Baz.Text{"hi"}, Baz.Integer{5}, Baz.Vec2{2.4, 4.5}, Baz.Nil]
 
 for b in bazzes
     say "$b"

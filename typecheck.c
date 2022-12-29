@@ -503,8 +503,10 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             binding_t *b = get_binding(bindings, struct_->type);
             if (b->enum_type)
                 return b->enum_type;
-            else
+            else if (b->type_value)
                 return b->type_value;
+            else
+                TYPE_ERR(f, ast, "There isn't any kind of struct like this");
         }
         TYPE_ERR(f, ast, "I haven't implemented anonymous structs yet");
         // TODO: anonymous structs
