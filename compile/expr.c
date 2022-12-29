@@ -963,8 +963,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
             return gcc_comparison(env->ctx, NULL, cmp, lhs_val, rhs_val);
 
-        gcc_func_t *cmp_fn = get_compare_func(env, lhs_t);
-        return gcc_comparison(env->ctx, NULL, cmp, gcc_call(env->ctx, NULL, cmp_fn, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val}),
+        return gcc_comparison(env->ctx, NULL, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
                               gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
     }
     case Negative: {

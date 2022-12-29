@@ -72,6 +72,8 @@ hashmap_t *global_bindings(hashmap_t *bindings);
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
 // Get a function to convert an object of a given type to a string
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t);
+// Compare two values (returns [-1,0,1])
+gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b);
 // Get a function to compare two values of a type
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
 // Coerce two numbers into the larger representation
