@@ -6,6 +6,9 @@
 #include <intern.h>
 
 #include "libblang/list.h"
+#include "util.h"
+
+#define AST(m, ast_tag, ...) (new(ast_t, .tag=ast_tag, .match=m, .__data.ast_tag={__VA_ARGS__}))
 
 typedef enum {
     Unknown = 0,
@@ -177,7 +180,7 @@ struct ast_s {
             ast_t *message;
         } Fail;
         struct {
-            istr_t name;
+            istr_t name, bl_name;
             ast_t *type;
         } Extern;
         struct {

@@ -162,7 +162,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return get_type(f, bindings, Match(ast, Interp)->value);
     }
     case StringJoin: case StringLiteral: {
-        return Type(PointerType, .pointed=Type(CharType), .is_optional=false);
+        return Type(ArrayType, .item_type=Type(CharType));
     }
     case Var: {
         istr_t name = Match(ast, Var)->name;

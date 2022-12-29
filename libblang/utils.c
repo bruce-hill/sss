@@ -13,23 +13,38 @@
 #include <sys/stat.h>
 
 #include "utils.h"
+#include "string.h"
 
-array_t arg_list(int argc, char *argv[]) {
+str_array_t arg_list(int argc, char *argv[]) {
     // Skip program name:
     --argc;
     ++argv;
-    array_t args = {.length=argc, .stride=1, .items=GC_MALLOC_ATOMIC(sizeof(char*)*argc)};
-    for (int i = 0; i < argc; i++)
-        args.items[i] = intern_str(argv[i]);
+    str_array_t args = {.length=argc, .stride=1, .items=GC_MALLOC(sizeof(string_t)*argc)};
+    for (int i = 0; i < argc; i++) {
+        args.items[i] = (string_t){
+            .data=intern_str(argv[i]),
+            .length=(int32_t)strlen(argv[i]),
+            .stride=1,
+        };
+    }
     return args;
 }
 
-void say(const char *str, const char *end)
+void say(string_t str, string_t end)
 {
-    if (!end)
-        puts(str);
-    else
-        printf("%s%s", str, end);
+    if (str.stride == 1) {
+        write(STDOUT_FILENO, str.data, str.length);
+    } else {
+        for (int32_t i = 0; i < str.length; i++)
+            write(STDOUT_FILENO, str.data + i*str.stride, 1);
+    }
+
+    if (end.stride == 1) {
+        write(STDOUT_FILENO, end.data, end.length);
+    } else {
+        for (int32_t i = 0; i < end.length; i++)
+            write(STDOUT_FILENO, end.data + i*end.stride, 1);
+    }
 }
 
 void fail(const char *fmt, ...)
@@ -37,6 +52,21 @@ void fail(const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
+    va_end(args);
+    raise(SIGABRT);
+}
+
+
+void fail_array(string_t fmt, ...)
+{
+    char buf[fmt.length+1];
+    for (int32_t i = 0; i < fmt.length; i++)
+        buf[i] = fmt.data[i*fmt.stride];
+    buf[fmt.length] = '\0';
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, buf, args);
     va_end(args);
     raise(SIGABRT);
 }
@@ -53,9 +83,10 @@ const char *readdir_str(DIR* dir)
     return ent ? intern_str(ent->d_name) : NULL;
 }
 
-const char *last_err()
+string_t last_err()
 {
-    return intern_str(strerror(errno));
+    const char *str = strerror(errno);
+    return (string_t){.data=intern_str(str), .length=strlen(str), .stride=1};
 }
 
 typedef struct {

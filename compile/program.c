@@ -5,7 +5,6 @@
 #include <bp/files.h>
 #include <ctype.h>
 #include <err.h>
-#include <gc/cord.h>
 #include <limits.h>
 #include <stdint.h>
 
@@ -24,8 +23,8 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
-               *t_size = gcc_get_type(ctx, GCC_T_SIZE);
-    gcc_type_t *t_str_ptr = gcc_get_ptr_type(t_str);
+               *t_size = gcc_get_type(ctx, GCC_T_SIZE),
+               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR);
 
     hashmap_t *funcs = hashmap_new();
 
@@ -37,9 +36,13 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
     MAKE_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
     MAKE_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
     MAKE_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
-    MAKE_FUNC(t_str, "CORD_cat", 0, PARAM(t_str, "str"), PARAM(t_str, "str2"));
-    MAKE_FUNC(t_int, "CORD_sprintf", 1, PARAM(t_str_ptr, "cord"), PARAM(t_str, "fmt"));
-    MAKE_FUNC(t_str, "CORD_to_char_star", 0, PARAM(t_str, "cord"));
+    MAKE_FUNC(t_file, "open_memstream", 0, PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
+    MAKE_FUNC(t_int, "fwrite", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
+    MAKE_FUNC(t_int, "fputs", 0, PARAM(t_str, "str"), PARAM(t_file, "file"));
+    MAKE_FUNC(t_int, "fputc", 0, PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
+    MAKE_FUNC(t_int, "fprintf", 1, PARAM(t_file, "file"), PARAM(t_str, "format"));
+    MAKE_FUNC(t_int, "fflush", 0, PARAM(t_file, "file"));
+    MAKE_FUNC(t_int, "fclose", 0, PARAM(t_file, "file"));
     MAKE_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
     MAKE_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
     MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
@@ -68,9 +71,15 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
                 new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
 
-static void load_string_methods(env_t *env)
+static bl_type_t *define_string_type(env_t *env)
 {
-    bl_type_t *str_type = Type(PointerType, .pointed=Type(CharType), .is_optional=false);
+    bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
+    hashmap_t *ns = hashmap_new();
+    gcc_rvalue_t *rval = gcc_new_string(env->ctx, "String");
+    binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=str_type, .namespace=ns);
+    hashmap_set(env->bindings, intern_str("String"), binding);
+    hashmap_set(env->bindings, str_type, binding);
+
     extern_method(env, "bl_string_uppercased", str_type, "uppercased",
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
     extern_method(env, "bl_string_lowercased", str_type, "lowercased",
@@ -85,6 +94,8 @@ static void load_string_methods(env_t *env)
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type), .ret=Type(BoolType)), 0);
     extern_method(env, "bl_string_replace", str_type, "replace",
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type, str_type), .ret=str_type), 0);
+
+    return str_type;
 }
 
 gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
@@ -93,25 +104,26 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         .ctx = ctx,
         .file = f,
         .bindings = hashmap_new(),
-        .tostring_funcs = hashmap_new(),
+        .print_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
         .global_funcs = load_global_functions(ctx),
         .debug = debug,
     };
 
-    bl_type_t *string_type = Type(PointerType, .pointed=Type(CharType), .is_optional=false);
+    bl_type_t *string_type = define_string_type(&env);
     bl_type_t *say_type = Type(
         FunctionType,
         .arg_names=LIST(istr_t, intern_str("str"), intern_str("end")),
-        .arg_types=LIST(bl_type_t*, string_type, Type(PointerType, .is_optional=true, .pointed=Type(CharType))),
+        .arg_types=LIST(bl_type_t*, string_type, string_type),
+        .arg_defaults=LIST(ast_t*, NULL, AST(NULL, StringLiteral, .str=intern_str("\n"))),
         .ret=Type(VoidType));
 
     gcc_type_t *gcc_string_t = bl_type_to_gcc(&env, string_type);
     gcc_param_t *gcc_say_params[] = {
-        gcc_new_param(ctx, NULL, gcc_string_t, "str"),
-        gcc_new_param(ctx, NULL, gcc_string_t, "end"),
+        gcc_new_param(ctx, NULL, bl_type_to_gcc(&env, string_type), "str"),
+        gcc_new_param(ctx, NULL, bl_type_to_gcc(&env, string_type), "end"),
     };
-    gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, INT), "say", 2, gcc_say_params, 0);
+    gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
 #define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type), .namespace=hashmap_new()));
@@ -120,20 +132,14 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
     DEFTYPE(Num); DEFTYPE(Num32);
 #undef DEFTYPE
-    hashmap_set(env.bindings, intern_str("String"),
-                new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, "String"), .type=Type(TypeType), .type_value=string_type, .namespace=hashmap_new()));
-    hashmap_set(env.bindings, string_type,
-                new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, "String"), .type=Type(TypeType), .type_value=string_type, .namespace=hashmap_new()));
 
-    gcc_func_t *range_tostring_func = gcc_new_func(
-        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
-        "range_tostring", 2, (gcc_param_t*[]){
-            gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
-            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
-        }, 0);
-    hashmap_set(env.tostring_funcs, Type(RangeType), range_tostring_func);
-
-    load_string_methods(&env);
+    // gcc_func_t *range_print_func = gcc_new_func(
+    //     env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
+    //     "range_print", 2, (gcc_param_t*[]){
+    //         gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
+    //         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
+    //     }, 0);
+    // hashmap_set(env.tocord_funcs, Type(RangeType), range_tocord_func);
 
     gcc_param_t* main_params[] = {
         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),

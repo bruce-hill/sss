@@ -11,3 +11,21 @@ for x in [A, B, C, D]
         say "$x is B or C!"
     else
         say "$x is something else"
+
+enum Baz {
+    Text:{
+        str:String
+    }
+    Integer:{
+        i:Int
+    }
+    Vec2:{
+        x,y:Num
+    }
+    Nil,
+}
+
+bazzes := [Baz.Text{"hi"}, Baz.Integer{5}, Baz.Vec2{2.4, 4.5}, Baz.Nil{}]
+
+for b in bazzes
+    say "$b"

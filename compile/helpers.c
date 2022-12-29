@@ -308,55 +308,66 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
     *block = NULL;
 }
 
-gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
+gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 {
-    if (t == Type(PointerType, .pointed=Type(CharType), .is_optional=false) || t->tag == TypeType)
-        return NULL;
+    // Create a function `int print(T obj, FILE* file, void* stack)`
+    // that prints an object to a given file
 
-    // tostring() is the same for optional/non-optional pointers:
+    // print() is the same for optional/non-optional pointers:
     if (t->tag == PointerType)
         t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
 
-    gcc_func_t *func = hashmap_get(env->tostring_funcs, t);
+    // Memoize:
+    gcc_func_t *func = hashmap_get(env->print_funcs, t);
     if (func) return func;
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
-    gcc_param_t *params[2] = {
+    gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("stack")),
     };
     func = gcc_new_func(
-        env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)),
-        fresh("tostring"), 2, params, 0);
-    hashmap_set(env->tostring_funcs, t, func);
+        env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
+        fresh("print"), 3, params, 0);
+    hashmap_set(env->print_funcs, t, func);
 
-    gcc_block_t *block = gcc_new_block(func, fresh("tostring"));
-    gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("tostring() for type: ", type_to_string(t))));
+    gcc_block_t *block = gcc_new_block(func, fresh("print"));
+    gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
+    gcc_rvalue_t *f = gcc_param_as_rvalue(params[1]);
 
-#define LITERAL(str) gcc_new_string(env->ctx, str)
+    gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+
+#define WRITE_LITERAL(str) gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), f})
+
     switch (t->tag) {
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, fresh("yes"));
         gcc_block_t *no_block = gcc_new_block(func, fresh("no"));
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
-        gcc_return(yes_block, NULL, LITERAL("yes"));
-        gcc_return(no_block, NULL, LITERAL("no"));
+        gcc_return(yes_block, NULL, WRITE_LITERAL("yes"));
+        gcc_return(no_block, NULL, WRITE_LITERAL("no"));
         break;
     }
-    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType: case NumType: case Num32Type: {
+    case CharType: {
+        gcc_func_t *fputc_fn = hashmap_gets(env->global_funcs, "fputc");
+        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fputc_fn, 2, (gcc_rvalue_t*[]){obj, f}));
+        break;
+    }
+    case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
         const char *fmt;
         switch (t->tag) {
         case Int32Type: case Int16Type: case Int8Type: fmt = "%d"; break;
-        case CharType: fmt = "%c"; break;
         case NumType: case Num32Type: fmt = "%g"; break;
         default: fmt = "%ld"; break;
         }
 
-        gcc_rvalue_t *args[] = {gcc_new_string(env->ctx, fmt), obj};
-        gcc_func_t *internf = hashmap_gets(env->global_funcs, "intern_strf");
-        gcc_return(block, NULL, gcc_call(env->ctx, NULL, internf, 2, args));
+        gcc_rvalue_t *args[] = {f, gcc_new_string(env->ctx, fmt), obj};
+        gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
+        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fprintf_fn, 3, args));
         break;
     }
     case TagType: {
@@ -367,14 +378,14 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
             istr_t tag_name = ith(tags->names, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-            gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.Tag.%s", tags->name, tag_name)));
+            gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.Tag.%s", tags->name, tag_name)));
             int64_t tag_value = ith(tags->values, i);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, LITERAL(intern_strf("<Unknown %s value>", tags->name)));
+        gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tags->name)));
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
         break;
     }
@@ -382,11 +393,10 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
-        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
         auto tagged_t = Match(t, TaggedUnionType);
         auto tags = Match(tagged_t->tag_type, TagType);
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
-        gcc_rvalue_t *type_prefix = gcc_new_string(env->ctx, intern_strf("%s.", tagged_t->name));
+        istr_t type_prefix = intern_strf("%s.", tagged_t->name);
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
             istr_t tag_name = ith(tags->names, i);
@@ -401,17 +411,18 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
                     gcc_field_t *union_field = ith(union_t->fields, u);
                     gcc_rvalue_t *args[] = {
                         gcc_rvalue_access_field(data, NULL, union_field),
-                        gcc_param_as_rvalue(params[1]),
+                        f,
+                        gcc_param_as_rvalue(params[2]),
                     };
-                    gcc_func_t *tag_tostring = get_tostring_func(env, tag_data_type);
-                    gcc_rvalue_t *field_str = gcc_call(env->ctx, NULL, tag_tostring, 2, args);
-                    field_str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                                         (gcc_rvalue_t*[]){type_prefix, field_str});
-                    gcc_return(tag_block, NULL, field_str);
+                    gcc_func_t *tag_print = get_print_func(env, tag_data_type);
+                    gcc_rvalue_t *prefix_len = WRITE_LITERAL(type_prefix);
+                    gcc_rvalue_t *suffix_len = gcc_call(env->ctx, NULL, tag_print, 3, args);
+                    gcc_return(tag_block, NULL,
+                               gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, prefix_len, suffix_len));
                     goto found;
                 }
             }
-            gcc_return(tag_block, NULL, LITERAL(intern_strf("%s.%s", tagged_t->name, tag_name)));
+            gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.%s", tagged_t->name, tag_name)));
           found:;
             int64_t tag_value = ith(tags->values, i);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
@@ -419,12 +430,12 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, LITERAL(intern_strf("<Unknown %s value>", tagged_t->name)));
+        gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tagged_t->name)));
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
         break;
     }
     case VoidType: {
-        gcc_return(block, NULL, LITERAL("Void"));
+        gcc_return(block, NULL, WRITE_LITERAL("Void"));
         break;
     }
     case RangeType: {
@@ -441,87 +452,82 @@ gcc_func_t *get_tostring_func(env_t *env, bl_type_t *t)
         block = NULL;
 
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
-        gcc_return(nil_block, NULL, LITERAL(intern_strf("(nil @%s)", type_to_string(pointed_type))));
+        gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("(nil @%s)", type_to_string(pointed_type))));
+
+        // Prepend "@"
+        gcc_rvalue_t *at = WRITE_LITERAL("@");
 
         gcc_rvalue_t *args[] = {
             gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL)),
             gcc_param_as_rvalue(params[1]),
+            gcc_param_as_rvalue(params[2]),
         };
+        gcc_func_t *print_fn = get_print_func(env, pointed_type);
+        assert(print_fn);
+        gcc_rvalue_t *printed = gcc_call(env->ctx, NULL, print_fn, 3, args);
 
-        gcc_func_t *tostring = get_tostring_func(env, pointed_type);
-        gcc_rvalue_t *ret = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : obj;
-
-        // Prepend "@"
-        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
-        ret = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){LITERAL("@"), ret});
-
-        gcc_return(nonnil_block, NULL, ret);
+        gcc_return(nonnil_block, NULL,
+                   gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
         break;
     }
     case StructType: {
         auto struct_t = Match(t, StructType);
-        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
-        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
-        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
+#define ADD_INT(a, b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, a, b)
+        gcc_rvalue_t *written = gcc_zero(env->ctx, int_t);
         if (struct_t->name) {
-            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                           (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, struct_t->name)});
+            written = ADD_INT(written, WRITE_LITERAL(struct_t->name));
         }
-        str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                       (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, "{")});
+        written = ADD_INT(written, WRITE_LITERAL("{"));
         
         size_t num_fields = gcc_field_count(gcc_struct);
         for (size_t i = 0; i < num_fields; i++) {
             if (i > 0)
-                str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                               (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, ", ")});
+                written = ADD_INT(written, WRITE_LITERAL(", "));
 
             istr_t name = ith(struct_t->field_names, i);
-            if (name) {
-                CORD label;
-                CORD_sprintf(&label, "%s=", name);
-                str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                               (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, label)});
-            }
+            if (name)
+                written = ADD_INT(written, WRITE_LITERAL(intern_strf("%s=", name)));
 
             bl_type_t *member_t = ith(struct_t->field_types, i);
-            gcc_func_t *tostring = get_tostring_func(env, member_t);
+            gcc_func_t *print_fn = get_print_func(env, member_t);
+            assert(print_fn);
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
             gcc_rvalue_t *args[] = {
                 gcc_rvalue_access_field(obj, NULL, field),
-                gcc_param_as_rvalue(params[1]), // TODO: fix infinite recursion
+                gcc_param_as_rvalue(params[1]),
+                gcc_param_as_rvalue(params[2]), // TODO: fix infinite recursion
             };
-            gcc_rvalue_t *member_str = tostring ? gcc_call(env->ctx, NULL, tostring, 2, args) : args[0];
-            str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                           (gcc_rvalue_t*[]){str, member_str});
+            written = ADD_INT(written, gcc_call(env->ctx, NULL, print_fn, 3, args));
         }
 
-        str = gcc_call(env->ctx, NULL, CORD_cat_func, 2,
-                       (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, "}")});
-
-        gcc_return(block, NULL, gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){str}));
+        written = ADD_INT(written, WRITE_LITERAL("}"));
+        gcc_return(block, NULL, written);
         break;
     }
+#undef ADD_INT
     case ArrayType: {
-        compile_array_tostring_func(env, &block, obj, t);
+        compile_array_print_func(env, &block, obj, f, t);
         break;
     }
     case FunctionType: {
-        gcc_return(block, NULL, LITERAL(type_to_string(t)));
+        gcc_return(block, NULL, WRITE_LITERAL(type_to_string(t)));
         break;
     }
-
+    case TypeType: {
+        fprintf(stderr, "\x1b[31;1mtocord(%s) function is not yet implemented!\n", type_to_string(t));
+        exit(1);
+    }
     default: {
-        fprintf(stderr, "\x1b[31;1mtostring(%s) function is not yet implemented!\n", type_to_string(t));
+        fprintf(stderr, "\x1b[31;1mtocord(%s) function is not yet implemented!\n", type_to_string(t));
         exit(1);
     }
     }
     return func;
-#undef LITERAL
+#undef WRITE_LITERAL
 }
 
 void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)

@@ -178,11 +178,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             gcc_func_t *func = gcc_new_func(
                 env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
-            hashmap_set(env->bindings, ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
+            hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
-            hashmap_set(env->bindings, ext->name, new(binding_t, .rval=glob, .type=t, .is_global=true));
+            hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t, .is_global=true));
         }
         return NULL;
     }
@@ -282,8 +282,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Interp: {
         return compile_expr(env, block, Match(ast, Interp)->value);
     }
+#define STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval) \
+        gcc_struct_constructor(env->ctx, NULL, gcc_t, 3, (gcc_field_t*[]){ \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), 0), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), 1), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), 2), \
+                                      }, (gcc_rvalue_t*[]){ \
+                                          str_rval, \
+                                          len_rval, \
+                                          stride_rval, \
+                                      })
     case StringLiteral: {
-        return gcc_new_string(env->ctx, Match(ast, StringLiteral)->str);
+        istr_t str = Match(ast, StringLiteral)->str;
+        gcc_rvalue_t *str_rval = gcc_new_string(env->ctx, str);
+        gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
+        gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT32));
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+        return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
     }
     case StringJoin: {
         auto chunks = Match(ast, StringJoin)->children;
@@ -293,53 +308,67 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ERROR(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
-        gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+        gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
+
+        gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
+        gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+        gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
+        gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
-        // Optimize to avoid using cords in the cases of 0 or 1 string chunks/interpolations
+        // Optimize the cases of 0 or 1 string chunks/interpolations
         if (length(chunks) == 0) {
-            gcc_rvalue_t *empty = gcc_new_string(env->ctx, "");
-            return gcc_call(env->ctx, NULL, intern_str_func, 1, &empty);
+            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
         } else if (length(chunks) == 1 && ith(chunks, 0)->tag == StringLiteral) {
             ast_t *child = ith(chunks, 0);
-            gcc_rvalue_t *str = compile_expr(env, block, child);
-            return gcc_call(env->ctx, NULL, intern_str_func, 1, &str);
+            return compile_expr(env, block, child);
         }
-        gcc_rvalue_t *str = gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)));
-        gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
+
+        // char *buf; size_t size;
+        // FILE *f = open_memstream(&buf, &size);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *buf_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("buf"));
+        gcc_lvalue_t *size_var = gcc_local(func, NULL, gcc_type(env->ctx, SIZE), fresh("size"));
+        gcc_lvalue_t *file_var = gcc_local(func, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file"));
+        gcc_assign(*block, NULL, file_var,
+                   gcc_call(env->ctx, NULL, open_memstream_fn, 2, (gcc_rvalue_t*[]){
+                                gcc_lvalue_address(buf_var, NULL),
+                                gcc_lvalue_address(size_var, NULL),
+                            }));
+        gcc_rvalue_t *file = gcc_lvalue_as_rvalue(file_var);
 
         foreach (chunks, chunk, _) {
-            gcc_rvalue_t *val;
             bl_type_t *t = get_type(env->file, env->bindings, *chunk);
-            if (t == Type(PointerType, .pointed=Type(CharType), .is_optional=false)) {
-                val = compile_expr(env, block, *chunk);
-            } else {
-                gcc_func_t *tostring = get_tostring_func(env, t);
-                gcc_rvalue_t *args[] = {
-                    compile_expr(env, block, *chunk),
-                    gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                };
-                val = tostring ? gcc_call(env->ctx, ast_loc(env, *chunk), tostring, 2, args) : args[0];
-            }
+            gcc_func_t *print_fn = get_print_func(env, t);
+            assert(print_fn);
+            gcc_rvalue_t *args[] = {
+                compile_expr(env, block, *chunk),
+                file,
+                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+            };
+            gcc_eval(*block, NULL, gcc_call(env->ctx, ast_loc(env, *chunk), print_fn, 3, args));
             if ((*chunk)->tag == Interp) {
                 auto interp = Match(*chunk, Interp);
                 if (interp->labelled) {
                     match_t *m = interp->value->match;
-                    const char *prefix = ": ";
-                    FILE *f = fmemopen(NULL, (size_t)(m->end - m->start) + strlen(prefix) + 1, "r+");
+                    char *buf; size_t size;
+                    FILE *f = open_memstream(&buf, &size);
                     fprint_match(f, m->start, m, NULL);
-                    fprintf(f, "%s", prefix);
-                    fputc('\0', f);
-                    fseek(f, 0, SEEK_SET);
-                    CORD c = CORD_from_file_eager(f);
-                    const char *code = CORD_to_const_char_star(c);
-                    str = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){str, gcc_new_string(env->ctx, code)});
+                    fprintf(f, ": ");
+                    fflush(f);
+                    gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){gcc_new_string(env->ctx, buf), file}));
+                    fclose(f);
                 }
             }
-            str = gcc_call(env->ctx, ast_loc(env, *chunk), CORD_cat_func, 2, (gcc_rvalue_t*[]){str, val});
         }
-        str = gcc_call(env->ctx, ast_loc(env, ast), CORD_to_char_star_func, 1, &str);
-        str = gcc_call(env->ctx, ast_loc(env, ast), intern_str_func, 1, &str);
-        return str;
+        gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, fflush_fn, 1, &file));
+        gcc_rvalue_t *buf = gcc_lvalue_as_rvalue(buf_var);
+        gcc_rvalue_t *str = gcc_call(env->ctx, ast_loc(env, ast), intern_str_func, 1, &buf);
+        gcc_lvalue_t *str_struct_var = gcc_local(func, NULL, gcc_t, fresh("str_final"));
+        gcc_rvalue_t *len32 = gcc_cast(env->ctx, NULL, gcc_lvalue_as_rvalue(size_var), i32_t);
+        gcc_assign(*block, NULL, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
+        gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, fclose_fn, 1, &file));
+        return gcc_lvalue_as_rvalue(str_struct_var);
     }
     case Array: {
         return compile_array(env, block, ast);
@@ -774,14 +803,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     fputc('\0', f);
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
-                    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+                    gcc_func_t *fail_array = hashmap_gets(env->global_funcs, "fail_array");
                     istr_t fmt_str = intern_strf("\x1b[31;1;7mError: this tagged union is a %%s, but you are treating it like a %s\x1b[m\n\n%%s", access->field);
                     gcc_rvalue_t *fmt = gcc_new_string(env->ctx, fmt_str);
-                    gcc_func_t *tostring = get_tostring_func(env, fielded_t);
-                    assert(tostring);
+                    gcc_func_t *print_fn = get_print_func(env, fielded_t);
+                    assert(print_fn);
                     gcc_rvalue_t *args[] = {obj, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
-                    gcc_rvalue_t *tag_str = gcc_call(env->ctx, NULL, tostring, 2, args);
-                    gcc_rvalue_t *failure = gcc_call(env->ctx, NULL, fail, 3, (gcc_rvalue_t*[]){fmt, tag_str, callstack});
+                    gcc_rvalue_t *tag_str = gcc_call(env->ctx, NULL, print_fn, 2, args);
+                    gcc_rvalue_t *failure = gcc_call(env->ctx, NULL, fail_array, 3, (gcc_rvalue_t*[]){fmt, tag_str, callstack});
                     gcc_eval(tag_wrong, NULL, failure);
                     fclose(f);
                     gcc_jump(tag_wrong, NULL, tag_wrong);

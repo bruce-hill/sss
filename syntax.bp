@@ -124,7 +124,7 @@ line-statement: (
   / Assignment / AddUpdate / SubUpdate / MulUpdate / DivUpdate / AndUpdate / OrUpdate
   / extended-expr) _ [comment]
 Fail:: \b"fail"\b _ [@message=extended-expr]
-Declaration:: @lhs=varNotKeyword _":=" _ @rhs=required-extended-expr
+Declaration:: @lhs=varNotKeyword _":=" !(\b"extern"\b)_ @rhs=required-extended-expr
 TypeDef:: \b"deftype"\b _ @name=varNotKeyword _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDef:: \b"unit"\b _ @name=varNotKeyword _ `= _ @measure=Measure
 StructDef:: \b"def"\b _ @name=varNotKeyword __ `{__ *(StructFieldDef / FnDef / StructDef / EnumDef / Declaration) % __ __`}
@@ -139,7 +139,7 @@ FnDef:: @curdent:\C \b"def"\b _ @name=varNotKeyword _ (
       [_comment] nl curdent +(` /\t) @curdent:\C @:Return=(@value=required-extended-expr)
       / @:Return=(@value=required-extended-expr) _ [comment])))
    / @body=maybeIndentedBlock))
-Extern:: \b"extern"\b _ @name=varNotKeyword _ (
+Extern:: [@blName=varNotKeyword _ ":=" _] \b"extern"\b _ @name=varNotKeyword _ (
   @type=@:FnType=(`( __ @args=(*((@:FnArg=([@name=FieldName__`:__]@type=type) / @:ParseError=(FieldName =>"This argument doesn't have a type")))%(__`,__))__[`,__@varargs="..."__] [`,__]`)_
   `: _ @returnType=type)
   / (`: _ @type=type)

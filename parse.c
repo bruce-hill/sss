@@ -28,8 +28,6 @@
 #define strneq(a,b,n) (strncmp(a,b,n) == 0)
 #endif
 
-#define AST(m, ast_tag, ...) (new(ast_t, .tag=ast_tag, .match=m, .__data.ast_tag={__VA_ARGS__}))
-
 ast_t *match_to_ast(match_t *m);
 
 static pat_t *grammar = NULL;
@@ -538,7 +536,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, As, .value=capture_ast(m, "expr"), .type=capture_ast(m, "type"));
         }
         case Extern: {
-            return AST(m, Extern, .name=capture_istr(m, "name"), .type=capture_ast(m, "type"));
+            return AST(m, Extern, .name=capture_istr(m, "name"), .type=capture_ast(m, "type"), .bl_name=capture_istr(m, "blName"));
         }
 #define UNOP(t) case t: return AST(m, t, .value=capture_ast(m, "value"))
         UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf); UNOP(HeapAllocate);

@@ -5,7 +5,6 @@
 #include <bp/files.h>
 #include <ctype.h>
 #include <err.h>
-#include <gc/cord.h>
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
@@ -224,22 +223,23 @@ void compile_array_iteration(
     *block = loop_end;
 }
 
-void compile_array_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, bl_type_t *t)
+void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
 
-    gcc_func_t *CORD_cat_func = hashmap_gets(env->global_funcs, "CORD_cat");
-    gcc_func_t *CORD_to_char_star_func = hashmap_gets(env->global_funcs, "CORD_to_char_star");
-#define LITERAL(str) gcc_new_string(env->ctx, str)
-#define CORD_str(cord) gcc_call(env->ctx, NULL, CORD_to_char_star_func, 1, (gcc_rvalue_t*[]){cord})
+    gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+
+#define WRITE_LITERAL(str) gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), file})
+#define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *str = gcc_local(func, NULL, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), fresh("str"));
-    gcc_assign(*block, NULL, str,
-               gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                        gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR))),
-                        gcc_new_string(env->ctx, "["),
-               }));
+    gcc_lvalue_t *written_var = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("written"));
+    gcc_assign(*block, NULL, written_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+
+    bool is_string = (Match(t, ArrayType)->item_type == Type(CharType));
+    if (!is_string)
+        ADD_WRITE(*block, WRITE_LITERAL("["));
+
     // i = 1
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
     gcc_assign(*block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
@@ -266,19 +266,15 @@ void compile_array_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *
     // add_next_item:
     // item = *item_ptr
     gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL));
-    // item_str = tostring(item)
-    gcc_rvalue_t *item_str;
-    gcc_func_t *item_tostring = get_tostring_func(env, Match(t, ArrayType)->item_type);
+    // item_str = tocord(item)
+    gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
+    assert(item_print);
     gcc_rvalue_t *args[] = {
         item,
+        file,
         gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
     };
-    item_str = item_tostring ? gcc_call(env->ctx, NULL, item_tostring, 2, args) : item;
-    gcc_assign(add_next_item, NULL, str,
-               gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                        gcc_lvalue_as_rvalue(str),
-                        item_str,
-               }));
+    ADD_WRITE(add_next_item, gcc_call(env->ctx, NULL, item_print, 3, args));
     
     // i += 1
     assert(i);
@@ -292,21 +288,18 @@ void compile_array_tostring_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *
                   add_comma, end);
 
     // add_comma:
-    gcc_assign(add_comma, NULL, str,
-               gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                        gcc_lvalue_as_rvalue(str),
-                        gcc_new_string(env->ctx, ", "),
-               }));
+    if (!is_string)
+        ADD_WRITE(add_comma, WRITE_LITERAL(", "));
+
     // goto add_next_item;
     gcc_jump(add_comma, NULL, add_next_item);
 
     // end:
-    gcc_rvalue_t *ret = gcc_call(env->ctx, NULL, CORD_cat_func, 2, (gcc_rvalue_t*[]){
-                                 gcc_lvalue_as_rvalue(str),
-                                 gcc_new_string(env->ctx, "]"),
-                        });
-    gcc_return(end, NULL, CORD_str(ret));
-#undef CORD_str 
-#undef LITERAL
+    if (!is_string)
+        ADD_WRITE(end, WRITE_LITERAL("]"));
+
+    gcc_return(end, NULL, gcc_lvalue_as_rvalue(written_var));
+#undef WRITE_LITERAL 
+#undef ADD_INT
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
