@@ -338,15 +338,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *file = gcc_lvalue_as_rvalue(file_var);
 
         foreach (chunks, chunk, _) {
-            bl_type_t *t = get_type(env->file, env->bindings, *chunk);
-            gcc_func_t *print_fn = get_print_func(env, t);
-            assert(print_fn);
-            gcc_rvalue_t *args[] = {
-                compile_expr(env, block, *chunk),
-                file,
-                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-            };
-            gcc_eval(*block, NULL, gcc_call(env->ctx, ast_loc(env, *chunk), print_fn, 3, args));
             if ((*chunk)->tag == Interp) {
                 auto interp = Match(*chunk, Interp);
                 if (interp->labelled) {
@@ -360,6 +351,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     fclose(f);
                 }
             }
+            bl_type_t *t = get_type(env->file, env->bindings, *chunk);
+            gcc_func_t *print_fn = get_print_func(env, t);
+            assert(print_fn);
+            gcc_rvalue_t *args[] = {
+                compile_expr(env, block, *chunk),
+                file,
+                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+            };
+            gcc_eval(*block, NULL, gcc_call(env->ctx, ast_loc(env, *chunk), print_fn, 3, args));
         }
         gcc_eval(*block, NULL, gcc_call(env->ctx, NULL, fflush_fn, 1, &file));
         gcc_rvalue_t *buf = gcc_lvalue_as_rvalue(buf_var);
@@ -929,49 +929,38 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else
             ERROR(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }
-    case Equal: case NotEqual: {
-        (void)get_type(env->file, env->bindings, ast); // Check type
-        ast_t *lhs = (ast->tag == Equal) ? Match(ast, Equal)->lhs : Match(ast, NotEqual)->lhs;
-        ast_t *rhs = (ast->tag == Equal) ? Match(ast, Equal)->rhs : Match(ast, NotEqual)->rhs;
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
-        coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
-        return gcc_comparison(env->ctx, NULL, ast->tag == Equal ? GCC_COMPARISON_EQ : GCC_COMPARISON_NE, lhs_val, rhs_val);
-    }
+    case Equal: case NotEqual:
     case Less: case LessEqual: case Greater: case GreaterEqual: {
         // Unsafe! This is a hack to avoid duplicate code, based on the assumption that each of these types
         // has the same struct layout:
         ast_t *lhs = ast->__data.Less.lhs,
               *rhs = ast->__data.Less.rhs;
         // End of unsafe
-        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
-        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        coerce_numbers(env, lhs_t, &lhs_val, rhs_t, &rhs_val);
         gcc_comparison_e cmp;
         switch (ast->tag) {
+        case Equal: cmp = GCC_COMPARISON_EQ; break;
+        case NotEqual: cmp = GCC_COMPARISON_NE; break;
         case Less: cmp = GCC_COMPARISON_LT; break;
         case LessEqual: cmp = GCC_COMPARISON_LE; break;
         case Greater: cmp = GCC_COMPARISON_GT; break;
         case GreaterEqual: cmp = GCC_COMPARISON_GE; break;
         default: assert(false);
         }
-        if (lhs_t == rhs_t && (lhs_t == Type(PointerType, .pointed=Type(CharType), .is_optional=false) || lhs_t->tag == DSLType)) {
-            gcc_param_t *cmp_params[] = {
-                gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, lhs_t), "str1"),
-                gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, rhs_t), "str2"),
-            };
-            gcc_func_t *cmp_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, INT), "strcmp", 2, cmp_params, 0);
-            return gcc_comparison(env->ctx, NULL, cmp,
-                                  gcc_call(env->ctx, NULL, cmp_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val}),
-                                  gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
-        } else if (lhs_t == rhs_t && is_numeric(lhs_t)) {
+
+        bl_type_t *lhs_t = get_type(env->file, env->bindings, lhs);
+        bl_type_t *rhs_t = get_type(env->file, env->bindings, rhs);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
+        coerce_numbers(env, &lhs_t, &lhs_val, &rhs_t, &rhs_val);
+        if (lhs_t != rhs_t)
+            ERROR(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+
+        if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
             return gcc_comparison(env->ctx, NULL, cmp, lhs_val, rhs_val);
-        }
-        ERROR(env, ast, "I don't know how to do ordered comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+
+        gcc_func_t *cmp_fn = get_compare_func(env, lhs_t);
+        return gcc_comparison(env->ctx, NULL, cmp, gcc_call(env->ctx, NULL, cmp_fn, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val}),
+                              gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
     }
     case Negative: {
         ast_t *value = Match(ast, Negative)->value;
@@ -1209,7 +1198,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         ERROR(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(if_t), type_to_string(actual));
                     gcc_assign(*block, NULL, if_ret, branch_val);
-                } else {
+                } else if (*block) {
                     gcc_eval(*block, NULL, branch_val);
                 }
             }

@@ -40,6 +40,7 @@ typedef struct env_s {
     gcc_ctx_t *ctx;
     file_t *file;
     hashmap_t *print_funcs; // type -> func
+    hashmap_t *cmp_funcs; // type -> func
     hashmap_t *bindings; // name -> binding_t
     hashmap_t *gcc_types; // name -> bl_type
     hashmap_t *global_funcs; // name -> func
@@ -71,8 +72,10 @@ hashmap_t *global_bindings(hashmap_t *bindings);
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
 // Get a function to convert an object of a given type to a string
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t);
+// Get a function to compare two values of a type
+gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
 // Coerce two numbers into the larger representation
-void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs);
+void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
 // Convert an AST into an lvalue
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast);
 // Move a value to the heap

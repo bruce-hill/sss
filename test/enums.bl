@@ -13,13 +13,13 @@ for x in [A, B, C, D]
         say "$x is something else"
 
 enum Baz {
-    Text:{
+    Text{
         str:String
     }
-    Integer:{
+    Integer{
         i:Int
     }
-    Vec2:{
+    Vec2{
         x,y:Num
     }
     Nil,

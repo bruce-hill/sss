@@ -518,11 +518,11 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case TypeType: {
-        fprintf(stderr, "\x1b[31;1mtocord(%s) function is not yet implemented!\n", type_to_string(t));
+        fprintf(stderr, "\x1b[31;1mprint(%s) function is not yet implemented!\n", type_to_string(t));
         exit(1);
     }
     default: {
-        fprintf(stderr, "\x1b[31;1mtocord(%s) function is not yet implemented!\n", type_to_string(t));
+        fprintf(stderr, "\x1b[31;1mprint(%s) function is not yet implemented!\n", type_to_string(t));
         exit(1);
     }
     }
@@ -530,12 +530,125 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef WRITE_LITERAL
 }
 
-void coerce_numbers(env_t *env, bl_type_t *lhs_type, gcc_rvalue_t **lhs, bl_type_t *rhs_type, gcc_rvalue_t **rhs)
+// Get a comparison function: -1 means lhs < rhs; 0 means lhs == rhs; 1 means lhs > rhs
+gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 {
-    if (numtype_priority(lhs_type) < numtype_priority(rhs_type))
-        *lhs = gcc_cast(env->ctx, NULL, *lhs, bl_type_to_gcc(env, rhs_type));
-    else if (numtype_priority(lhs_type) > numtype_priority(rhs_type))
-        *rhs = gcc_cast(env->ctx, NULL, *rhs, bl_type_to_gcc(env, lhs_type));
+    // print() is the same for optional/non-optional pointers:
+    if (t->tag == PointerType)
+        t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
+
+    // Memoize:
+    gcc_func_t *func = hashmap_get(env->cmp_funcs, t);
+    if (func) return func;
+
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *int_t = gcc_type(env->ctx, INT);
+
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_t, fresh("lhs")),
+        gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
+    };
+    func = gcc_new_func(
+        env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
+        fresh("compare"), 2, params, 0);
+    hashmap_set(env->cmp_funcs, t, func);
+
+    gcc_block_t *block = gcc_new_block(func, fresh("compare"));
+    gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare(a,b) for type: ", type_to_string(t))));
+    gcc_rvalue_t *lhs = gcc_param_as_rvalue(params[0]);
+    gcc_rvalue_t *rhs = gcc_param_as_rvalue(params[1]);
+
+    switch (t->tag) {
+    case ArrayType: {
+        // for (i=0; i < lhs.len && i < rhs.len; i++) {
+        //    int c = cmp(lhs[i], rhs[i])
+        //    if (c != 0) return c;
+        // }
+        // return lhs.len - rhs.len
+
+        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
+
+        gcc_type_t *int32 = gcc_type(env->ctx, INT32);
+        gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, fresh("i"));
+        gcc_rvalue_t *index_rval = gcc_lvalue_as_rvalue(index_var);
+        gcc_assign(block, NULL, index_var, gcc_zero(env->ctx, int32));
+
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        gcc_jump(block, NULL, loop_condition);
+
+        // loop_condition:
+        gcc_rvalue_t *lhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, lhs_len);
+        gcc_rvalue_t *rhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, rhs_len);
+        gcc_rvalue_t *either_done = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_OR, gcc_type(env->ctx, BOOL),
+                                                  lhs_done, rhs_done);
+
+        gcc_jump_condition(loop_condition, NULL, either_done, loop_end, loop_body);
+
+        // loop_body:
+        bl_type_t *item_t = Match(t, ArrayType)->item_type;
+
+        gcc_func_t *cmp_fn = get_compare_func(env, item_t);
+        assert(cmp_fn);
+        gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 0));
+        gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 0));
+        gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval,
+                                           gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2)));
+        gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval,
+                                           gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2)));
+        gcc_rvalue_t *args[] = { // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
+            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
+            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)),
+        };
+        gcc_rvalue_t *difference = gcc_call(env->ctx, NULL, cmp_fn, 2, args);
+
+        gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
+                    *keep_going = gcc_new_block(func, fresh("keep_going"));
+        gcc_jump_condition(loop_body, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, difference, gcc_zero(env->ctx, int_t)),
+                           early_return, keep_going);
+
+        // early_return:
+        gcc_return(early_return, NULL, difference);
+
+        // keep_going:
+        gcc_update(keep_going, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, int32));
+        gcc_jump(keep_going, NULL, loop_condition);
+
+        // loop_end:
+        gcc_return(loop_end, NULL, gcc_cast(env->ctx, NULL, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int32, lhs_len, rhs_len), int_t));
+        break;
+    }
+    default: {
+        if (is_numeric(t) || t->tag == PointerType) {
+            gcc_type_t *size = gcc_type(env->ctx, SIZE);
+            gcc_return(block, NULL,
+                       gcc_cast(env->ctx, NULL,
+                           gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, size,
+                                         gcc_cast(env->ctx, NULL, lhs, size),
+                                         gcc_cast(env->ctx, NULL, rhs, size)),
+                           int_t));
+            break;
+        }
+        fprintf(stderr, "\x1b[31;1mcompare(%s,%s) function is not yet implemented!\n", type_to_string(t), type_to_string(t));
+        exit(1);
+    }
+    }
+    return func;
+}
+
+void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs)
+{
+    if (numtype_priority(*lhs_type) < numtype_priority(*rhs_type)) {
+        *lhs = gcc_cast(env->ctx, NULL, *lhs, bl_type_to_gcc(env, *rhs_type));
+        *lhs_type = *rhs_type;
+    } else if (numtype_priority(*lhs_type) > numtype_priority(*rhs_type)) {
+        *rhs = gcc_cast(env->ctx, NULL, *rhs, bl_type_to_gcc(env, *lhs_type));
+        *rhs_type = *lhs_type;
+    }
 }
 
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)

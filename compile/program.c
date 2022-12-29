@@ -105,6 +105,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         .file = f,
         .bindings = hashmap_new(),
         .print_funcs = hashmap_new(),
+        .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
         .global_funcs = load_global_functions(ctx),
         .debug = debug,
