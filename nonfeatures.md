@@ -16,7 +16,7 @@ datatypes:
 struct BinaryTree<T> {
     value:T
     depth:Int16
-    left,right:BinaryTree<T>?
+    left,right:@?BinaryTree<T>
 }
 
 def contains(tree:BinaryTree<T>, obj:T):Bool
@@ -28,7 +28,7 @@ def contains(tree:BinaryTree<T>, obj:T):Bool
     else
         return no
 
-mytree := BinaryTree<Int32>{123,0,nil,nil}
+mytree := BinaryTree<Int32>{123,0}
 fail unless contains(mytree, 123)
 
 ```
@@ -353,23 +353,23 @@ errors explicitly. Ignoring return values is also treated as a compiler error,
 so callers must address any error values returned or explicitly discard them:
 
 ```blang
-def parse_int(str:String, base:Int?):Int?
-    return nil:Int? if #str == 0
+def parse_int(str:String, base:Int?):@?Int
+    return !Int if #str == 0
     digits := "0123456789"
     n := 0
     for i in 1..#str
         c := str[i]
-        return nil:Int? if c < digits[1] or c > digits[10]
+        return !Int if c < digits[1] or c > digits[10]
         n = n*10 + (c - digits[1])
-    return n
+    return @n
 
 n := parse_int("hello")
-x := n + 1 // Compile error: `n` is `Int?` but `1` is `Int`
+x := n + 1 // Compile error: `n` is `@?Int` but `1` is `Int`
 
-n := parse_int("hello") or fail "Couldn't parse int"
+n := *(parse_int("hello") or fail "Couldn't parse int")
 x := n + 1 // Okay
 
-n := parse_int("hello") or 0
+n := *(parse_int("hello") or @0)
 x := n + 1 // Also okay
 ```
 

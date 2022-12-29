@@ -452,7 +452,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         block = NULL;
 
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
-        gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("(nil @%s)", type_to_string(pointed_type))));
+        gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
 
         // Prepend "@"
         gcc_rvalue_t *at = WRITE_LITERAL("@");

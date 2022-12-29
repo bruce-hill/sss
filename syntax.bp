@@ -42,7 +42,7 @@ Equal:: @lhs=expr _ "==" _ @rhs=expr
 NotEqual:: @lhs=expr _ "!=" _ @rhs=expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
-Nil:: (\b"nil"\b _ @type=type / @:ParseError=(\b"nil"\b => "There needs to be a type listed for this 'nil'"))
+Nil:: (`! _ @type=type / @:ParseError=(`! => "There needs to be a type listed for this nil exclamation mark"))
 String:: (
   `" @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
   / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
@@ -217,7 +217,7 @@ comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")
 keyword: \b("yes"/"xor"/"with"/"while"/"when"/"use"/"unless"/"unit"/"typeof"/"then"/"stop"/"skip"/"sizeof"/"return"/"repeat"/"pass"/"or"
-  /"not"/"no"/"nil"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
+  /"not"/"no"/"mod"/"macro"/"is"/"if"/"for"/"fail"/"extern"/"export"/"enum"/"elseif"/"else"/"do"/"deftype"/"def"/"between"/"as"/"and")\b
 varNotKeyword: Var / @:ParseError=(keyword => "This is a reserved keyword")
 hex: `0-9,a-f,A-F
 nl: +\n % (*(` /\t) [comment])

@@ -22,19 +22,19 @@ else say "and pass"
 // fail "and= gave wrong result" if tmp
 
 def doop():String
-    maybe_str := if yes then nil String else "ok"
+    maybe_str := if yes then !String else @"ok"
     x := maybe_str or return "Successfully short circuited with return"
     fail "Failed to short circuit"
 
 say doop()
 
 for i in 1..5
-    maybe_str := if yes then nil String else "ok"
+    maybe_str := if yes then !String else @"ok"
     x := maybe_str or stop
     fail "Failed to short circuit"
 
 say "Successfully short circuited with stop"
 
-// opt := nil String
+// opt := !String
 // opt or= "optstring"
 // fail unless opt == "optstring"

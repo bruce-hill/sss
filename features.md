@@ -143,29 +143,13 @@ calculations.
 
 Optional types in many programming languages are either verbose and annoying to
 use, overengineered and complex, or totally absent. Blang takes an approach to
-values which may or may not exist that is simple and pragmatic. `nil` is used
-to indicate the absence of a value. Any operation that may or may not have a
-value will have an optional type. For example, table lookup won't have
-a value if the key is not present in the table. This is not something
-that can be checked at compile time, since tables can have change at runtime.
-Blang's approach is to have the operation defined to return `nil`.
+values which may or may not exist that is simple and pragmatic. `!T` is used
+to indicate the absence of a value that would reside on the heap if it existed.
 
-```python
-t := {["x"]=1, ["y"]=2}
-// t["z"] ==> nil
-```
-
-This means that the resulting value has an Optional type (in this case, for a
-table of type `{String=Int}` accessing one of its values has type `Int?`). How
-do you use such an optional value? Well, for some cases, you don't need to do
-anything, because optional values are accepted without complaint. String
-interpolation, for example will simply put "nil" for `nil` values and
-interpolate other values as you might expect.
-
-However, when dealing with a situation where a non-optional value is really
-required, there are three options available: provide a fallback value, fail
-(exit the program with an error status) if a nil value appears, or pattern
-match for a non-nil value:
+When dealing with a situation where a non-optional value is really required,
+there are three options available: provide a fallback value, fail (exit the
+program with an error status) if a nil value appears, or pattern match for a
+non-nil value:
 
 ```python
 // nums:{Int=Int}
@@ -185,40 +169,14 @@ else
     missing_num_logic()
 ```
 
-Now, this would be sort of tedious for chained lookups, so Blang's semantics
-specify that any indexing into `nil` returns `nil`, and setting any index on
-`nil` is a no-op. Intuitively, this is like saying that if `foo[x]` is not a
-value, then `foo[x][y][z]` is also not a value. And if `foo[x]` is not a value
-then setting a new value on it `foo[x][y] = nil` won't have any effect.
-
-```python
-nested := [[40,50,60],[70,80]]
-x := nested[999][1] // returns `nil`
-nested[-456][789] = 5 // no-op
-
-struct LinkedList{value:Int, next:LinkedList?}
-l := LinkedList{1, LinkedList{2, nil}}
-x := l.next.next.next.next.value // returns 'nil'
-l.next.next.next.next.value = 99 // no-op
-
-// Check before setting:
-(l.next.next.next.next or fail).value = 99 // failure
-
-// Or check this way:
-if dest := l.next.next.next.next
-    dest.value = 99
-else
-    handle_error()
-```
-
 ### A Note on Truthiness
 
 Blang has only three types of values that are "falsey": `no` (i.e. the boolean
-value False), `nil`, and `NaN`. For conditionals like `if`, ternary operators
-(`cond ? val1 ; val2`), and boolean logic (`and`, `xor`, and `or`), falsey
-values will behave like `false` in other languages, and all other values will
-behave like `true`. This means that the integer `0` is truthy, as are empty
-lists, empty strings, etc.
+value False), nil values, and `NaN`. For conditionals like `if`, ternary
+operators (`cond ? val1 ; val2`), and boolean logic (`and`, `xor`, and `or`),
+falsey values will behave like `false` in other languages, and all other values
+will behave like `true`. This means that the integer `0` is truthy, as are
+empty lists, empty strings, etc.
 
 Boolean logic operates on short-circuiting rules and returns the first truthy
 or falsey value without evaluating more expressions than necessary. So, for
@@ -233,7 +191,7 @@ statement in which the expression is being used will only execute for truthy
 values (otherwise control flow will move to a different part of the program).
 So if `x` has type `String?` (optional), then `(x or fail)` has type `String`
 (non-optional), since the program will only ever continue execution when `x` is
-not `nil`. Similarly, `(x or stop)`, `(x or skip)`, and `(x or return 5)` will
+not nil. Similarly, `(x or stop)`, `(x or skip)`, and `(x or return 5)` will
 have the type `String`. 
 
 ## String Interpolation

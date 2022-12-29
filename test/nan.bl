@@ -6,11 +6,6 @@ if x
 else
     say "$x is falsey"
 
-// if x == nil
-//     say "$x is nil"
-// else
-//     say "$x is not nil"
-
 if x == x
     say "$x is equal to itself"
 else

@@ -1,12 +1,12 @@
 maybe_nil := if yes
     @"safe"
-else nil @String
+else !String
 say "maybe: $maybe_nil"
 x := maybe_nil or fail "Oh no!"
 say *x
 
 say "or: $(yes or fail "Whoops")"
-say "or: $(nil @String or maybe_nil or fail "Whoops")"
+say "or: $(!String or maybe_nil or fail "Whoops")"
 say "and: $(no and fail "Drat")"
-maybe_nil = nil @String
+maybe_nil = !String
 say "and: $(maybe_nil and @"unsafe" and fail "Drat")"

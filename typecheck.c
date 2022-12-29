@@ -112,11 +112,7 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
     switch (ast->tag) {
     case Nil: {
         bl_type_t *pointed = parse_type(f, bindings, Match(ast, Nil)->type);
-        if (pointed->tag != PointerType)
-            TYPE_ERR(f, ast, "For clarity and consistency, I need you to mark this explicitly as a pointer type (@%s)",
-                     type_to_string(pointed));
-        auto ptr = Match(pointed, PointerType);
-        return Type(PointerType, .is_optional=true, .pointed=ptr->pointed);
+        return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Bool: {
         return Type(BoolType);
@@ -158,9 +154,12 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         return ptr->pointed;
     }
     case Maybe: {
-        bl_type_t *pointed = get_type(f, bindings, Match(ast, Maybe)->value);
-        if (pointed->tag == PointerType)
-            pointed = Match(pointed, PointerType)->pointed;
+        ast_t *value = Match(ast, Maybe)->value;
+        bl_type_t *pointed = get_type(f, bindings, value);
+        if (pointed->tag != PointerType)
+            TYPE_ERR(f, value, "This value isn't a pointer type, so it doesn't make sense to say it's optional. "
+                     "You can use `?@` to make it a potentially nil pointer to a heap allocated value.");
+        pointed = Match(pointed, PointerType)->pointed;
         return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Range: {

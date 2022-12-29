@@ -1,7 +1,7 @@
 def SqrRet {n:Num}
 def sqr_optional(n:Num):?@SqrRet
     if n < 0.
-        return nil @SqrRet
+        return !SqrRet
     else
         return ?@SqrRet{n*n}
 

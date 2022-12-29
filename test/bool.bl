@@ -1,8 +1,8 @@
 x := yes
 y := x and (1 < 2)
-z := nil @Bool
+z := !Bool
 
-if x and y and z == nil @Bool
+if x and y and z == !Bool
     say "And pass"
 else
     fail "'and' failed"

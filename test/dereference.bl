@@ -7,5 +7,5 @@ say "$:v"
 fail unless *v == Vec{99,99}
 
 // Compiler error:
-// nilly := nil @Vec
+// nilly := !Vec
 // say "$:(*nilly)"
