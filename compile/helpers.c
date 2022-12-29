@@ -726,6 +726,12 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
             ERROR(env, ast, "I don't know what this variable is referring to."); 
         }
     }
+    case Dereference: {
+        (void)get_type(env->file, env->bindings, ast); // Check this is a pointer type
+        ast_t *value = Match(ast, Dereference)->value;
+        gcc_rvalue_t *rval = compile_expr(env, block, value);
+        return gcc_rvalue_dereference(rval, ast_loc(env, ast));
+    }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded);

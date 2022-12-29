@@ -19,8 +19,9 @@ IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term / Var)
 maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term / Var
 expr: Range / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
 extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / splatMethodCall / expr
-unaryOp: Negative / Len / Maybe / Not / HeapAllocate
+unaryOp: Negative / Len / Maybe / Not / HeapAllocate / Dereference
 HeapAllocate:: `@_ @value=maybe-index-term
+Dereference:: `*_ @value=maybe-index-term
 Negative:: `- !`0-9,. @value=maybe-index-term
 Len:: `# _ @value=maybe-index-term
 Maybe:: `? _ @value=maybe-index-term
@@ -148,7 +149,7 @@ Lambda:: (@curdent:\C
   @args=[`(__*@:FnArg=(@name=varNotKeyword__`:__@type=type)%(__`,__)__[`,__]`)]
   _arrow_ (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))
 )
-Assignment:: @lhs=@(1+(IndexedTerm / varNotKeyword) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
+Assignment:: @lhs=@(1+(Dereference / IndexedTerm / varNotKeyword) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
 AddUpdate:: @lhs=varNotKeyword _ "+=" _ @rhs=required-extended-expr
 SubUpdate:: @lhs=varNotKeyword _ "-=" _ @rhs=required-extended-expr
 MulUpdate:: @lhs=varNotKeyword _ "*=" _ @rhs=required-extended-expr

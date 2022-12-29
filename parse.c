@@ -122,7 +122,7 @@ const char *tag_names[] = {
     [And]="And", [Or]="Or", [Xor]="Xor",
     [Equal]="Equal", [NotEqual]="NotEqual", [Greater]="Greater", [GreaterEqual]="GreaterEq", [Less]="Less", [LessEqual]="LessEq",
     [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
-    [TypeOf]="TypeOf", [SizeOf]="SizeOf", [HeapAllocate]="HeapAllocate",
+    [TypeOf]="TypeOf", [SizeOf]="SizeOf", [HeapAllocate]="HeapAllocate", [Dereference]="Dereference",
     [Array]="Array", [Table]="Table",
     [FunctionDef]="FnDef", [Lambda]="Lambda",
     [FunctionCall]="FnCall", [KeywordArg]="KeywordArg",
@@ -539,7 +539,7 @@ ast_t *match_to_ast(match_t *m)
             return AST(m, Extern, .name=capture_istr(m, "name"), .type=capture_ast(m, "type"), .bl_name=capture_istr(m, "blName"));
         }
 #define UNOP(t) case t: return AST(m, t, .value=capture_ast(m, "value"))
-        UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf); UNOP(HeapAllocate);
+        UNOP(Not); UNOP(Negative); UNOP(Len); UNOP(Maybe); UNOP(TypeOf); UNOP(SizeOf); UNOP(HeapAllocate); UNOP(Dereference);
 #undef UNOP
         case Assign: {
             NEW_LIST(ast_t*, lhs);

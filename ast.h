@@ -23,7 +23,7 @@ typedef enum {
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
-    HeapAllocate,
+    HeapAllocate, Dereference,
     Array, Table,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
@@ -114,7 +114,7 @@ struct ast_s {
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
             ast_t *value;
-        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate;
+        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, Dereference;
         struct {
             ast_t *type;
             List(ast_t*) items;

@@ -691,6 +691,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *nonnil_t = get_type(env->file, env->bindings, value);
         return move_to_heap(env, block, nonnil_t, rval);
     }
+    case Dereference: {
+        (void)get_type(env->file, env->bindings, ast); // Check this is a pointer type
+        ast_t *value = Match(ast, Dereference)->value;
+        gcc_rvalue_t *rval = compile_expr(env, block, value);
+        return gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rval, ast_loc(env, ast)));
+    }
     case Maybe: {
         ast_t *value = Match(ast, Maybe)->value;
         return compile_expr(env, block, value);

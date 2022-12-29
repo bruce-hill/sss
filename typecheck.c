@@ -149,6 +149,16 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
             TYPE_ERR(f, ast, "I only support heap allocation for structs and tagged unions right now.");
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
+    case Dereference: {
+        bl_type_t *pointer_t = get_type(f, bindings, Match(ast, Dereference)->value);
+        if (pointer_t->tag != PointerType)
+            TYPE_ERR(f, ast, "You're attempting to dereference something that isn't a pointer (it's a %s)",
+                     type_to_string(pointer_t));
+        auto ptr = Match(pointer_t, PointerType);
+        if (ptr->is_optional)
+            TYPE_ERR(f, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
+        return ptr->pointed;
+    }
     case Maybe: {
         bl_type_t *pointed = get_type(f, bindings, Match(ast, Maybe)->value);
         if (pointed->tag == PointerType)

@@ -1,0 +1,7 @@
+def Vec {x,y:Num}
+
+v := @Vec{3,4}
+say "$:v $:(*v)"
+*v = Vec{99,99}
+say "$:v"
+fail unless *v == Vec{99,99}
