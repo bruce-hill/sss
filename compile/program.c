@@ -44,6 +44,7 @@ static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
     MAKE_FUNC(t_int, "fflush", 0, PARAM(t_file, "file"));
     MAKE_FUNC(t_int, "fclose", 0, PARAM(t_file, "file"));
     MAKE_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
+    MAKE_FUNC(t_str, "intern_strn", 0, PARAM(t_str, "str"), PARAM(t_size, "length"));
     MAKE_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
     MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
     MAKE_FUNC(t_void, "fail", 1, PARAM(t_str, "message"));
