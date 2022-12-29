@@ -559,6 +559,32 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
     gcc_rvalue_t *rhs = gcc_param_as_rvalue(params[1]);
 
     switch (t->tag) {
+    case StructType: {
+        auto struct_ = Match(t, StructType);
+        gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
+        gcc_block_t *done = gcc_new_block(func, fresh("done"));
+        gcc_lvalue_t *cmp = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("cmp"));
+        gcc_rvalue_t *zero = gcc_zero(env->ctx, gcc_type(env->ctx, INT));
+        gcc_assign(block, NULL, cmp, zero);
+        for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
+            gcc_block_t *next_field = gcc_new_block(func, fresh("next_field"));
+            bl_type_t *field_t = ith(struct_->field_types, i);
+            gcc_func_t *cmp_fn = get_compare_func(env, field_t);
+            gcc_assign(block, NULL, cmp,
+                       gcc_call(env->ctx, NULL, cmp_fn, 2, (gcc_rvalue_t*[]){
+                                    gcc_rvalue_access_field(lhs, NULL, gcc_get_field(gcc_struct, i)),
+                                    gcc_rvalue_access_field(rhs, NULL, gcc_get_field(gcc_struct, i)),
+                                }));
+            gcc_jump_condition(block, NULL,
+                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_lvalue_as_rvalue(cmp), zero),
+                               next_field, done);
+
+            block = next_field;
+        }
+        gcc_jump(block, NULL, done);
+        gcc_return(done, NULL, gcc_lvalue_as_rvalue(cmp));
+        break;
+    }
     case ArrayType: {
         // for (i=0; i < lhs.len && i < rhs.len; i++) {
         //    int c = cmp(lhs[i], rhs[i])
