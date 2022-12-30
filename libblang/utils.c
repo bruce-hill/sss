@@ -146,12 +146,63 @@ int range_print(range_t range, FILE *f, void *stack) {
     else if (range.stride != 1)
         printed += fprintf(f, "..+%ld", range.stride);
 
-    if (range.last != INT64_MAX)
+    if (range.last != INT64_MIN)
         printed += fprintf(f, "..%ld", range.last);
     else
         printed += fprintf(f, "..");
 
     return printed;
+}
+
+string_t range_slice(string_t array, range_t range, int64_t item_size)
+{
+    if (range.stride == 0) {
+        // printf("Zero stride\n");
+        return (string_t){array.data, 0, 1};
+    } else if (range.stride < 0) {
+        if (range.first == INT64_MIN) range.first = array.length;
+        if (range.last == INT64_MIN) range.last = 1;
+        if (range.first > array.length) {
+            // printf("Range starting after array\n");
+            range.first = (array.length % (-array.stride)) + (range.first % (-array.stride));
+        }
+        if (range.first < 1 || range.first > array.length) {
+            // printf("Range outside array\n");
+            return (string_t){array.data, 0, 1};
+        }
+    } else {
+        if (range.first == INT64_MIN) range.first = 1;
+        if (range.last == INT64_MIN) range.last = array.length;
+        if (range.first < 1) {
+            // printf("Range starting before array\n");
+            range.first = range.first % array.stride;
+        }
+        if (range.first < 1) range.first += array.stride;
+        if (range.first > array.length) {
+            // printf("Range outside array\n");
+            return (string_t){array.data, 0, 1};
+        }
+    }
+
+    int64_t len = (range.last - range.first) / range.stride + 1;
+    // If less than zero, set to zero (without a conditional branch)
+    len = len & ~(len >> 63);
+    if (len > array.length/range.stride) len = array.length/range.stride;
+    if (len < 0) len = -len;
+
+    // printf("\n");
+    // printf("First = %ld\n", range.first);
+    // printf("Array stride = %d range stride = %ld\n", array.stride, range.stride);
+    // printf("Len = %ld\n", len);
+    // printf("Item size = %ld\n", item_size);
+    // printf("Offset %ld\n", item_size*(range.first-1));
+    // printf("Data before: %p after: %p\n", (void*)array.data, (void*)(array.data + item_size*(range.first-1)));
+
+    return (string_t){
+        (char*)array.data + item_size*(range.first-1),
+        (int32_t)len,
+        (int32_t)(array.stride * range.stride),
+    };
 }
 
 #define toggle(val, nil) ((void*)((int64_t)(val) ^ (int64_t)(nil)))

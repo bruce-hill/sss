@@ -748,7 +748,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *len = gcc_lvalue_as_rvalue(len_var);
             return BINOP(len, BITWISE_AND, UNOP(BITWISE_NEGATE, BINOP(len, RSHIFT, gcc_int64(env->ctx, 63))));
 #undef BINOP
-            return len;
         }
         default: {
           unknown_len:
@@ -859,41 +858,58 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (indexed_t->tag != ArrayType)
             ERROR(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
+        bl_type_t *index_t = get_type(env->file, env->bindings, indexing->index);
         gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *items = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 0));
         gcc_rvalue_t *index = compile_expr(env, block, indexing->index);
         gcc_rvalue_t *stride64 = gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 2)), i64_t);
-        // Bounds check:
-        gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
-        gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1)), i64_t);
-        gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, index, len64);
-        gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
-                    *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
-        gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
+        if (index_t->tag == RangeType) {
+            // Slicing
+            gcc_type_t *str_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+            gcc_func_t *slice_fn = hashmap_gets(env->global_funcs, "range_slice");
+            return gcc_bitcast(
+                env->ctx, NULL,
+                gcc_call(
+                    env->ctx, NULL, slice_fn, 3, (gcc_rvalue_t*[]){
+                        gcc_bitcast(env->ctx, NULL, obj, str_gcc_t),
+                        index,
+                        gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(indexed_t, ArrayType)->item_type)),
+                    }),
+                gcc_t);
+        } else {
+            // Bounds check:
+            gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
+            gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1)), i64_t);
+            gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, index, len64);
+            gcc_rvalue_t *ok = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
-        // Bounds check failure:
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
-        char *info = NULL;
-        size_t size = 0;
-        FILE *f = open_memstream(&info, &size);
-        highlight_match(f, env->file, ast->match, 2);
-        fputc('\0', f);
-        fflush(f);
-        gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
-        gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_eval(bounds_unsafe, NULL, gcc_call(env->ctx, NULL, fail, 4, (gcc_rvalue_t*[]){fmt, index, len64, callstack}));
-        fclose(f);
-        gcc_jump(bounds_unsafe, NULL, bounds_unsafe);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
+                        *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
+            gcc_jump_condition(*block, NULL, ok, bounds_safe, bounds_unsafe);
 
-        // Bounds check success:
-        *block = bounds_safe;
-        gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
-        index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64_t, index0, stride64);
-        return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
+            // Bounds check failure:
+            gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
+            char *info = NULL;
+            size_t size = 0;
+            FILE *f = open_memstream(&info, &size);
+            highlight_match(f, env->file, ast->match, 2);
+            fputc('\0', f);
+            fflush(f);
+            gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+            gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+            gcc_eval(bounds_unsafe, NULL, gcc_call(env->ctx, NULL, fail, 4, (gcc_rvalue_t*[]){fmt, index, len64, callstack}));
+            fclose(f);
+            gcc_jump(bounds_unsafe, NULL, bounds_unsafe);
+
+            // Bounds check success:
+            *block = bounds_safe;
+            gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
+            index0 = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64_t, index0, stride64);
+            return gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, items, index0));
+        }
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;

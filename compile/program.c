@@ -16,43 +16,46 @@
 #include "../util.h"
 
 // Load a bunch of global (external) functions
-static hashmap_t *load_global_functions(gcc_ctx_t *ctx)
+static void load_global_functions(env_t *env)
 {
+    gcc_ctx_t *ctx = env->ctx;
     gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE),
-               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR);
-
-    hashmap_t *funcs = hashmap_new();
+               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
+               *t_range = bl_type_to_gcc(env, Type(RangeType)),
+               *t_bl_str = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+    hashmap_t *funcs = env->global_funcs;
 
 #define PARAM(type, name) gcc_new_param(ctx, NULL, type, name)
-#define MAKE_FUNC(t_ret, name, variadic, ...) hashmap_set(funcs, intern_str(name), \
+#define LOAD_FUNC(t_ret, name, variadic, ...) hashmap_set(funcs, intern_str(name), \
     gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, \
                  sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
                  (gcc_param_t*[]){__VA_ARGS__}, variadic))
-    MAKE_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
-    MAKE_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
-    MAKE_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
-    MAKE_FUNC(t_file, "open_memstream", 0, PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
-    MAKE_FUNC(t_int, "fwrite", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
-    MAKE_FUNC(t_int, "fputs", 0, PARAM(t_str, "str"), PARAM(t_file, "file"));
-    MAKE_FUNC(t_int, "fputc", 0, PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
-    MAKE_FUNC(t_int, "fprintf", 1, PARAM(t_file, "file"), PARAM(t_str, "format"));
-    MAKE_FUNC(t_int, "fflush", 0, PARAM(t_file, "file"));
-    MAKE_FUNC(t_int, "fclose", 0, PARAM(t_file, "file"));
-    MAKE_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
-    MAKE_FUNC(t_str, "intern_strn", 0, PARAM(t_str, "str"), PARAM(t_size, "length"));
-    MAKE_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
-    MAKE_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
-    MAKE_FUNC(t_void, "fail", 1, PARAM(t_str, "message"));
-    MAKE_FUNC(t_double, "sane_fmod", 2, PARAM(t_double, "num"), PARAM(t_double, "modulus"));
-#undef MAKE_FUNC
+    LOAD_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
+    LOAD_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
+    LOAD_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
+    LOAD_FUNC(t_file, "open_memstream", 0, PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
+    LOAD_FUNC(t_int, "fwrite", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
+    LOAD_FUNC(t_int, "fputs", 0, PARAM(t_str, "str"), PARAM(t_file, "file"));
+    LOAD_FUNC(t_int, "fputc", 0, PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
+    LOAD_FUNC(t_int, "fprintf", 1, PARAM(t_file, "file"), PARAM(t_str, "format"));
+    LOAD_FUNC(t_int, "fflush", 0, PARAM(t_file, "file"));
+    LOAD_FUNC(t_int, "fclose", 0, PARAM(t_file, "file"));
+    LOAD_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
+    LOAD_FUNC(t_str, "intern_strn", 0, PARAM(t_str, "str"), PARAM(t_size, "length"));
+    LOAD_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
+    LOAD_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
+    LOAD_FUNC(t_void, "fail", 1, PARAM(t_str, "message"));
+    LOAD_FUNC(t_double, "sane_fmod", 1, PARAM(t_double, "num"), PARAM(t_double, "modulus"));
+    LOAD_FUNC(t_int, "range_print", 1, PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
+    hashmap_set(env->print_funcs, Type(RangeType), hashmap_get(env->global_funcs, intern_str("range_print")));
+    LOAD_FUNC(t_bl_str, "range_slice", 0, PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
+#undef LOAD_FUNC
 #undef PARAM
-
-    return funcs;
 }
 
 static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
@@ -108,9 +111,11 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
-        .global_funcs = load_global_functions(ctx),
+        .global_funcs = hashmap_new(),
         .debug = debug,
     };
+
+    load_global_functions(&env);
 
     bl_type_t *string_type = define_string_type(&env);
     bl_type_t *say_type = Type(
@@ -134,15 +139,6 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
     DEFTYPE(Num); DEFTYPE(Num32);
 #undef DEFTYPE
-
-    gcc_func_t *range_print_func = gcc_new_func(
-        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
-        "range_print", 3, (gcc_param_t*[]){
-            gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
-            gcc_new_param(env.ctx, NULL, gcc_get_type(ctx, GCC_T_FILE_PTR), "file"),
-            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "stack"),
-        }, 0);
-    hashmap_set(env.print_funcs, Type(RangeType), range_print_func);
 
     gcc_param_t* main_params[] = {
         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),

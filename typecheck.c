@@ -258,13 +258,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
         case ArrayType: {
             bl_type_t *index_t = get_type(f, bindings, indexing->index);
             switch (index_t->tag) {
-            case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType: break;
+            case RangeType: return indexed_t;
+            case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
+                return Match(indexed_t, ArrayType)->item_type;
             default: TYPE_ERR(f, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
-            return Match(indexed_t, ArrayType)->item_type;
         }
-        // TODO: support accessing fields by integer like (Vec{3,4})[1] --> 3
         // TODO: support ranges like (99..123)[5]
+        // TODO: support slicing arrays like ([1,2,3,4])[2..10]
         default: {
             TYPE_ERR(f, ast, "I don't know how to index %s values", type_to_string(indexed_t));
         }
