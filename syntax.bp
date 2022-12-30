@@ -157,7 +157,7 @@ DivUpdate:: @lhs=varNotKeyword _ "/=" _ @rhs=required-extended-expr
 AndUpdate:: @lhs=varNotKeyword _ "and=" _ @rhs=required-extended-expr
 OrUpdate:: @lhs=varNotKeyword _ "or=" _ @rhs=required-extended-expr
 required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
-type: @:OptionalType=(`?_@type=type) / @:PointerType=(`@_@pointed=value-type) / value-type
+type: @:OptionalType=(`?_@type=type) / @:PointerType=(`@_@pointed=type) / value-type
 value-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
   / MeasureType
