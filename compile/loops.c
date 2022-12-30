@@ -84,6 +84,100 @@ void compile_loop_iteration(
     *block = loop_end;
 }
 
+// For objects that have a .next pointer:
+void compile_linked_iteration(
+    env_t *env, gcc_block_t **block, ast_t *ast,
+    loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata, int64_t field_index)
+{
+    // for (auto iter = obj; iter; iter = iter->next)
+    auto for_loop = Match(ast, For);
+    ast_t *obj = for_loop->iter;
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *loop_body = gcc_new_block(func, fresh("body")),
+                *loop_between = between_compiler ? gcc_new_block(func, fresh("between")) : NULL,
+                *loop_next = gcc_new_block(func, fresh("next")),
+                *loop_end = gcc_new_block(func, fresh("end"));
+
+    env_t loop_env = *env;
+    loop_env.bindings = hashmap_new();
+    loop_env.bindings->fallback = env->bindings;
+    NEW_LIST(istr_t, label_names);
+    append(label_names, intern_str("for"));
+    if (for_loop->key)
+        append(label_names, for_loop->key);
+    if (for_loop->value)
+        append(label_names, for_loop->value);
+    loop_env.loop_label = &(loop_label_t){
+        .enclosing = env->loop_label,
+        .names = label_names,
+        .skip_label = loop_next,
+        .stop_label = loop_end,
+    };
+    env = &loop_env;
+
+    // Preamble:
+    bl_type_t *iter_t = get_type(env->file, env->bindings, obj);
+    assert(iter_t->tag == PointerType && Match(iter_t, PointerType)->pointed->tag == StructType);
+    gcc_rvalue_t *obj_val = compile_expr(env, block, obj);
+    gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
+    gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
+
+    // iter = obj
+    gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
+    gcc_assign(*block, NULL, iter_var, obj_val);
+
+    // index = 1
+    gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
+    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("index"));
+    gcc_assign(*block, NULL, index_var, one64);
+
+    // goto (iter == NULL) ? end : body
+    gcc_rvalue_t *is_done = gcc_comparison(
+        env->ctx, NULL, GCC_COMPARISON_EQ, gcc_lvalue_as_rvalue(iter_var), gcc_null(env->ctx, gcc_iter_t));
+    gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
+    *block = NULL;
+
+    // body:
+    gcc_block_t *loop_body_end = loop_body;
+
+    iterator_info_t info = {
+        .key_type = Type(IntType),
+        .key_rval = gcc_lvalue_as_rvalue(index_var),
+        .value_type = Type(PointerType, .pointed=Match(iter_t, PointerType)->pointed, .is_optional=false),
+        .value_rval = gcc_lvalue_as_rvalue(iter_var),
+    };
+
+    // body block
+    if (body_compiler)
+        body_compiler(env, &loop_body_end, &info, userdata);
+
+    if (loop_body_end)
+        gcc_jump(loop_body_end, NULL, loop_next);
+
+    // next:
+    // index++, iter = iter->next
+    if (index_var)
+        gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+
+    gcc_struct_t *iter_struct = gcc_type_if_struct(bl_type_to_gcc(env, Match(iter_t, PointerType)->pointed));
+    assert(iter_struct);
+    gcc_assign(loop_next, NULL, iter_var,
+               gcc_lvalue_as_rvalue(
+                   gcc_rvalue_dereference_field(
+                       gcc_lvalue_as_rvalue(iter_var), NULL, gcc_get_field(iter_struct, field_index))));
+
+    // goto is_done ? end : between
+    gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
+    // between:
+    if (between_compiler)
+        between_compiler(env, &loop_between, &info, userdata);
+
+    if (loop_between)
+        gcc_jump(loop_between, NULL, loop_body); // goto body
+
+    *block = loop_end;
+}
+
 void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     switch (ast->tag) {
@@ -100,8 +194,21 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
             compile_range_iteration(env, block, ast, body_compiler, between_compiler, userdata);
             return;
         }
-        default: ERROR(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
+        case StructType: {
+            auto struct_ = Match(iter_t, StructType);
+            for (int64_t i = 0, len = length(struct_->field_names); i < len; i++) {
+                if (ith(struct_->field_names, i) == intern_str("next")
+                    && ith(struct_->field_types, i) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
+                    // Bingo: found a obj->next : @?Obj
+                    compile_linked_iteration(env, block, ast, body_compiler, between_compiler, userdata, i);
+                    return;
+                }
+            }
+            break;
         }
+        default: break;
+        }
+        ERROR(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
     }
     case Repeat: {
         compile_loop_iteration(env, block, "repeat", NULL, body_compiler, between_compiler, userdata);

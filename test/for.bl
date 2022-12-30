@@ -16,3 +16,15 @@ def doop(xs:[String])
 
 xs := ["one","two","three"]
 doop(xs)
+
+def IntStack {
+    i:Int
+    next:@?IntStack
+}
+
+stack := !IntStack
+for i in 1..10
+    stack = @IntStack{i, stack}
+
+for s in stack
+    say "$s.i"

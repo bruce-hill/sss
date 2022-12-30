@@ -596,6 +596,14 @@ bl_type_t *get_type(file_t *f, hashmap_t *bindings, ast_t *ast)
                 hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(IntType)));
             break;
         }
+        case StructType: {
+            // TODO: check for .next field
+            if (for_loop->key)
+                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+            if (for_loop->value)
+                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(PointerType, .pointed=iter_t, .is_optional=false)));
+            break;
+        }
         default:
             TYPE_ERR(f, for_loop->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
             break;
