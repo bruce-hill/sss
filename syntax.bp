@@ -211,8 +211,8 @@ Export:: \b"export"\b _ +typeName %(_`,__)
 TypeOf:: \b"typeof"\b _ @value=(expr)
 SizeOf:: \b"sizeof"\b _ @value=(expr)
 Range:: (
-  @first=maybe-index-term [`,@step=maybe-index-term] ".." [@last=maybe-index-term] # 0,2..4 x..y 1..
-  / [`,@step=maybe-index-term] ".." [@last=maybe-index-term]) # ..5 ..
+  [@first=maybe-index-term] ".." ([`+] @step=maybe-index-term ".." [@last=maybe-index-term] / [@last=maybe-index-term]) # 0,2..4 x..y 1..
+)
 comment: "//" *.
 
 # Keep keywords reverse-alphabetically sorted so you don't get spurious prefix matches (e.g. "no" instead of "not")

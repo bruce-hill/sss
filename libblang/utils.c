@@ -133,19 +133,24 @@ bl_fileinfo_t *bl_fstat(FILE* f)
 }
 
 typedef struct {
-    int64_t first,step,last;
+    int64_t first,stride,last;
 } range_t;
 int range_print(range_t range, FILE *f, void *stack) {
     (void)stack;
     int printed = 0;
     if (range.first != INT64_MIN)
         printed += fprintf(f, "%ld", range.first);
-    if (range.step != 1)
-        printed += fprintf(f, ",%ld", range.step);
+
+    if (range.stride < 0)
+        printed += fprintf(f, "..%ld", range.stride);
+    else if (range.stride != 1)
+        printed += fprintf(f, "..+%ld", range.stride);
+
     if (range.last != INT64_MAX)
         printed += fprintf(f, "..%ld", range.last);
     else
         printed += fprintf(f, "..");
+
     return printed;
 }
 

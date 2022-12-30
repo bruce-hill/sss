@@ -7,7 +7,7 @@ def doop(xs:[String])
         say "Between: $prev -> $x"
     say "Done!"
 
-    for i,x in 5,2..20
+    for i,x in 5..+2..20
         say "$i) $x"
         prev := x
     between
