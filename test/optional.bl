@@ -1,7 +1,7 @@
 should_nil := yes
 s := if should_nil then !String else @"Not nil"
 say "$s (Optional(String) $(if s then "wasn't" else "was") nil)"
-say *(s or "Nah")
+say(*(s or @"Nah"))
 
 // fn := if should_nil then nil (String)=>Void else ?(s:String)=> say(s)
 // maybe_log := fn or (s:String)=> say("...")
@@ -11,7 +11,7 @@ def maybe_str(s:String,nil_it:Bool):?@String
     return !String if nil_it
     return ?@s
 
-say *(maybe_str("hi", no) or @"XXX")
+say(*(maybe_str("hi", no) or @"XXX"))
 foo := maybe_str("hi", no)
 say "$foo"
 

@@ -99,7 +99,7 @@ FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-exp
 KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
 methodCall: @:FnCall=((methodCall / IndexedTerm / As / Cast / term) _ `| _
   (@fn=(Var / `(__required-extended-expr__`)) _ [`( __ *(KeywordArg/expr) % (__`,__) __ [`,__] `)]) [_`:_@type=type])
-splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t))
+splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) +(` /\t) !`* +(KeywordArg/expr) % +(` ,,/\t))
 splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / As / Cast / term) _ `| _
   (@fn=(Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
 Var:: (id !~ keyword)
