@@ -576,7 +576,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             case TypeType: {
                 if (access->fielded->tag != Var)
                     ERROR(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
-                istr_t type_name = access->field;
+                istr_t type_name = Match(access->fielded, Var)->name;
                 binding_t *type_binding = hashmap_get(env->bindings, type_name);
                 binding_t *binding = (type_binding && type_binding->namespace) ? hashmap_get(type_binding->namespace, access->field) : NULL;
                 if (!binding)
