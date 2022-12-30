@@ -135,13 +135,14 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     DEFTYPE(Num); DEFTYPE(Num32);
 #undef DEFTYPE
 
-    // gcc_func_t *range_print_func = gcc_new_func(
-    //     env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
-    //     "range_print", 2, (gcc_param_t*[]){
-    //         gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
-    //         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "range"),
-    //     }, 0);
-    // hashmap_set(env.tocord_funcs, Type(RangeType), range_tocord_func);
+    gcc_func_t *range_print_func = gcc_new_func(
+        env.ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t,
+        "range_print", 3, (gcc_param_t*[]){
+            gcc_new_param(env.ctx, NULL, bl_type_to_gcc(&env, Type(RangeType)), "range"),
+            gcc_new_param(env.ctx, NULL, gcc_get_type(ctx, GCC_T_FILE_PTR), "file"),
+            gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, VOID_PTR), "stack"),
+        }, 0);
+    hashmap_set(env.print_funcs, Type(RangeType), range_print_func);
 
     gcc_param_t* main_params[] = {
         gcc_new_param(env.ctx, NULL, gcc_type(env.ctx, INT), "argc"),

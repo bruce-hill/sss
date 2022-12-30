@@ -135,18 +135,18 @@ bl_fileinfo_t *bl_fstat(FILE* f)
 typedef struct {
     int64_t first,step,last;
 } range_t;
-const char *range_tostring(range_t range, void *stack) {
+int range_print(range_t range, FILE *f, void *stack) {
     (void)stack;
-    CORD str = NULL;
+    int printed = 0;
     if (range.first != INT64_MIN)
-        CORD_sprintf(&str, "%ld", range.first);
+        printed += fprintf(f, "%ld", range.first);
     if (range.step != 1)
-        CORD_sprintf(&str, "%r,%ld", str, range.step);
+        printed += fprintf(f, ",%ld", range.step);
     if (range.last != INT64_MAX)
-        CORD_sprintf(&str, "%r..%ld", str, range.last);
+        printed += fprintf(f, "..%ld", range.last);
     else
-        str = CORD_cat(str, "..");
-    return intern_str(CORD_to_char_star(str));
+        printed += fprintf(f, "..");
+    return printed;
 }
 
 #define toggle(val, nil) ((void*)((int64_t)(val) ^ (int64_t)(nil)))
