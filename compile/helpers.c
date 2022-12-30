@@ -518,8 +518,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case TypeType: {
-        fprintf(stderr, "\x1b[31;1mprint(%s) function is not yet implemented!\n", type_to_string(t));
-        exit(1);
+        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){
+                                         gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), f}));
+        break;
     }
     default: {
         fprintf(stderr, "\x1b[31;1mprint(%s) function is not yet implemented!\n", type_to_string(t));
