@@ -68,6 +68,34 @@ static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info
     }
 }
 
+gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *enum_type, bl_type_t *field_type, gcc_rvalue_t *rval, gcc_rvalue_t *tag_rval)
+{
+    gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, enum_type);
+    gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+
+    auto tagged = Match(enum_type, TaggedUnionType);
+    bl_type_t *union_type = tagged->data;
+    auto union_ = Match(union_type, UnionType);
+
+    int64_t field_index = 0;
+    for (int64_t i = 0, len = length(union_->field_types); i < len; i++) {
+        if (ith(union_->field_types, i) == field_type) {
+            field_index = i;
+            break;
+        }
+    }
+    gcc_field_t *union_field = ith(union_->fields, field_index);
+    gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
+    gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
+    gcc_field_t *fields[] = {
+        gcc_get_field(gcc_tagged_s, 0),
+        gcc_get_field(gcc_tagged_s, 1),
+    };
+    rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 2, fields, (gcc_rvalue_t*[]){tag_rval, data_union});
+    assert(rval);
+    return rval;
+}
+
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -415,6 +443,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = binding->type_value;
         if (!t)
             compile_err(env, struct_->type, "This isn't a struct type that I recognize");
+
+        size_t num_values = length(struct_->members);
+
+        if (t->tag != StructType) {
+            // For tagged enums, you can initialize with curly brace syntax (`Foo.Text{"hi"}`)
+            // when it's just a value and not a struct
+            if (num_values != 1)
+                compile_err(env, ast, "I expected this to have exactly one value");
+            ast_t *member_ast = ith(struct_->members, 0);
+            gcc_rvalue_t *rval = compile_expr(env, block, Match(member_ast, StructField)->value);
+            if (binding->enum_type)
+                rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
+            return rval;
+        }
+
         auto struct_type = Match(t, StructType);
         if (length(struct_type->field_names) == 0)
             compile_err(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
@@ -430,8 +473,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_field_t *unused_fields[num_fields];
         for (size_t i = 0, count = gcc_field_count(gcc_struct); i < count; i++)
             unused_fields[i] = gcc_get_field(gcc_struct, i);
-
-        size_t num_values = length(struct_->members);
 
         struct {
             size_t field_num;
@@ -522,32 +563,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, NULL, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
 
-        if (binding->enum_type) {
-            gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, binding->enum_type);
-            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
-
-            auto tagged = Match(binding->enum_type, TaggedUnionType);
-            bl_type_t *union_type = tagged->data;
-            auto union_ = Match(union_type, UnionType);
-
-            int64_t field_index = 0;
-            for (int64_t i = 0, len = length(union_->field_types); i < len; i++) {
-                if (ith(union_->field_types, i) == t) {
-                    field_index = i;
-                    break;
-                }
-            }
-            gcc_field_t *union_field = ith(union_->fields, field_index);
-            gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
-            gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
-            gcc_field_t *fields[] = {
-                gcc_get_field(gcc_tagged_s, 0),
-                gcc_get_field(gcc_tagged_s, 1),
-            };
-            gcc_rvalue_t *tag = binding->tag_rval;
-            rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 2, fields, (gcc_rvalue_t*[]){tag, data_union});
-            assert(rval);
-        }
+        if (binding->enum_type)
+            rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
 
         return rval;
     }
@@ -1290,7 +1307,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     }
                 }
                 if (!case_rval)
-                    compile_err(env, case_->tag, "I couldn't figure out how to match this and bind it to a variable");
+                    compile_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
 
                 binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
                 hashmap_set(case_env.bindings, Match(case_->var, Var)->name, case_binding);

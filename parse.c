@@ -418,16 +418,11 @@ ast_t *match_to_ast(match_t *m)
                 }
                 APPEND(tag_names, name);
                 APPEND(tag_values, next_value);
-                match_t *data_m = get_named_capture(tag_m, "data", -1);
-                if (data_m) {
-                    NEW_LIST(ast_t*, members);
-                    for (int j = 1; ; j++) {
-                        ast_t *member = match_to_ast(get_numbered_capture(data_m, j));
-                        if (!member) break;
-                        APPEND(members, member);
-                    }
-                    ast_t *field = AST(m, StructDef, .name=name, .members=members);
-                    APPEND(tag_types, field);
+                ast_t *field_type = capture_ast(tag_m, "data");
+                if (field_type) {
+                    if (field_type->tag == StructDef && !Match(field_type, StructDef)->name)
+                        Match(field_type, StructDef)->name = name;
+                    APPEND(tag_types, field_type);
                 } else {
                     APPEND(tag_types, NULL);
                 }

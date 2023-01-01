@@ -484,6 +484,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (!struct_->type)
             compile_err(env, ast, "I haven't implemented anonymous structs yet");
         binding_t *b = get_ast_binding(env, struct_->type);
+        if (!b)
+            compile_err(env, struct_->type, "I can't figure out this type");
         if (b->enum_type)
             return b->enum_type;
         else if (b->type_value)

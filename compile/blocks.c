@@ -26,7 +26,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_eval(*block, ast_loc(env, ast), val);
 }
 
-static void predeclare_def_types(env_t *env, ast_t *def)
+static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 {
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
@@ -51,15 +51,16 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         foreach (struct_def->members, member, _) {
             predeclare_def_types(&struct_env, *member);
         }
+        return t;
     } else if (def->tag == EnumDef) {
         auto enum_def = Match(def, EnumDef);
         istr_t enum_name = enum_def->name;
         if (hashmap_get(env->bindings, enum_name))
             compile_err(env, def, "Something called %s is already defined.", enum_name);
-        NEW_LIST(bl_type_t*, field_types);
-        NEW_LIST(istr_t, field_names);
+        NEW_LIST(bl_type_t*, union_field_types);
+        NEW_LIST(istr_t, union_field_names);
         bl_type_t *tag_t = Type(TagType, .name=enum_name, .names=enum_def->tag_names, .values=enum_def->tag_values);
-        bl_type_t *union_t = Type(UnionType, .field_names=field_names, .field_types=field_types, .fields=LIST(gcc_field_t*));
+        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types, .fields=LIST(gcc_field_t*));
         bl_type_t *t = Type(TaggedUnionType, .name=enum_name, .tag_type=tag_t, .data=union_t);
         gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
 
@@ -81,6 +82,8 @@ static void predeclare_def_types(env_t *env, ast_t *def)
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
 
         // Bind tag values:
+        env_t type_env = *env;
+        type_env.bindings = type_ns;
         for (int64_t i = 0, len = length(enum_def->tag_names); i < len; i++) {
             istr_t tag_name = ith(enum_def->tag_names, i);
             gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(enum_def->tag_values, i));
@@ -88,19 +91,25 @@ static void predeclare_def_types(env_t *env, ast_t *def)
             hashmap_set(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .is_global=true, .rval=tag_val));
 
             ast_t *field_type_ast = ith(enum_def->tag_types, i);
-            bl_type_t *field_type = Type(StructType, .name=tag_name, .field_names=LIST(istr_t), .field_types=LIST(bl_type_t*));
             if (field_type_ast) {
-                APPEND(field_names, tag_name);
-                APPEND(field_types, field_type);
+                bl_type_t *field_t = predeclare_def_types(&type_env, field_type_ast);
+                assert(field_t || field_type_ast->tag != StructDef);
+                APPEND(union_field_names, tag_name);
+                if (!field_t)
+                    field_t = parse_type(env, field_type_ast);
+                APPEND(union_field_types, field_t);
 
                 // Bind the struct type:
                 binding_t *b = new(binding_t, .type=Type(TypeType), .is_constant=true, .is_global=true, .enum_type=t, .tag_rval=tag_val,
-                                   .type_value=field_type, .rval=gcc_new_string(env->ctx, intern_strf("%s.%s", enum_name, tag_name)));
+                                   .type_value=field_t, .rval=gcc_new_string(env->ctx, intern_strf("%s.%s", enum_name, tag_name)));
                 hashmap_set(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:
                 // hashmap_set(env->bindings, tag_name, b);
             }
         }
+        return t;
+    } else {
+        return NULL;
     }
 }
 
@@ -149,27 +158,13 @@ static void populate_def_members(env_t *env, ast_t *def)
         auto union_t = Match(Match(t, TaggedUnionType)->data, UnionType);
         int64_t field_index = 0;
         for (int64_t i = 0, len = length(enum_def->tag_names); i < len; i++) {
-            ast_t *fields_ast = ith(enum_def->tag_types, i);
-            if (!fields_ast)
+            ast_t *field_type_ast = ith(enum_def->tag_types, i);
+            if (!field_type_ast)
                 continue;
 
-            assert(fields_ast->tag == StructDef);
-
-            bl_type_t *field_struct = ith(union_t->field_types, field_index);
-            auto field_struct_info = Match(field_struct, StructType);
-            auto struct_def = Match(fields_ast, StructDef);
-            foreach (struct_def->members, member, _) {
-                auto field_def = Match((*member), StructFieldDef);
-                bl_type_t *ft = parse_type(&inner_env, field_def->type);
-                if (ft->tag == VoidType)
-                    compile_err(env, *member, "This field is a Void type, but that isn't supported for struct members.");
-                foreach(field_def->names, fname, __) {
-                    APPEND(field_struct_info->field_names, *fname);
-                    APPEND(field_struct_info->field_types, ft);
-                }
-            }
-            gcc_type_t *field_type = bl_type_to_gcc(env, field_struct);
-            assert(field_type);
+            populate_def_members(&inner_env, field_type_ast);
+            bl_type_t *bl_field_type = ith(union_t->field_types, field_index);
+            gcc_type_t *field_type = bl_type_to_gcc(env, bl_field_type);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, field_type, ith(enum_def->tag_names, i));
             APPEND(union_t->fields, field);
             ++field_index;

@@ -131,7 +131,7 @@ UnitDef:: \b"unit"\b _ @name=varNotKeyword _ `= _ @measure=Measure
 StructDef:: \b"def"\b _ @name=varNotKeyword __ `{__ *(StructFieldDef / FnDef / StructDef / EnumDef / Declaration) % __ __`}
 StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
 EnumDef:: \b"enum"\b _ @name=varNotKeyword _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int] [__@data=taggedData__])) % (__[`,__]) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
-taggedData: `{ __ *(StructFieldDef) % __ __`}
+taggedData: `: __ type / @:StructDef=(`{ __ *(StructFieldDef) % __ __`})
 Macro:: @curdent:\C \b"macro"\b _ @name=varNotKeyword _ `( __ @args=@(*varNotKeyword%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
 FnDef:: @curdent:\C \b"def"\b _ @name=varNotKeyword _ (
   `( __ @args=(*((@:FnArg=(@name=varNotKeyword_(`:_@type=type / `=_@default=required-extended-expr)) / @:ParseError=(varNotKeyword =>"This argument doesn't have a type")))%(__`,__))__[`,__]`)_
