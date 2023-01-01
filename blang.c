@@ -94,7 +94,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             fflush(stdout);
             continue;
         }
-        run_file(ctx, &on_err, f, verbose, 0, (char*[]){NULL});
+        run_file(ctx, &on_err, f, verbose, 1, (char*[]){"blang", NULL});
         fputs("> ", stdout);
         fflush(stdout);
     }
