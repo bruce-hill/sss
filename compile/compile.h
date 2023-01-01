@@ -8,13 +8,11 @@
 #include <stdio.h>
 
 #include "../ast.h"
+#include "../environment.h"
 #include "../types.h"
 #include "../util.h"
 #include "libgccjit_abbrev.h"
 
-#define ERROR(env, ast, fmt, ...) do { fprintf(stderr, "\x1b[31;7;1m" fmt "\x1b[m\n\n" __VA_OPT__(,) __VA_ARGS__); \
-            highlight_match(stderr, env->file, (ast)->match, 2); \
-            raise(SIGABRT); exit(1); } while(0)
 #define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
 
 #define foreach LIST_FOR
@@ -28,29 +26,6 @@
 #define ast_loc(env, ast) gcc_new_location((env)->ctx, (env)->file->filename,\
         (int)get_line_number((env)->file, (ast)->match->start),\
         (int)get_line_column((env)->file, (ast)->match->start))
-
-typedef struct loop_label_s {
-    struct loop_label_s *enclosing;
-    gcc_block_t *skip_label, *stop_label;
-    List(istr_t) names;
-    unsigned int skip_reachable, stop_reachable;
-} loop_label_t;
-
-typedef struct env_s {
-    gcc_ctx_t *ctx;
-    file_t *file;
-    hashmap_t *print_funcs; // type -> func
-    hashmap_t *cmp_funcs; // type -> func
-    hashmap_t *bindings; // name -> binding_t
-    hashmap_t *gcc_types; // name -> bl_type
-    hashmap_t *global_funcs; // name -> func
-    hashmap_t *methods; // bl_type -> name -> binding_t
-    bl_type_t *return_type;
-    loop_label_t *loop_label;
-    void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
-    void *comprehension_userdata;
-    bool debug;
-} env_t;
 
 typedef struct {
     bl_type_t *key_type, *value_type;

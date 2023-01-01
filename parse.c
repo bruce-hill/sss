@@ -467,25 +467,18 @@ ast_t *match_to_ast(match_t *m)
         }
         case When: {
             ast_t *subject = match_to_ast(get_named_capture(m, "subject", -1));
-            NEW_LIST(ast_cases_t, cases);
+            NEW_LIST(ast_case_t, cases);
             for (int i = 1; ; i++) {
-                match_t *clause_m = get_numbered_capture(m, i);
-                if (!clause_m) break;
-                match_t *cases_m = get_named_capture(clause_m, "cases", -1);
-                NEW_LIST(ast_t*, values);
-                for (int casenum = 1; ; casenum++) {
-                    ast_t *caseval = match_to_ast(get_numbered_capture(cases_m, casenum));
-                    if (!caseval) break;
-                    APPEND(values, caseval);
-                }
-                ast_t *casebody = match_to_ast(get_named_capture(clause_m, "body", -1));
-                ast_cases_t case_ = {
-                    .cases=values,
-                    .body=casebody,
+                match_t *case_m = get_numbered_capture(m, i);
+                if (!case_m) break;
+                ast_case_t case_ = {
+                    .var=capture_ast(case_m, "var"),
+                    .tag=capture_ast(case_m, "tag"),
+                    .body=capture_ast(case_m, "body"),
                 };
                 // Workaround because this is an array-of-structs instead of pointers:
                 // (Can't use APPEND() macro)
-                list_append((list_t*)cases, sizeof(ast_cases_t), &case_);
+                list_append((list_t*)cases, sizeof(ast_case_t), &case_);
             }
             ast_t *else_block = match_to_ast(get_named_capture(m, "elseBody", -1));
             return AST(m, When, .subject=subject, .cases=cases, .default_body=else_block);

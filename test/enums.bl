@@ -1,14 +1,13 @@
 enum Foo { A, B, C, D }
 
-say "$A"
 say "$(Foo.A)"
-fail unless "$A" == "Foo.Tag.A" and "$(Foo.A)" == "Foo.A"
+fail unless "$(Foo.A)" == "Foo.A"
 
-for x in [A, B, C, D]
+for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     when x is A
         say "$x is A!"
-    is B, C
-        say "$x is B or C!"
+    is B
+        say "$x is B!"
     else
         say "$x is something else"
 
@@ -28,4 +27,12 @@ enum Baz {
 bazzes := [Baz.Text{"hi"}, Baz.Integer{5}, Baz.Vec2{2.4, 4.5}, Baz.Nil]
 
 for b in bazzes
-    say "$b"
+    when b is t:Text
+        say "$(t.str)"
+    is i:Integer
+        say "$(i.i)"
+    is v:Vec2
+        say "$v"
+    is Nil
+        say "nil"
+

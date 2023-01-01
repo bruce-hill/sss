@@ -62,7 +62,7 @@ void compile_range_iteration(
     env = &loop_env;
 
     // Preamble:
-    bl_type_t *range_t = get_type(env->file, env->bindings, range);
+    bl_type_t *range_t = get_type(env, range);
     assert(range_t->tag == RangeType);
     gcc_rvalue_t *range_val = compile_expr(env, block, range);
     gcc_type_t *gcc_range_t = bl_type_to_gcc(env, range_t);

@@ -20,14 +20,20 @@
 
 istr_t fresh(istr_t name)
 {
-    static int id = 0;
-    return intern_strf("%s__%d", name, id++);
+    static hashmap_t *seen = NULL;
+    if (!seen) seen = hashmap_new();
+    // static int id = 0;
+    int64_t count = (int64_t)hashmap_get(seen, name);
+    istr_t ret = intern_strf("%s__%ld", name, count++);
+    hashmap_set(seen, name, (void*)(count+1));
+    return ret;
 }
 
 // Kinda janky, but libgccjit doesn't have this function built in
 ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
 {
-    if (bl_t->tag == StructType) {
+    switch (bl_t->tag) {
+    case StructType: {
         ssize_t align = 0;
         auto struct_type = Match(bl_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
@@ -35,7 +41,17 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
             if (field_align > align) align = field_align;
         }
         return align;
-    } else {
+    }
+    case UnionType: {
+        ssize_t align = 0;
+        auto union_type = Match(bl_t, UnionType);
+        foreach (union_type->field_types, ftype, _) {
+            ssize_t field_align = gcc_alignof(env, *ftype);
+            if (field_align > align) align = field_align;
+        }
+        return align;
+    }
+    default:
         return gcc_sizeof(env, bl_t);
     }
 }
@@ -50,6 +66,10 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     switch (bl_t->tag) {
     case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
+    case BoolType: return sizeof(bool);
+    case NumType: return sizeof(double);
+    case Num32Type: return sizeof(float);
+    case FunctionType:
     case PointerType: return sizeof(void*);
     case DSLType: case TypeType: return sizeof(char*);
     case StructType: {
@@ -58,12 +78,12 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         auto struct_type = Match(bl_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             ssize_t field_align = gcc_alignof(env, *ftype);
-            if (size % field_align)
+            if (field_align > 1 && size % field_align)
                 size += (field_align - size) % field_align; // padding
             size += gcc_sizeof(env, *ftype);
             if (field_align > max_align) max_align = field_align;
         }
-        if (size % max_align)
+        if (max_align > 1 && size % max_align)
             size += (max_align - size) % max_align; // padding
         return size;
     }
@@ -73,17 +93,42 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         auto union_type = Match(bl_t, UnionType);
         foreach (union_type->field_types, ftype, _) {
             ssize_t field_align = gcc_alignof(env, *ftype);
-            if (size % field_align)
+            if (field_align > 1 && size % field_align)
                 size += (field_align - size) % field_align; // padding
             ssize_t field_size = gcc_sizeof(env, *ftype);
             if (field_size > size) size = field_size;
             if (field_align > max_align) max_align = field_align;
         }
-        if (size % max_align)
+        if (max_align > 1 && size % max_align)
             size += (max_align - size) % max_align; // padding
         return size;
     }
-    default: return 8;
+    case TagType: {
+        auto tag = Match(bl_t, TagType);
+        int64_t max = 0;
+        for (int64_t i = 0, len = length(tag->values); i < len; i++) {
+            if (ith(tag->values, i) > max)
+                max = ith(tag->values, i);
+        }
+        if (max > INT32_MAX)
+            return 8;
+        else if (max > INT16_MAX)
+            return 4;
+        else if (max > INT8_MAX)
+            return 2;
+        else
+            return 1;
+    }
+    case TaggedUnionType: {
+        auto tagged = Match(bl_t, TaggedUnionType);
+        ssize_t size = gcc_sizeof(env, tagged->tag_type);
+        ssize_t data_align = gcc_alignof(env, tagged->data);
+        if (data_align > 1 && size % data_align)
+            size += (data_align - size) % data_align; // padding
+        size += gcc_sizeof(env, tagged->data);
+        return size;
+    }
+    default: compile_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
     }
 }
 
@@ -288,12 +333,12 @@ hashmap_t *global_bindings(hashmap_t *bindings)
 
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
 {
-    bl_type_t *t = get_type(env->file, env->bindings, obj);
+    bl_type_t *t = get_type(env, obj);
     gcc_rvalue_t *bool_val = compile_expr(env, block, obj); 
     switch (t->tag) {
     case BoolType: break;
     case StructType: {
-        ERROR(env, obj, "This value is a struct and can't be used as a conditional.");
+        compile_err(env, obj, "This value is a struct and can't be used as a conditional.");
         break;
     }
     default: {
@@ -397,6 +442,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         auto tags = Match(tagged_t->tag_type, TagType);
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
         istr_t type_prefix = intern_strf("%s.", tagged_t->name);
+        gcc_lvalue_t *printed_var = gcc_local(func, NULL, int_t, "printed");
+        gcc_assign(block, NULL, printed_var, WRITE_LITERAL(type_prefix));
+        gcc_block_t *done = gcc_new_block(func, fresh("done"));
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
             istr_t tag_name = ith(tags->names, i);
@@ -415,23 +463,26 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                         gcc_param_as_rvalue(params[2]),
                     };
                     gcc_func_t *tag_print = get_print_func(env, tag_data_type);
-                    gcc_rvalue_t *prefix_len = WRITE_LITERAL(type_prefix);
                     gcc_rvalue_t *suffix_len = gcc_call(env->ctx, NULL, tag_print, 3, args);
-                    gcc_return(tag_block, NULL,
-                               gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, prefix_len, suffix_len));
-                    goto found;
+                    gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, suffix_len);
+                    goto found_struct;
                 }
             }
-            gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.%s", tagged_t->name, tag_name)));
-          found:;
+            gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(tag_name));
+          found_struct:;
+            gcc_jump(tag_block, NULL, done);
             int64_t tag_value = ith(tags->values, i);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tagged_t->name)));
+        gcc_update(default_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("<Unknown value>"));
+        gcc_jump(default_block, NULL, done);
+
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
+
+        gcc_return(done, NULL, gcc_lvalue_as_rvalue(printed_var));
         break;
     }
     case VoidType: {
@@ -721,14 +772,14 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding = hashmap_get(env->bindings, Match(ast, Var)->name);
         if (binding) {
             if (!binding->lval)
-                ERROR(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
+                compile_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
             return binding->lval;
         } else {
-            ERROR(env, ast, "I don't know what this variable is referring to."); 
+            compile_err(env, ast, "I don't know what this variable is referring to."); 
         }
     }
     case Dereference: {
-        (void)get_type(env->file, env->bindings, ast); // Check this is a pointer type
+        (void)get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         return gcc_rvalue_dereference(rval, ast_loc(env, ast));
@@ -736,7 +787,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded);
-        bl_type_t *fielded_t = get_type(env->file, env->bindings, access->fielded);
+        bl_type_t *fielded_t = get_type(env, access->fielded);
       keep_going:
         switch (fielded_t->tag) { 
         case StructType: {
@@ -748,19 +799,19 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
                     return gcc_lvalue_access_field(fielded_lval, NULL, field);
                 }
             }
-            ERROR(env, ast, "The struct %s doesn't have a mutable field called '%s'",
+            compile_err(env, ast, "The struct %s doesn't have a mutable field called '%s'",
                   type_to_string(fielded_t), access->field);
         }
         case PointerType: {
             auto fielded_ptr = Match(fielded_t, PointerType);
             if (fielded_ptr->is_optional)
-                ERROR(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+                compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
             fielded_lval = gcc_rvalue_dereference(gcc_lvalue_as_rvalue(fielded_lval), NULL);
             fielded_t = fielded_ptr->pointed;
             goto keep_going;
         }
         default: {
-            ERROR(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
+            compile_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
                   type_to_string(fielded_t));
         }
         }
@@ -768,7 +819,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
     // case Index: {
     // }
     default:
-        ERROR(env, ast, "This is not a valid Lvalue");
+        compile_err(env, ast, "This is not a valid Lvalue");
     }
 }
 

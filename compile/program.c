@@ -62,8 +62,6 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
 {
     auto fn = Match(fn_type, FunctionType);
     gcc_param_t *params[LIST_LEN(fn->arg_types)];
-    binding_t *type_binding = hashmap_get(env->bindings, t);
-    assert(type_binding && type_binding->namespace);
     for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
         istr_t arg_name = fn->arg_names ? LIST_ITEM(fn->arg_names, i) : fresh("arg");
         bl_type_t *arg_type = LIST_ITEM(fn->arg_types, i);
@@ -71,16 +69,15 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
     }
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn->ret),
                                     extern_name, LIST_LEN(fn->arg_types), params, is_vararg);
-    hashmap_set(type_binding->namespace, method_name,
-                new(binding_t, .is_global=true, .type=fn_type, .func=func));
+    hashmap_t *ns = get_namespace(env, t);
+    hashmap_set(ns, method_name, new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
 
 static bl_type_t *define_string_type(env_t *env)
 {
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
-    hashmap_t *ns = hashmap_new();
     gcc_rvalue_t *rval = gcc_new_string(env->ctx, "String");
-    binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=str_type, .namespace=ns);
+    binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=str_type);
     hashmap_set(env->bindings, intern_str("String"), binding);
     hashmap_set(env->bindings, str_type, binding);
 
@@ -108,6 +105,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
         .ctx = ctx,
         .file = f,
         .bindings = hashmap_new(),
+        .type_namespaces = hashmap_new(),
         .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
@@ -133,7 +131,7 @@ gcc_result_t *compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug)
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env.bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
-#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type), .namespace=hashmap_new()));
+#define DEFTYPE(t) hashmap_set(env.bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);

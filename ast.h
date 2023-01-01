@@ -52,9 +52,8 @@ typedef struct {
 } ast_clause_t;
 
 typedef struct {
-    List(ast_t*) cases;
-    ast_t *body;
-} ast_cases_t;
+    ast_t *var, *tag, *body;
+} ast_case_t;
 
 
 struct ast_s {
@@ -167,7 +166,7 @@ struct ast_s {
         } Repeat;
         struct {
             ast_t *subject;
-            List(ast_cases_t) cases;
+            List(ast_case_t) cases;
             ast_t *default_body;
         } When;
         struct {

@@ -82,20 +82,6 @@ struct bl_type_s {
     } __data;
 };
 
-typedef struct {
-    gcc_jit_rvalue *rval;
-    gcc_jit_lvalue *lval;
-    bl_type_t *type;
-    union {
-        struct {
-            bl_type_t *type_value, *enum_type;
-            hashmap_t *namespace;
-        };
-        gcc_jit_function *func;
-    };
-    bool is_global:1, is_constant:1;
-} binding_t;
-
 #define Type(typetag, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.tag=typetag, .__data.typetag={__VA_ARGS__}}, sizeof(bl_type_t)))
 
 istr_t type_to_string(bl_type_t *t);

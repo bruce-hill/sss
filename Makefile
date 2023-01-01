@@ -25,8 +25,8 @@ LIBS=-lgc -lbp -lgccjit -lcord -lbhash -lintern -lm -L. -lblang
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
-CFILES=ast.c parse.c types.c typecheck.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c
-HFILES=ast.h parse.h types.h typecheck.h compile/compile.h util.h libblang/list.h libblang/string.h
+CFILES=ast.c environment.c parse.c types.c typecheck.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c
+HFILES=ast.h environment.h parse.h types.h typecheck.h compile/compile.h util.h libblang/list.h libblang/string.h
 OBJFILES=$(CFILES:.c=.o)
 
 all: blang blangc

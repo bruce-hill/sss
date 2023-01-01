@@ -24,7 +24,7 @@ typedef struct {
 
 static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rvalue_t *array_ptr)
 {
-    bl_type_t *t = get_type(env->file, env->bindings, item); // item type
+    bl_type_t *t = get_type(env, item); // item type
     if (t->tag == GeneratorType) {
         gcc_rvalue_t *val = compile_expr(env, block, item);
         assert(!val);
@@ -67,7 +67,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rva
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto array = Match(ast, Array);
-    bl_type_t *t = get_type(env->file, env->bindings, ast);
+    bl_type_t *t = get_type(env, ast);
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *func = gcc_block_func(*block);
 
@@ -140,7 +140,7 @@ void compile_array_iteration(
 
     // Preamble:
     gcc_rvalue_t *array = compile_expr(env, block, array_ast);
-    bl_type_t *array_t = get_type(env->file, env->bindings, array_ast);
+    bl_type_t *array_t = get_type(env, array_ast);
     gcc_type_t *gcc_array_t = bl_type_to_gcc(env, array_t);
     if (array_t->tag == PointerType) {
         auto array_ptr = Match(array_t, PointerType);

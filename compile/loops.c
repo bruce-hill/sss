@@ -116,7 +116,7 @@ void compile_linked_iteration(
     env = &loop_env;
 
     // Preamble:
-    bl_type_t *iter_t = get_type(env->file, env->bindings, obj);
+    bl_type_t *iter_t = get_type(env, obj);
     assert(iter_t->tag == PointerType && Match(iter_t, PointerType)->pointed->tag == StructType);
     gcc_rvalue_t *obj_val = compile_expr(env, block, obj);
     gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
@@ -183,7 +183,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
     switch (ast->tag) {
     case For: {
         auto for_loop = Match(ast, For);
-        bl_type_t *iter_t = get_type(env->file, env->bindings, for_loop->iter);
+        bl_type_t *iter_t = get_type(env, for_loop->iter);
         if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
         switch (iter_t->tag) {
         case ArrayType: {
@@ -208,7 +208,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
         }
         default: break;
         }
-        ERROR(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
+        compile_err(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
     }
     case Repeat: {
         compile_loop_iteration(env, block, "repeat", NULL, body_compiler, between_compiler, userdata);
@@ -219,7 +219,7 @@ void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler
         compile_loop_iteration(env, block, "while", loop->condition, body_compiler, between_compiler, userdata);
         return;
     }
-    default: ERROR(env, ast, "This is not an interation");
+    default: compile_err(env, ast, "This is not an interation");
     }
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

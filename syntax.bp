@@ -186,7 +186,8 @@ postfixWhile: @:While=(@body=@:Block=@(line-statement / extended-expr) _
   \b"while"\b _ @condition=extended-expr _ [@filter=loopFilter] _ [comment])
 When:: ( \b"when"\b @curdent:\C _
   @subject=required-extended-expr _ [[comment] nl curdent]
-  +@:WhenClause=("is"\b _ @cases=+required-extended-expr%(_`,_) _ @body=indentedBlock)%(nl curdent)
+  +@:WhenClause=("is"\b _ [@var=varNotKeyword _`:_] @tag=varNotKeyword _
+    @body=(_\b"then"\b_ maybeIndentedBlock / indentedBlock / @:ParseError=(..$ =>"Expected a block after this 'is'")))%(nl curdent)
   [nl curdent "else" _ @elseBody=maybeIndentedBlock]
 )
 For:: (
