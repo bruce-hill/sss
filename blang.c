@@ -123,12 +123,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
         gcc_block_t *block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        if (ast->tag == Declare)
-            Match(ast, Declare)->is_global = true;
-        else if (ast->tag == FunctionDef)
-            Match(ast, FunctionDef)->is_exported = true;
-
-        compile_block_statement(env, &block, ast);
+        compile_statement(env, &block, ast);
         if (block)
             gcc_return_void(block, NULL);
 

@@ -99,7 +99,6 @@ struct ast_s {
         struct {
             istr_t name;
             ast_t *value;
-            bool is_global;
         } Declare;
         struct {
             List(ast_t*) targets;
@@ -130,7 +129,6 @@ struct ast_s {
             List(ast_t*) arg_defaults;
             ast_t *ret_type;
             ast_t *body;
-            bool is_exported;
         } FunctionDef;
         struct {
             List(istr_t) arg_names;
