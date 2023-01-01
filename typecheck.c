@@ -599,6 +599,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     compile_err(env, ast, "I can't figure out what type a %s is", get_ast_tag_name(ast->tag));
 }
 
+bool is_discardable(env_t *env, ast_t *ast)
+{
+    bl_type_t *t = get_type(env, ast);
+    while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
+    return (t->tag == VoidType || t->tag == AbortType);
+}
+
 void check_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {

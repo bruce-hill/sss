@@ -178,8 +178,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(decl->name));
+        gcc_lvalue_t *lval;
+        if (decl->is_global) {
+            lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, fresh(decl->name));
+        } else {
+            gcc_func_t *func = gcc_block_func(*block);
+            lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(decl->name));
+        }
         binding_t *clobbered = hashmap_get_raw(env->bindings, decl->name);
         if (clobbered && clobbered->type_value)
             compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "

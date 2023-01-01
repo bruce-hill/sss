@@ -85,16 +85,45 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     ssize_t nread;
     fputs("> ", stdout);
     fflush(stdout);
+    jmp_buf on_err;
+    env_t *env = new_environment(ctx, &on_err, NULL, verbose);
     while ((nread = getline(&line, &len, stdin)) != -1) {
         if (nread == 0) break;
         file_t *f = spoof_file(NULL, "<repl>", line, nread);
-        jmp_buf on_err;
+        env->file = f;
         if (setjmp(on_err)) {
             fputs("> ", stdout);
             fflush(stdout);
             continue;
         }
-        run_file(ctx, &on_err, f, verbose, 1, (char*[]){"blang", NULL});
+
+        ast_t *ast = parse(f, &on_err);
+        if (!is_discardable(env, ast))
+            ast = AST(NULL, Block, .statements=LIST(ast_t*, 
+                      AST(NULL, FunctionCall, .fn=AST(NULL, Var, .name=intern_str("say")),
+                      .args=LIST(ast_t*, AST(NULL, StringJoin, .children=LIST(ast_t*, ast))))));
+
+        const char *repl_name = fresh("repl");
+        gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
+        gcc_block_t *block = gcc_new_block(repl_func, fresh("repl_body"));
+
+        if (ast->tag == Declare)
+            Match(ast, Declare)->is_global = true;
+
+        compile_block_statement(env, &block, ast);
+        if (block)
+            gcc_return_void(block, NULL);
+
+        gcc_jit_result *result = gcc_compile(ctx);
+        if (result == NULL)
+            compile_err(env, NULL, "Compilation failed");
+
+        // Extract the generated code from "result".   
+        void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
+        assert(run_line);
+        run_line();
+        gcc_jit_result_release(result);
+
         fputs("> ", stdout);
         fflush(stdout);
     }

@@ -99,6 +99,7 @@ struct ast_s {
         struct {
             istr_t name;
             ast_t *value;
+            bool is_global;
         } Declare;
         struct {
             List(ast_t*) targets;
