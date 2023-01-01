@@ -157,7 +157,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (binding) {
             return binding->type;
         } else {
-            compile_err(env, ast, "I can't figure out what \"%s\" refers to", name);
+            compile_err(env, ast, "I don't know what \"%s\" refers to", name);
         }
     }
     case Len: {
