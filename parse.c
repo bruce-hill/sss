@@ -10,6 +10,7 @@
 #include <gc.h>
 #include <gc/cord.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,17 +98,20 @@ static void print_err(file_t *f, match_t *m, int context) {
 //
 // Report any errors and exit
 //
-static void report_errors(file_t *f, match_t *m, bool stop_on_first)
+static void report_errors(file_t *f, jmp_buf *on_err, match_t *m, bool stop_on_first)
 {
     pat_t *pat = m->pat;
     if (pat->type == BP_TAGGED && strncmp(pat->args.capture.name, "ParseError", pat->args.capture.namelen) == 0) {
         print_err(f, m, 2);
-        if (stop_on_first)
+        if (stop_on_first) {
+            if (on_err)
+                longjmp(*on_err, 1);
             exit(1);
+        }
     }
     if (m->children) {
         for (int i = 0; m->children[i]; i++)
-            report_errors(f, m->children[i], stop_on_first);
+            report_errors(f, on_err, m->children[i], stop_on_first);
     }
 }
 
@@ -617,7 +621,7 @@ ast_t *match_to_ast(match_t *m)
     return NULL;
 }
 
-ast_t *parse(file_t *f)
+ast_t *parse(file_t *f, jmp_buf *on_err)
 {
     if (grammar == NULL) load_grammar();
     parsing = f;
@@ -631,7 +635,7 @@ ast_t *parse(file_t *f)
             fprintf(stderr, "File contains junk at the end\n");
             exit(1);
         } else {
-            report_errors(f, m, true);
+            report_errors(f, on_err, m, true);
             ast = match_to_ast(m);
         }
     }

@@ -16,9 +16,9 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
-main_func_t compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
 {
-    env_t *env = new_environment(ctx, f, debug);
+    env_t *env = new_environment(ctx, on_err, f, debug);
 
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
     gcc_type_t *gcc_string_t = bl_type_to_gcc(env, str_type);

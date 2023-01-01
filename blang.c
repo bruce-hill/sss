@@ -22,13 +22,13 @@ int compile_to_file(gcc_jit_context *ctx, file_t *f, bool verbose, int argc, cha
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
-    ast_t *ast = parse(f);
+    ast_t *ast = parse(f, NULL);
 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, f, ast, true, &result);
+    main_func_t run = compile_file(ctx, NULL, f, ast, true, &result);
     if (!run) errx(1, "run func is NULL");
 
     CORD binary_name;
@@ -58,17 +58,17 @@ int compile_to_file(gcc_jit_context *ctx, file_t *f, bool verbose, int argc, cha
     return 0;
 }
 
-int run_file(gcc_jit_context *ctx, file_t *f, bool verbose, int argc, char *argv[])
+int run_file(gcc_jit_context *ctx, jmp_buf *on_err, file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
-    ast_t *ast = parse(f);
+    ast_t *ast = parse(f, on_err);
 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t main_fn = compile_file(ctx, f, ast, true, &result);
+    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, &result);
     if (!main_fn) errx(1, "run func is NULL");
 
     if (verbose)
@@ -88,7 +88,13 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     while ((nread = getline(&line, &len, stdin)) != -1) {
         if (nread == 0) break;
         file_t *f = spoof_file(NULL, "<repl>", line, nread);
-        run_file(ctx, f, verbose, 0, (char*[]){NULL});
+        jmp_buf on_err;
+        if (setjmp(on_err)) {
+            fputs("> ", stdout);
+            fflush(stdout);
+            continue;
+        }
+        run_file(ctx, &on_err, f, verbose, 0, (char*[]){NULL});
         fputs("> ", stdout);
         fflush(stdout);
     }
@@ -136,7 +142,7 @@ int main(int argc, char *argv[])
         file_t *f = load_file(NULL, argv[i]);
         if (!f) errx(1, "Couldn't open file: %s", argv[i]);
         if (run_program)
-            return run_file(ctx, f, verbose, argc-i, &argv[i]);
+            return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
         else
             return compile_to_file(ctx, f, verbose, argc-i, &argv[i]);
     }

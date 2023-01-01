@@ -62,7 +62,7 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
-main_func_t compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);

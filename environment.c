@@ -1,8 +1,9 @@
 #include <intern.h>
-#include <stdarg.h>
-#include <stdlib.h>
+#include <setjmp.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "ast.h"
 #include "types.h"
@@ -94,10 +95,11 @@ static bl_type_t *define_string_type(env_t *env)
     return str_type;
 }
 
-env_t *new_environment(gcc_ctx_t *ctx, file_t *f, bool debug)
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug)
 {
     env_t *env = new(env_t,
         .ctx = ctx,
+        .on_err = on_err,
         .file = f,
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
@@ -145,6 +147,10 @@ void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
     fputs("\x1b[m\n\n", stderr);
     if (ast)
         highlight_match(stderr, env->file, (ast)->match, 2);
+
+    if (env->on_err)
+        longjmp(*env->on_err, 1);
+
     raise(SIGABRT);
     exit(1);
 }
