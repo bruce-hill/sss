@@ -12,12 +12,8 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
         say "$x is something else"
 
 enum Baz {
-    Text{
-        str:String
-    }
-    Integer{
-        i:Int
-    }
+    Text:String
+    Integer:Int
     Vec2{
         x,y:Num
     }
@@ -28,9 +24,9 @@ bazzes := [Baz.Text{"hi"}, Baz.Integer{5}, Baz.Vec2{2.4, 4.5}, Baz.Nil]
 
 for b in bazzes
     when b is t:Text
-        say "$(t.str)"
+        say "$t"
     is i:Integer
-        say "$(i.i)"
+        say "$i"
     is v:Vec2
         say "$v"
     is Nil
