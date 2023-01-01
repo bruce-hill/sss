@@ -52,6 +52,7 @@ typedef struct env_s {
 __attribute__((noreturn, format(printf,3,4)))
 void compile_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
+env_t *new_environment(gcc_ctx_t *ctx, file_t *f, bool debug);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
 hashmap_t *get_namespace(env_t *env, bl_type_t *t);

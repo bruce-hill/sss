@@ -1,13 +1,11 @@
+ints := [10, 20, 30]
+say "$(typeof ints) $ints"
 
-def main()
-    ints := [10, 20, 30]
-    say "$(typeof ints) $ints"
+ints := [10 as Int32, 20 as Int32, 30 as Int32]
+say "$(typeof ints) $ints"
 
-    ints := [10 as Int32, 20 as Int32, 30 as Int32]
-    say "$(typeof ints) $ints"
+ints := [10 as Int16, 20 as Int16, 30 as Int16]
+say "$(typeof ints) $ints"
 
-    ints := [10 as Int16, 20 as Int16, 30 as Int16]
-    say "$(typeof ints) $ints"
-
-    bools := [yes, no, yes, no]
-    say "$(typeof bools) $bools"
+bools := [yes, no, yes, no]
+say "$(typeof bools) $bools"

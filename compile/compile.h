@@ -61,7 +61,8 @@ gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 
 // ============================== program.c =============================
-gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug);
+typedef void (*main_func_t)(int, char**);
+main_func_t compile_file(gcc_ctx_t *ctx, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
