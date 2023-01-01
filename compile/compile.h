@@ -23,9 +23,9 @@
 #define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
 #define gcc_int64(ctx,i) gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), i)
 
-#define ast_loc(env, ast) gcc_new_location((env)->ctx, (env)->file->filename,\
+#define ast_loc(env, ast) ((ast) && (ast)->match ? gcc_new_location((env)->ctx, (env)->file->filename,\
         (int)get_line_number((env)->file, (ast)->match->start),\
-        (int)get_line_column((env)->file, (ast)->match->start))
+        (int)get_line_column((env)->file, (ast)->match->start)) : NULL)
 
 typedef struct {
     bl_type_t *key_type, *value_type;
@@ -60,14 +60,14 @@ gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 
-// ============================== program.c ==============================
+// ============================== program.c =============================
 gcc_jit_result *compile_file(gcc_jit_context *ctx, file_t *f, ast_t *ast, bool debug);
 
-// ============================== expr.c ==============================
+// ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 
-// ============================== functions.c ==============================
+// ============================== functions.c ===========================
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
 gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global);
 
@@ -76,7 +76,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 
-// ============================== loops.c ==============================
+// ============================== loops.c ================================
 void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast,
                        loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_while_iteration(
@@ -88,6 +88,10 @@ void compile_array_iteration(
 void compile_range_iteration(
     env_t *env, gcc_block_t **block, ast_t *range,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
+
+// ============================== math.c ================================
+gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast);
+void math_update(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== arrays.c ==============================
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);

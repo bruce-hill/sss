@@ -379,17 +379,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
         }
 
-        if (t1 == t2) {
-            if (is_numeric(t1))
-                return t1;
-        } else if (is_numeric(t1)) {
-            compile_err(env, ast, "I only know how to do math operations on numeric types, but the right side of this operation is a %s.",
-                        type_to_string(t2));
-        } else if (is_numeric(t2)) {
-            compile_err(env, ast, "I only know how to do math operations on numeric types, but the left side of this operation is a %s.",
-                        type_to_string(t1));
-        }
-        compile_err(env, ast, "I only know how to do math operations between numeric types, not between a %s and a %s",
+        if (t1 == t2)
+            return t1;
+
+        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
                     type_to_string(t1), type_to_string(t2));
     }
 
