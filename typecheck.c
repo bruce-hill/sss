@@ -381,6 +381,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
         if (t1 == t2)
             return t1;
+        else if (is_numeric(t1) && t2->tag == StructType)
+            return t2;
+        else if (is_numeric(t2) && t1->tag == StructType)
+            return t1;
 
         compile_err(env, ast, "I don't know how to do math operations between %s and %s",
                     type_to_string(t1), type_to_string(t2));
