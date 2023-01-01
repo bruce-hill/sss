@@ -83,7 +83,8 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     char *line = NULL;
     size_t len = 0;
     ssize_t nread;
-    fputs("> ", stdout);
+    const char *prompt = "\x1b[33;1m>>>\x1b[m ";
+    fputs(prompt, stdout);
     fflush(stdout);
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
@@ -92,7 +93,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         file_t *f = spoof_file(NULL, "<repl>", line, nread);
         env->file = f;
         if (setjmp(on_err)) {
-            fputs("> ", stdout);
+            fputs(prompt, stdout);
             fflush(stdout);
             continue;
         }
@@ -121,10 +122,14 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
+        fputs("\x1b[34;1m", stdout);
+        fflush(stdout);
         run_line();
+        fputs("\x1b[m", stdout);
+        fflush(stdout);
         gcc_jit_result_release(result);
 
-        fputs("> ", stdout);
+        fputs(prompt, stdout);
         fflush(stdout);
     }
     free(line);
