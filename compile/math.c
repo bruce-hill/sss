@@ -69,7 +69,8 @@ static gcc_rvalue_t *math_binop_rec(
 
         gcc_rvalue_t *member = math_binop_rec(env, block, ast, lhs_field_t, lhs_field_val, op, rhs_field_t, rhs_field_val);
         // Just in case things get messed up with promotions:
-        member = gcc_cast(env->ctx, loc, member, bl_type_to_gcc(env, field_t));
+        if (is_numeric(field_t))
+            member = gcc_cast(env->ctx, loc, member, bl_type_to_gcc(env, field_t));
         APPEND(members, member);
     }
     return gcc_struct_constructor(env->ctx, loc, gcc_t, length(fields), fields[0], members[0]);
