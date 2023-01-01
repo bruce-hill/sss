@@ -170,12 +170,15 @@ static istr_t match_to_istr(match_t *m)
 {
     if (!m) return NULL;
     // Rough estimate of size
-    FILE *f = fmemopen(NULL, 2*(size_t)(m->end - m->start) + 1, "r+");
+    char *buf = NULL;
+    size_t size = 0;
+    FILE *f = open_memstream(&buf, &size);
     fprint_match(f, m->start, m, NULL);
-    fputc('\0', f);
-    fseek(f, 0, SEEK_SET);
-    CORD c = CORD_from_file_eager(f);
-    return intern_str(CORD_to_const_char_star(c));
+    fflush(f);
+    istr_t ret = intern_strn(buf, size);
+    fclose(f);
+    free(buf);
+    return ret;
 }
 
 static inline istr_t capture_istr(match_t *m, const char *name)

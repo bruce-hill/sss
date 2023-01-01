@@ -80,23 +80,38 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, file_t *f, bool verbose, int
 
 int run_repl(gcc_jit_context *ctx, bool verbose)
 {
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t nread;
     const char *prompt = "\x1b[33;1m>>>\x1b[m ";
-    fputs(prompt, stdout);
-    fflush(stdout);
+    const char *continue_prompt = "\x1b[33;1m...\x1b[m ";
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
-    while ((nread = getline(&line, &len, stdin)) != -1) {
-        if (nread == 0) break;
-        file_t *f = spoof_file(NULL, "<repl>", line, nread);
-        env->file = f;
-        if (setjmp(on_err)) {
-            fputs(prompt, stdout);
+
+    // Read lines until we get a blank line
+    for (;;) {
+        fputs(prompt, stdout);
+        fflush(stdout);
+
+        char *buf = NULL;
+        size_t buf_size = 0;
+        FILE *buf_file = open_memstream(&buf, &buf_size);
+
+        char *line = NULL;
+        size_t len = 0;
+        ssize_t nread;
+        while ((nread = getline(&line, &len, stdin)) != -1) {
+            if (nread == 1) break;
+            fwrite(line, 1, nread, buf_file);
+            fputs(continue_prompt, stdout);
             fflush(stdout);
-            continue;
         }
+        if (line) free(line);
+
+        fflush(buf_file);
+        if (buf_size == 0) break;
+
+        file_t *f = spoof_file(NULL, "<repl>", buf, buf_size);
+        env->file = f;
+        if (setjmp(on_err) != 0)
+            continue;
 
         ast_t *ast = parse(f, &on_err);
         if (!is_discardable(env, ast))
@@ -110,6 +125,8 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         if (ast->tag == Declare)
             Match(ast, Declare)->is_global = true;
+        else if (ast->tag == FunctionDef)
+            Match(ast, FunctionDef)->is_exported = true;
 
         compile_block_statement(env, &block, ast);
         if (block)
@@ -122,17 +139,15 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
-        fputs("\x1b[34;1m", stdout);
+        fputs("\x1b[34;1m\x1b[A\x1b[K", stdout);
         fflush(stdout);
         run_line();
         fputs("\x1b[m", stdout);
         fflush(stdout);
         gcc_jit_result_release(result);
-
-        fputs(prompt, stdout);
-        fflush(stdout);
+        fclose(buf_file);
+        free(buf);
     }
-    free(line);
     fputs("\n", stdout);
     fflush(stdout);
     return 0;

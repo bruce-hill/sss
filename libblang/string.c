@@ -166,6 +166,7 @@ string_t bl_string_replace(string_t text, string_t pat_text, string_t rep_text) 
     fflush(out);
     istr_t replaced = buf ? intern_strn(buf, length) : intern_strn("", 0);
     fclose(out);
+    free(buf);
     return (string_t){.data=replaced, .length=(int32_t)size, .stride=1};
 }
 

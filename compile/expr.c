@@ -347,6 +347,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
         gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
+        gcc_func_t *free_fn = hashmap_gets(env->global_funcs, "free");
         gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
         gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
         gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
@@ -407,6 +408,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_lvalue_as_rvalue(size_var), i32_t);
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
         gcc_eval(*block, loc, gcc_call(env->ctx, loc, fclose_fn, 1, &file));
+        gcc_eval(*block, loc, gcc_call(env->ctx, loc, free_fn, 1, (gcc_rvalue_t*[]){gcc_lvalue_as_rvalue(buf_var)}));
         return gcc_lvalue_as_rvalue(str_struct_var);
     }
     case Array: {
@@ -845,6 +847,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_rvalue_t *failure = gcc_call(env->ctx, loc, fail_array, 3, (gcc_rvalue_t*[]){fmt, tag_str, callstack});
                     gcc_eval(tag_wrong, loc, failure);
                     fclose(f);
+                    free(info);
                     gcc_jump(tag_wrong, loc, tag_wrong);
 
                     // Step 2: access tagged.__data.TagName
@@ -930,6 +933,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
             gcc_eval(bounds_unsafe, loc, gcc_call(env->ctx, loc, fail, 4, (gcc_rvalue_t*[]){fmt, index, len64, callstack}));
             fclose(f);
+            free(info);
             gcc_jump(bounds_unsafe, loc, bounds_unsafe);
 
             // Bounds check success:
@@ -1397,6 +1401,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
         gcc_rvalue_t *ret = gcc_call(env->ctx, loc, fail, 3, (gcc_rvalue_t*[]){fmt, msg, callstack});
         fclose(f);
+        free(info);
         gcc_jump(*block, loc, *block);
         *block = NULL;
         return ret;

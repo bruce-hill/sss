@@ -35,6 +35,7 @@ static void load_global_functions(env_t *env)
     LOAD_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
     LOAD_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
     LOAD_FUNC(t_file, "open_memstream", 0, PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
+    LOAD_FUNC(t_void, "free", 0, PARAM(t_void_ptr, "ptr"));
     LOAD_FUNC(t_int, "fwrite", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
     LOAD_FUNC(t_int, "fputs", 0, PARAM(t_str, "str"), PARAM(t_file, "file"));
     LOAD_FUNC(t_int, "fputc", 0, PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
