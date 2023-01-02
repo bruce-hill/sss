@@ -328,9 +328,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         istr_t str = Match(ast, StringLiteral)->str;
         gcc_rvalue_t *str_rval = gcc_new_string(env->ctx, str);
         gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
-        gcc_func_t *intern_strn_func = hashmap_gets(env->global_funcs, "intern_strn");
-        str_rval = gcc_call(env->ctx, loc, intern_strn_func, 2,
-                            (gcc_rvalue_t*[]){str_rval, gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, SIZE))});
         gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT32));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
@@ -351,13 +348,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
         gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
         gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
-        gcc_func_t *intern_strn_func = hashmap_gets(env->global_funcs, "intern_strn");
-        // Optimize the cases of 0 or 1 string chunks/interpolations
+        // Optimize the case of empty strings
         if (length(chunks) == 0) {
             return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
-        } else if (length(chunks) == 1 && ith(chunks, 0)->tag == StringLiteral) {
-            ast_t *child = ith(chunks, 0);
-            return compile_expr(env, block, child);
         }
 
         // char *buf; size_t size;
@@ -375,19 +368,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         foreach (chunks, chunk, _) {
             gcc_loc_t *chunk_loc = ast_loc(env, *chunk);
-            if ((*chunk)->tag == Interp) {
-                auto interp = Match(*chunk, Interp);
-                if (interp->labelled) {
-                    match_t *m = interp->value->match;
-                    char *buf; size_t size;
-                    FILE *f = open_memstream(&buf, &size);
-                    fprint_match(f, m->start, m, NULL);
-                    fprintf(f, ": ");
-                    fflush(f);
-                    gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, fputs_fn, 2,
-                                                         (gcc_rvalue_t*[]){gcc_new_string(env->ctx, buf), file}));
-                    fclose(f);
-                }
+            if ((*chunk)->tag == StringLiteral) {
+                istr_t str = Match(*chunk, StringLiteral)->str;
+                gcc_eval(*block, chunk_loc,
+                         gcc_call(env->ctx, chunk_loc, fputs_fn, 2,
+                                  (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), file}));
+                continue;
+            }
+            assert((*chunk)->tag == Interp);
+            auto interp = Match(*chunk, Interp);
+            if (interp->labelled) {
+                match_t *m = interp->value->match;
+                char *buf; size_t size;
+                FILE *f = open_memstream(&buf, &size);
+                fprint_match(f, m->start, m, NULL);
+                fprintf(f, ": ");
+                fflush(f);
+                gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, fputs_fn, 2,
+                                                     (gcc_rvalue_t*[]){gcc_new_string(env->ctx, buf), file}));
+                fclose(f);
             }
             bl_type_t *t = get_type(env, *chunk);
             gcc_func_t *print_fn = get_print_func(env, t);
@@ -400,12 +399,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, print_fn, 3, args));
         }
         gcc_eval(*block, loc, gcc_call(env->ctx, loc, fflush_fn, 1, &file));
-        gcc_rvalue_t *str = gcc_call(env->ctx, ast_loc(env, ast), intern_strn_func, 2, (gcc_rvalue_t*[]){
-                                         gcc_lvalue_as_rvalue(buf_var),
-                                         gcc_lvalue_as_rvalue(size_var),
-                                     });
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, fresh("str_final"));
         gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_lvalue_as_rvalue(size_var), i32_t);
+
+        gcc_func_t *alloc_fn = hashmap_gets(env->global_funcs, "GC_malloc_atomic");
+        gcc_rvalue_t *size = gcc_lvalue_as_rvalue(size_var);
+        gcc_rvalue_t *str = gcc_call(
+            env->ctx, loc, alloc_fn, 1, (gcc_rvalue_t*[]){
+                gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
+                              size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE)))
+                });
+        gcc_func_t *memcpy_fn = hashmap_gets(env->global_funcs, "memcpy");
+        str = gcc_call(env->ctx, loc, memcpy_fn, 3, (gcc_rvalue_t*[]){str, gcc_lvalue_as_rvalue(buf_var), size});
+        str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
         gcc_eval(*block, loc, gcc_call(env->ctx, loc, fclose_fn, 1, &file));
         gcc_eval(*block, loc, gcc_call(env->ctx, loc, free_fn, 1, (gcc_rvalue_t*[]){gcc_lvalue_as_rvalue(buf_var)}));
@@ -753,7 +759,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             else
                 goto unknown_len;
         }
-        case DSLType: case TypeType: {
+        case TypeType: {
           string_len:;
             gcc_func_t *len_func = hashmap_gets(env->global_funcs, "intern_len");
             gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), len_func, 1, &obj);
