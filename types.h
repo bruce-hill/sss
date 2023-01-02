@@ -6,6 +6,7 @@
 
 #include "ast.h"
 #include "libblang/list.h"
+#include "units.h"
 
 typedef const struct bl_type_s bl_type_t;
 
@@ -33,8 +34,10 @@ struct bl_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, BoolType, CharType, IntType,
-            Int32Type, Int16Type, Int8Type, NumType, Num32Type;
+        } UnknownType, AbortType, VoidType, BoolType, CharType;
+        struct {
+            istr_t units;
+        } IntType, Int32Type, Int16Type, Int8Type, NumType, Num32Type;
         struct {
             istr_t name;
         } DSLType, NamedType;
@@ -90,6 +93,7 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b);
 bool is_integral(bl_type_t *t);
 bool is_numeric(bl_type_t *t);
 int numtype_priority(bl_type_t *t);
+istr_t num_units(bl_type_t *t);
 bool is_comparable(bl_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -8,7 +8,7 @@ term: (
     / unaryOp
     / Struct
     / Var !(_`(,{,.)
-    / Percent / Measure / Num / Int
+    / Percent / Num / Int
     / String / DSL
     / Array / Table
     / FnCall
@@ -89,11 +89,10 @@ interpValue: IndexedTerm / Var / `(__ extended-expr __`) / @:ParseError=(`(..`) 
 Interp:: `$ [@label=`:] @value=(interpValue / @:String=@content=`$)
 atInterp: @:Interp=(`@ [@label=`:] @value=(interpValue / @:String=@content=`@))
 Escape:: `\ (`x 2 hex / `a,b,t,n,r,v / 3 `0-7 / .)
-Num:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_] [@precision=("f64"/"f32")]
-Measure:: @amount=(Num/Int) @units=MeasureType
-MeasureType:: `< +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (`*,/) `>
+Num:: [`-,+] (`0-9 *`0-9,_ (`. !`. *`0-9,_ / >`e) / `. `0-9 *`0-9,_) [`e [`+,-] `0-9 *`0-9,_] [@precision=("f64"/"f32")] [`<_@units=MeasureType_`>]
+MeasureType:: +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (_[`*,/_])
 Percent:: (`0-9 *`0-9,_ [`. *`0-9] / `. +`0-9) `%
-Int:: [`-,+] ("0x" +`0-9,a-f,A-F,_ / "0o" +`0-7,_ / "0b" +`0,1,_ / `0-9 *`0-9,_) [@precision=("i64"/"i32"/"i16"/"i8")]
+Int:: [`-,+] ("0x" +`0-9,a-f,A-F,_ / "0o" +`0-7,_ / "0b" +`0,1,_ / `0-9 *`0-9,_) [@precision=("i64"/"i32"/"i16"/"i8")] [`<_@units=MeasureType_`>]
 Struct:: [@type=typeName] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
 KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
@@ -161,7 +160,6 @@ required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression"
 type: @:OptionalType=(`?_@type=type) / @:PointerType=(`@_@pointed=type) / value-type
 value-type: (
     @:TableType=(`{__ @keyType=type __`=__ @valueType=type __`})
-  / MeasureType
   / TupleType
   / typeName
   / @:ArrayType=(`[__@itemType=type__`])

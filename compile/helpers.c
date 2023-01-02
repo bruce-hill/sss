@@ -284,6 +284,9 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
     if (actual == needed)
         return true;
 
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed))
+        return true;
+
     // Numeric promotion:
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed)) {
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
@@ -409,7 +412,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         case NumType: case Num32Type: fmt = "%g"; break;
         default: fmt = "%ld"; break;
         }
+        istr_t units = num_units(t);
 
+        if (units && strlen(units) > 0)
+            fmt = intern_strf("%s<%s>", fmt, units);
         gcc_rvalue_t *args[] = {f, gcc_new_string(env->ctx, fmt), obj};
         gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
         gcc_return(block, NULL, gcc_call(env->ctx, NULL, fprintf_fn, 3, args));

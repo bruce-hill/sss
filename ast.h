@@ -74,10 +74,12 @@ struct ast_s {
         struct {
             int64_t i;
             uint8_t precision;
+            istr_t units;
         } Int;
         struct {
             double n;
             uint8_t precision;
+            istr_t units;
         } Num;
         struct {
             ast_t *first, *last, *step;

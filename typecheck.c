@@ -117,18 +117,20 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(BoolType);
     }
     case Int: {
-        switch (Match(ast, Int)->precision) {
-        case 64: return Type(IntType);
-        case 32: return Type(Int32Type);
-        case 16: return Type(Int16Type);
-        case 8: return Type(Int8Type);
+        auto i = Match(ast, Int);
+        switch (i->precision) {
+        case 64: return Type(IntType, .units=i->units);
+        case 32: return Type(Int32Type, .units=i->units);
+        case 16: return Type(Int16Type, .units=i->units);
+        case 8: return Type(Int8Type, .units=i->units);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
     case Num: {
-        switch (Match(ast, Num)->precision) {
-        case 64: return Type(NumType);
-        case 32: return Type(Num32Type);
+        auto n = Match(ast, Num);
+        switch (n->precision) {
+        case 64: return Type(NumType, .units=n->units);
+        case 32: return Type(Num32Type, .units=n->units);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -390,12 +392,39 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *t1 = get_type(env, lhs),
                   *t2 = get_type(env, rhs);
 
-        if (AddUpdate <= ast->tag && ast->tag <= DivideUpdate) {
-            if (is_numeric(t1) && is_numeric(t2) && numtype_priority(t1) >= numtype_priority(t2))
-                return t1;
-        } else {
-            if (is_numeric(t1) && is_numeric(t2))
-                return numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
+        if (is_numeric(t1) && is_numeric(t2)) {
+            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
+            istr_t u1 = num_units(t1), u2 = num_units(t2);
+            switch (ast->tag) {
+            case Subtract: case Add:
+                if (u1 != u2) compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1, u2);
+                return t;
+            case Multiply: {
+                struct bl_type_s t_units = *t;
+                t_units.__data.IntType.units = unit_string_mul(u1, u2);
+                return intern_bytes(&t_units, sizeof(t_units));
+            }
+            case Divide: {
+                struct bl_type_s t_units = *t;
+                t_units.__data.IntType.units = unit_string_div(u1, u2);
+                return intern_bytes(&t_units, sizeof(t_units));
+            }
+            case Modulus: {
+                if (u2 != intern_str(""))
+                    compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
+                struct bl_type_s t_units = *t;
+                t_units.__data.IntType.units = u1;
+                return intern_bytes(&t_units, sizeof(t_units));
+            }
+            case Power: {
+                if (strlen(u1) > 0)
+                    compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
+                if (strlen(u2) > 0)
+                    compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
+                return t;
+            }
+            default: break;
+            }
         }
 
         if (t1 == t2)

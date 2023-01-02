@@ -10,13 +10,13 @@ static CORD type_to_cord(bl_type_t *t) {
         case AbortType: return "Abort";
         case VoidType: return "Void";
         case BoolType: return "Bool";
-        case IntType: return "Int";
-        case Int32Type: return "Int32";
-        case Int16Type: return "Int16";
-        case Int8Type: return "Int8";
+        case IntType: return Match(t, IntType)->units ? intern_strf("Int<%s>", Match(t, IntType)->units) : "Int";
+        case Int32Type: return Match(t, Int32Type)->units ? intern_strf("Int32<%s>", Match(t, Int32Type)->units) : "Int32";
+        case Int16Type: return Match(t, Int16Type)->units ? intern_strf("Int16<%s>", Match(t, Int16Type)->units) : "Int16";
+        case Int8Type: return Match(t, Int8Type)->units ? intern_strf("Int8<%s>", Match(t, Int8Type)->units) : "Int8";
         case CharType: return "Char";
-        case NumType: return "Num";
-        case Num32Type: return "Num32";
+        case NumType: return Match(t, NumType)->units ? intern_strf("Num<%s>", Match(t, NumType)->units) : "Num";
+        case Num32Type: return Match(t, Num32Type)->units ? intern_strf("Num32<%s>", Match(t, Num32Type)->units) : "Num32";
         case NamedType: {
             auto named = Match(t, NamedType);
             return named->name;
@@ -126,6 +126,19 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (is_numeric(a) && is_numeric(b))
         return numtype_priority(a) >= numtype_priority(b) ? a : b;
     return NULL;
+}
+
+istr_t num_units(bl_type_t *t)
+{
+    switch (t->tag) {
+    case IntType: return Match(t, IntType)->units;
+    case Int32Type: return Match(t, Int32Type)->units;
+    case Int16Type: return Match(t, Int16Type)->units;
+    case Int8Type: return Match(t, Int8Type)->units;
+    case NumType: return Match(t, NumType)->units;
+    case Num32Type: return Match(t, Num32Type)->units;
+    default: return NULL;
+    }
 }
 
 bool is_integral(bl_type_t *t)

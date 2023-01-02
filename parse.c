@@ -19,6 +19,7 @@
 #include "ast.h"
 #include "libblang/list.h"
 #include "parse.h"
+#include "units.h"
 #include "util.h"
 
 #ifndef streq
@@ -242,7 +243,7 @@ ast_t *match_to_ast(match_t *m)
                 precision = 32;
             else
                 precision = 64;
-            return AST(m, Int, .i=negative ? -i : i, .precision=precision);
+            return AST(m, Int, .i=negative ? -i : i, .precision=precision, .units=unit_string(capture_istr(m, "units")));
         }
         case Num: {
             double n = strtod(m->start, NULL);
@@ -256,7 +257,7 @@ ast_t *match_to_ast(match_t *m)
                 precision = 32;
             else
                 precision = 64;
-            return AST(m, Num, .n=n, .precision=precision);
+            return AST(m, Num, .n=n, .precision=precision, .units=unit_string(capture_istr(m, "units")));
         }
         case Range: {
             return AST(m, Range,
