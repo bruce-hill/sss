@@ -142,6 +142,9 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env, ast));
         return gcc_rvalue_from_long(env->ctx, gcc_t, Match(ast, Int)->i);
     }
+    case Char: {
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, CHAR), Match(ast, Char)->c);
+    }
     case Num: {
         gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env, ast));
         return gcc_rvalue_from_double(env->ctx, gcc_t, Match(ast, Num)->n);
@@ -308,7 +311,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
         return NULL;
     }
-    case Int: case Num: {
+    case Int: case Num: case Char: {
         return compile_constant(env, ast);
     }
     case Interp: {

@@ -9,7 +9,7 @@ term: (
     / Struct
     / Var !(_`(,{,.)
     / Percent / Num / Int
-    / String / DSL
+    / Char / String / DSL
     / Array / Table
     / FnCall
     / `(__extended-expr__`)
@@ -43,15 +43,13 @@ NotEqual:: @lhs=expr _ "!=" _ @rhs=expr
 comparison: Equal / NotEqual / LessEq / Less / GreaterEq / Greater
 Bool:: \b("yes"/"no")\b
 Nil:: (`! _ @type=type / @:ParseError=(`! => "There needs to be a type listed for this nil exclamation mark"))
+Char:: `` @char=.
 String:: (
   `" @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$ / Escape / Interp) (\n curdent `")
   / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
   / `' @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent `')
   / @:ParseError=(`'$ .. % \n $$ => "Failed to find closing quote with the right indentation")
-  / `` @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent ``)
-  / @:ParseError=(``$ .. % \n $$ => "Failed to find closing backtick with the right indentation")
   / `" @content=..%(Escape/Interp) `"
-  / `` @content=..%Interp ``
   / `' @content=.. `'
   / @:ParseError=(`",'..$ => "Missing closing quote")
   )
@@ -61,10 +59,7 @@ DSL:: `% [@name=typeName] (
   / @:ParseError=(`"$ .. % \n $$ => "Failed to find closing quote with the right indentation")
   / `' @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent `')
   / @:ParseError=(`'$ .. % \n $$ => "Failed to find closing quote with the right indentation")
-  / `` @curdent:\C $ \n @strdent:\C strdent @content=..%(@:Newline=(\n strdent) / \n$) (\n curdent ``)
-  / @:ParseError=(``$ .. % \n $$ => "Failed to find closing backtick with the right indentation")
   / `" @content=..%(Escape/Interp) `"
-  / `` @content=..%Interp ``
   / `' @content=.. `'
   / `[ @content=..%(Escape/Interp) `] / @:ParseError=(`[..$ =>"Missing closing ]")
   / `< @content=..%(Escape/Interp) `> / @:ParseError=(`<..$ =>"Missing closing >")

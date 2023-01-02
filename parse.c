@@ -118,7 +118,7 @@ static void report_errors(file_t *f, jmp_buf *on_err, match_t *m, bool stop_on_f
 
 const char *tag_names[] = {
     [Unknown] = "???", [Nil]="Nil", [Bool]="Bool", [Var]="Var",
-    [Int]="Int", [Num]="Num", [Range]="Range",
+    [Int]="Int", [Num]="Num", [Range]="Range", [Char]="Char",
     [StringLiteral]=NULL, [StringJoin]="String", [DSL]="DSL", [Interp]="Interp",
     [Declare]="Declaration", [Assign]="Assignment",
     [AddUpdate]="AddUpdate", [SubtractUpdate]="SubUpdate", [MultiplyUpdate]="MulUpdate", [DivideUpdate]="DivUpdate",
@@ -245,6 +245,10 @@ ast_t *match_to_ast(match_t *m)
             else
                 precision = 64;
             return AST(m, Int, .i=negative ? -i : i, .precision=precision, .units=unit_string(capture_istr(m, "units")));
+        }
+        case Char: {
+            char c = capture_istr(m, "char")[0];
+            return AST(m, Char, .c=c);
         }
         case Num: {
             double n = strtod(m->start, NULL);

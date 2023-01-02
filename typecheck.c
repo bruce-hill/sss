@@ -145,6 +145,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
+    case Char: return Type(CharType);
     case Num: {
         auto n = Match(ast, Num);
         switch (n->precision) {

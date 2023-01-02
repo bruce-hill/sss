@@ -13,7 +13,7 @@
 typedef enum {
     Unknown = 0,
     Nil, Bool, Var,
-    Int, Num, Range,
+    Int, Num, Range, Char,
     StringLiteral, StringJoin, DSL, Interp,
     Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
@@ -85,6 +85,9 @@ struct ast_s {
         struct {
             ast_t *first, *last, *step;
         } Range;
+        struct {
+            char c;
+        } Char;
         struct {
             istr_t str;
         } StringLiteral;
