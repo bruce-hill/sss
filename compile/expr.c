@@ -609,8 +609,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (access->fielded->tag != Var)
                     compile_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
                 bl_type_t *fielded_type = parse_type(env, access->fielded);
-                binding_t *type_binding = hashmap_get(env->bindings, fielded_type);
-                binding_t *binding = (type_binding && type_binding->type_value) ? get_from_namespace(env, type_binding->type_value, access->field) : NULL;
+                binding_t *binding = get_from_namespace(env, fielded_type, access->field);
                 if (!binding)
                     compile_err(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_to_string(fielded_type));
                 fn = binding->func;
