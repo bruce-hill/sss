@@ -18,11 +18,11 @@
 #include "../util.h"
 
 typedef struct {
-    ast_t *item;
+    bl_type_t *array_type;
     gcc_rvalue_t *array_ptr;
 } array_insert_info_t;
 
-static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rvalue_t *array_ptr)
+static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_insert_info_t *info)
 {
     bl_type_t *t = get_type(env, item); // item type
     if (t->tag == GeneratorType) {
@@ -31,12 +31,15 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rva
         return;
     }
 
+    bl_type_t *item_type = Match(info->array_type, ArrayType)->item_type;
+
+    // This comes first, because the item may short-circuit
     gcc_rvalue_t *item_val = compile_expr(env, block, item);
     if (!*block) return;
 
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=t));
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, info->array_type);
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
-    gcc_lvalue_t *array = gcc_rvalue_dereference(array_ptr, NULL);
+    gcc_lvalue_t *array = gcc_rvalue_dereference(info->array_ptr, NULL);
     gcc_lvalue_t *data_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, 0));
     gcc_lvalue_t *length_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, 1));
 
@@ -49,18 +52,22 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, gcc_rva
     gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
     gcc_rvalue_t *new_size = gcc_binary_op(
         env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_lvalue_as_rvalue(length_field), gcc_size_t),
-        gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, t)));
+        gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
     gcc_rvalue_t *realloc_args[] = {
         gcc_lvalue_as_rvalue(data_field),
         new_size,
     };
     gcc_func_t *gc_realloc_func = hashmap_gets(env->global_funcs, "GC_realloc");
     gcc_assign(*block, NULL, data_field,
-               gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_realloc_func, 2, realloc_args), gcc_get_ptr_type(bl_type_to_gcc(env, t))));
+               gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_realloc_func, 2, realloc_args), gcc_get_ptr_type(bl_type_to_gcc(env, item_type))));
 
     // array.items[array.length-1] = item
     gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_lvalue_as_rvalue(length_field), one32);
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(data_field), index);
+    if (t != item_type)
+        if (!promote(env, t, &item_val, item_type))
+            compile_err(env, item, "I can't convert this type to %s", type_to_string(item_type));
+
     gcc_assign(*block, NULL, item_home, item_val);
 }
 
@@ -80,7 +87,8 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
 
     env_t env2 = *env;
     env2.comprehension_callback = (void*)add_array_item;
-    env2.comprehension_userdata = gcc_lvalue_address(array_var, NULL);
+    array_insert_info_t info = {t, gcc_lvalue_address(array_var, NULL)};
+    env2.comprehension_userdata = &info;
     env = &env2;
 
     if (array->items) {
@@ -94,7 +102,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
                     .stop_label = array_done,
             };
 
-            add_array_item(env, block, *item_ast, gcc_lvalue_address(array_var, NULL));
+            add_array_item(env, block, *item_ast, &info);
 
             if (*block)
                 gcc_jump(*block, NULL, item_done);
