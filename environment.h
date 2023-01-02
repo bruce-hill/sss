@@ -44,6 +44,7 @@ typedef struct env_s {
     hashmap_t *gcc_types; // name -> bl_type
     hashmap_t *global_funcs; // name -> func
     hashmap_t *type_namespaces; // bl_type -> name -> binding_t
+    hashmap_t *tuple_types; // istr_t -> bl_type_t
     bl_type_t *return_type;
     loop_label_t *loop_label;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);

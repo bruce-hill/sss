@@ -185,7 +185,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     case StructType: {
         auto struct_t = Match(t, StructType);
-        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name);
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
 

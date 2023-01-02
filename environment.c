@@ -104,6 +104,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug)
         .file = f,
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
+        .tuple_types = hashmap_new(),
         .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),

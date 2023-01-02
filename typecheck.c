@@ -83,6 +83,25 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
         }
         return Type(FunctionType, .arg_types=arg_types, .ret=ret_t);
     }
+
+    case TypeTuple: {
+        auto tuple = Match(ast, TypeTuple);
+        NEW_LIST(istr_t, member_names);
+        NEW_LIST(bl_type_t*, member_types);
+        for (int64_t i = 0, len = length(tuple->member_types); i < len; i++) {
+            APPEND(member_names, ith(tuple->member_names, i));
+            bl_type_t *member_t = parse_type(env, ith(tuple->member_types, i));
+            APPEND(member_types, member_t);
+        }
+        bl_type_t *t = Type(StructType, .name=NULL, .field_names=member_names, .field_types=member_types);
+        bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+        if (memoized) {
+            t = memoized;
+        } else {
+            hashmap_set(env->tuple_types, type_to_string(t), t);
+        }
+        return t;
+    }
     default: compile_err(env, ast, "This is not a Type value");
     }
 }
@@ -478,8 +497,26 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
     case Struct: {
         auto struct_ = Match(ast, Struct);
-        if (!struct_->type)
-            compile_err(env, ast, "I haven't implemented anonymous structs yet");
+        if (!struct_->type) {
+            NEW_LIST(istr_t, field_names);
+            NEW_LIST(bl_type_t*, field_types);
+            foreach (struct_->members, member, _) {
+                if ((*member)->tag != StructField)
+                    compile_err(env, *member, "Anonymous structs must have names for each field");
+                auto field = Match(*member, StructField);
+                APPEND(field_names, field->name);
+                APPEND(field_types, get_type(env, field->value));
+            }
+
+            bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types);
+            bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+            if (memoized) {
+                t = memoized;
+            } else {
+                hashmap_set(env->tuple_types, type_to_string(t), t);
+            }
+            return t;
+        }
         binding_t *b = get_ast_binding(env, struct_->type);
         if (!b)
             compile_err(env, struct_->type, "I can't figure out this type");

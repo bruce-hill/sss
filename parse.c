@@ -135,7 +135,7 @@ const char *tag_names[] = {
     [Skip]="Skip", [Stop]="Stop",
     [Return]="Return",
     [Fail]="Fail",
-    [TypeArray]="ArrayType", [TypeTable]="TableType",
+    [TypeArray]="ArrayType", [TypeTable]="TableType", [TypeTuple]="TupleType",
     [TypeFunction]="FnType", [TypePointer]="PointerType", [TypeOptional]="OptionalType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
@@ -572,6 +572,25 @@ ast_t *match_to_ast(match_t *m)
         }
         case TypeArray: {
             return AST(m, TypeArray, .item_type=capture_ast(m, "itemType"));
+        }
+        case TypeTuple: {
+            NEW_LIST(istr_t, member_names);
+            NEW_LIST(ast_t*, member_types);
+            for (int64_t i = 1; ; i++) {
+                match_t *members_m = get_numbered_capture(m, i);
+                if (!members_m) break;
+                match_t *names_m = get_named_capture(members_m, "names", -1);
+                for (int64_t j = 1; ; j++) {
+                    match_t *name_m = get_numbered_capture(names_m, j);
+                    if (!name_m) break;
+                    APPEND(member_names, match_to_istr(name_m));
+                }
+                ast_t *type = capture_ast(members_m, "type");
+                while (LIST_LEN(member_types) < LIST_LEN(member_names))
+                    APPEND(member_types, type);
+            }
+            assert(LIST_LEN(member_types) > 0);
+            return AST(m, TypeTuple, .member_names=member_names, .member_types=member_types);
         }
         case TypeFunction: {
             ast_t *ret = capture_ast(m, "returnType");

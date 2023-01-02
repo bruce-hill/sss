@@ -453,10 +453,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Struct: {
         auto struct_ = Match(ast, Struct);
-        binding_t *binding = get_ast_binding(env, struct_->type);
-        bl_type_t *t = binding->type_value;
-        if (!t)
-            compile_err(env, struct_->type, "This isn't a struct type that I recognize");
+        bl_type_t *t;
+        binding_t *binding;
+        if (struct_->type) {
+            binding = get_ast_binding(env, struct_->type);
+            t = binding->type_value;
+            if (!t)
+                compile_err(env, struct_->type, "This isn't a struct type that I recognize");
+        } else {
+            binding = NULL;
+            t = get_type(env, ast);
+        }
 
         size_t num_values = length(struct_->members);
 
@@ -467,7 +474,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compile_err(env, ast, "I expected this to have exactly one value");
             ast_t *member_ast = ith(struct_->members, 0);
             gcc_rvalue_t *rval = compile_expr(env, block, Match(member_ast, StructField)->value);
-            if (binding->enum_type)
+            if (binding && binding->enum_type)
                 rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
             return rval;
         }
@@ -577,7 +584,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
 
-        if (binding->enum_type)
+        if (binding && binding->enum_type)
             rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
 
         return rval;

@@ -129,7 +129,7 @@ Declaration:: @lhs=varNotKeyword _":=" !(\b"extern"\b)_ @rhs=required-extended-e
 TypeDef:: \b"deftype"\b _ @name=varNotKeyword _ `: _ @derivesFrom=(type / @:ParseError=(..$ =>"Not a valid type"))
 UnitDef:: \b"unit"\b _ @name=varNotKeyword _ `= _ @measure=Measure
 StructDef:: \b"def"\b _ @name=varNotKeyword __ `{__ *(StructFieldDef / FnDef / StructDef / EnumDef / Declaration) % __ __`}
-StructFieldDef:: @names=*(@:FieldName=([@inline=".."_] FieldName))%(__`,__) _`:_@type=type [_`,]
+StructFieldDef:: @names=*(@:FieldName=FieldName)%(__`,__) _`:_@type=type [_`,]
 EnumDef:: \b"enum"\b _ @name=varNotKeyword _ (`{__+(@:EnumField=(@name=FieldName [__`=__@value=Int] [__@data=taggedData__])) % (__[`,__]) __ [`,__] `} / @:ParseError=((braces /..$) =>"Not a valid enum declaration"))
 taggedData: `: __ type / @:StructDef=(`{ __ *(StructFieldDef) % __ __`})
 Macro:: @curdent:\C \b"macro"\b _ @name=varNotKeyword _ `( __ @args=@(*varNotKeyword%(__`,__))__[`,__]`)_ @body=maybeIndentedBlock
@@ -169,7 +169,7 @@ value-type: (
 )
 arrow: "=>" / @:ParseError=("->" => "Function arrows use '=>', not '->'")
 TupleType:: `{(__
-  @members=@(*@:StructFieldDef=([@names=@*([@inline=".."_] FieldName)%(__`,__) _`:]_@type=type) % ((__`,__/__)~(`,/\n))) [__`,]
+  *@:StructFieldDef=(@names=*FieldName%(__`,__) _`:_@type=type) % ((__`,__/__)~(`,/\n)) [__`,]
 __)`}
 If:: \b"if"\b @curdent:\C _ (
     @:Clause=(@condition=(Declaration / required-extended-expr)
