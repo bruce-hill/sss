@@ -147,6 +147,7 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_global_set_initializer gcc_jit_global_set_initializer
 #define gcc_lvalue_as_obj gcc_jit_lvalue_as_object
 #define gcc_lvalue_as_rvalue gcc_jit_lvalue_as_rvalue
+#define gcc_rval gcc_jit_lvalue_as_rvalue
 #define gcc_rvalue_as_obj gcc_jit_rvalue_as_object
 #define gcc_rvalue_type gcc_jit_rvalue_get_type
 #define gcc_rvalue_from_int gcc_jit_context_new_rvalue_from_int
@@ -157,6 +158,7 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_rvalue_from_ptr gcc_jit_context_new_rvalue_from_ptr
 #define gcc_null gcc_jit_context_null
 #define gcc_new_string gcc_jit_context_new_string_literal
+#define gcc_str gcc_jit_context_new_string_literal
 typedef enum gcc_jit_unary_op gcc_unary_op_e;
 #define GCC_UNOP_MINUS GCC_JIT_UNARY_OP_MINUS
 #define GCC_UNOP_BITWISE_NEGATE GCC_JIT_UNARY_OP_BITWISE_NEGATE
@@ -186,7 +188,9 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define GCC_COMPARISON_GE GCC_JIT_COMPARISON_GE
 #define gcc_comparison gcc_jit_context_new_comparison
 #define gcc_call gcc_jit_context_new_call
+#define gcc_callx(ctx, loc, fn, ...) gcc_jit_context_new_call(ctx, loc, fn, sizeof((gcc_rvalue_t*[]){__VA_ARGS__})/sizeof(gcc_rvalue_t*), (gcc_rvalue_t*[]){__VA_ARGS__})
 #define gcc_call_ptr gcc_jit_context_new_call_through_ptr
+#define gcc_callx_ptr(ctx, loc, fn, ...) gcc_jit_context_new_call_through_ptr(ctx, loc, fn, sizeof((gcc_rvalue_t*[]){__VA_ARGS__})/sizeof(gcc_rvalue_t*), (gcc_rvalue_t*[]){__VA_ARGS__})
 #define gcc_cast gcc_jit_context_new_cast
 #define gcc_bitcast gcc_jit_context_new_bitcast
 #define gcc_lvalue_set_alignment gcc_jit_lvalue_set_alignment

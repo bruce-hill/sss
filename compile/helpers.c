@@ -887,7 +887,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
 
         // Bounds check failure:
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: invalid list index: %ld (list is size %ld)\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
@@ -896,7 +896,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         fflush(f);
         gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_eval(bounds_unsafe, loc, gcc_call(env->ctx, loc, fail, 4, (gcc_rvalue_t*[]){fmt, index, len64, callstack}));
+        gcc_eval(bounds_unsafe, loc, gcc_callx(env->ctx, loc, fail, fmt, index, len64, callstack));
         fclose(f);
         free(info);
         gcc_jump(bounds_unsafe, loc, bounds_unsafe);

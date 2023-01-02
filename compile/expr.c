@@ -113,7 +113,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         } else if (binding->rval) {
             return binding->rval;
         } else if (binding->lval) {
-            return gcc_lvalue_as_rvalue(binding->lval);
+            return gcc_rval(binding->lval);
         } else if (binding->func) {
             return gcc_get_func_address(binding->func, NULL);
         }
@@ -130,7 +130,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         } else if (binding->rval) {
             return binding->rval;
         } else if (binding->lval) {
-            return gcc_lvalue_as_rvalue(binding->lval);
+            return gcc_rval(binding->lval);
         } else if (binding->func) {
             return gcc_get_func_address(binding->func, NULL);
         }
@@ -165,7 +165,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (binding->rval)
                 return binding->rval;
             if (binding->lval)
-                return gcc_lvalue_as_rvalue(binding->lval);
+                return gcc_rval(binding->lval);
             if (binding->func)
                 return gcc_get_func_address(binding->func, loc);
         }
@@ -193,10 +193,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         hashmap_set(env->bindings, decl->name,
-                    new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t));
+                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
-        return gcc_lvalue_as_rvalue(lval);
+        return gcc_rval(lval);
     }
 
     case Extern: {
@@ -216,7 +216,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            gcc_rvalue_t *glob = gcc_lvalue_as_rvalue(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
+            gcc_rvalue_t *glob = gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
             hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t, .is_global=true));
         }
         return NULL;
@@ -250,7 +250,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, t_rhs), fresh("tmp"));
                 assert(rval);
                 gcc_assign(*block, loc, tmp, rval);
-                append(rvals, gcc_lvalue_as_rvalue(tmp));
+                append(rvals, gcc_rval(tmp));
             } else {
                 append(rvals, rval);
             }
@@ -329,7 +329,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                       })
     case StringLiteral: {
         istr_t str = Match(ast, StringLiteral)->str;
-        gcc_rvalue_t *str_rval = gcc_new_string(env->ctx, str);
+        gcc_rvalue_t *str_rval = gcc_str(env->ctx, str);
         gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
         gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT32));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
@@ -363,19 +363,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), fresh("size"));
         gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), fresh("file"));
         gcc_assign(*block, loc, file_var,
-                   gcc_call(env->ctx, loc, open_memstream_fn, 2, (gcc_rvalue_t*[]){
-                                gcc_lvalue_address(buf_var, loc),
-                                gcc_lvalue_address(size_var, loc),
-                            }));
-        gcc_rvalue_t *file = gcc_lvalue_as_rvalue(file_var);
+                   gcc_callx(env->ctx, loc, open_memstream_fn, gcc_lvalue_address(buf_var, loc), gcc_lvalue_address(size_var, loc)));
+        gcc_rvalue_t *file = gcc_rval(file_var);
 
         foreach (chunks, chunk, _) {
             gcc_loc_t *chunk_loc = ast_loc(env, *chunk);
             if ((*chunk)->tag == StringLiteral) {
                 istr_t str = Match(*chunk, StringLiteral)->str;
                 gcc_eval(*block, chunk_loc,
-                         gcc_call(env->ctx, chunk_loc, fputs_fn, 2,
-                                  (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), file}));
+                         gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, str), file));
                 continue;
             }
             assert((*chunk)->tag == Interp);
@@ -387,8 +383,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 fprint_match(f, m->start, m, NULL);
                 fprintf(f, ": ");
                 fflush(f);
-                gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, fputs_fn, 2,
-                                                     (gcc_rvalue_t*[]){gcc_new_string(env->ctx, buf), file}));
+                gcc_eval(*block, chunk_loc, gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, buf), file));
                 fclose(f);
             }
             bl_type_t *t = get_type(env, *chunk);
@@ -401,24 +396,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             };
             gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, print_fn, 3, args));
         }
-        gcc_eval(*block, loc, gcc_call(env->ctx, loc, fflush_fn, 1, &file));
+        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, fresh("str_final"));
-        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_lvalue_as_rvalue(size_var), i32_t);
+        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_rval(size_var), i32_t);
 
         gcc_func_t *alloc_fn = hashmap_gets(env->global_funcs, "GC_malloc_atomic");
-        gcc_rvalue_t *size = gcc_lvalue_as_rvalue(size_var);
-        gcc_rvalue_t *str = gcc_call(
-            env->ctx, loc, alloc_fn, 1, (gcc_rvalue_t*[]){
-                gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
-                              size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE)))
-                });
+        gcc_rvalue_t *size = gcc_rval(size_var);
+        gcc_rvalue_t *str = gcc_callx(
+            env->ctx, loc, alloc_fn,
+            gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
+                          size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE))));
         gcc_func_t *memcpy_fn = hashmap_gets(env->global_funcs, "memcpy");
-        str = gcc_call(env->ctx, loc, memcpy_fn, 3, (gcc_rvalue_t*[]){str, gcc_lvalue_as_rvalue(buf_var), size});
+        str = gcc_callx(env->ctx, loc, memcpy_fn, str, gcc_rval(buf_var), size);
         str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
-        gcc_eval(*block, loc, gcc_call(env->ctx, loc, fclose_fn, 1, &file));
-        gcc_eval(*block, loc, gcc_call(env->ctx, loc, free_fn, 1, (gcc_rvalue_t*[]){gcc_lvalue_as_rvalue(buf_var)}));
-        return gcc_lvalue_as_rvalue(str_struct_var);
+        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
+        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
+        return gcc_rval(str_struct_var);
     }
     case Array: {
         return compile_array(env, block, ast);
@@ -452,7 +446,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 istr_t global_name = intern_strf("%s__%s", struct_def->name, decl->name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
                 hashmap_set(env->bindings, decl->name,
-                            new(binding_t, .lval=lval, .rval=gcc_lvalue_as_rvalue(lval), .type=t, .is_global=true));
+                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .is_global=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             }
@@ -739,7 +733,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
-        return gcc_lvalue_as_rvalue(gcc_rvalue_dereference(rval, ast_loc(env, ast)));
+        return gcc_rval(gcc_rvalue_dereference(rval, ast_loc(env, ast)));
     }
     case Maybe: {
         ast_t *value = Match(ast, Maybe)->value;
@@ -765,7 +759,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case TypeType: {
           string_len:;
             gcc_func_t *len_func = hashmap_gets(env->global_funcs, "intern_len");
-            gcc_rvalue_t *len = gcc_call(env->ctx, ast_loc(env, ast), len_func, 1, &obj);
+            gcc_rvalue_t *len = gcc_callx(env->ctx, ast_loc(env, ast), len_func, obj);
             return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
         }
         case RangeType: {
@@ -784,7 +778,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(*block, loc, len_var, BINOP(BINOP(BINOP(last, MINUS, first), DIVIDE, step), PLUS, gcc_one(env->ctx, i64_t)));
             // If less than zero, set to zero (without a conditional branch)
             // len = len & ~(len >> 63)
-            gcc_rvalue_t *len = gcc_lvalue_as_rvalue(len_var);
+            gcc_rvalue_t *len = gcc_rval(len_var);
             return BINOP(len, BITWISE_AND, UNOP(BITWISE_NEGATE, BINOP(len, RSHIFT, gcc_int64(env->ctx, 63))));
 #undef BINOP
         }
@@ -805,7 +799,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto ptr = Match(fielded_t, PointerType);
             if (ptr->is_optional)
                 compile_err(env, ast, "This field access is unsafe because the value may be nil");
-            obj = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, loc));
+            obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
         }
@@ -851,15 +845,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     highlight_match(f, env->file, ast->match, 2);
                     fputc('\0', f);
                     fflush(f);
-                    gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
-                    gcc_func_t *fail_array = hashmap_gets(env->global_funcs, "fail_array");
-                    istr_t fmt_str = intern_strf("\x1b[31;1;7mError: this tagged union is a %%s, but you are treating it like a %s\x1b[m\n\n%%s", access->field);
-                    gcc_rvalue_t *fmt = gcc_new_string(env->ctx, fmt_str);
-                    gcc_func_t *print_fn = get_print_func(env, fielded_t);
-                    assert(print_fn);
-                    gcc_rvalue_t *args[] = {obj, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))};
-                    gcc_rvalue_t *tag_str = gcc_call(env->ctx, loc, print_fn, 2, args);
-                    gcc_rvalue_t *failure = gcc_call(env->ctx, loc, fail_array, 3, (gcc_rvalue_t*[]){fmt, tag_str, callstack});
+                    gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
+                    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+                    istr_t fmt_str = intern_strf("\x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s", access->field);
+                    gcc_rvalue_t *fmt = gcc_str(env->ctx, fmt_str);
+                    gcc_rvalue_t *failure = gcc_callx(env->ctx, loc, fail, fmt, callstack);
                     gcc_eval(tag_wrong, loc, failure);
                     fclose(f);
                     free(info);
@@ -903,7 +893,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         bl_type_t *index_t = get_type(env, indexing->index);
         if (is_integral(index_t)) {
-            return gcc_lvalue_as_rvalue(get_lvalue(env, block, ast));
+            return gcc_rval(get_lvalue(env, block, ast));
         } else if (index_t->tag == RangeType) {
             // Slicing (currently not implemented as an Lvalue)
             gcc_rvalue_t *index = compile_expr(env, block, indexing->index);
@@ -929,7 +919,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         bl_type_t *t = get_type(env, value);
         return gcc_call(env->ctx, loc, intern_str_func, 1,
-                        (gcc_rvalue_t*[]){gcc_new_string(env->ctx, type_to_string(t))});
+                        (gcc_rvalue_t*[]){gcc_str(env->ctx, type_to_string(t))});
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;
@@ -1060,7 +1050,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump(if_falsey, loc, done);
 
         *block = done;
-        return gcc_lvalue_as_rvalue(result);
+        return gcc_rval(result);
     }
     case Or: {
         ast_t *lhs = Match(ast, Or)->lhs,
@@ -1107,7 +1097,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(if_falsey, loc, done);
 
         *block = done;
-        return gcc_lvalue_as_rvalue(result);
+        return gcc_rval(result);
     }
     case Xor: {
         ast_t *lhs = Match(ast, Xor)->lhs, *rhs = Match(ast, Xor)->rhs;
@@ -1214,7 +1204,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             *block = NULL;
         }
         *block = end_if;
-        return has_value ? gcc_lvalue_as_rvalue(if_ret) : NULL;
+        return has_value ? gcc_rval(if_ret) : NULL;
     }
     case When: {
         auto when = Match(ast, When);
@@ -1225,7 +1215,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ptr->is_optional)
                 compile_err(env, when->subject, "This value may be nil, so it can't be safely dereferenced");
             subject_t = ptr->pointed;
-            subject = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(subject, ast_loc(env, when->subject)));
+            subject = gcc_rval(gcc_rvalue_dereference(subject, ast_loc(env, when->subject)));
         }
         if (subject_t->tag != TaggedUnionType)
             compile_err(env, when->subject, "'when' blocks must use enums, but this is a %s", type_to_string(subject_t));
@@ -1313,7 +1303,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *tag_val = gcc_rvalue_access_field(subject, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
         gcc_switch(*block, loc, tag_val, default_block, length(gcc_cases), gcc_cases[0]);
         *block = end_when;
-        return when_value ? gcc_lvalue_as_rvalue(when_value) : NULL;
+        return when_value ? gcc_rval(when_value) : NULL;
     }
     case Range: {
         return compile_range(env, block, ast);
@@ -1367,10 +1357,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (message) {
             msg = compile_expr(env, block, message);
         } else {
-            msg = gcc_new_string(env->ctx, "A failure occurred");
+            msg = gcc_str(env->ctx, "A failure occurred");
         }
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+        gcc_rvalue_t *len = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *msg_str = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 0));
 
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: %s\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: %.*s\x1b[m\n\n%s");
 
         char *info = NULL;
         size_t size = 0;
@@ -1378,14 +1372,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         highlight_match(f, env->file, ast->match, 2);
         fputc('\0', f);
         fflush(f);
-        gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+        gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_rvalue_t *ret = gcc_call(env->ctx, loc, fail, 3, (gcc_rvalue_t*[]){fmt, msg, callstack});
+        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, len, msg_str, callstack);
+        gcc_eval(*block, loc, ret);
         fclose(f);
         free(info);
         gcc_jump(*block, loc, *block);
         *block = NULL;
-        return ret;
+        return NULL;
     }
     default: break;
     }
