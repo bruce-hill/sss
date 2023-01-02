@@ -820,6 +820,14 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *fielded_t = get_type(env, access->fielded);
       keep_going:
         switch (fielded_t->tag) { 
+        case PointerType: {
+            auto fielded_ptr = Match(fielded_t, PointerType);
+            if (fielded_ptr->is_optional)
+                compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+            fielded_lval = gcc_rvalue_dereference(gcc_lvalue_as_rvalue(fielded_lval), NULL);
+            fielded_t = fielded_ptr->pointed;
+            goto keep_going;
+        }
         case StructType: {
             auto fielded_struct = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
@@ -829,17 +837,10 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
                     return gcc_lvalue_access_field(fielded_lval, NULL, field);
                 }
             }
-            compile_err(env, ast, "The struct %s doesn't have a mutable field called '%s'",
+            compile_err(env, ast, "The struct %s doesn't have a field called '%s'",
                   type_to_string(fielded_t), access->field);
         }
-        case PointerType: {
-            auto fielded_ptr = Match(fielded_t, PointerType);
-            if (fielded_ptr->is_optional)
-                compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-            fielded_lval = gcc_rvalue_dereference(gcc_lvalue_as_rvalue(fielded_lval), NULL);
-            fielded_t = fielded_ptr->pointed;
-            goto keep_going;
-        }
+        // TODO: support using TaggedUnion field and Type fields as lvalues
         default: {
             compile_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
                   type_to_string(fielded_t));
