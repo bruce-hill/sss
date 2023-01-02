@@ -14,11 +14,11 @@ term: (
     / FnCall
     / `(__extended-expr__`)
 )
-IndexedTerm:: (!`0-9 @value=(IndexedTerm / term / Var)
+IndexedTerm:: (!`0-9 @value=(methodCall / IndexedTerm / term / Var)
   @index=(`. FieldName / `[ __ required-extended-expr __ `] / @:ParseError=(`[ => "Unclosed bracket")))
-maybe-index-term: FnCall / IndexedTerm / As / Cast / term / Var
-expr: Range / Mod / In / AddSub / MulDiv / Pow / FnCall / IndexedTerm / As / Cast / term
-extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / expr
+maybe-index-term: methodCall / FnCall / IndexedTerm / As / Cast / term / Var
+expr: Range / Mod / In / AddSub / MulDiv / Pow / methodCall / FnCall / IndexedTerm / As / Cast / term
+extended-expr: And / Or / Xor / If / While / Repeat / For / Do / When / comparison / splatFnCall / splatMethodCall / expr
 unaryOp: Negative / Len / Maybe / Not / HeapAllocate / Dereference
 HeapAllocate:: `@_ @value=maybe-index-term
 Dereference:: `*_ @value=maybe-index-term
@@ -30,7 +30,7 @@ Mod:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ \b"mod"\b _ @rhs=(AddSub
 AddSub:: @lhs=(AddSub / MulDiv / Pow / maybe-index-term) _ @op=`+,- _ @rhs=(MulDiv / Pow / maybe-index-term)
 MulDiv:: @lhs=(MulDiv / Pow / maybe-index-term) _ @op=`*,/ _ @rhs=(Pow / maybe-index-term)
 Pow:: @base=maybe-index-term _ @op=`^ _ @exponent=maybe-index-term
-In:: @needle=(Range / Mod / AddSub / MulDiv / Pow / IndexedTerm / As / Cast / term) _\b"in"\b_ @haystack=(expr / @:ParseError=(=> "Expected an expression here"))
+In:: @needle=(Range / Mod / AddSub / MulDiv / Pow / methodCall / IndexedTerm / As / Cast / term) _\b"in"\b_ @haystack=(expr / @:ParseError=(=> "Expected an expression here"))
 And:: @lhs=(comparison / expr) (__\b"and"\b_) @rhs=(And / comparison / expr)
 Or:: @lhs=(comparison / expr) (__\b"or"\b_) @rhs=(Or / comparison / expr)
 Xor:: @lhs=(comparison / expr) __\b"xor"\b_ @rhs=(Xor / comparison / expr)
@@ -78,8 +78,8 @@ Table:: `{ __ [`:__ @type=@:TableType=(@keyType=type __ `= __ @valueType=type) _
 tableEntry: postfixFor / postfixWhile / postfixIf / TableEntry
 TableEntry:: (`[__@key=required-extended-expr__`] / @key=@:String=(@content=FieldName) / @key=String) __`= __ @value=required-extended-expr
 postfixConditional: \b"if"\b _ @condition=required-extended-expr / \b"unless"\b_ @condition=@:Not=(@value=required-extended-expr)
-Cast:: @expr=(Cast / IndexedTerm / term)_`:_@type=type
-As:: @expr=(Cast / IndexedTerm / term)_\b"as"\b_@type=type
+Cast:: @expr=(Cast / methodCall / IndexedTerm / term)_`:_@type=type
+As:: @expr=(Cast / methodCall / IndexedTerm / term)_\b"as"\b_@type=type
 interpValue: IndexedTerm / Var / `(__ extended-expr __`) / @:ParseError=(`(..`) => "Cannot parse this string interpolation")
 Interp:: `$ [@label=`:] @value=(interpValue / @:String=@content=`$)
 atInterp: @:Interp=(`@ [@label=`:] @value=(interpValue / @:String=@content=`@))
@@ -91,7 +91,11 @@ Int:: [`-,+] ("0x" +`0-9,a-f,A-F,_ / "0o" +`0-7,_ / "0b" +`0,1,_ / `0-9 *`0-9,_)
 Struct:: [@type=typeName] _ `{ __ *@:StructField=([@name=FieldName __`=__] @value=extended-expr) % (__`,__) __[`, __] `}
 FnCall:: @fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) `( __ *(KeywordArg/extended-expr) % (__`,__) __ [`,__] `)
 KeywordArg:: @name=FieldName _ `= _ @value=required-extended-expr
+methodCall: @:FnCall=((methodCall / IndexedTerm / As / Cast / term) _ `| _
+  (@fn=(Var / `(__required-extended-expr__`)) _ [`( __ *(KeywordArg/expr) % (__`,__) __ [`,__] `)]) [_`:_@type=type])
 splatFnCall: @:FnCall=(@fn=(FnCall / IndexedTerm / As / Cast / Var / `(__required-extended-expr__`)) +(` /\t) !`* +(KeywordArg/expr) % +(` ,,/\t))
+splatMethodCall: @:FnCall=((splatMethodCall / IndexedTerm / As / Cast / term) _ `| _
+  (@fn=(Var / `(__required-extended-expr__`)) +(` /\t) +(KeywordArg/expr) % +(` ,,/\t)))
 Var:: (id !~ keyword)
 FieldName:: id !~ keyword
 id: \b(\I *\i)
