@@ -163,7 +163,7 @@ int numtype_priority(bl_type_t *t)
 bool is_comparable(bl_type_t *t)
 {
     switch (t->tag) {
-    case ArrayType: return true;
+    case ArrayType: return is_comparable(Match(t, ArrayType)->item_type);
     case PointerType: case FunctionType: return false;
     case StructType: {
         auto struct_ = Match(t, StructType);

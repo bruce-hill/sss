@@ -1016,7 +1016,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (is_ordered && !is_comparable(lhs_t))
-            compile_err(env, ast, "Ordered comparisons are only supported between value types (structs, integers, etc.), but this isn't a value type: %s",
+            compile_err(env, ast, "I don't want to do ordered comparisons when pointers are involved (this has type %s)",
                   type_to_string(lhs_t));
 
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
