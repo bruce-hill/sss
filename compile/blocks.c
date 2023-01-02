@@ -38,7 +38,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
             compile_err(env, def, "Something called %s is already defined.", name);
         bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types);
         gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
-        lval = gcc_global_set_initializer_rvalue(lval, gcc_new_string(env->ctx, name));
+        lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
 
         hashmap_t *namespace = hashmap_new();
         namespace->fallback = env->bindings;
@@ -62,7 +62,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         bl_type_t *tag_t = Type(TagType, .name=enum_name, .names=enum_def->tag_names, .values=enum_def->tag_values);
         bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types, .fields=LIST(gcc_field_t*));
         bl_type_t *t = Type(TaggedUnionType, .name=enum_name, .tag_type=tag_t, .data=union_t);
-        gcc_rvalue_t *rval = gcc_new_string(env->ctx, enum_name);
+        gcc_rvalue_t *rval = gcc_str(env->ctx, enum_name);
 
         hashmap_t *type_ns = get_namespace(env, t);
         type_ns->fallback = env->bindings;
@@ -75,7 +75,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         hashmap_t *tag_namespace = get_namespace(env, tag_t);
         tag_namespace->fallback = type_ns;
         binding_t *tag_binding = new(binding_t, .type=Type(TypeType), .type_value=tag_t, .is_global=true,
-                                     .rval=gcc_new_string(env->ctx, intern_strf("%s.__Tag", enum_name)));
+                                     .rval=gcc_str(env->ctx, intern_strf("%s.__Tag", enum_name)));
         hashmap_set(type_ns, intern_str("__Tag"), tag_binding);
         hashmap_set(env->type_namespaces, tag_t, tag_namespace);
 
@@ -101,7 +101,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 
                 // Bind the struct type:
                 binding_t *b = new(binding_t, .type=Type(TypeType), .is_constant=true, .is_global=true, .enum_type=t, .tag_rval=tag_val,
-                                   .type_value=field_t, .rval=gcc_new_string(env->ctx, intern_strf("%s.%s", enum_name, tag_name)));
+                                   .type_value=field_t, .rval=gcc_str(env->ctx, intern_strf("%s.%s", enum_name, tag_name)));
                 hashmap_set(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:
                 // hashmap_set(env->bindings, tag_name, b);

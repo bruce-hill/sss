@@ -389,12 +389,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *t = get_type(env, *chunk);
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
-            gcc_rvalue_t *args[] = {
-                compile_expr(env, block, *chunk),
-                file,
-                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-            };
-            gcc_eval(*block, chunk_loc, gcc_call(env->ctx, chunk_loc, print_fn, 3, args));
+            gcc_eval(*block, chunk_loc,
+                     gcc_callx(env->ctx, chunk_loc, print_fn, 
+                               compile_expr(env, block, *chunk),
+                               file,
+                               gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+
         }
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, fresh("str_final"));
@@ -903,12 +903,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
             return gcc_bitcast(
                 env->ctx, loc,
-                gcc_call(
-                    env->ctx, loc, slice_fn, 3, (gcc_rvalue_t*[]){
-                        gcc_bitcast(env->ctx, loc, obj, str_gcc_t),
-                        index,
-                        gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(indexed_t, ArrayType)->item_type)),
-                    }),
+                gcc_callx(
+                    env->ctx, loc, slice_fn,
+                    gcc_bitcast(env->ctx, loc, obj, str_gcc_t),
+                    index,
+                    gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(indexed_t, ArrayType)->item_type))),
                 gcc_t);
         } else {
             compile_err(env, indexing->index, "I only support indexing arrays by integers, not %s", type_to_string(index_t));
@@ -918,8 +917,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto value = Match(ast, TypeOf)->value;
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
         bl_type_t *t = get_type(env, value);
-        return gcc_call(env->ctx, loc, intern_str_func, 1,
-                        (gcc_rvalue_t*[]){gcc_str(env->ctx, type_to_string(t))});
+        return gcc_callx(env->ctx, loc, intern_str_func, gcc_str(env->ctx, type_to_string(t)));
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;
@@ -1126,7 +1124,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType || t->tag == Num32Type) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
-            return gcc_call(env->ctx, loc, sane_fmod_func, 2, (gcc_rvalue_t*[]){lhs_val, rhs_val});
+            return gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
         } else {
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
@@ -1354,15 +1352,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Fail: {
         ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
+        gcc_rvalue_t *len;
         if (message) {
             msg = compile_expr(env, block, message);
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+            gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+            len = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 1));
+            msg = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 0));
         } else {
-            msg = gcc_str(env->ctx, "A failure occurred");
+            const char *default_msg = "A failure occurred";
+            msg = gcc_str(env->ctx, default_msg);
+            len = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), strlen(default_msg));
         }
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        gcc_rvalue_t *len = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 1));
-        gcc_rvalue_t *msg_str = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 0));
 
         gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: %.*s\x1b[m\n\n%s");
 
@@ -1374,7 +1375,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, len, msg_str, callstack);
+        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, len, msg, callstack);
         gcc_eval(*block, loc, ret);
         fclose(f);
         free(info);

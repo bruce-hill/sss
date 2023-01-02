@@ -236,7 +236,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
 
-#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_new_string(env->ctx, str), file)
+#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
 #define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -276,9 +276,10 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // item_str = tocord(item)
     gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
     assert(item_print);
-    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print,
-                                       item, file,
-                                       gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+    ADD_WRITE(add_next_item,
+              gcc_callx(env->ctx, NULL, item_print,
+                        item, file,
+                        gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
     
     // i += 1
     assert(i);

@@ -74,7 +74,7 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
 static bl_type_t *define_string_type(env_t *env)
 {
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
-    gcc_rvalue_t *rval = gcc_new_string(env->ctx, "String");
+    gcc_rvalue_t *rval = gcc_str(env->ctx, "String");
     binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=str_type);
     hashmap_set(env->bindings, intern_str("String"), binding);
     hashmap_set(env->bindings, str_type, binding);
@@ -130,7 +130,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug)
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env->bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
-#define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_new_string(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
+#define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_str(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
