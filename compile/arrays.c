@@ -51,18 +51,17 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     // array.items = GC_realloc(array.items, item_size*array.length)
     gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
     gcc_rvalue_t *new_size = gcc_binary_op(
-        env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_lvalue_as_rvalue(length_field), gcc_size_t),
+        env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_rval(length_field), gcc_size_t),
         gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
     gcc_func_t *gc_realloc_func = hashmap_gets(env->global_funcs, "GC_realloc");
     gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
-                                       gcc_lvalue_as_rvalue(data_field),
-                                       new_size);
+                                       gcc_rval(data_field), new_size);
     gcc_assign(*block, NULL, data_field,
                gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(bl_type_to_gcc(env, item_type))));
 
     // array.items[array.length-1] = item
-    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_lvalue_as_rvalue(length_field), one32);
-    gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(data_field), index);
+    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), one32);
+    gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
     if (t != item_type)
         if (!promote(env, t, &item_val, item_type))
             compile_err(env, item, "I can't convert this type to %s", type_to_string(item_type));
@@ -111,7 +110,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, NULL, array_done);
         *block = array_done;
     }
-    return gcc_lvalue_as_rvalue(array_var);
+    return gcc_rval(array_var);
 }
 
 void compile_array_iteration(
@@ -155,7 +154,7 @@ void compile_array_iteration(
             gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, array, gcc_null(env->ctx, gcc_array_t));
             gcc_jump_condition(*block, NULL, is_nil, loop_end, loop_preamble);
         }
-        array = gcc_lvalue_as_rvalue(gcc_rvalue_dereference(array, NULL));
+        array = gcc_rval(gcc_rvalue_dereference(array, NULL));
         array_t = array_ptr->pointed;
         gcc_array_t = bl_type_to_gcc(env, array_t);
     } else {
@@ -184,8 +183,8 @@ void compile_array_iteration(
     gcc_assign(loop_preamble, NULL, index_var, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
 
     // goto (index > len) ? end : body
-    gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_lvalue_as_rvalue(index_var),
-                                           gcc_cast(env->ctx, NULL, gcc_lvalue_as_rvalue(len), gcc_type(env->ctx, INT64)));
+    gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var),
+                                           gcc_cast(env->ctx, NULL, gcc_rval(len), gcc_type(env->ctx, INT64)));
     gcc_jump_condition(loop_preamble, NULL, is_done, loop_end, loop_body);
     loop_preamble = NULL;
 
@@ -194,13 +193,13 @@ void compile_array_iteration(
     // item = *item_ptr
     if (item_var)
         gcc_assign(loop_body_end, NULL, item_var,
-                   gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
+                   gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
 
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_lvalue_as_rvalue(index_var),
+        .key_rval = gcc_rval(index_var),
         .value_type = item_t,
-        .value_rval = gcc_lvalue_as_rvalue(item_var),
+        .value_rval = gcc_rval(item_var),
     };
 
     // body block
@@ -214,13 +213,13 @@ void compile_array_iteration(
     assert(index_var);
     gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_assign(loop_next, NULL, item_ptr,
-               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(item_ptr), stride), NULL));
+               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
 
     // goto is_done ? end : between
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
     // between:
     gcc_assign(loop_between, NULL, item_var,
-               gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL)));
+               gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
     if (between_compiler)
         between_compiler(env, &loop_between, &info, data);
 
@@ -267,12 +266,12 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // if (i < len) goto add_next_item;
     gcc_jump_condition(*block, NULL, 
-                  gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len64),
+                  gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
                   add_next_item, end);
 
     // add_next_item:
     // item = *item_ptr
-    gcc_rvalue_t *item = gcc_lvalue_as_rvalue(gcc_jit_rvalue_dereference(gcc_lvalue_as_rvalue(item_ptr), NULL));
+    gcc_rvalue_t *item = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
     // item_str = tocord(item)
     gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
     assert(item_print);
@@ -286,10 +285,10 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_update(add_next_item, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
     // item_ptr = &item_ptr[stride]
     gcc_assign(add_next_item, NULL, item_ptr,
-               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_lvalue_as_rvalue(item_ptr), stride), NULL));
+               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
     // if (i < len) goto add_comma;
     gcc_jump_condition(add_next_item, NULL, 
-                  gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_lvalue_as_rvalue(i), len64),
+                  gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
                   add_comma, end);
 
     // add_comma:
@@ -303,7 +302,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     if (!is_string)
         ADD_WRITE(end, WRITE_LITERAL("]"));
 
-    gcc_return(end, NULL, gcc_lvalue_as_rvalue(written_var));
+    gcc_return(end, NULL, gcc_rval(written_var));
 #undef WRITE_LITERAL 
 #undef ADD_INT
 }

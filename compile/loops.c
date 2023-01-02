@@ -133,7 +133,7 @@ void compile_linked_iteration(
 
     // goto (iter == NULL) ? end : body
     gcc_rvalue_t *is_done = gcc_comparison(
-        env->ctx, NULL, GCC_COMPARISON_EQ, gcc_lvalue_as_rvalue(iter_var), gcc_null(env->ctx, gcc_iter_t));
+        env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(iter_var), gcc_null(env->ctx, gcc_iter_t));
     gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
     *block = NULL;
 
@@ -142,9 +142,9 @@ void compile_linked_iteration(
 
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_lvalue_as_rvalue(index_var),
+        .key_rval = gcc_rval(index_var),
         .value_type = Type(PointerType, .pointed=Match(iter_t, PointerType)->pointed, .is_optional=false),
-        .value_rval = gcc_lvalue_as_rvalue(iter_var),
+        .value_rval = gcc_rval(iter_var),
     };
 
     // body block
@@ -162,9 +162,9 @@ void compile_linked_iteration(
     gcc_struct_t *iter_struct = gcc_type_if_struct(bl_type_to_gcc(env, Match(iter_t, PointerType)->pointed));
     assert(iter_struct);
     gcc_assign(loop_next, NULL, iter_var,
-               gcc_lvalue_as_rvalue(
+               gcc_rval(
                    gcc_rvalue_dereference_field(
-                       gcc_lvalue_as_rvalue(iter_var), NULL, gcc_get_field(iter_struct, field_index))));
+                       gcc_rval(iter_var), NULL, gcc_get_field(iter_struct, field_index))));
 
     // goto is_done ? end : between
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);

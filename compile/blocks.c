@@ -42,7 +42,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 
         hashmap_t *namespace = hashmap_new();
         namespace->fallback = env->bindings;
-        binding_t *b = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=gcc_lvalue_as_rvalue(lval));
+        binding_t *b = new(binding_t, .type=Type(TypeType), .type_value=t, .is_global=true, .rval=gcc_rval(lval));
         hashmap_set(env->bindings, name, b);
         hashmap_set(env->type_namespaces, t, namespace);
 

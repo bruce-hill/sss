@@ -35,9 +35,9 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast,
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_local(main_func, NULL, gcc_string_t, "PROGRAM_NAME");
     gcc_lvalue_t *name_lval = gcc_rvalue_dereference(gcc_param_as_rvalue(main_params[1]), NULL);
-    gcc_assign(block, NULL, program_name, gcc_lvalue_as_rvalue(name_lval));
+    gcc_assign(block, NULL, program_name, gcc_rval(name_lval));
     hashmap_set(env->bindings, intern_str("PROGRAM_NAME"),
-                new(binding_t, .rval=gcc_lvalue_as_rvalue(program_name), .type=str_type));
+                new(binding_t, .rval=gcc_rval(program_name), .type=str_type));
 
     // Set up `args`
     bl_type_t *args_t = Type(ArrayType, .item_type=str_type);
@@ -49,7 +49,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast,
         }, 0);
 
     gcc_lvalue_t *args = gcc_local(main_func, NULL, args_gcc_t, "args");
-    hashmap_set(env->bindings, intern_str("args"), new(binding_t, .rval=gcc_lvalue_as_rvalue(args), .type=args_t));
+    hashmap_set(env->bindings, intern_str("args"), new(binding_t, .rval=gcc_rval(args), .type=args_t));
     gcc_rvalue_t *arg_list = gcc_callx(env->ctx, NULL, arg_func, 
         gcc_param_as_rvalue(main_params[0]),
         gcc_param_as_rvalue(main_params[1]));

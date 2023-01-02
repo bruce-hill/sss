@@ -146,7 +146,6 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_global_set_initializer_rvalue gcc_jit_global_set_initializer_rvalue
 #define gcc_global_set_initializer gcc_jit_global_set_initializer
 #define gcc_lvalue_as_obj gcc_jit_lvalue_as_object
-#define gcc_lvalue_as_rvalue gcc_jit_lvalue_as_rvalue
 #define gcc_rval gcc_jit_lvalue_as_rvalue
 #define gcc_rvalue_as_obj gcc_jit_rvalue_as_object
 #define gcc_rvalue_type gcc_jit_rvalue_get_type
@@ -157,7 +156,6 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_rvalue_from_double gcc_jit_context_new_rvalue_from_double
 #define gcc_rvalue_from_ptr gcc_jit_context_new_rvalue_from_ptr
 #define gcc_null gcc_jit_context_null
-#define gcc_new_string gcc_jit_context_new_string_literal
 #define gcc_str gcc_jit_context_new_string_literal
 typedef enum gcc_jit_unary_op gcc_unary_op_e;
 #define GCC_UNOP_MINUS GCC_JIT_UNARY_OP_MINUS

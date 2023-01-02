@@ -84,8 +84,8 @@ void compile_range_iteration(
     gcc_lvalue_t *sign = gcc_local(func, NULL, i64_t, fresh("sign"));
     gcc_assign(*block, NULL, sign,
                gcc_binary_op(env->ctx, NULL, GCC_BINOP_DIVIDE, i64_t,
-                             gcc_lvalue_as_rvalue(step),
-                             gcc_unary_op(env->ctx, NULL, GCC_UNOP_ABS, i64_t, gcc_lvalue_as_rvalue(step))));
+                             gcc_rval(step),
+                             gcc_unary_op(env->ctx, NULL, GCC_UNOP_ABS, i64_t, gcc_rval(step))));
 
     // last = range.last
     gcc_lvalue_t *last = gcc_local(func, NULL, i64_t, fresh("last"));
@@ -102,9 +102,8 @@ void compile_range_iteration(
         env->ctx, NULL, GCC_COMPARISON_LT,
         gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64_t,
                       gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64_t,
-                                    gcc_lvalue_as_rvalue(last),
-                                    gcc_lvalue_as_rvalue(iter)),
-                      gcc_lvalue_as_rvalue(sign)),
+                                    gcc_rval(last), gcc_rval(iter)),
+                      gcc_rval(sign)),
         gcc_zero(env->ctx, i64_t));
     gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
     *block = NULL;
@@ -114,9 +113,9 @@ void compile_range_iteration(
 
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_lvalue_as_rvalue(index_var),
+        .key_rval = gcc_rval(index_var),
         .value_type = Type(IntType),
-        .value_rval = gcc_lvalue_as_rvalue(iter),
+        .value_rval = gcc_rval(iter),
     };
 
     // body block
@@ -130,7 +129,7 @@ void compile_range_iteration(
     // index++, iter+=step
     if (index_var)
         gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
-    gcc_update(loop_next, NULL, iter, GCC_BINOP_PLUS, gcc_lvalue_as_rvalue(step));
+    gcc_update(loop_next, NULL, iter, GCC_BINOP_PLUS, gcc_rval(step));
 
     // goto is_done ? end : between
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);

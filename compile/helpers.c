@@ -274,8 +274,8 @@ gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
     // TODO: use gc_malloc_atomic() when possible
     gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, gc_malloc_func, size), gcc_t));
-    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_lvalue_as_rvalue(tmp), NULL), val);
-    return gcc_lvalue_as_rvalue(tmp);
+    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), val);
+    return gcc_rval(tmp);
 }
 
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed)
@@ -487,7 +487,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
 
-        gcc_return(done, NULL, gcc_lvalue_as_rvalue(printed_var));
+        gcc_return(done, NULL, gcc_rval(printed_var));
         break;
     }
     case VoidType: {
@@ -517,7 +517,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         assert(print_fn);
         gcc_rvalue_t *printed = gcc_callx(
             env->ctx, NULL, print_fn,
-            gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL)),
+            gcc_rval(gcc_rvalue_dereference(obj, NULL)),
             gcc_param_as_rvalue(params[1]),
             gcc_param_as_rvalue(params[2]));
 
@@ -642,13 +642,13 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
             gcc_rvalue_t *rhs_field = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(gcc_struct, i));
             gcc_assign(block, NULL, cmp, compare_values(env, field_t, lhs_field, rhs_field));
             gcc_jump_condition(block, NULL,
-                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_lvalue_as_rvalue(cmp), zero),
+                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(cmp), zero),
                                next_field, done);
 
             block = next_field;
         }
         gcc_jump(block, NULL, done);
-        gcc_return(done, NULL, gcc_lvalue_as_rvalue(cmp));
+        gcc_return(done, NULL, gcc_rval(cmp));
         break;
     }
     case TaggedUnionType: {
@@ -728,7 +728,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 
         gcc_type_t *int32 = gcc_type(env->ctx, INT32);
         gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, fresh("i"));
-        gcc_rvalue_t *index_rval = gcc_lvalue_as_rvalue(index_var);
+        gcc_rvalue_t *index_rval = gcc_rval(index_var);
         gcc_assign(block, NULL, index_var, gcc_zero(env->ctx, int32));
 
         gcc_jump_condition(block, NULL,
@@ -756,8 +756,8 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, rhs_stride);
         gcc_rvalue_t *difference = gcc_callx(env->ctx, NULL, cmp_fn,
             // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
-            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
-            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)));
+            gcc_rval(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
+            gcc_rval(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)));
 
         gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
                     *keep_going = gcc_new_block(func, fresh("keep_going"));
@@ -828,7 +828,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
             auto fielded_ptr = Match(fielded_t, PointerType);
             if (fielded_ptr->is_optional)
                 compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-            fielded_lval = gcc_rvalue_dereference(gcc_lvalue_as_rvalue(fielded_lval), NULL);
+            fielded_lval = gcc_rvalue_dereference(gcc_rval(fielded_lval), NULL);
             fielded_t = fielded_ptr->pointed;
             goto keep_going;
         }
