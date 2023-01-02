@@ -50,11 +50,10 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast,
 
     gcc_lvalue_t *args = gcc_local(main_func, NULL, args_gcc_t, "args");
     hashmap_set(env->bindings, intern_str("args"), new(binding_t, .rval=gcc_lvalue_as_rvalue(args), .type=args_t));
-    gcc_rvalue_t *arg_list_args[] = {
+    gcc_rvalue_t *arg_list = gcc_callx(env->ctx, NULL, arg_func, 
         gcc_param_as_rvalue(main_params[0]),
-        gcc_param_as_rvalue(main_params[1]),
-    };
-    gcc_rvalue_t *arg_list = gcc_call(env->ctx, NULL, arg_func, 2, arg_list_args);
+        gcc_param_as_rvalue(main_params[1])
+    );
     gcc_assign(block, NULL, args, arg_list);
 
     compile_statement(env, &block, ast);

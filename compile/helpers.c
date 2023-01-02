@@ -273,7 +273,7 @@ gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
     gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh("tmp"));
     // TODO: use gc_malloc_atomic() when possible
-    gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_malloc_func, 1, &size), gcc_t));
+    gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, gc_malloc_func, size), gcc_t));
     gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_lvalue_as_rvalue(tmp), NULL), val);
     return gcc_lvalue_as_rvalue(tmp);
 }
@@ -390,7 +390,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
     gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
 
-#define WRITE_LITERAL(str) gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), f})
+#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), f)
 
     switch (t->tag) {
     case BoolType: {
@@ -403,7 +403,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     }
     case CharType: {
         gcc_func_t *fputc_fn = hashmap_gets(env->global_funcs, "fputc");
-        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fputc_fn, 2, (gcc_rvalue_t*[]){obj, f}));
+        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, f));
         break;
     }
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
@@ -417,9 +417,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
         if (units && strlen(units) > 0)
             fmt = intern_strf("%s<%s>", fmt, units);
-        gcc_rvalue_t *args[] = {f, gcc_new_string(env->ctx, fmt), obj};
         gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
-        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fprintf_fn, 3, args));
+        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
         break;
     }
     case TagType: {
@@ -464,13 +463,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                     gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                     gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
                     gcc_field_t *union_field = ith(union_t->fields, u);
-                    gcc_rvalue_t *args[] = {
+                    gcc_func_t *tag_print = get_print_func(env, tag_data_type);
+                    gcc_rvalue_t *suffix_len = gcc_callx(
+                        env->ctx, NULL, tag_print,
                         gcc_rvalue_access_field(data, NULL, union_field),
                         f,
-                        gcc_param_as_rvalue(params[2]),
-                    };
-                    gcc_func_t *tag_print = get_print_func(env, tag_data_type);
-                    gcc_rvalue_t *suffix_len = gcc_call(env->ctx, NULL, tag_print, 3, args);
+                        gcc_param_as_rvalue(params[2]));
                     gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, suffix_len);
                     goto found_struct;
                 }
@@ -515,14 +513,13 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         // Prepend "@"
         gcc_rvalue_t *at = WRITE_LITERAL("@");
 
-        gcc_rvalue_t *args[] = {
-            gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL)),
-            gcc_param_as_rvalue(params[1]),
-            gcc_param_as_rvalue(params[2]),
-        };
         gcc_func_t *print_fn = get_print_func(env, pointed_type);
         assert(print_fn);
-        gcc_rvalue_t *printed = gcc_call(env->ctx, NULL, print_fn, 3, args);
+        gcc_rvalue_t *printed = gcc_callx(
+            env->ctx, NULL, print_fn,
+            gcc_lvalue_as_rvalue(gcc_rvalue_dereference(obj, NULL)),
+            gcc_param_as_rvalue(params[1]),
+            gcc_param_as_rvalue(params[2]));
 
         gcc_return(nonnil_block, NULL,
                    gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
@@ -554,12 +551,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_func_t *print_fn = get_print_func(env, member_t);
             assert(print_fn);
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
-            gcc_rvalue_t *args[] = {
-                gcc_rvalue_access_field(obj, NULL, field),
-                gcc_param_as_rvalue(params[1]),
-                gcc_param_as_rvalue(params[2]), // TODO: fix infinite recursion
-            };
-            written = ADD_INT(written, gcc_call(env->ctx, NULL, print_fn, 3, args));
+            written = ADD_INT(written,
+                              gcc_callx(env->ctx, NULL, print_fn, 
+                                        gcc_rvalue_access_field(obj, NULL, field),
+                                        gcc_param_as_rvalue(params[1]),
+                                        gcc_param_as_rvalue(params[2]) // TODO: fix infinite recursion
+                              ));
         }
 
         written = ADD_INT(written, WRITE_LITERAL("}"));
@@ -576,8 +573,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case TypeType: {
-        gcc_return(block, NULL, gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){
-                                         gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), f}));
+        gcc_return(block, NULL,
+                   gcc_callx(env->ctx, NULL, fputs_fn,
+                             gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), f));
         break;
     }
     default: {
@@ -600,7 +598,7 @@ gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rval
                              gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, a, b), int_t));
     } else {
         gcc_func_t *cmp_fn = get_compare_func(env, t);
-        return gcc_call(env->ctx, NULL, cmp_fn, 2, (gcc_rvalue_t*[]){a, b});
+        return gcc_callx(env->ctx, NULL, cmp_fn, a, b);
     }
 }
 
@@ -756,11 +754,10 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         assert(cmp_fn);
         gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, lhs_stride);
         gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, rhs_stride);
-        gcc_rvalue_t *args[] = { // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
+        gcc_rvalue_t *difference = gcc_callx(env->ctx, NULL, cmp_fn,
+            // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
             gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
-            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)),
-        };
-        gcc_rvalue_t *difference = gcc_call(env->ctx, NULL, cmp_fn, 2, args);
+            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)));
 
         gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
                     *keep_going = gcc_new_block(func, fresh("keep_going"));
@@ -887,14 +884,14 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
 
         // Bounds check failure:
-        gcc_rvalue_t *fmt = gcc_new_string(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
         highlight_match(f, env->file, ast->match, 2);
         fputc('\0', f);
         fflush(f);
-        gcc_rvalue_t *callstack = gcc_new_string(env->ctx, info);
+        gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
         gcc_eval(bounds_unsafe, loc, gcc_callx(env->ctx, loc, fail, fmt, index, len64, callstack));
         fclose(f);

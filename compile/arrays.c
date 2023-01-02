@@ -53,13 +53,12 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_rvalue_t *new_size = gcc_binary_op(
         env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_lvalue_as_rvalue(length_field), gcc_size_t),
         gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
-    gcc_rvalue_t *realloc_args[] = {
-        gcc_lvalue_as_rvalue(data_field),
-        new_size,
-    };
     gcc_func_t *gc_realloc_func = hashmap_gets(env->global_funcs, "GC_realloc");
+    gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
+                                       gcc_lvalue_as_rvalue(data_field),
+                                       new_size);
     gcc_assign(*block, NULL, data_field,
-               gcc_cast(env->ctx, NULL, gcc_call(env->ctx, NULL, gc_realloc_func, 2, realloc_args), gcc_get_ptr_type(bl_type_to_gcc(env, item_type))));
+               gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(bl_type_to_gcc(env, item_type))));
 
     // array.items[array.length-1] = item
     gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_lvalue_as_rvalue(length_field), one32);
@@ -237,7 +236,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
 
-#define WRITE_LITERAL(str) gcc_call(env->ctx, NULL, fputs_fn, 2, (gcc_rvalue_t*[]){gcc_new_string(env->ctx, str), file})
+#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_new_string(env->ctx, str), file)
 #define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -277,12 +276,9 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // item_str = tocord(item)
     gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
     assert(item_print);
-    gcc_rvalue_t *args[] = {
-        item,
-        file,
-        gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-    };
-    ADD_WRITE(add_next_item, gcc_call(env->ctx, NULL, item_print, 3, args));
+    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print,
+                                       item, file,
+                                       gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
     
     // i += 1
     assert(i);
