@@ -149,13 +149,14 @@ Lambda:: (@curdent:\C
   @args=[`(__*@:FnArg=(@name=varNotKeyword__`:__@type=type)%(__`,__)__[`,__]`)]
   _arrow_ (@body=maybeIndentedBlock / @:ParseError=(..$ =>"Invalid lambda body"))
 )
-Assignment:: @lhs=@(1+(Dereference / IndexedTerm / varNotKeyword) % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
-AddUpdate:: @lhs=varNotKeyword _ "+=" _ @rhs=required-extended-expr
-SubUpdate:: @lhs=varNotKeyword _ "-=" _ @rhs=required-extended-expr
-MulUpdate:: @lhs=varNotKeyword _ "*=" _ @rhs=required-extended-expr
-DivUpdate:: @lhs=varNotKeyword _ "/=" _ @rhs=required-extended-expr
-AndUpdate:: @lhs=varNotKeyword _ "and=" _ @rhs=required-extended-expr
-OrUpdate:: @lhs=varNotKeyword _ "or=" _ @rhs=required-extended-expr
+lvalue: Dereference / IndexedTerm / varNotKeyword
+Assignment:: @lhs=@(1+lvalue % (_`,__)) _ `= _ @rhs=@(*extended-expr % (__`,__))
+AddUpdate:: @lhs=lvalue _ "+=" _ @rhs=required-extended-expr
+SubUpdate:: @lhs=lvalue _ "-=" _ @rhs=required-extended-expr
+MulUpdate:: @lhs=lvalue _ "*=" _ @rhs=required-extended-expr
+DivUpdate:: @lhs=lvalue _ "/=" _ @rhs=required-extended-expr
+AndUpdate:: @lhs=lvalue _ "and=" _ @rhs=required-extended-expr
+OrUpdate:: @lhs=lvalue _ "or=" _ @rhs=required-extended-expr
 required-extended-expr: extended-expr / @:ParseError=(..$ =>"Invalid expression")
 type: @:OptionalType=(`?_@type=type) / @:PointerType=(`@_@pointed=type) / value-type
 value-type: (
