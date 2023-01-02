@@ -702,43 +702,73 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         break;
     }
     case ArrayType: {
-        // cmp = a.data - b.data;
-        // if (cmp != 0) {
-        //     cmp = a.length - b.length;
-        //     if (cmp != 0)
-        //         cmp = a.stride - b.stride;
+        // Logic is roughly as follows:
+        // if (lhs.items != rhs.items || lhs.stride != rhs.stride) {
+        //   for (i=0; i < lhs.len && i < rhs.len; i++) {
+        //     int c = cmp(lhs.items[i*lhs.stride], rhs.items[i*rhs.stride])
+        //     if (c != 0) return c;
+        //   }
         // }
-        // return cmp
+        // return lhs.len - rhs.len
 
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+        gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 0)),
+                     *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 0));
+        gcc_rvalue_t *lhs_stride = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2)),
+                     *rhs_stride = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2));
 
-        gcc_block_t *data_equal = gcc_new_block(func, fresh("data_equal")),
-                    *length_equal = gcc_new_block(func, fresh("len_equal")),
-                    *done = gcc_new_block(func, fresh("done"));
-        gcc_lvalue_t *cmp_var = gcc_local(func, NULL, int_t, fresh("difference"));
-        gcc_rvalue_t *cmp_val = gcc_lvalue_as_rvalue(cmp_var);
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 0));
-        gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 0));
-        gcc_assign(block, NULL, cmp_var, compare_values(env, Type(PointerType, .pointed=Type(VoidType)), lhs_data, rhs_data));
-        gcc_jump_condition(block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, cmp_val, gcc_zero(env->ctx, int_t)),
-                           data_equal, done);
+        gcc_type_t *int32 = gcc_type(env->ctx, INT32);
+        gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, fresh("i"));
+        gcc_rvalue_t *index_rval = gcc_lvalue_as_rvalue(index_var);
+        gcc_assign(block, NULL, index_var, gcc_zero(env->ctx, int32));
 
-        // data_equal:
-        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1));
-        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
-        gcc_assign(data_equal, NULL, cmp_var, compare_values(env, Type(Int32Type), lhs_len, rhs_len));
-        gcc_jump_condition(data_equal, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, cmp_val, gcc_zero(env->ctx, int_t)),
-                           length_equal, done);
+        gcc_jump_condition(block, NULL,
+                           gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL),
+                                         gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, lhs_data, rhs_data),
+                                         gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, lhs_stride, rhs_stride)),
+                           loop_end, loop_condition);
 
-        // length_equal:
-        gcc_rvalue_t *lhs_stride = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2));
-        gcc_rvalue_t *rhs_stride = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2));
-        gcc_assign(length_equal, NULL, cmp_var, compare_values(env, Type(Int32Type), lhs_stride, rhs_stride));
-        gcc_jump(length_equal, NULL, done);
+        // loop_condition:
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1)),
+                     *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *lhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, lhs_len);
+        gcc_rvalue_t *rhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, rhs_len);
+        gcc_rvalue_t *either_done = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_OR, gcc_type(env->ctx, BOOL),
+                                                  lhs_done, rhs_done);
 
-        // done:
-        gcc_return(done, NULL, cmp_val);
+        gcc_jump_condition(loop_condition, NULL, either_done, loop_end, loop_body);
+
+        // loop_body:
+        bl_type_t *item_t = Match(t, ArrayType)->item_type;
+
+        gcc_func_t *cmp_fn = get_compare_func(env, item_t);
+        assert(cmp_fn);
+        gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, lhs_stride);
+        gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, rhs_stride);
+        gcc_rvalue_t *args[] = { // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
+            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
+            gcc_lvalue_as_rvalue(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)),
+        };
+        gcc_rvalue_t *difference = gcc_call(env->ctx, NULL, cmp_fn, 2, args);
+
+        gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
+                    *keep_going = gcc_new_block(func, fresh("keep_going"));
+        gcc_jump_condition(loop_body, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, difference, gcc_zero(env->ctx, int_t)),
+                           early_return, keep_going);
+
+        // early_return:
+        gcc_return(early_return, NULL, difference);
+
+        // keep_going:
+        gcc_update(keep_going, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, int32));
+        gcc_jump(keep_going, NULL, loop_condition);
+
+        // loop_end:
+        gcc_return(loop_end, NULL, gcc_cast(env->ctx, NULL, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int32, lhs_len, rhs_len), int_t));
         break;
     }
     default: {

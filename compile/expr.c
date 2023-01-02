@@ -996,14 +996,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               *rhs = ast->__data.Less.rhs;
         // End of unsafe
         gcc_comparison_e cmp;
-        bool pointers_allowed = false;
+        bool is_ordered;
         switch (ast->tag) {
-        case Equal: cmp = GCC_COMPARISON_EQ; pointers_allowed = true; break;
-        case NotEqual: cmp = GCC_COMPARISON_NE; pointers_allowed = true; break;
-        case Less: cmp = GCC_COMPARISON_LT; break;
-        case LessEqual: cmp = GCC_COMPARISON_LE; break;
-        case Greater: cmp = GCC_COMPARISON_GT; break;
-        case GreaterEqual: cmp = GCC_COMPARISON_GE; break;
+        case Equal: cmp = GCC_COMPARISON_EQ; is_ordered = false; break;
+        case NotEqual: cmp = GCC_COMPARISON_NE; is_ordered = false; break;
+        case Less: cmp = GCC_COMPARISON_LT; is_ordered = true; break;
+        case LessEqual: cmp = GCC_COMPARISON_LE; is_ordered = true; break;
+        case Greater: cmp = GCC_COMPARISON_GT; is_ordered = true; break;
+        case GreaterEqual: cmp = GCC_COMPARISON_GE; is_ordered = true; break;
         default: assert(false);
         }
 
@@ -1015,7 +1015,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (lhs_t != rhs_t)
             compile_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
-        if (!pointers_allowed && has_pointer(lhs_t))
+        if (is_ordered && !is_comparable(lhs_t))
             compile_err(env, ast, "Ordered comparisons are only supported between value types (structs, integers, etc.), but this isn't a value type: %s",
                   type_to_string(lhs_t));
 
