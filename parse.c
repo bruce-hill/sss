@@ -138,6 +138,7 @@ const char *tag_names[] = {
     [Fail]="Fail",
     [TypeArray]="ArrayType", [TypeTable]="TableType", [TypeTuple]="TupleType",
     [TypeFunction]="FnType", [TypePointer]="PointerType", [TypeOptional]="OptionalType",
+    [TypeMeasure]="MeasureType",
     [Cast]="Cast", [As]="As", [Extern]="Extern",
     [Struct]="Struct", [StructDef]="StructDef", [StructField]="StructField", [StructFieldDef]="StructFieldDef",
     [EnumDef]="EnumDef", [EnumField]="EnumField",
@@ -570,6 +571,9 @@ ast_t *match_to_ast(match_t *m)
         }
         case TypeOptional: {
             return AST(m, TypeOptional, .type=capture_ast(m, "type"));
+        }
+        case TypeMeasure: {
+            return AST(m, TypeMeasure, .type=capture_ast(m, "type"), .units=unit_string(capture_istr(m, "units")));
         }
         case TypeArray: {
             return AST(m, TypeArray, .item_type=capture_ast(m, "itemType"));

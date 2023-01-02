@@ -30,13 +30,13 @@ static gcc_rvalue_t *math_binop_rec(
             compile_err(env, ast, "I don't know how to do math operations between %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
-        if (promote(env, rhs_t, &rhs, lhs_t))
-            return gcc_binary_op(env->ctx, loc, op, bl_type_to_gcc(env, lhs_t), lhs, rhs);
-        else if (promote(env, lhs_t, &lhs, rhs_t))
-            return gcc_binary_op(env->ctx, loc, op, bl_type_to_gcc(env, rhs_t), lhs, rhs);
-        else
-            compile_err(env, ast, "This math operation is between %s and %s, and I can't figure out how to do that without losing precision.",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
+        if (numtype_priority(lhs_t) < numtype_priority(rhs_t)) {
+            lhs = gcc_cast(env->ctx, NULL, lhs, bl_type_to_gcc(env, rhs_t));
+            lhs_t = rhs_t;
+        } else if (numtype_priority(lhs_t) > numtype_priority(rhs_t)) {
+            rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
+        }
+        return gcc_binary_op(env->ctx, loc, op, bl_type_to_gcc(env, lhs_t), lhs, rhs);
     }
 
     auto struct_ = Match(struct_t, StructType);
@@ -123,7 +123,10 @@ static void math_update_rec(
         if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
             compile_err(env, ast, "I don't know how to do math operations between %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
-        if (!promote(env, rhs_t, &rhs, lhs_t))
+
+        if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
+            rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
+        else if (numtype_priority(lhs_t) < numtype_priority(rhs_t))
             compile_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));
         return gcc_update(*block, loc, lhs, op, rhs);

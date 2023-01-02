@@ -73,6 +73,25 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
         return Type(PointerType, .is_optional=true, .pointed=Match(t, PointerType)->pointed);
     }
 
+    case TypeMeasure: {
+        auto measure = Match(ast, TypeMeasure);
+        bl_type_t *raw = parse_type(env, measure->type);
+        bl_type_t *measured = NULL;
+        switch (raw->tag) {
+        case IntType: measured = Type(IntType, .units=measure->units); break;
+        case Int32Type: measured = Type(Int32Type, .units=measure->units); break;
+        case Int16Type: measured = Type(Int16Type, .units=measure->units); break;
+        case Int8Type: measured = Type(Int8Type, .units=measure->units); break;
+        case NumType: measured = Type(NumType, .units=measure->units); break;
+        case Num32Type: measured = Type(Num32Type, .units=measure->units); break;
+        default: compile_err(env, measure->type, "This type shouldn't have units on it");
+        }
+        istr_t raw_units = num_units(raw);
+        if (raw_units)
+            compile_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
+        return measured;
+    }
+
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
         bl_type_t *ret_t = parse_type(env, fn->ret_type);
@@ -410,16 +429,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return intern_bytes(&t_units, sizeof(t_units));
             }
             case Modulus: {
-                if (u2 != intern_str(""))
+                if (u2)
                     compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
                 struct bl_type_s t_units = *t;
                 t_units.__data.IntType.units = u1;
                 return intern_bytes(&t_units, sizeof(t_units));
             }
             case Power: {
-                if (strlen(u1) > 0)
+                if (u1)
                     compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
-                if (strlen(u2) > 0)
+                if (u2)
                     compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
                 return t;
             }

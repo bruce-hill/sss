@@ -284,13 +284,14 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
     if (actual == needed)
         return true;
 
-    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed))
-        return true;
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed)) {
+        return num_units(actual) == num_units(needed);
+    }
 
     // Numeric promotion:
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed)) {
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
-        return true;
+        return num_units(actual) == num_units(needed);
     }
 
     // Optional promotion:

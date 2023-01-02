@@ -25,6 +25,8 @@ static CORD type_to_cord(bl_type_t *t) {
         case RangeType: return "Range";
         case ArrayType: {
             auto list = Match(t, ArrayType);
+            if (list->item_type == Type(CharType))
+                return "String";
             return CORD_cat("[", CORD_cat(type_to_cord(list->item_type), "]"));
         }
         case TableType: {

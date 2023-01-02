@@ -35,6 +35,7 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeTuple,
     TypeFunction, TypePointer, TypeOptional,
+    TypeMeasure,
     Cast, As,
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
@@ -205,6 +206,10 @@ struct ast_s {
         struct {
             ast_t *type;
         } TypeOptional;
+        struct {
+            ast_t *type;
+            istr_t units;
+        } TypeMeasure;
         struct {
             ast_t *value, *type;
         } Cast, As;

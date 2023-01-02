@@ -33,6 +33,7 @@ static int cmp_component_names(const void *v1, const void *v2)
 
 static istr_t unit_to_string(Unit *u)
 {
+    if (u->len == 0) return NULL;
     char *buf;
     size_t len;
     FILE *f = open_memstream(&buf, &len);
