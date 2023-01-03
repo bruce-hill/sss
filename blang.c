@@ -23,6 +23,9 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, 
     ast_t *ast = parse_file(f, NULL);
 
     if (verbose)
+        fprintf(stderr, "Result: %s\n", ast_to_str(ast));
+
+    if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
@@ -59,6 +62,9 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
     ast_t *ast = parse_file(f, on_err);
+
+    if (verbose)
+        fprintf(stderr, "Result: %s\n", ast_to_str(ast));
 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);

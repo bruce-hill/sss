@@ -595,7 +595,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto call = Match(ast, FunctionCall);
         gcc_rvalue_t *fn_ptr = NULL;
         gcc_func_t *fn = NULL;
-        auto fn_t = Match(get_type(env, call->fn), FunctionType);
+        bl_type_t *fn_bl_t = get_type(env, call->fn);
+        if (fn_bl_t->tag != FunctionType)
+            compile_err(env, call->fn, "This is not a callable function (it's a %s)", type_to_string(fn_bl_t));
+        auto fn_t = Match(fn_bl_t, FunctionType);
+
         int64_t num_args = length(fn_t->arg_types);
         gcc_rvalue_t **arg_vals = GC_MALLOC(sizeof(gcc_rvalue_t*)*num_args);
         // method calls:

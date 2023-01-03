@@ -48,8 +48,6 @@ typedef enum {
 
 typedef struct ast_s ast_t;
 
-const char *get_ast_tag_name(ast_tag_e tag);
-
 typedef struct {
     ast_t *condition, *body;
 } ast_clause_t;
@@ -141,7 +139,6 @@ struct ast_s {
         struct {
             List(istr_t) arg_names;
             List(ast_t*) arg_types;
-            ast_t *ret_type;
             ast_t *body;
         } Lambda;
         struct {
@@ -256,3 +253,8 @@ struct ast_s {
         } FieldName;
     } __data;
 };
+
+const char *ast_to_str(ast_t *ast);
+const char *get_ast_tag_name(ast_tag_e tag);
+
+// vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

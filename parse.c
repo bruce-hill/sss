@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdarg.h>
 #include <gc.h>
 #include <setjmp.h>
 
@@ -39,6 +40,25 @@ static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline bool nodent(parse_ctx_t *ctx, const char **pos);
 PARSER(parse_expr);
 PARSER(parse_term);
+
+__attribute__((noreturn))
+static void parse_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, ...) {
+    fputs("\x1b[31;1;7m", stderr);
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    span_t span = {.file=ctx->file, .start=start, .end=end};
+    fprint_span(stderr, &span, "\x1b[31;1;7m", 2);
+
+    fputs("\x1b[m", stderr);
+
+    if (ctx->on_err)
+        longjmp(*ctx->on_err, 1);
+    exit(1);
+}
 
 istr_t unescape(const char **out) {
     const char **endpos = out;
@@ -366,12 +386,12 @@ PARSER(parse_string) {
         }
         for (size_t i = first_line; i < (size_t)LIST_LEN(ctx->file->lines); i++) {
             auto line = LIST_ITEM(ctx->file->lines, i);
+            pos = ctx->file->text + line.offset;
             if (line.is_empty) {
-                ast_t *ast = NewAST(ctx, line.start, line.start, StringLiteral, .str="\n");
+                ast_t *ast = NewAST(ctx, pos, pos, StringLiteral, .str="\n");
                 APPEND(chunks, ast);
                 continue;
             }
-            pos = line.start;
             if (!match_indentation(&pos, starting_indent))
                 return NULL;
 
@@ -544,6 +564,45 @@ PARSER(parse_term) {
     return term;
 }
 
+PARSER(parse_splat_fncall) {
+    const char *start = pos;
+    ast_t *fn = parse_term(ctx, pos);
+    if (!fn) return NULL;
+    NEW_LIST(ast_t*, args);
+    for (;;) {
+        const char *arg_start = pos;
+        istr_t name = get_word(&pos);
+        if (name) {
+            spaces(&pos);
+            if (match(&pos, "=")) {
+                spaces(&pos);
+                ast_t *arg = parse_expr(ctx, pos);
+                if (!arg) parse_err(ctx, arg_start, pos, "I couldn't parse this keyword argument value");
+                ast_t *kwarg = NewAST(ctx, arg_start, arg->span.end, KeywordArg,
+                                      .name=name, .arg=arg);
+                APPEND(args, kwarg);
+                goto got_arg;
+            }
+            pos = arg_start;
+        }
+
+        ast_t *arg = parse_expr(ctx, pos);
+        if (!arg) break;
+        APPEND(args, arg);
+
+      got_arg:
+        ;
+
+        spaces(&pos);
+        if (!match(&pos, ","))
+            break;
+        spaces(&pos);
+    }
+    if (LIST_LEN(args) < 1)
+        return NULL;
+    return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
+}
+
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = parse_term(ctx, pos);
     if (!term) return NULL;
@@ -638,8 +697,10 @@ PARSER(parse_block) {
     const char *start = pos;
     NEW_LIST(ast_t*, statements);
     while (*pos) {
-        ast_t *stmt = parse_expr(ctx, pos);
-        if (!stmt) break;
+        ast_t *stmt = NULL;
+        if (!((stmt=parse_splat_fncall(ctx, pos))
+              || (stmt=parse_expr(ctx, pos))))
+            break;
         pos = stmt->span.end;
         APPEND(statements, stmt);
         if (!nodent(ctx, &pos)) break;
