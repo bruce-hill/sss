@@ -330,8 +330,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Cast: {
         return parse_type_ast(env, Match(ast, Cast)->type);
     }
-    case As: {
-        return parse_type_ast(env, Match(ast, As)->type);
+    case Bitcast: {
+        return parse_type_ast(env, Match(ast, Bitcast)->type);
     }
     case TypeArray: case TypePointer: case TypeFunction: {
         return Type(TypeType);
@@ -589,11 +589,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case If: {
         bl_type_t *t = NULL;
         auto if_ = Match(ast, If);
-        LIST_FOR (if_->clauses, clause, _) {
-            bl_type_t *clause_t = get_clause_type(env, clause->condition, clause->body);
+        for (int64_t i = 0; i < length(if_->conditions); i++) {
+            ast_t *cond = ith(if_->conditions, i);
+            ast_t *body = ith(if_->blocks, i);
+            bl_type_t *clause_t = get_clause_type(env, cond, body);
             bl_type_t *t2 = type_or_type(t, clause_t);
             if (!t2)
-                compile_err(env, clause->body,
+                compile_err(env, body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(clause_t));
             t = t2;
@@ -690,7 +692,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
     default: break;
     }
-    compile_err(env, ast, "I can't figure out what type a %s is", get_ast_tag_name(ast->tag));
+    compile_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));
 }
 
 bool is_discardable(env_t *env, ast_t *ast)

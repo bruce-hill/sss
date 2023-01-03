@@ -49,9 +49,9 @@ void compile_range_iteration(
     NEW_LIST(istr_t, label_names);
     append(label_names, intern_str("for"));
     if (for_loop->key)
-        append(label_names, for_loop->key);
+        append(label_names, Match(for_loop->key, Var)->name);
     if (for_loop->value)
-        append(label_names, for_loop->value);
+        append(label_names, Match(for_loop->value, Var)->name);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,

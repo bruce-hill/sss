@@ -1,42 +1,8 @@
+// Some basic operations defined on AST nodes, mainly converting to
+// strings for debugging.
 #include "ast.h"
 
 static const char *_ast_to_str(const char *name, ast_t *ast);
-
-static const char *ast_tag_names[] = {
-    [Unknown]="Unknown",
-    [Nil]="Nil", [Bool]="Bool", [Var]="Var",
-    [Int]="Int", [Num]="Num", [Range]="Range", [Char]="Char",
-    [StringLiteral]="StringLiteral", [StringJoin]="StringJoin", [DSL]="DSL", [Interp]="Interp",
-    [Declare]="Declare", [Assign]="Assign",
-    [AddUpdate]="AddUpdate", [SubtractUpdate]="SubtractUpdate", [MultiplyUpdate]="MultiplyUpdate", [DivideUpdate]="DivideUpdate",
-    [AndUpdate]="AndUpdate", [OrUpdate]="OrUpdate",
-    [Add]="Add", [Subtract]="Subtract", [Multiply]="Multiply", [Divide]="Divide", [Power]="Power", [Modulus]="Modulus",
-    [And]="And", [Or]="Or", [Xor]="Xor",
-    [Equal]="Equal", [NotEqual]="NotEqual", [Greater]="Greater", [GreaterEqual]="GreaterEqual", [Less]="Less", [LessEqual]="LessEqual",
-    [Not]="Not", [Negative]="Negative", [Len]="Len", [Maybe]="Maybe",
-    [TypeOf]="TypeOf", [SizeOf]="SizeOf",
-    [HeapAllocate]="HeapAllocate", [Dereference]="Dereference",
-    [Array]="Array", [Table]="Table",
-    [FunctionDef]="FunctionDef", [Lambda]="Lambda",
-    [FunctionCall]="FunctionCall", [KeywordArg]="KeywordArg",
-    [Block]="Block",
-    [Do]="Do", [If]="If", [For]="For", [While]="While", [Repeat]="Repeat", [When]="When",
-    [Skip]="Skip", [Stop]="Stop",
-    [Return]="Return",
-    [Fail]="Fail",
-    [Extern]="Extern",
-    [TypeArray]="TypeArray", [TypeTable]="TypeTable", [TypeTuple]="TypeTuple",
-    [TypeFunction]="TypeFunction", [TypePointer]="TypePointer", [TypeOptional]="TypeOptional",
-    [TypeMeasure]="TypeMeasure",
-    [Cast]="Cast", [As]="As",
-    [Struct]="Struct", [StructDef]="StructDef", [StructFieldDef]="StructFieldDef", [StructField]="StructField",
-    [EnumDef]="EnumDef", [EnumField]="EnumField",
-    [Index]="Index", [FieldAccess]="FieldAccess", [FieldName]="FieldName",
-};
-
-const char *get_ast_tag_name(ast_tag_e tag) {
-    return ast_tag_names[tag];
-}
 
 const char *ast_list_to_str(const char *name, List(ast_t*) asts)
 {
@@ -83,143 +49,94 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
     return ret;
 }
 
+const char *label_str(const char *name, const char *str) { return intern_strf("%s=\"%s\"", name, str); }
+const char *label_int(const char *name, int64_t i) { return intern_strf("%s=%ld", name, i); }
+const char *label_double(const char *name, double d) { return intern_strf("%s=%g", name, d); }
+const char *label_bool(const char *name, bool b) { return intern_strf("%s=%s", name, b ? "yes" : "no"); }
+
 const char *_ast_to_str(const char *name, ast_t *ast)
 {
     char *buf; size_t size;
     FILE *mem = open_memstream(&buf, &size);
     if (name) fprintf(mem, "%s=", name);
     if (!ast) return "(NULL AST)";
-#define FMT intern_strf
-#define CHILD(mem) _ast_to_str(#mem, data->mem)
-#define CHILDREN(mem) ast_list_to_str(#mem, data->mem)
-#define CHILDREN_STRS(mem) str_list_to_str(#mem, data->mem)
-#define CASE(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs(#t "(", mem); \
+
+    // A small DSL to make it easier to whip up string representations of these
+    // values with minimal boilerplate.
+#define F(field) _Generic((data->field), \
+                          ast_t*: _ast_to_str, \
+                          List(ast_t*): ast_list_to_str, \
+                          istr_t: label_str, \
+                          int64_t: label_int, \
+                          double: label_double, \
+                          bool: label_bool, \
+                          unsigned char: label_bool, \
+                          List(istr_t): str_list_to_str)(#field, data->field)
+#define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs(#t "(", mem); \
     fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
     fputs(")", mem); break; }
+#define BINOP(b) T(b, F(lhs), F(rhs))
+#define UNOP(u) T(u, F(value))
 
     switch (ast->tag) {
-        CASE(Unknown)
-        CASE(Nil, CHILD(type))
-        CASE(Bool, FMT("%s", data->b ? "yes" : "no"))
-        CASE(Var, data->name)
-        CASE(Int, FMT("%ld, precision=%d, units=%s", data->i, data->precision, data->units))
-        CASE(Num, FMT("%g, precision=%d, units=%s", data->n, data->precision, data->units))
-        CASE(Range, CHILD(first), CHILD(last), CHILD(step))
-        CASE(Char, FMT("'%c'", data->c))
-        CASE(StringLiteral, FMT("\"%s\"", data->str))
-        CASE(StringJoin, CHILDREN(children))
-        CASE(DSL, data->name, CHILD(str))
-        CASE(Interp, CHILD(value), data->labelled ? "labeled=true" : "labelled=false")
-        CASE(Declare, CHILD(var), CHILD(value))
-        CASE(Assign, CHILDREN(targets), CHILDREN(values))
-#define BINOP(b) CASE(b, CHILD(lhs), CHILD(rhs))
+        T(Unknown)
+        T(Nil, F(type))
+        T(Bool, F(b))
+        T(Var, F(name))
+        T(Int, F(i), F(precision), F(units))
+        T(Num, F(n), F(precision), F(units))
+        T(Range, F(first), F(last), F(step))
+        T(Char, intern_strf("'%c'", data->c))
+        T(StringLiteral, F(str))
+        T(StringJoin, F(children))
+        T(DSL, F(name), F(str))
+        T(Interp, F(value), data->labelled ? "labeled=true" : "labelled=false")
+        T(Declare, F(var), F(value))
+        T(Assign, F(targets), F(values))
         BINOP(AddUpdate) BINOP(SubtractUpdate) BINOP(MultiplyUpdate) BINOP(DivideUpdate) BINOP(AndUpdate)
         BINOP(OrUpdate) BINOP(Add) BINOP(Subtract) BINOP(Multiply) BINOP(Divide) BINOP(Power) BINOP(Modulus)
         BINOP(And) BINOP(Or) BINOP(Xor) BINOP(Equal) BINOP(NotEqual) BINOP(Greater) BINOP(GreaterEqual)
         BINOP(Less) BINOP(LessEqual)
-#undef BINOP
-#define UNOP(u) CASE(u, CHILD(value))
         UNOP(Not) UNOP(Negative) UNOP(Len) UNOP(Maybe) UNOP(TypeOf) UNOP(SizeOf) UNOP(HeapAllocate) UNOP(Dereference)
+        T(Array, F(type), F(items))
+        T(Table, F(key_type), F(value_type), F(items))
+        T(FunctionDef, F(name), F(arg_names), F(arg_types), F(arg_defaults), F(ret_type), F(body))
+        T(Lambda, F(arg_names), F(arg_types), F(body))
+        T(FunctionCall, F(fn), F(args))
+        T(KeywordArg, F(name), F(arg))
+        T(Block, F(statements))
+        T(Do, F(blocks))
+        T(If, F(conditions), F(blocks), F(else_body))
+        T(For, F(key), F(value), F(iter), F(body), F(between))
+        T(While, F(condition), F(body), F(between))
+        T(Repeat, F(body), F(between))
+        T(When, F(subject), "...", F(default_body)) // TODO print cases
+        T(Skip, F(target))
+        T(Stop, F(target))
+        UNOP(Return)
+        T(Fail, F(message))
+        T(Extern, F(name), F(bl_name), F(type))
+        T(TypeArray, F(item_type))
+        T(TypeTable, F(key_type), F(val_type))
+        T(TypeTuple, F(member_names), F(member_types))
+        T(TypeFunction, F(arg_names), F(arg_types), F(ret_type))
+        T(TypePointer, F(pointed))
+        T(TypeOptional, F(type))
+        T(TypeMeasure, F(type), F(units))
+        T(Cast, F(value), F(type))
+        T(Bitcast, F(value), F(type))
+        T(Struct, F(type), F(members))
+        T(StructDef, F(name), F(members))
+        T(StructFieldDef, F(names), F(type))
+        T(StructField, F(name), F(value))
+        T(EnumDef, F(name), F(tag_names), "tag_values=...", F(tag_types))
+        T(EnumField, F(name), F(value))
+        T(Index, F(indexed), F(index))
+        T(FieldAccess, F(fielded), F(field))
+#undef BINOP
 #undef UNOP
-        CASE(Array, CHILD(type), CHILDREN(items))
-        CASE(Table, CHILD(key_type), CHILD(value_type), CHILDREN(items))
-        CASE(FunctionDef, data->name, CHILDREN_STRS(arg_names), CHILDREN(arg_types), CHILDREN(arg_defaults), CHILD(ret_type), CHILD(body))
-        CASE(Lambda, CHILDREN_STRS(arg_names), CHILDREN(arg_types), CHILD(body))
-        CASE(FunctionCall, CHILD(fn), CHILDREN(args))
-        CASE(KeywordArg, data->name, CHILD(arg))
-        CASE(Block, CHILDREN(statements))
-        CASE(Do, CHILDREN(blocks))
-        CASE(If, "...") // TODO: clean up
-        CASE(For, data->key, data->value, CHILD(iter), CHILD(body), CHILD(between))
-        default: return "???";
-        // struct {
-        //     ast_t *condition, *body, *between;
-        // } While;
-        // struct {
-        //     ast_t *body, *between;
-        // } Repeat;
-        // struct {
-        //     ast_t *subject;
-        //     List(ast_case_t) cases;
-        //     ast_t *default_body;
-        // } When;
-        // struct {
-        //     istr_t target;
-        // } Skip, Stop;
-        // struct {
-        //     ast_t *value;
-        // } Return;
-        // struct {
-        //     ast_t *message;
-        // } Fail;
-        // struct {
-        //     istr_t name, bl_name;
-        //     ast_t *type;
-        // } Extern;
-        // struct {
-        //     ast_t *item_type;
-        // } TypeArray;
-        // struct {
-        //     ast_t *key_type, *val_type;
-        // } TypeTable;
-        // struct {
-        //     List(istr_t) member_names;
-        //     List(ast_t*) member_types;
-        // } TypeTuple;
-        // struct {
-        //     List(istr_t) arg_names;
-        //     List(ast_t*) arg_types;
-        //     ast_t *ret_type;
-        // } TypeFunction;
-        // struct {
-        //     ast_t *pointed;
-        // } TypePointer;
-        // struct {
-        //     ast_t *type;
-        // } TypeOptional;
-        // struct {
-        //     ast_t *type;
-        //     istr_t units;
-        // } TypeMeasure;
-        // struct {
-        //     ast_t *value, *type;
-        // } Cast, As;
-        // struct {
-        //     ast_t *type;
-        //     List(ast_t *) members;
-        // } Struct;
-        // struct {
-        //     istr_t name;
-        //     List(ast_t *) members;
-        // } StructDef;
-        // struct {
-        //     List(istr_t) names;
-        //     ast_t *type;
-        // } StructFieldDef;
-        // struct {
-        //     istr_t name;
-        //     ast_t *value;
-        // } StructField;
-        // struct {
-        //     istr_t name;
-        //     List(istr_t) tag_names;
-        //     List(int64_t) tag_values;
-        //     List(ast_t *) tag_types;
-        // } EnumDef;
-        // struct {
-        //     istr_t name;
-        //     ast_t *value;
-        // } EnumField;
-        // struct {
-        //     ast_t *indexed, *index;
-        // } Index;
-        // struct {
-        //     istr_t field;
-        //     ast_t *fielded;
-        // } FieldAccess;
-        // struct {
-        //     istr_t name;
-        // } FieldName;
+#undef F
+#undef T
     }
     fflush(mem);
     char *ret = GC_MALLOC_ATOMIC(size+1);

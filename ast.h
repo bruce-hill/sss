@@ -38,24 +38,19 @@ typedef enum {
     TypeArray, TypeTable, TypeTuple,
     TypeFunction, TypePointer, TypeOptional,
     TypeMeasure,
-    Cast, As,
+    Cast, Bitcast,
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
-    Index, FieldAccess, FieldName,
+    Index, FieldAccess,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (FieldName + 1)
+#define NUM_AST_TAGS (FieldAccess + 1)
 
 typedef struct ast_s ast_t;
 
 typedef struct {
-    ast_t *condition, *body;
-} ast_clause_t;
-
-typedef struct {
     ast_t *var, *tag, *body;
 } ast_case_t;
-
 
 struct ast_s {
     ast_tag_e tag;
@@ -155,12 +150,12 @@ struct ast_s {
             List(ast_t*) blocks;
         } Do;
         struct {
-            List(ast_clause_t) clauses;
+            List(ast_t*) conditions;
+            List(ast_t*) blocks;
             ast_t *else_body;
         } If;
         struct {
-            istr_t key, value;
-            ast_t *iter, *body, *between;
+            ast_t *key, *value, *iter, *body, *between;
         } For;
         struct {
             ast_t *condition, *body, *between;
@@ -213,7 +208,7 @@ struct ast_s {
         } TypeMeasure;
         struct {
             ast_t *value, *type;
-        } Cast, As;
+        } Cast, Bitcast;
         struct {
             ast_t *type;
             List(ast_t *) members;
@@ -244,16 +239,12 @@ struct ast_s {
             ast_t *indexed, *index;
         } Index;
         struct {
-            istr_t field;
             ast_t *fielded;
+            istr_t field;
         } FieldAccess;
-        struct {
-            istr_t name;
-        } FieldName;
     } __data;
 };
 
 const char *ast_to_str(ast_t *ast);
-const char *get_ast_tag_name(ast_tag_e tag);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

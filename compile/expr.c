@@ -934,13 +934,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto cast = Match(ast, Cast);
         gcc_rvalue_t *val = compile_expr(env, block, cast->value);
         bl_type_t *t = get_type(env, ast);
-        return gcc_bitcast(env->ctx, loc, val, bl_type_to_gcc(env, t));
-    }
-    case As: {
-        auto as = Match(ast, As);
-        gcc_rvalue_t *val = compile_expr(env, block, as->value);
-        bl_type_t *t = get_type(env, ast);
         return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, t));
+    }
+    case Bitcast: {
+        auto bitcast = Match(ast, Bitcast);
+        gcc_rvalue_t *val = compile_expr(env, block, bitcast->value);
+        bl_type_t *t = get_type(env, ast);
+        return gcc_bitcast(env->ctx, loc, val, bl_type_to_gcc(env, t));
     }
     case Nil: {
         bl_type_t *t = get_type(env, ast);
@@ -1143,11 +1143,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_block_t *end_if = if_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
-        foreach (if_->clauses, clause, last_clause) {
+        for (int64_t i = 0; i < length(if_->conditions); i++) {
+            ast_t *condition = ith(if_->conditions, i);
+            ast_t *body = ith(if_->blocks, i);
             gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
             gcc_block_t *if_falsey = gcc_new_block(func, fresh("elseif"));
 
-            ast_t *condition = clause->condition, *body = clause->body;
             env_t branch_env = *env;
             branch_env.bindings = hashmap_new();
             branch_env.bindings->fallback = env->bindings;
@@ -1390,7 +1391,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     default: break;
     }
-    compile_err(env, ast, "I haven't yet implemented compiling for %s", get_ast_tag_name(ast->tag)); 
+    compile_err(env, ast, "I haven't yet implemented compiling for: %s", ast_to_str(ast)); 
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
