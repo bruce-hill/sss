@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
     assert(ctx != NULL);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-lintern", "-lbp", "-lbhash", "-lm", "-L.", "-lblang",
+        "-lgc", "-lcord", "-lm", "-lintern", "-lbhash", "-lm", "-L.", "-lblang",
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)
