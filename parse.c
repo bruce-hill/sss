@@ -18,7 +18,7 @@ typedef struct {
 
 #define PARSER(name) ast_t *name(parse_ctx_t *ctx, const char *pos)
 
-int op_tightness[NUM_AST_TAGS] = {
+static int op_tightness[NUM_AST_TAGS] = {
     [Power]=1,
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3,
@@ -28,6 +28,12 @@ int op_tightness[NUM_AST_TAGS] = {
     [And]=7, [Or]=7, [Xor]=7,
 };
 
+static const char *keywords[] = {
+    "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
+    "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","elseif","else","do","deftype",
+    "def","between","as","and", NULL,
+};
+
 static inline size_t chars(const char **pos, const char *allow);
 static inline size_t not_chars(const char **pos, const char *forbid);
 static inline size_t spaces(const char **pos);
@@ -35,6 +41,7 @@ static inline size_t whitespace(const char **pos);
 static inline size_t match(const char **pos, const char *target);
 static inline size_t match_word(const char **pos, const char *word);
 static inline istr_t get_word(const char **pos);
+static inline istr_t get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline bool nodent(parse_ctx_t *ctx, const char **pos);
@@ -128,6 +135,15 @@ istr_t get_word(const char **pos) {
     while (isalpha(**pos) || isdigit(**pos) || **pos == '_')
         ++(*pos);
     return intern_strn(word, (size_t)(*pos - word));
+}
+
+istr_t get_id(const char **pos) {
+    istr_t word = get_word(pos);
+    if (!word) return word;
+    for (int i = 0; keywords[i]; i++)
+        if (strcmp(word, keywords[i]) == 0)
+            return NULL;
+    return word;
 }
 
 bool comment(const char **pos) {
@@ -282,7 +298,7 @@ ast_t *parse_fielded(parse_ctx_t *ctx, ast_t *lhs) {
     const char *pos = lhs->span.end;
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
-    istr_t field = get_word(&pos);
+    istr_t field = get_id(&pos);
     if (!field) return NULL;
     return NewAST(ctx, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
@@ -438,7 +454,7 @@ PARSER(parse_string) {
     } else {
         // Inline string:
         int depth = 1;
-        while (depth > 0) {
+        while (depth > 0 && *pos) {
             size_t len = strcspn(pos, delims[d].special);
             if (len > 0) {
                 ast_t *chunk = NewAST(ctx, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
@@ -462,24 +478,30 @@ PARSER(parse_string) {
                 istr_t unescaped = unescape(&pos);
                 ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=unescaped);
                 APPEND(chunks, chunk);
+                pos = chunk->span.end;
                 break;
             }
             default: {
                 const char *start = pos;
-                if (delims[d].open) {
-                    if (match(&pos, delims[d].open)) {
-                        ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=intern_str(delims[d].open));
-                        APPEND(chunks, chunk);
-                    }
+                if (delims[d].open && match(&pos, delims[d].open)) {
+                    ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=intern_str(delims[d].open));
+                    APPEND(chunks, chunk);
+                    pos = chunk->span.end;
                     ++depth;
+                    continue;
                 }
                 start = pos;
                 if (match(&pos, delims[d].close)) {
+                    --depth;
                     if (depth > 0) {
                         ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=intern_str(delims[d].close));
                         APPEND(chunks, chunk);
+                        pos = chunk->span.end;
+                    } else {
+                        break;
                     }
                 }
+                ++pos;
                 break;
             }
             }
@@ -497,7 +519,6 @@ STUB_PARSER(parse_stop)
 STUB_PARSER(parse_return)
 STUB_PARSER(parse_lambda)
 STUB_PARSER(parse_struct)
-STUB_PARSER(parse_var)
 STUB_PARSER(parse_array)
 STUB_PARSER(parse_cast)
 STUB_PARSER(parse_bitcast)
@@ -517,6 +538,13 @@ PARSER(parse_fail) {
     if (!match_word(&pos, "fail")) return NULL;
     ast_t *msg = parse_expr(ctx, pos);
     return NewAST(ctx, start, msg ? msg->span.end : pos, Fail, .message=msg);
+}
+
+PARSER(parse_var) {
+    const char *start = pos;
+    istr_t name = get_id(&pos);
+    if (!name) return NULL;
+    return NewAST(ctx, start, pos, Var, .name=name);
 }
 
 PARSER(parse_term) {
@@ -568,10 +596,11 @@ PARSER(parse_splat_fncall) {
     const char *start = pos;
     ast_t *fn = parse_term(ctx, pos);
     if (!fn) return NULL;
+    pos = fn->span.end;
     NEW_LIST(ast_t*, args);
     for (;;) {
         const char *arg_start = pos;
-        istr_t name = get_word(&pos);
+        istr_t name = get_id(&pos);
         if (name) {
             spaces(&pos);
             if (match(&pos, "=")) {
