@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "hardparse.h"
+#include "parse.h"
 #include "files.h"
 #include "typecheck.h"
 #include "compile/compile.h"

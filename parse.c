@@ -6,7 +6,7 @@
 #include <setjmp.h>
 
 #include "ast.h"
-#include "hardparse.h"
+#include "parse.h"
 #include "libblang/list.h"
 #include "units.h"
 
