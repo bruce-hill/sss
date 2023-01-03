@@ -10,7 +10,7 @@
 #include "compile/compile.h"
 #include "types.h"
 
-bl_type_t *parse_type(env_t *env, ast_t *ast);
+bl_type_t *parse_type_ast(env_t *env, ast_t *ast);
 bl_type_t *get_type(env_t *env, ast_t *ast);
 bool is_discardable(env_t *env, ast_t *ast);
 void check_discardable(env_t *env, ast_t *ast);

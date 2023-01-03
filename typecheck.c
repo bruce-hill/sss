@@ -28,7 +28,7 @@ static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
     }
 }
 
-bl_type_t *parse_type(env_t *env, ast_t *ast)
+bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Var: {
@@ -39,7 +39,7 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        bl_type_t *fielded_t = parse_type(env, access->fielded);
+        bl_type_t *fielded_t = parse_type_ast(env, access->fielded);
         binding_t *b = get_from_namespace(env, fielded_t, access->field);
         if (!b || b->type->tag != TypeType)
             compile_err(env, ast, "I don't know any type with this name.");
@@ -48,7 +48,7 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
 
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
-        bl_type_t *item_t = parse_type(env, item_type);
+        bl_type_t *item_t = parse_type_ast(env, item_type);
         if (!item_t) compile_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
@@ -56,17 +56,17 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         if (ptr->pointed->tag == TypeOptional) {
-            bl_type_t *pointed_t = parse_type(env, Match(ptr->pointed, TypeOptional)->type);
+            bl_type_t *pointed_t = parse_type_ast(env, Match(ptr->pointed, TypeOptional)->type);
             return Type(PointerType, .is_optional=true, .pointed=pointed_t);
         } else {
-            bl_type_t *pointed_t = parse_type(env, ptr->pointed);
+            bl_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
             return Type(PointerType, .is_optional=false, .pointed=pointed_t);
         }
     }
 
     case TypeOptional: {
         auto opt = Match(ast, TypeOptional);
-        bl_type_t *t = parse_type(env, opt->type);
+        bl_type_t *t = parse_type_ast(env, opt->type);
         if (t->tag != PointerType)
             compile_err(env, ast, "I only know how to do optional types for pointers like @%s (because NULL is used to represent the absence of a value), "
                         "but this type isn't a pointer", type_to_string(t));
@@ -75,7 +75,7 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
 
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
-        bl_type_t *raw = parse_type(env, measure->type);
+        bl_type_t *raw = parse_type_ast(env, measure->type);
         bl_type_t *measured = NULL;
         switch (raw->tag) {
         case IntType: measured = Type(IntType, .units=measure->units); break;
@@ -94,10 +94,10 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
 
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
-        bl_type_t *ret_t = parse_type(env, fn->ret_type);
+        bl_type_t *ret_t = parse_type_ast(env, fn->ret_type);
         NEW_LIST(bl_type_t*, arg_types);
         LIST_FOR (fn->arg_types, arg_t, _) {
-            bl_type_t *bl_arg_t = parse_type(env, *arg_t);
+            bl_type_t *bl_arg_t = parse_type_ast(env, *arg_t);
             APPEND(arg_types, bl_arg_t);
         }
         return Type(FunctionType, .arg_types=arg_types, .ret=ret_t);
@@ -108,8 +108,9 @@ bl_type_t *parse_type(env_t *env, ast_t *ast)
         NEW_LIST(istr_t, member_names);
         NEW_LIST(bl_type_t*, member_types);
         for (int64_t i = 0, len = length(tuple->member_types); i < len; i++) {
-            APPEND(member_names, ith(tuple->member_names, i));
-            bl_type_t *member_t = parse_type(env, ith(tuple->member_types, i));
+            istr_t member_name = ith(tuple->member_names, i);
+            APPEND(member_names, member_name);
+            bl_type_t *member_t = parse_type_ast(env, ith(tuple->member_types, i));
             APPEND(member_types, member_t);
         }
         bl_type_t *t = Type(StructType, .name=NULL, .field_names=member_names, .field_types=member_types);
@@ -129,7 +130,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Nil: {
-        bl_type_t *pointed = parse_type(env, Match(ast, Nil)->type);
+        bl_type_t *pointed = parse_type_ast(env, Match(ast, Nil)->type);
         return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Bool: {
@@ -207,7 +208,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Array: {
         auto list = Match(ast, Array);
         if (list->type)
-            return parse_type(env, list->type);
+            return parse_type_ast(env, list->type);
 
         bl_type_t *item_type = NULL;
         for (int64_t i = 0; i < LIST_LEN(list->items); i++) {
@@ -326,10 +327,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(AbortType);
     }
     case Cast: {
-        return parse_type(env, Match(ast, Cast)->type);
+        return parse_type_ast(env, Match(ast, Cast)->type);
     }
     case As: {
-        return parse_type(env, Match(ast, As)->type);
+        return parse_type_ast(env, Match(ast, As)->type);
     }
     case TypeArray: case TypePointer: case TypeFunction: {
         return Type(TypeType);
@@ -493,8 +494,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         NEW_LIST(bl_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
-            bl_type_t *t = parse_type(env, arg_def);
-            APPEND(arg_names, LIST_ITEM(lambda->arg_names, i));
+            bl_type_t *t = parse_type_ast(env, arg_def);
+            istr_t arg_name = LIST_ITEM(lambda->arg_names, i);
+            APPEND(arg_names, arg_name);
             APPEND(arg_types, t);
         }
 
@@ -525,18 +527,22 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         NEW_LIST(ast_t*, arg_defaults);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(def->arg_types, i);
-            APPEND(arg_names, LIST_ITEM(def->arg_names, i));
+            istr_t arg_name = LIST_ITEM(def->arg_names, i);
+            APPEND(arg_names, arg_name);
             if (arg_def) {
-                APPEND(arg_types, parse_type(env, arg_def));
-                APPEND(arg_defaults, NULL);
+                bl_type_t *arg_type = parse_type_ast(env, arg_def);
+                APPEND(arg_types, arg_type);
+                ast_t *default_val = NULL;
+                APPEND(arg_defaults, default_val);
             } else {
                 ast_t *default_val = LIST_ITEM(def->arg_defaults, i);
-                APPEND(arg_types, get_type(env, default_val));
+                bl_type_t *arg_type = get_type(env, default_val);
+                APPEND(arg_types, arg_type);
                 APPEND(arg_defaults, default_val);
             }
         }
 
-        bl_type_t *ret = def->ret_type ? parse_type(env, def->ret_type) : Type(VoidType);
+        bl_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
@@ -554,7 +560,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                     compile_err(env, *member, "Anonymous structs must have names for each field");
                 auto field = Match(*member, StructField);
                 APPEND(field_names, field->name);
-                APPEND(field_types, get_type(env, field->value));
+                bl_type_t *field_type = get_type(env, field->value);
+                APPEND(field_types, field_type);
             }
 
             bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types);
@@ -575,7 +582,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             return b->type_value;
         else
             compile_err(env, ast, "There isn't any kind of struct like this");
-        // return parse_type(env, struct_->type);
+        // return parse_type_ast(env, struct_->type);
     }
 
     case If: {

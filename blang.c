@@ -1,7 +1,4 @@
 #include <bhash.h>
-#include <bp/files.h>
-#include <bp/match.h>
-#include <bp/pattern.h>
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
@@ -11,18 +8,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "parse.h"
+#include "hardparse.h"
+#include "files.h"
 #include "typecheck.h"
 #include "compile/compile.h"
 
 #define streq(a,b) (strcmp(a,b) == 0)
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
-int compile_to_file(gcc_jit_context *ctx, file_t *f, bool verbose, int argc, char *argv[])
+int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
-    ast_t *ast = parse(f, NULL);
+    ast_t *ast = parse_file(f, NULL);
 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
@@ -53,16 +51,14 @@ int compile_to_file(gcc_jit_context *ctx, file_t *f, bool verbose, int argc, cha
     printf("\x1b[0;1;32mSuccessfully compiled %s to %s\x1b[m\n", argv[i], binary_name);
     gcc_jit_result_release(result);
 
-    recycle_all_matches();
-    destroy_file(&f);
     return 0;
 }
 
-int run_file(gcc_jit_context *ctx, jmp_buf *on_err, file_t *f, bool verbose, int argc, char *argv[])
+int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
-    ast_t *ast = parse(f, on_err);
+    ast_t *ast = parse_file(f, on_err);
 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
@@ -108,16 +104,17 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         fflush(buf_file);
         if (buf_size == 0) break;
 
-        file_t *f = spoof_file(NULL, "<repl>", buf, buf_size);
+        bl_file_t *f = bl_spoof_file("<repl>", buf);
         env->file = f;
         if (setjmp(on_err) != 0)
             continue;
 
-        ast_t *ast = parse(f, &on_err);
+        ast_t *ast = parse_file(f, &on_err);
         if (!is_discardable(env, ast))
-            ast = AST(NULL, Block, .statements=LIST(ast_t*, 
-                      AST(NULL, FunctionCall, .fn=AST(NULL, Var, .name=intern_str("say")),
-                      .args=LIST(ast_t*, AST(NULL, StringJoin, .children=LIST(ast_t*, ast))))));
+            ast = FakeAST(Block, .statements=LIST(
+                    ast_t*, 
+                    FakeAST(FunctionCall, .fn=FakeAST(Var, .name=intern_str("say")),
+                            .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, ast))))));
 
         const char *repl_name = fresh("repl");
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
@@ -183,7 +180,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        file_t *f = load_file(NULL, argv[i]);
+        bl_file_t *f = bl_load_file(argv[i]);
         if (!f) errx(1, "Couldn't open file: %s", argv[i]);
         if (run_program)
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);

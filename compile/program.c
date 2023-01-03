@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <bhash.h>
 #include <libgccjit.h>
-#include <bp/files.h>
 #include <ctype.h>
 #include <err.h>
 #include <limits.h>
@@ -13,10 +12,11 @@
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
+#include "../files.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, debug);
 

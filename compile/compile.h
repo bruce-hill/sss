@@ -1,5 +1,4 @@
 #pragma once
-#include <bp/files.h>
 #include <gc/gc.h>
 #include <libgccjit.h>
 #include <intern.h>
@@ -11,6 +10,7 @@
 #include "../environment.h"
 #include "../types.h"
 #include "../util.h"
+#include "../files.h"
 #include "libgccjit_abbrev.h"
 
 #define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
@@ -23,9 +23,9 @@
 #define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
 #define gcc_int64(ctx,i) gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), i)
 
-#define ast_loc(env, ast) ((ast) && (ast)->match ? gcc_new_location((env)->ctx, (env)->file->filename,\
-        (int)get_line_number((env)->file, (ast)->match->start),\
-        (int)get_line_column((env)->file, (ast)->match->start)) : NULL)
+#define ast_loc(env, ast) ((ast) && (ast)->span.start ? gcc_new_location((env)->ctx, (ast)->span.file->filename,\
+        (int)bl_get_line_number((ast)->span.file, (ast)->span.start),\
+        (int)bl_get_line_column((ast)->span.file, (ast)->span.start)) : NULL)
 
 typedef struct {
     bl_type_t *key_type, *value_type;
@@ -62,7 +62,7 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);

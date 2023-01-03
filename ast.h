@@ -2,13 +2,15 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <bp/match.h>
 #include <intern.h>
 
 #include "libblang/list.h"
+#include "span.h"
 #include "util.h"
 
-#define AST(m, ast_tag, ...) (new(ast_t, .tag=ast_tag, .match=m, .__data.ast_tag={__VA_ARGS__}))
+#define NewAST(ctx, _start, _end, ast_tag, ...) (new(ast_t, .span.file=(ctx)->file, .span.start=_start, .span.end=_end,\
+                                                     .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
+#define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 
 typedef enum {
     Unknown = 0,
@@ -42,7 +44,7 @@ typedef enum {
     Index, FieldAccess, FieldName,
 } ast_tag_e;
 
-#define NUM_TYPES (FieldName + 1)
+#define NUM_AST_TAGS (FieldName + 1)
 
 typedef struct ast_s ast_t;
 
@@ -59,7 +61,7 @@ typedef struct {
 
 struct ast_s {
     ast_tag_e tag;
-    match_t *match;
+    span_t span;
     union {
         struct {
         } Unknown;

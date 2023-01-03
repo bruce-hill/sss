@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "ast.h"
+#include "files.h"
 #include "types.h"
 #include "environment.h"
 #include "compile/compile.h"
@@ -97,7 +98,7 @@ static bl_type_t *define_string_type(env_t *env)
     return str_type;
 }
 
-env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug)
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug)
 {
     env_t *env = new(env_t,
         .ctx = ctx,
@@ -120,7 +121,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug)
         FunctionType,
         .arg_names=LIST(istr_t, intern_str("str"), intern_str("end")),
         .arg_types=LIST(bl_type_t*, string_type, string_type),
-        .arg_defaults=LIST(ast_t*, NULL, AST(NULL, StringLiteral, .str=intern_str("\n"))),
+        .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringLiteral, .str=intern_str("\n"))),
         .ret=Type(VoidType));
 
     gcc_param_t *gcc_say_params[] = {
@@ -149,7 +150,7 @@ void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
     va_end(args);
     fputs("\x1b[m\n\n", stderr);
     if (ast)
-        highlight_match(stderr, env->file, (ast)->match, 2);
+        fprint_span(stderr, &ast->span, "\x1b[31;1m", 2);
 
     if (env->on_err)
         longjmp(*env->on_err, 1);

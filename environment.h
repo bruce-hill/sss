@@ -2,13 +2,13 @@
 #pragma once
 
 #include <bhash.h>
-#include <bp/files.h>
 #include <intern.h>
 #include <libgccjit.h>
 #include <setjmp.h>
 #include <stdbool.h>
 
 #include "ast.h"
+#include "files.h"
 #include "compile/libgccjit_abbrev.h"
 #include "libblang/list.h"
 #include "types.h"
@@ -36,7 +36,7 @@ typedef struct {
 
 typedef struct env_s {
     gcc_ctx_t *ctx;
-    file_t *file;
+    bl_file_t *file;
     jmp_buf *on_err;
     hashmap_t *print_funcs; // type -> func
     hashmap_t *cmp_funcs; // type -> func
@@ -55,7 +55,7 @@ typedef struct env_s {
 __attribute__((noreturn, format(printf,3,4)))
 void compile_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
-env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, file_t *f, bool debug);
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
 hashmap_t *get_namespace(env_t *env, bl_type_t *t);

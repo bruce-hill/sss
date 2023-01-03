@@ -2,8 +2,6 @@
 #include <assert.h>
 #include <bhash.h>
 #include <libgccjit.h>
-#include <bp/files.h>
-#include <bp/printmatch.h>
 #include <ctype.h>
 #include <err.h>
 #include <gc/cord.h>
@@ -13,11 +11,12 @@
 #include <stdint.h>
 
 #include "../ast.h"
-#include "compile.h"
-#include "libgccjit_abbrev.h"
+#include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
+#include "compile.h"
+#include "libgccjit_abbrev.h"
 
 static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
 {
@@ -201,7 +200,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
     case Extern: {
         auto ext = Match(ast, Extern);
-        bl_type_t *t = parse_type(env, ext->type);
+        bl_type_t *t = parse_type_ast(env, ext->type);
         if (t->tag == FunctionType) {
             auto fn = Match(t, FunctionType); 
             gcc_type_t *gcc_ret_t = bl_type_to_gcc(env, fn->ret);
@@ -377,10 +376,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert((*chunk)->tag == Interp);
             auto interp = Match(*chunk, Interp);
             if (interp->labelled) {
-                match_t *m = interp->value->match;
                 char *buf; size_t size;
                 FILE *f = open_memstream(&buf, &size);
-                fprint_match(f, m->start, m, NULL);
+                span_t span = interp->value->span;
+                fwrite(span.start, 1, (size_t)(span.end - span.start), f);
                 fprintf(f, ": ");
                 fflush(f);
                 gcc_eval(*block, chunk_loc, gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, buf), file));
@@ -611,7 +610,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             case TypeType: {
                 if (access->fielded->tag != Var)
                     compile_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
-                bl_type_t *fielded_type = parse_type(env, access->fielded);
+                bl_type_t *fielded_type = parse_type_ast(env, access->fielded);
                 binding_t *binding = get_from_namespace(env, fielded_type, access->field);
                 if (!binding)
                     compile_err(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_to_string(fielded_type));
@@ -842,7 +841,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     char *info = NULL;
                     size_t size = 0;
                     FILE *f = open_memstream(&info, &size);
-                    highlight_match(f, env->file, ast->match, 2);
+                    fprint_span(f, &ast->span, "\x1b[31;1m", 2);
                     fputc('\0', f);
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
@@ -1370,7 +1369,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
-        highlight_match(f, env->file, ast->match, 2);
+        fprint_span(f, &ast->span, "\x1b[31;1m", 2);
         fputc('\0', f);
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);

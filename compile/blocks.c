@@ -96,7 +96,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
                 assert(field_t || field_type_ast->tag != StructDef);
                 APPEND(union_field_names, tag_name);
                 if (!field_t)
-                    field_t = parse_type(env, field_type_ast);
+                    field_t = parse_type_ast(env, field_type_ast);
                 APPEND(union_field_types, field_t);
 
                 // Bind the struct type:
@@ -130,7 +130,7 @@ static void populate_def_members(env_t *env, ast_t *def)
         foreach (struct_def->members, member, _) {
             if ((*member)->tag == StructFieldDef) {
                 auto field_def = Match((*member), StructFieldDef);
-                bl_type_t *ft = parse_type(&inner_env, field_def->type);
+                bl_type_t *ft = parse_type_ast(&inner_env, field_def->type);
                 if (ft->tag == VoidType)
                     compile_err(env, field_def->type, "This field is a Void type, but that isn't supported for struct members.");
                 auto struct_type = Match(t, StructType);
