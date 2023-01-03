@@ -57,10 +57,12 @@ static void parse_err(parse_ctx_t *ctx, const char *start, const char *end, cons
     vfprintf(stderr, fmt, args);
     va_end(args);
 
+    fputs("\x1b[m\n\n", stderr);
+
     span_t span = {.file=ctx->file, .start=start, .end=end};
     fprint_span(stderr, &span, "\x1b[31;1;7m", 2);
 
-    fputs("\x1b[m", stderr);
+    fputs("\x1b[m\n", stderr);
 
     if (ctx->on_err)
         longjmp(*ctx->on_err, 1);
@@ -196,6 +198,7 @@ bool match_indentation(const char **out, size_t indentation) {
 }
 
 PARSER(parse_parens) {
+    const char *start = pos;
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
     whitespace(&pos);
@@ -203,6 +206,8 @@ PARSER(parse_parens) {
     if (!expr) return NULL;
     pos = expr->span.end;
     if (!match(&pos, ")")) return NULL;
+    expr->span.start = start;
+    expr->span.end = pos;
     return expr;
 }
 
@@ -359,6 +364,16 @@ PARSER(parse_char) {
     return NewAST(ctx, start, pos, Char, .c=c);
 }
 
+PARSER(parse_interpolation) {
+    const char *start = pos;
+    if (!match(&pos, "$")) return NULL;
+    bool labelled = match(&pos, ":");
+    ast_t *value = parse_term(ctx, pos);
+    if (!value) return NULL;
+    pos = value->span.end;
+    return NewAST(ctx, start, pos, Interp, .value=value, .labelled=labelled);
+}
+
 PARSER(parse_string) {
     const char *string_start = pos;
     static struct {
@@ -431,13 +446,11 @@ PARSER(parse_string) {
 
                 switch (*pos) {
                 case '$': { // interpolation
-                    ast_t *chunk = parse_term(ctx, pos);
-                    if (chunk) {
-                        APPEND(chunks, chunk);
-                        pos = chunk->span.end;
-                    } else {
-                        ++pos;
-                    }
+                    ast_t *chunk = parse_interpolation(ctx, pos);
+                    if (!chunk)
+                        parse_err(ctx, pos, pos+1, "This interpolation didn't parse");
+                    APPEND(chunks, chunk);
+                    pos = chunk->span.end;
                     break;
                 }
                 case '\\': { // escape
@@ -464,13 +477,11 @@ PARSER(parse_string) {
 
             switch (*pos) {
             case '$': { // interpolation
-                ast_t *chunk = parse_term(ctx, pos);
-                if (chunk) {
-                    APPEND(chunks, chunk);
-                    pos = chunk->span.end;
-                } else {
-                    ++pos;
-                }
+                ast_t *chunk = parse_interpolation(ctx, pos);
+                if (!chunk)
+                    parse_err(ctx, pos, pos+1, "This interpolation didn't parse");
+                APPEND(chunks, chunk);
+                pos = chunk->span.end;
                 break;
             }
             case '\\': { // escape
