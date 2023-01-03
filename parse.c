@@ -45,6 +45,7 @@ static inline istr_t get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline bool nodent(parse_ctx_t *ctx, const char **pos);
+static ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_parens);
 PARSER(parse_expr);
 PARSER(parse_term);
 
@@ -472,8 +473,8 @@ PARSER(parse_string) {
             if (len > 0) {
                 ast_t *chunk = NewAST(ctx, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
                 APPEND(chunks, chunk);
+                pos = chunk->span.end;
             }
-            pos += len;
 
             switch (*pos) {
             case '$': { // interpolation
@@ -533,7 +534,6 @@ STUB_PARSER(parse_struct)
 STUB_PARSER(parse_array)
 STUB_PARSER(parse_cast)
 STUB_PARSER(parse_bitcast)
-STUB_PARSER(parse_fncall)
 #undef STUB
 
 PARSER(parse_nil) {
@@ -585,7 +585,7 @@ PARSER(parse_term) {
         || (term=parse_array(ctx, pos))
         || (term=parse_cast(ctx, pos))
         || (term=parse_bitcast(ctx, pos))
-        || (term=parse_fncall(ctx, pos)));
+        || (term=parse_fncall(ctx, pos, true)));
 
     if (!success) return NULL;
 
@@ -603,11 +603,19 @@ PARSER(parse_term) {
     return term;
 }
 
-PARSER(parse_splat_fncall) {
+ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_parens) {
     const char *start = pos;
     ast_t *fn = parse_term(ctx, pos);
     if (!fn) return NULL;
     pos = fn->span.end;
+
+    spaces(&pos);
+    const char *paren_pos = pos;
+    if (match(&pos, "("))
+        requires_parens = true;
+    else if (requires_parens)
+        return NULL;
+
     NEW_LIST(ast_t*, args);
     for (;;) {
         const char *arg_start = pos;
@@ -621,6 +629,7 @@ PARSER(parse_splat_fncall) {
                 ast_t *kwarg = NewAST(ctx, arg_start, arg->span.end, KeywordArg,
                                       .name=name, .arg=arg);
                 APPEND(args, kwarg);
+                pos = kwarg->span.end;
                 goto got_arg;
             }
             pos = arg_start;
@@ -629,6 +638,7 @@ PARSER(parse_splat_fncall) {
         ast_t *arg = parse_expr(ctx, pos);
         if (!arg) break;
         APPEND(args, arg);
+        pos = arg->span.end;
 
       got_arg:
         ;
@@ -638,8 +648,14 @@ PARSER(parse_splat_fncall) {
             break;
         spaces(&pos);
     }
+
+    spaces(&pos);
+    if (requires_parens && !match(&pos, "("))
+        parse_err(ctx, paren_pos, pos, "This parenthesis is unclosed");
+
     if (LIST_LEN(args) < 1)
         return NULL;
+
     return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
 }
 
@@ -690,7 +706,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
         assert(op_tightness[tag]);
 
-        whitespace(&pos);
+        spaces(&pos);
         ast_t *rhs = parse_term(ctx, pos);
         if (!rhs) goto no_more_binops;
         pos = rhs->span.end;
@@ -716,8 +732,8 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         // Bind two terms into one:
         LIST_REMOVE(binops, tightest_op);
         ast_t *lhs = LIST_ITEM(terms, tightest_op);
+        ast_t *rhs = LIST_ITEM(terms, tightest_op + 1);
         LIST_REMOVE(terms, tightest_op);
-        ast_t *rhs = LIST_ITEM(terms, tightest_op);
 
         // Unsafe, relies on these having the same type:
         ast_t *merged = new(
@@ -728,22 +744,67 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             .__data.Add.rhs=rhs);
         // End unsafe
         terms[0][tightest_op] = merged;
+        assert(LIST_ITEM(terms, 0) == merged);
     }
 
-    return LIST_ITEM(terms, 0);
+    ast_t *expr = LIST_ITEM(terms, 0);
+    return expr;
+}
+
+PARSER(parse_declaration) {
+    const char *start = pos;
+    ast_t *var = parse_var(ctx, pos);
+    if (!var) return NULL;
+    pos = var->span.end;
+    spaces(&pos);
+    if (!match(&pos, ":=")) return NULL;
+    spaces(&pos);
+    ast_t *val = parse_expr(ctx, pos);
+    if (!val) parse_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
+    pos = val->span.end;
+    return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
+}
+
+PARSER(parse_statement) {
+    ast_t *stmt = NULL;
+    if (!((stmt=parse_declaration(ctx, pos))
+          || (stmt=parse_fncall(ctx, pos, false))
+          || (stmt=parse_expr(ctx, pos))))
+        return NULL;
+    return stmt;
+}
+
+bool blank_lines(const char **pos) {
+    const char *start = *pos;
+    for (;;) {
+        const char *line = *pos;
+        spaces(&line);
+        comment(&line);
+        if (*line == '\n')
+            *pos = line + 1;
+        else
+            break;
+    }
+    return *pos > start;
 }
 
 PARSER(parse_block) {
     const char *start = pos;
+    blank_lines(&pos);
     NEW_LIST(ast_t*, statements);
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
     while (*pos) {
-        ast_t *stmt = NULL;
-        if (!((stmt=parse_splat_fncall(ctx, pos))
-              || (stmt=parse_expr(ctx, pos))))
-            break;
+        ast_t *stmt = parse_statement(ctx, pos);
+        if (!stmt) break;
         pos = stmt->span.end;
         APPEND(statements, stmt);
-        if (!nodent(ctx, &pos)) break;
+        printf("Statement: %s\n", ast_to_str(stmt));
+        fprint_span(stdout, &stmt->span, "\x1b[7m", 1);
+        fputs("\n", stdout);
+        if (!blank_lines(&pos))
+            break;
+        if (!match_indentation(&pos, starting_indent))
+            break;
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
 }
@@ -760,6 +821,13 @@ ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
         chars(&pos, "\r\n");
     }
 
-    return parse_block(&ctx, pos);
+    ast_t *ast = parse_block(&ctx, pos);
+    pos = ast->span.end;
+    blank_lines(&pos);
+    match(&pos, "\n");
+    // if (strlen(pos) > 0) {
+    //     parse_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the file");
+    // }
+    return ast;
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

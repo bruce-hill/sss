@@ -103,8 +103,7 @@ struct ast_s {
             bool labelled;
         } Interp;
         struct {
-            istr_t name;
-            ast_t *value;
+            ast_t *var, *value;
         } Declare;
         struct {
             List(ast_t*) targets;

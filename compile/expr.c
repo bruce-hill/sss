@@ -185,13 +185,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         //     lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, fresh(decl->name));
         // } else {
         gcc_func_t *func = gcc_block_func(*block);
-        lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(decl->name));
+        istr_t name = Match(decl->var, Var)->name;
+        lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(name));
         // }
-        binding_t *clobbered = hashmap_get_raw(env->bindings, decl->name);
+        binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type_value)
             compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        hashmap_set(env->bindings, decl->name,
+        hashmap_set(env->bindings, name,
                     new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
@@ -442,9 +443,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 bl_type_t *t = get_type(env, decl->value);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                istr_t global_name = intern_strf("%s__%s", struct_def->name, decl->name);
+                istr_t name = Match(decl->var, Var)->name;
+                istr_t global_name = intern_strf("%s__%s", struct_def->name, name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
-                hashmap_set(env->bindings, decl->name,
+                hashmap_set(env->bindings, name,
                             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .is_global=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);

@@ -21,7 +21,8 @@ static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
         assert(t);
         binding_t b = {.type=t};
         auto decl = Match(condition, Declare);
-        hashmap_set(body_bindings, decl->name, &b);
+        istr_t name = Match(decl->var, Var)->name;
+        hashmap_set(body_bindings, name, &b);
         return get_type(env, body);
     } else {
         return get_type(env, body);
