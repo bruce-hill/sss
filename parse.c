@@ -139,7 +139,7 @@ size_t match(const char **pos, const char *target) {
 
 size_t match_word(const char **pos, const char *word) {
     const char *p0 = *pos;
-    if (match(pos, word) && !isalpha(*pos) && !isdigit(*pos) && **pos != '_')
+    if (match(pos, word) && !isalpha(**pos) && !isdigit(**pos) && **pos != '_')
         return strlen(word);
     *pos = p0;
     return 0;
@@ -392,6 +392,45 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     whitespace(&pos);
     if (!match(&pos, "]")) return NULL;
     return NewAST(ctx, lhs->span.start, pos, Index, .indexed=lhs, .index=index);
+}
+
+ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
+    if (!body) return NULL;
+    const char *start = body->span.start;
+    const char *pos = body->span.end;
+    whitespace(&pos);
+    if (!match_word(&pos, "if")) return NULL;
+    whitespace(&pos);
+    ast_t *cond = parse_expr(ctx, pos);
+    if (!cond) return NULL;
+    pos = cond->span.end;
+
+    List(ast_t*) conditions = LIST(ast_t*, cond);
+    List(ast_t*) blocks = LIST(ast_t*, body);
+
+    whitespace(&pos);
+    while (match_word(&pos, "elseif")) {
+        whitespace(&pos);
+        if (!(cond = parse_expr(ctx, pos)))
+            parse_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
+        pos = cond->span.end;
+        whitespace(&pos);
+        if (!match_word(&pos, "then"))
+            parse_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
+        whitespace(&pos);
+        if (!(body = parse_expr(ctx, pos)))
+            parse_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
+        whitespace(&pos);
+    }
+
+    ast_t *else_ = NULL;
+    if (match_word(&pos, "else")) {
+        whitespace(&pos);
+        else_ = parse_expr(ctx, pos);
+    }
+    if (else_) pos = else_->span.end;
+    else if (require_else) return NULL;
+    return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
 
 ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix) {
@@ -712,18 +751,15 @@ PARSER(parse_term) {
 
     if (!success) return NULL;
 
-    for (;;) {
-        ast_t *new_term = NULL;
-        bool progress = (
+    for (bool progress = true; progress; ) {
+        ast_t *new_term;
+        progress = (
             (new_term=parse_index_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
+            || (new_term=parse_suffix_if(ctx, term, true))
             || (new_term=parse_fncall_suffix(ctx, term, true))
             );
-
-        if (progress)
-            term = new_term;
-        else
-            break;
+        if (progress) term = new_term;
     }
     return term;
 }
@@ -806,7 +842,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         case '/': ++pos; tag = Divide; break;
         case '^': ++pos; tag = Power; break;
         case '<': ++pos; tag = match(&pos, "=") ? LessEqual : Less; break;
-        case '>': ++pos; tag = match(&pos, "=") ? LessEqual : Less; break;
+        case '>': ++pos; tag = match(&pos, "=") ? GreaterEqual : Greater; break;
         case '!': {
             if (!match(&pos, "=")) goto no_more_binops;
             tag = NotEqual;
@@ -899,6 +935,17 @@ PARSER(parse_statement) {
           || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
           || (stmt=parse_expr(ctx, pos))))
         return NULL;
+
+    for (bool progress = true; progress; ) {
+        ast_t *new_stmt;
+        progress = (
+            (new_stmt=parse_index_suffix(ctx, stmt))
+            || (new_stmt=parse_field_suffix(ctx, stmt))
+            || (new_stmt=parse_suffix_if(ctx, stmt, false))
+            || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
+            );
+        if (progress) stmt = new_stmt;
+    }
     return stmt;
 }
 
