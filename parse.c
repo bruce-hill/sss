@@ -266,6 +266,7 @@ PARSER(parse_int) {
     if (match(&pos, "0x")) { // Hex
         size_t span = strspn(pos, "0123456789abcdefABCDEF_");
         char *buf = GC_MALLOC_ATOMIC(span+1);
+        memset(buf, 0, span+1);
         for (char *src = (char*)pos, *dest = buf; src < pos+span; ++src) {
             if (*src != '_') *(dest++) = *src;
         }
@@ -274,6 +275,7 @@ PARSER(parse_int) {
     } else if (match(&pos, "0b")) { // Binary
         size_t span = strspn(pos, "01_");
         char *buf = GC_MALLOC_ATOMIC(span+1);
+        memset(buf, 0, span+1);
         for (char *src = (char*)pos, *dest = buf; src < pos+span; ++src) {
             if (*src != '_') *(dest++) = *src;
         }
@@ -282,6 +284,7 @@ PARSER(parse_int) {
     } else if (match(&pos, "0o")) { // Octal
         size_t span = strspn(pos, "01234567_");
         char *buf = GC_MALLOC_ATOMIC(span+1);
+        memset(buf, 0, span+1);
         for (char *src = (char*)pos, *dest = buf; src < pos+span; ++src) {
             if (*src != '_') *(dest++) = *src;
         }
@@ -290,6 +293,7 @@ PARSER(parse_int) {
     } else { // Decimal
         size_t span = strspn(pos, "0123456789_");
         char *buf = GC_MALLOC_ATOMIC(span+1);
+        memset(buf, 0, span+1);
         for (char *src = (char*)pos, *dest = buf; src < pos+span; ++src) {
             if (*src != '_') *(dest++) = *src;
         }
@@ -304,6 +308,7 @@ PARSER(parse_int) {
     else if (match(&pos, "i32")) precision = 32;
     else if (match(&pos, "i16")) precision = 16;
     else if (match(&pos, "i8")) precision = 8;
+    else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
     istr_t units = match_units(&pos);
     return NewAST(ctx, start, pos, Int, .i=i, .precision=precision, .units=units);
@@ -344,10 +349,11 @@ PARSER(parse_num) {
     bool negative = match(&pos, "-");
     if (!isdigit(*pos)) return false;
 
-    size_t len = strspn(pos, "0123456789_");
+    size_t len = strspn(pos, "0123456789_.");
     if (pos[len] == 'e')
         len += 1 + strspn(pos + len + 1, "-0123456789_");
     char *buf = GC_MALLOC_ATOMIC(len+1);
+    memset(buf, 0, len+1);
     for (char *src = (char*)pos, *dest = buf; src < pos+len; ++src) {
         if (*src != '_') *(dest++) = *src;
     }
