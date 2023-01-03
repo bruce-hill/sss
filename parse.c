@@ -34,8 +34,8 @@ static const char *keywords[] = {
     "def","between","as","and", NULL,
 };
 
-static inline size_t chars(const char **pos, const char *allow);
-static inline size_t not_chars(const char **pos, const char *forbid);
+static inline size_t some_of(const char **pos, const char *allow);
+static inline size_t some_not(const char **pos, const char *forbid);
 static inline size_t spaces(const char **pos);
 static inline size_t whitespace(const char **pos);
 static inline size_t match(const char **pos, const char *target);
@@ -49,27 +49,30 @@ static ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_pare
 PARSER(parse_expr);
 PARSER(parse_term);
 
+//
+// Print a parse error and exit (or use the on_err longjmp)
+//
 __attribute__((noreturn))
 static void parse_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, ...) {
     fputs("\x1b[31;1;7m", stderr);
-
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
-
     fputs("\x1b[m\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};
     fprint_span(stderr, &span, "\x1b[31;1;7m", 2);
-
-    fputs("\x1b[m\n", stderr);
+    fputs("\n", stderr);
 
     if (ctx->on_err)
         longjmp(*ctx->on_err, 1);
     exit(1);
 }
 
+//
+// Convert an escape sequence like \n to a string
+//
 istr_t unescape(const char **out) {
     const char **endpos = out;
     const char *escape = *out;
@@ -94,22 +97,25 @@ istr_t unescape(const char **out) {
     }
 }
 
-size_t chars(const char **pos, const char *allow) {
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////     Text-based parsing primitives     ///////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+size_t some_of(const char **pos, const char *allow) {
     size_t len = strspn(*pos, allow);
     *pos += len;
     return len;
 }
 
-size_t not_chars(const char **pos, const char *forbid) {
+size_t some_not(const char **pos, const char *forbid) {
     size_t len = strcspn(*pos, forbid);
     *pos += len;
     return len;
 }
 
-size_t spaces(const char **pos) { return chars(pos, " \t"); }
+size_t spaces(const char **pos) { return some_of(pos, " \t"); }
 size_t whitespace(const char **pos) {
     const char *p0 = *pos;
-    while (chars(pos, " \t\r\n") || comment(pos))
+    while (some_of(pos, " \t\r\n") || comment(pos))
         continue;
     return (size_t)(*pos - p0);
 }
@@ -152,7 +158,7 @@ istr_t get_id(const char **pos) {
 bool comment(const char **pos) {
     if (!match(pos, "//"))
         return false;
-    not_chars(pos, "\r\n");
+    some_not(pos, "\r\n");
     return true;
 }
 
@@ -197,6 +203,10 @@ bool match_indentation(const char **out, size_t indentation) {
     }
     return true;
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////     AST-based parsers    /////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 PARSER(parse_parens) {
     const char *start = pos;
@@ -299,7 +309,7 @@ PARSER(parse_num) {
     return NewAST(ctx, start, pos, Num, .n=d, .precision=precision, .units=units);
 }
 
-ast_t *parse_fielded(parse_ctx_t *ctx, ast_t *lhs) {
+ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *pos = lhs->span.end;
     whitespace(&pos);
@@ -309,7 +319,7 @@ ast_t *parse_fielded(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
-ast_t *parse_index(parse_ctx_t *ctx, ast_t *lhs) {
+ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *pos = lhs->span.end;
     whitespace(&pos);
@@ -323,29 +333,23 @@ ast_t *parse_index(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx, lhs->span.start, pos, Index, .indexed=lhs, .index=index);
 }
 
-
-#define UNARY_OP(name, tagname, prefix) \
-    PARSER(name) { \
-        const char *start = pos; \
-        if (!match(&pos, prefix)) return NULL; \
-        whitespace(&pos); \
-        ast_t *term = parse_term(ctx, pos); \
-        if (!term) return NULL; \
-        return NewAST(ctx, start, pos, tagname, .value=term); \
-    }
-UNARY_OP(parse_negative, Negative, "-")
-UNARY_OP(parse_heap_alloc, HeapAllocate, "@")
-UNARY_OP(parse_len, Len, "#")
-UNARY_OP(parse_maybe, Maybe, "?")
-PARSER(parse_not) { 
-    const char *start = pos; 
-    if (!match_word(&pos, "not")) return NULL; 
-    whitespace(&pos); 
-    ast_t *term = parse_term(ctx, pos); 
-    if (!term) return NULL; 
-    return NewAST(ctx, start, pos, Not, .value=term); 
+ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix) {
+    const char *start = pos;
+    if (!match(&pos, prefix)) return NULL;
+    if (isalpha(prefix[0]) && (isalpha(*pos) || isdigit(*pos) || *pos == '_')) return NULL;
+    whitespace(&pos);
+    ast_t *term = parse_term(ctx, pos);
+    if (!term) return NULL;
+    // Unsafe: all the unary ops have a '.value' field in the same spot, so this is a hack
+    return new(ast_t, .span.file=ctx->file, .span.start=start, .span.end=term->span.end,
+               .tag=tag, .__data.Not.value=term);
+    // End unsafe area
 }
-#undef UNARY_OP
+#define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-")
+#define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@")
+#define parse_len(...) parse_unary(__VA_ARGS__, Len, "#")
+#define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?")
+#define parse_not(...) parse_unary(__VA_ARGS__, Not, "not")
 
 PARSER(parse_bool) {
     const char *start = pos;
@@ -592,8 +596,8 @@ PARSER(parse_term) {
     for (;;) {
         ast_t *new_term = NULL;
         bool progress = (
-            (new_term=parse_index(ctx, term))
-            || (new_term=parse_fielded(ctx, term)));
+            (new_term=parse_index_suffix(ctx, term))
+            || (new_term=parse_field_suffix(ctx, term)));
 
         if (progress)
             term = new_term;
@@ -817,8 +821,8 @@ ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
 
     const char *pos = file->text;
     if (match(&pos, "#!")) { // shebang
-        not_chars(&pos, "\r\n");
-        chars(&pos, "\r\n");
+        some_not(&pos, "\r\n");
+        some_of(&pos, "\r\n");
     }
 
     ast_t *ast = parse_block(&ctx, pos);
