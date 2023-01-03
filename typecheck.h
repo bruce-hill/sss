@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <bhash.h>
-#include <bp/files.h>
 
 #include "ast.h"
 #include "compile/compile.h"

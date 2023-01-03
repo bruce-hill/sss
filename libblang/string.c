@@ -1,7 +1,5 @@
+#include <stdbool.h>
 #include <assert.h>
-#include <bp/match.h>
-#include <bp/pattern.h>
-#include <bp/printmatch.h>
 #include <ctype.h>
 #include <err.h>
 #include <gc.h>
@@ -133,58 +131,6 @@ string_t flatten(string_t str)
     for (int32_t i = 0; i < str.length; i++)
         buf[i] = str.data[i*str.stride];
     return (string_t){.data=buf, .length=str.length, .stride=1};
-}
-
-string_t bl_string_replace(string_t text, string_t pat_text, string_t rep_text) {
-    text = flatten(text);
-    pat_text = flatten(pat_text);
-    rep_text = flatten(rep_text);
-
-    maybe_pat_t maybe_pat = bp_stringpattern(pat_text.data, pat_text.data + pat_text.length);
-    if (!maybe_pat.success) {
-        return text;
-    }
-    pat_t *pat = maybe_pat.value.pat;
-
-    maybe_pat_t maybe_replacement = bp_replacement(pat, rep_text.data, rep_text.data + rep_text.length);
-    if (!maybe_replacement.success) {
-        return text;
-    }
-
-    char *buf = NULL;
-    size_t size = 0;
-    int32_t length = 0;
-    FILE *out = open_memstream(&buf, &size);
-    const char *prev = text.data;
-    pat_t *rep_pat = maybe_replacement.value.pat;
-    for (match_t *m = NULL; next_match(&m, text.data, text.data + text.length, rep_pat, NULL, NULL, false); ) {
-        length += fwrite(prev, sizeof(char), (size_t)(m->start - prev), out);
-        length += fprint_match(out, text.data, m, NULL);
-        prev = m->end;
-    }
-    length += fwrite(prev, sizeof(char), (size_t)(text.data + text.length - prev) + 1, out);
-    fflush(out);
-    istr_t replaced = buf ? intern_strn(buf, length) : intern_strn("", 0);
-    fclose(out);
-    free(buf);
-    return (string_t){.data=replaced, .length=(int32_t)size, .stride=1};
-}
-
-bool bl_string_matches(string_t text, string_t pat_text) {
-    text = flatten(text);
-    pat_text = flatten(pat_text);
-    maybe_pat_t maybe_pat = bp_stringpattern(pat_text.data, pat_text.data + pat_text.length);
-    if (!maybe_pat.success)
-        return false;
-
-    pat_t *pat = maybe_pat.value.pat;
-    match_t *m = NULL;
-    if (next_match(&m, text.data, text.data + text.length, pat, NULL, NULL, false)) {
-        stop_matching(&m);
-        return true;
-    } else {
-        return false;
-    }
 }
 
 int32_t bl_string_find(string_t str, string_t pat)

@@ -43,10 +43,6 @@ following libraries:
 
 - Garbage collection: [Boehm garbage collector](https://www.hboehm.info/gc/)
     - Available from your package manager of choice: `pacman -S gc`
-- Parsing and string pattern matching: [bp](https://github.com/bruce-hill/bp/)
-    - Install via `git clone https://github.com/bruce-hill/bp/ && cd bp && make && sudo make install-lib`
-- Hash maps: [bhash](https://github.com/bruce-hill/bhash/)
-    - Install via `git clone https://github.com/bruce-hill/bhash/ && cd bhash && make && sudo make install`
 - String interning: [intern](https://github.com/bruce-hill/intern/)
     - Install via `git clone https://github.com/bruce-hill/intern/ && cd intern && make && sudo make install`
 

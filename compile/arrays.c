@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <bhash.h>
 #include <libgccjit.h>
-#include <bp/files.h>
 #include <ctype.h>
 #include <err.h>
 #include <limits.h>
