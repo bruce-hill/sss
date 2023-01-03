@@ -1,4 +1,4 @@
-// Parse code the hard way
+// Parse blang code
 #pragma once
 
 #include <setjmp.h>

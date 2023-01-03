@@ -1,4 +1,4 @@
-// Parse Blang code (the hard way)
+// Parse Blang code using recursive descent
 #include <ctype.h>
 #include <stdbool.h>
 #include <string.h>
@@ -17,6 +17,14 @@ typedef struct {
 } parse_ctx_t;
 
 #define PARSER(name) ast_t *name(parse_ctx_t *ctx, const char *pos)
+
+#define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
+STUB_PARSER(parse_dsl)
+STUB_PARSER(parse_struct)
+STUB_PARSER(parse_array)
+STUB_PARSER(parse_cast)
+STUB_PARSER(parse_bitcast)
+#undef STUB
 
 static int op_tightness[NUM_AST_TAGS] = {
     [Power]=1,
@@ -45,9 +53,10 @@ static inline istr_t get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline bool nodent(parse_ctx_t *ctx, const char **pos);
-static ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_parens);
+static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 PARSER(parse_expr);
 PARSER(parse_term);
+PARSER(parse_inline_block);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -76,7 +85,7 @@ static void parse_err(parse_ctx_t *ctx, const char *start, const char *end, cons
 istr_t unescape(const char **out) {
     const char **endpos = out;
     const char *escape = *out;
-    static const char *unescapes[255] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
+    static const char *unescapes[256] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
     assert(*escape == '\\');
     if (unescapes[(int)escape[1]]) {
         *endpos = escape + 2;
@@ -134,6 +143,22 @@ size_t match_word(const char **pos, const char *word) {
         return strlen(word);
     *pos = p0;
     return 0;
+}
+
+bool match_group(const char **out, char open) {
+    static char mirror_delim[256] = {['(']=')', ['{']='}', ['<']='>', ['[']=']'};
+    const char *pos = *out;
+    if (*pos != open) return 0;
+    char close = mirror_delim[(int)open] ? mirror_delim[(int)open] : open;
+    int depth = 1;
+    for (++pos; *pos && depth > 0; ++pos) {
+        if (*pos == close) --depth;
+        else if (*pos == open) ++depth;
+    }
+    if (depth == 0) {
+        *out = pos;
+        return true;
+    } else return false;
 }
 
 istr_t get_word(const char **pos) {
@@ -282,6 +307,36 @@ PARSER(parse_int) {
 
     istr_t units = match_units(&pos);
     return NewAST(ctx, start, pos, Int, .i=i, .precision=precision, .units=units);
+}
+
+STUB_PARSER(parse_optional_type)
+STUB_PARSER(parse_pointer_type)
+STUB_PARSER(parse_array_type)
+STUB_PARSER(parse_measure_type)
+STUB_PARSER(parse_table_type)
+STUB_PARSER(parse_tuple_type)
+STUB_PARSER(parse_func_type)
+
+PARSER(parse_type_name) {
+    const char *start = pos;
+    istr_t id = get_id(&pos);
+    return id ? NewAST(ctx, start, pos, Var, .name=id) : NULL;
+}
+
+PARSER(parse_type) {
+    ast_t *type = NULL;
+    bool success = (
+        (type=parse_optional_type(ctx, pos))
+        || (type=parse_pointer_type(ctx, pos))
+        || (type=parse_array_type(ctx, pos))
+        || (type=parse_measure_type(ctx, pos))
+        || (type=parse_table_type(ctx, pos))
+        || (type=parse_tuple_type(ctx, pos))
+        || (type=parse_type_name(ctx, pos))
+        || (type=parse_func_type(ctx, pos))
+    );
+    (void)success;
+    return type;
 }
 
 PARSER(parse_num) {
@@ -452,8 +507,11 @@ PARSER(parse_string) {
                 switch (*pos) {
                 case '$': { // interpolation
                     ast_t *chunk = parse_interpolation(ctx, pos);
-                    if (!chunk)
-                        parse_err(ctx, pos, pos+1, "This interpolation didn't parse");
+                    if (!chunk) {
+                        const char *end = pos + 1;
+                        match_group(&end, '(');
+                        parse_err(ctx, pos, end, "This interpolation didn't parse");
+                    }
                     APPEND(chunks, chunk);
                     pos = chunk->span.end;
                     break;
@@ -483,8 +541,11 @@ PARSER(parse_string) {
             switch (*pos) {
             case '$': { // interpolation
                 ast_t *chunk = parse_interpolation(ctx, pos);
-                if (!chunk)
-                    parse_err(ctx, pos, pos+1, "This interpolation didn't parse");
+                if (!chunk) {
+                    const char *end = pos + 1;
+                    match_group(&end, '(');
+                    parse_err(ctx, pos, end, "This interpolation didn't parse");
+                }
                 APPEND(chunks, chunk);
                 pos = chunk->span.end;
                 break;
@@ -527,18 +588,69 @@ PARSER(parse_string) {
     return NewAST(ctx, string_start, pos, StringJoin, .children=chunks);
 }
 
-#define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
-STUB_PARSER(parse_dsl)
-STUB_PARSER(parse_type)
-STUB_PARSER(parse_skip)
-STUB_PARSER(parse_stop)
-STUB_PARSER(parse_return)
-STUB_PARSER(parse_lambda)
-STUB_PARSER(parse_struct)
-STUB_PARSER(parse_array)
-STUB_PARSER(parse_cast)
-STUB_PARSER(parse_bitcast)
-#undef STUB
+PARSER(parse_skip) {
+    const char *start = pos;
+    if (!match_word(&pos, "skip")) return NULL;
+    spaces(&pos);
+    istr_t target = get_word(&pos);
+    if (!target) return NULL;
+    return NewAST(ctx, start, pos, Skip, .target=target);
+}
+
+PARSER(parse_stop) {
+    const char *start = pos;
+    if (!match_word(&pos, "stop")) return NULL;
+    spaces(&pos);
+    istr_t target = get_word(&pos);
+    if (!target) return NULL;
+    return NewAST(ctx, start, pos, Stop, .target=target);
+}
+
+PARSER(parse_return) {
+    const char *start = pos;
+    if (!match_word(&pos, "return")) return NULL;
+    spaces(&pos);
+    ast_t *value = parse_expr(ctx, pos);
+    if (value) pos = value->span.end;
+    return NewAST(ctx, start, pos, Return, .value=value);
+}
+
+PARSER(parse_lambda) {
+    const char *start = pos;
+    if (!match(&pos, "|")) return NULL;
+    spaces(&pos);
+    NEW_LIST(istr_t, arg_names);
+    NEW_LIST(ast_t*, arg_types);
+    for (;;) {
+        spaces(&pos);
+        istr_t name = get_id(&pos);
+        if (!name) break;
+        APPEND(arg_names, name);
+        spaces(&pos);
+        if (!match(&pos, ":")) parse_err(ctx, pos, pos, "I expected a type annotation here");
+        ast_t *type = parse_type(ctx, pos);
+        if (!type) parse_err(ctx, pos, pos + strcspn(pos, ",;|\r\n"), "I wasn't able to parse this type");
+        APPEND(arg_types, type);
+        pos = type->span.end;
+    }
+
+    spaces(&pos);
+    if (!match(&pos, "|"))
+        parse_err(ctx, start, pos, "This lambda doesn't have a closing '|'");
+    spaces(&pos);
+    if (!match(&pos, "=>"))
+        parse_err(ctx, start, pos, "I expected a '=>' for this lambda"); 
+
+    spaces(&pos);
+    ast_t *body = parse_inline_block(ctx, pos);
+    if (body) pos = body->span.end;
+
+    spaces(&pos);
+    // if (!match(&pos, ""))
+    //     parse_err(ctx, start, pos, "This lambda doesn't have a closing '|'");
+
+    return NewAST(ctx, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
+}
 
 PARSER(parse_nil) {
     const char *start = pos;
@@ -566,8 +678,9 @@ PARSER(parse_term) {
     spaces(&pos);
     ast_t *term = NULL;
     bool success = (
-        (term=parse_num(ctx, pos))
+        false
         || (term=parse_int(ctx, pos))
+        || (term=parse_num(ctx, pos))
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
         || (term=parse_len(ctx, pos))
@@ -589,7 +702,7 @@ PARSER(parse_term) {
         || (term=parse_array(ctx, pos))
         || (term=parse_cast(ctx, pos))
         || (term=parse_bitcast(ctx, pos))
-        || (term=parse_fncall(ctx, pos, true)));
+        );
 
     if (!success) return NULL;
 
@@ -597,7 +710,9 @@ PARSER(parse_term) {
         ast_t *new_term = NULL;
         bool progress = (
             (new_term=parse_index_suffix(ctx, term))
-            || (new_term=parse_field_suffix(ctx, term)));
+            || (new_term=parse_field_suffix(ctx, term))
+            || (new_term=parse_fncall_suffix(ctx, term, true))
+            );
 
         if (progress)
             term = new_term;
@@ -607,20 +722,23 @@ PARSER(parse_term) {
     return term;
 }
 
-ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_parens) {
-    const char *start = pos;
-    ast_t *fn = parse_term(ctx, pos);
+ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     if (!fn) return NULL;
-    pos = fn->span.end;
-
-    spaces(&pos);
+    const char *start = fn->span.start;
+    const char *pos = fn->span.end;
     const char *paren_pos = pos;
     if (match(&pos, "("))
         requires_parens = true;
     else if (requires_parens)
         return NULL;
 
+    spaces(&pos);
+
     NEW_LIST(ast_t*, args);
+    if (match(&pos, ")")) { // no arguments
+        return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
+    }
+
     for (;;) {
         const char *arg_start = pos;
         istr_t name = get_id(&pos);
@@ -650,11 +768,11 @@ ast_t *parse_fncall(parse_ctx_t *ctx, const char *pos, bool requires_parens) {
         spaces(&pos);
         if (!match(&pos, ","))
             break;
-        spaces(&pos);
+        whitespace(&pos);
     }
 
     spaces(&pos);
-    if (requires_parens && !match(&pos, "("))
+    if (requires_parens && !match(&pos, ")"))
         parse_err(ctx, paren_pos, pos, "This parenthesis is unclosed");
 
     if (LIST_LEN(args) < 1)
@@ -772,7 +890,7 @@ PARSER(parse_declaration) {
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if (!((stmt=parse_declaration(ctx, pos))
-          || (stmt=parse_fncall(ctx, pos, false))
+          || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
           || (stmt=parse_expr(ctx, pos))))
         return NULL;
     return stmt;
@@ -802,9 +920,6 @@ PARSER(parse_block) {
         if (!stmt) break;
         pos = stmt->span.end;
         APPEND(statements, stmt);
-        printf("Statement: %s\n", ast_to_str(stmt));
-        fprint_span(stdout, &stmt->span, "\x1b[7m", 1);
-        fputs("\n", stdout);
         if (!blank_lines(&pos))
             break;
         if (!match_indentation(&pos, starting_indent))
@@ -812,6 +927,22 @@ PARSER(parse_block) {
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
 }
+
+PARSER(parse_inline_block) {
+    spaces(&pos);
+    const char *start = pos;
+    NEW_LIST(ast_t*, statements);
+    while (*pos) {
+        spaces(&pos);
+        ast_t *stmt = parse_statement(ctx, pos);
+        if (!stmt) break;
+        pos = stmt->span.end;
+        APPEND(statements, stmt);
+        if (!match(&pos, ";")) break;
+    }
+    return NewAST(ctx, start, pos, Block, .statements=statements);
+}
+
 
 ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
     parse_ctx_t ctx = {
@@ -834,4 +965,5 @@ ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
     // }
     return ast;
 }
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

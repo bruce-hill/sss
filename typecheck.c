@@ -517,7 +517,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         env_t lambda_env = *env;
         lambda_env.bindings = body_bindings;
-        bl_type_t *ret = get_type(&lambda_env, Match(lambda->body, Return)->value);
+        bl_type_t *ret = get_type(&lambda_env, lambda->body);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 

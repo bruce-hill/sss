@@ -28,7 +28,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
     auto arg_types = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_types : Match(def, Lambda)->arg_types;
-    auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : Match(def, Lambda)->body;
+    auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
     for (int64_t i = 0; i < length(arg_names); i++) {
         istr_t argname = ith(arg_names, i);
         bl_type_t *argtype = ith(t->arg_types, i);
