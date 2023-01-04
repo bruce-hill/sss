@@ -72,7 +72,7 @@ static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, co
     fputs("\x1b[m\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};
-    fprint_span(stderr, &span, "\x1b[31;1;7m", 2);
+    fprint_span(stderr, span, "\x1b[31;1;7m", 2);
     fputs("\n", stderr);
 
     if (ctx->on_err)
@@ -194,11 +194,13 @@ static inline ast_t *optional_ast(parse_ctx_t *ctx, const char **pos, parser_t *
     return ast;
 }
 
-size_t match_word(const char **pos, const char *word) {
-    const char *p0 = *pos;
-    if (match(pos, word) && !isalpha(**pos) && !isdigit(**pos) && **pos != '_')
+size_t match_word(const char **out, const char *word) {
+    const char *pos = *out;
+    spaces(&pos);
+    if (match(&pos, word) && !isalpha(*pos) && !isdigit(*pos) && *pos != '_') {
+        *out = pos;
         return strlen(word);
-    *pos = p0;
+    }
     return 0;
 }
 
@@ -218,22 +220,27 @@ bool match_group(const char **out, char open) {
     } else return false;
 }
 
-istr_t get_word(const char **pos) {
-    if (!isalpha(**pos) && **pos != '_')
+istr_t get_word(const char **inout) {
+    const char *pos = *inout;
+    if (!isalpha(*pos) && *pos != '_')
         return NULL;
-    const char *word = *pos;
-    ++(*pos);
-    while (isalpha(**pos) || isdigit(**pos) || **pos == '_')
-        ++(*pos);
-    return intern_strn(word, (size_t)(*pos - word));
+    spaces(&pos);
+    const char *word = pos;
+    ++pos;
+    while (isalpha(*pos) || isdigit(*pos) || *pos == '_')
+        ++pos;
+    *inout = pos;
+    return intern_strn(word, (size_t)(pos - word));
 }
 
-istr_t get_id(const char **pos) {
-    istr_t word = get_word(pos);
+istr_t get_id(const char **inout) {
+    const char *pos = *inout;
+    istr_t word = get_word(&pos);
     if (!word) return word;
     for (int i = 0; keywords[i]; i++)
         if (strcmp(word, keywords[i]) == 0)
             return NULL;
+    *inout = pos;
     return word;
 }
 
@@ -470,29 +477,57 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx, start, pos, Index, .indexed=lhs, .index=index);
 }
 
+ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
+    const char *start = pos;
+    if (!match_word(&pos, "if")) return NULL;
+    ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
+                             "I expected to find a condition for this 'if'");
+
+    NEW_LIST(ast_t*, conditions);
+    NEW_LIST(ast_t*, blocks);
+
+    ast_t *body;
+    while (match_word(&pos, "elseif")) {
+        if (!(cond = optional_ast(ctx, &pos, parse_expr)))
+            parser_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
+        if (!match_word(&pos, "then"))
+            parser_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
+        if (!(body = optional_ast(ctx, &pos, parse_expr)))
+            parser_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
+        whitespace(&pos);
+    }
+
+    ast_t *else_ = NULL;
+    const char *else_start = pos;
+    if (match_word(&pos, "else")) {
+        whitespace(&pos);
+        else_ = expect_ast(ctx, else_start, &pos, parse_expr, "I couldn't find a body for this 'else' block");
+    }
+    if (else_) pos = else_->span.end;
+    return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
+}
+
+
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     if (!body) return NULL;
     const char *start = body->span.start;
     const char *pos = body->span.end;
-    whitespace(&pos);
     if (!match_word(&pos, "if")) return NULL;
-    whitespace(&pos);
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
 
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
 
-    whitespace(&pos);
+    nodent(ctx, &pos);
     while (match_word(&pos, "elseif")) {
         if (!(cond = optional_ast(ctx, &pos, parse_expr)))
             parser_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
-        whitespace(&pos);
         if (!match_word(&pos, "then"))
             parser_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
         if (!(body = optional_ast(ctx, &pos, parse_expr)))
             parser_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
-        whitespace(&pos);
+        nodent(ctx, &pos);
     }
 
     ast_t *else_ = NULL;
@@ -736,7 +771,12 @@ PARSER(parse_lambda) {
         if (!name) break;
         APPEND(arg_names, name);
         spaces(&pos);
-        if (!match(&pos, ":")) parser_err(ctx, pos, pos, "I expected a type annotation here");
+        if (!match(&pos, ":")) {
+            // Only an error if we're definitely in a lambda
+            if (LIST_LEN(arg_types) > 0)
+                parser_err(ctx, pos, pos, "I expected a type annotation here");
+            return NULL; // otherwise just a parse failure
+        }
         ast_t *type = parse_type(ctx, pos);
         if (!type) parser_err(ctx, pos, pos + strcspn(pos, ",;|\r\n"), "I wasn't able to parse this type");
         APPEND(arg_types, type);
@@ -1011,36 +1051,28 @@ PARSER(parse_statement) {
     return stmt;
 }
 
-bool blank_lines(const char **pos) {
-    const char *start = *pos;
-    for (;;) {
-        const char *line = *pos;
-        spaces(&line);
-        comment(&line);
-        if (*line == '\n')
-            *pos = line + 1;
-        else
-            break;
-    }
-    return *pos > start;
-}
-
 PARSER(parse_block) {
     const char *start = pos;
-    blank_lines(&pos);
+    whitespace(&pos);
     NEW_LIST(ast_t*, statements);
-    size_t starting_indent = bl_get_indent(ctx->file, pos);
     while (*pos) {
         ast_t *stmt = parse_statement(ctx, pos);
-        if (!stmt) break;
+        if (!stmt) {
+            spaces(&pos);
+            if (*pos && *pos != '\r' && *pos != '\n')
+                parser_err(ctx, pos, strchrnul(pos, '\n'), "I couldn't parse this line");
+            break;
+        }
         pos = stmt->span.end;
         APPEND(statements, stmt);
-        if (!blank_lines(&pos))
-            break;
-        if (!match_indentation(&pos, starting_indent))
+        if (!nodent(ctx, &pos))
             break;
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
+}
+
+PARSER(parse_indented_block) {
+    return indent(ctx, &pos) ? parse_block(ctx, pos) : NULL;
 }
 
 PARSER(parse_inline_block) {
@@ -1071,13 +1103,13 @@ ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
         some_of(&pos, "\r\n");
     }
 
+    whitespace(&pos);
     ast_t *ast = parse_block(&ctx, pos);
     pos = ast->span.end;
-    blank_lines(&pos);
-    match(&pos, "\n");
-    // if (strlen(pos) > 0) {
-    //     parser_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the file");
-    // }
+    whitespace(&pos);
+    if (strlen(pos) > 0) {
+        parser_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the file");
+    }
     return ast;
 }
 

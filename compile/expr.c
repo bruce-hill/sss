@@ -847,7 +847,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     char *info = NULL;
                     size_t size = 0;
                     FILE *f = open_memstream(&info, &size);
-                    fprint_span(f, &ast->span, "\x1b[31;1m", 2);
+                    fprint_span(f, ast->span, "\x1b[31;1m", 2);
                     fputc('\0', f);
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
@@ -1376,7 +1376,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         char *info = NULL;
         size_t size = 0;
         FILE *f = open_memstream(&info, &size);
-        fprint_span(f, &ast->span, "\x1b[31;1m", 2);
+        fprint_span(f, ast->span, "\x1b[31;1m", 2);
         fputc('\0', f);
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
