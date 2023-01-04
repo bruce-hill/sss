@@ -61,6 +61,8 @@ PARSER(parse_expr);
 PARSER(parse_term);
 PARSER(parse_inline_block);
 PARSER(parse_type);
+PARSER(parse_statement);
+PARSER(parse_block);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -480,30 +482,39 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
     const char *start = pos;
     if (!match_word(&pos, "if")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
 
-    NEW_LIST(ast_t*, conditions);
-    NEW_LIST(ast_t*, blocks);
+    match_word(&pos, "then");
+    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+    ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'if'"); 
 
-    ast_t *body;
+    List(ast_t*) conditions = LIST(ast_t*, cond);
+    List(ast_t*) blocks = LIST(ast_t*, body);
+
     while (match_word(&pos, "elseif")) {
-        if (!(cond = optional_ast(ctx, &pos, parse_expr)))
-            parser_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
-        if (!match_word(&pos, "then"))
-            parser_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
-        if (!(body = optional_ast(ctx, &pos, parse_expr)))
-            parser_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
+        cond = expect_ast(ctx, pos, &pos, parse_expr, "I couldn't parse this condition");
+        match_word(&pos, "then");
+        body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+        body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'elseif'"); 
+        APPEND(conditions, cond);
+        APPEND(blocks, body);
         whitespace(&pos);
+        if (bl_get_indent(ctx->file, pos) != starting_indent) {
+            pos = body->span.end;
+            break;
+        }
     }
 
     ast_t *else_ = NULL;
     const char *else_start = pos;
-    if (match_word(&pos, "else")) {
-        whitespace(&pos);
-        else_ = expect_ast(ctx, else_start, &pos, parse_expr, "I couldn't find a body for this 'else' block");
+    whitespace(&else_start);
+    if (bl_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
+        pos = else_start;
+        body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+        else_ = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'else'"); 
     }
-    if (else_) pos = else_->span.end;
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
 
@@ -789,12 +800,8 @@ PARSER(parse_lambda) {
     spaces(&pos);
     if (!match(&pos, "=>"))
         return NULL;
-        // parser_err(ctx, start, pos, "I expected a '=>' for this lambda"); 
 
     ast_t *body = optional_ast(ctx, &pos, parse_inline_block);
-    // spaces(&pos);
-    // if (!match(&pos, ""))
-    //     parser_err(ctx, start, pos, "This lambda doesn't have a closing '|'");
 
     return NewAST(ctx, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
 }
@@ -927,7 +934,11 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = parse_term(ctx, pos);
-    if (!term) return NULL;
+    if (!term) {
+        return (
+            parse_if(ctx, pos)
+        );
+    }
 
     pos = term->span.end;
 
