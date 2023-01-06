@@ -23,9 +23,10 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
 STUB_PARSER(parse_dsl)
 STUB_PARSER(parse_struct)
-STUB_PARSER(parse_array)
 STUB_PARSER(parse_cast)
 STUB_PARSER(parse_bitcast)
+STUB_PARSER(parse_while)
+STUB_PARSER(parse_repeat)
 #undef STUB
 
 static int op_tightness[NUM_AST_TAGS] = {
@@ -63,6 +64,8 @@ PARSER(parse_inline_block);
 PARSER(parse_type);
 PARSER(parse_statement);
 PARSER(parse_block);
+PARSER(parse_opt_indented_block);
+PARSER(parse_var);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -158,7 +161,14 @@ size_t match(const char **pos, const char *target) {
 static void expect_str(
     parse_ctx_t *ctx, const char *start, const char **pos, const char *target, const char *fmt, ...) {
     spaces(pos);
-    if (match(pos, target)) return;
+    if (match(pos, target)) {
+        char lastchar = target[strlen(target)-1];
+        if (!(isalpha(lastchar) || isdigit(lastchar) || lastchar == '_'))
+            return;
+        char nextchar = **pos;
+        if (!(isalpha(nextchar) || isdigit(nextchar) || lastchar == '_'))
+            return;
+    }
 
     fputs("\x1b[31;1;7m", stderr);
     va_list args;
@@ -457,6 +467,38 @@ PARSER(parse_num) {
     return NewAST(ctx, start, pos, Num, .n=d, .precision=precision, .units=units);
 }
 
+PARSER(parse_array) {
+    const char *start = pos;
+    if (!match(&pos, "[")) return NULL;
+
+    whitespace(&pos);
+
+    NEW_LIST(ast_t*, items);
+    ast_t *item_type = NULL;
+    if (match(&pos, ":")) {
+        whitespace(&pos);
+        item_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type for this array");
+    }
+
+    for (;;) {
+        whitespace(&pos);
+        ast_t *item = optional_ast(ctx, &pos, parse_expr);
+        if (!item) break;
+        APPEND(items, item);
+        whitespace(&pos);
+        if (!match(&pos, ",")) break;
+    }
+    whitespace(&pos);
+    match(&pos, ",");
+    whitespace(&pos);
+    expect_str(ctx, start, &pos, "]", "I couldn't find a closing ']' for this array");
+
+    if (!item_type && LIST_LEN(items) == 0)
+        parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
+
+    return NewAST(ctx, start, pos, Array, .type=item_type, .items=items);
+}
+
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *pos = lhs->span.end;
@@ -480,6 +522,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 }
 
 ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
+    // if cond then body elseif body else body
     const char *start = pos;
     if (!match_word(&pos, "if")) return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
@@ -518,8 +561,34 @@ ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
 
+ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
+    // for [k,] v in iter [do] [<indent>] body [<nodent> between [<indent>] body]
+    const char *start = pos;
+    if (!match_word(&pos, "for")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
+    ast_t *key = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
+    spaces(&pos);
+    ast_t *value = NULL;
+    if (match(&pos, ",")) {
+        value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
+    }
+    expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
+    ast_t *iter = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
+
+    match_word(&pos, "do"); // Optional
+
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'"); 
+
+    ast_t *between = NULL;
+    const char *between_start = NULL;
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
+        between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
+    }
+    return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body, .between=between);
+}
 
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
+    // true_val if cond elseif cond then elseif_val else else_val
     if (!body) return NULL;
     const char *start = body->span.start;
     const char *pos = body->span.end;
@@ -935,9 +1004,12 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = parse_term(ctx, pos);
     if (!term) {
-        return (
-            parse_if(ctx, pos)
-        );
+        ast_t *expr = NULL;
+        if ((expr=parse_if(ctx, pos))
+            || (expr=parse_for(ctx, pos))
+            || (expr=parse_repeat(ctx, pos))
+            || (expr=parse_while(ctx, pos)))
+            return expr;
     }
 
     pos = term->span.end;
@@ -1084,6 +1156,11 @@ PARSER(parse_block) {
 
 PARSER(parse_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : NULL;
+}
+
+PARSER(parse_opt_indented_block) {
+    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+    return body_parser(ctx, pos);
 }
 
 PARSER(parse_inline_block) {

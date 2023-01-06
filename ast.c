@@ -49,17 +49,17 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
     return ret;
 }
 
-const char *label_str(const char *name, const char *str) { return intern_strf("%s=\"%s\"", name, str); }
-const char *label_int(const char *name, int64_t i) { return intern_strf("%s=%ld", name, i); }
-const char *label_double(const char *name, double d) { return intern_strf("%s=%g", name, d); }
-const char *label_bool(const char *name, bool b) { return intern_strf("%s=%s", name, b ? "yes" : "no"); }
+const char *label_str(const char *name, const char *str) { return intern_strf("%s=\x1b[35m\"%s\"\x1b[m", name, str); }
+const char *label_int(const char *name, int64_t i) { return intern_strf("%s=\x1b[35m%ld\x1b[m", name, i); }
+const char *label_double(const char *name, double d) { return intern_strf("%s=\x1b[35m%g\x1b[m", name, d); }
+const char *label_bool(const char *name, bool b) { return intern_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
 
 const char *_ast_to_str(const char *name, ast_t *ast)
 {
     char *buf; size_t size;
     FILE *mem = open_memstream(&buf, &size);
     if (name) fprintf(mem, "%s=", name);
-    if (!ast) return "(NULL AST)";
+    if (!ast) return intern_strf("%s=\x1b[35mNULL\x1b[m", name);
 
     // A small DSL to make it easier to whip up string representations of these
     // values with minimal boilerplate.
@@ -72,9 +72,9 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           bool: label_bool, \
                           unsigned char: label_bool, \
                           List(istr_t): str_list_to_str)(#field, data->field)
-#define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs(#t "(", mem); \
+#define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs("\x1b[1m" #t "(\x1b[m", mem); \
     fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
-    fputs(")", mem); break; }
+    fputs("\x1b[1m)\x1b[m", mem); break; }
 #define BINOP(b) T(b, F(lhs), F(rhs))
 #define UNOP(u) T(u, F(value))
 
