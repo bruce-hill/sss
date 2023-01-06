@@ -22,10 +22,10 @@ static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *i
 {
     auto for_loop = Match((ast_t*)data, For);
     if (for_loop->key)
-        hashmap_set(env->bindings, for_loop->key, new(binding_t, .rval=info->key_rval, .type=info->key_type));
+        hashmap_set(env->bindings, Match(for_loop->key, Var)->name, new(binding_t, .rval=info->key_rval, .type=info->key_type));
 
     if (for_loop->value)
-        hashmap_set(env->bindings, for_loop->value, new(binding_t, .rval=info->value_rval, .type=info->value_type));
+        hashmap_set(env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .rval=info->value_rval, .type=info->value_type));
 
     if (for_loop->body) {
         if (get_type(env, for_loop->body)->tag != GeneratorType && env->comprehension_callback)

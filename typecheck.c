@@ -660,24 +660,24 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case ArrayType: {
             auto list_t = Match(iter_t, ArrayType);
             if (for_loop->key)
-                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
             if (for_loop->value)
-                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=list_t->item_type));
+                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=list_t->item_type));
             break;
         }
         case RangeType: {
             if (for_loop->key)
-                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
             if (for_loop->value)
-                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(IntType)));
+                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=Type(IntType)));
             break;
         }
         case StructType: {
             // TODO: check for .next field
             if (for_loop->key)
-                hashmap_set(loop_bindings, for_loop->key, new(binding_t, .type=Type(IntType)));
+                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
             if (for_loop->value)
-                hashmap_set(loop_bindings, for_loop->value, new(binding_t, .type=Type(PointerType, .pointed=iter_t, .is_optional=false)));
+                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=Type(PointerType, .pointed=iter_t, .is_optional=false)));
             break;
         }
         default:
