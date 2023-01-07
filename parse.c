@@ -25,8 +25,6 @@ STUB_PARSER(parse_dsl)
 STUB_PARSER(parse_struct)
 STUB_PARSER(parse_cast)
 STUB_PARSER(parse_bitcast)
-STUB_PARSER(parse_while)
-STUB_PARSER(parse_repeat)
 #undef STUB
 
 static int op_tightness[NUM_AST_TAGS] = {
@@ -56,7 +54,6 @@ static inline istr_t get_word(const char **pos);
 static inline istr_t get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
-static inline bool nodent(parse_ctx_t *ctx, const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 PARSER(parse_expr);
 PARSER(parse_term);
@@ -271,21 +268,6 @@ bool indent(parse_ctx_t *ctx, const char **out) {
         return false;
 
     if (bl_get_indent(ctx->file, pos) > starting_indent) {
-        *out = pos;
-        return true;
-    }
-
-    return false;
-}
-
-bool nodent(parse_ctx_t *ctx, const char **out) {
-    const char *pos = *out;
-    size_t starting_indent = bl_get_indent(ctx->file, pos);
-    whitespace(&pos);
-    if (bl_get_line_number(ctx->file, pos) == bl_get_line_number(ctx->file, *out))
-        return false;
-
-    if (bl_get_indent(ctx->file, pos) == starting_indent) {
         *out = pos;
         return true;
     }
@@ -578,7 +560,7 @@ ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
     match_word(&pos, "do"); // Optional
 
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'"); 
-
+    whitespace(&pos);
     ast_t *between = NULL;
     const char *between_start = NULL;
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
@@ -586,6 +568,40 @@ ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
     }
     return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body, .between=between);
 }
+
+ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos) {
+    // repeat [<indent>] body [<nodent> between [<indent>] body]
+    const char *start = pos;
+    if (!match_word(&pos, "repeat")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'repeat'"); 
+    whitespace(&pos);
+    ast_t *between = NULL;
+    const char *between_start = NULL;
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
+        between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
+    }
+    return NewAST(ctx, start, pos, Repeat, .body=body, .between=between);
+}
+
+ast_t *parse_while(parse_ctx_t *ctx, const char *pos) {
+    // while condition [do] [<indent>] body [<nodent> between [<indent>] body]
+    const char *start = pos;
+    if (!match_word(&pos, "while")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
+    ast_t *condition = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
+    match(&pos, "do"); // optional
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'while'"); 
+    whitespace(&pos);
+    ast_t *between = NULL;
+    const char *between_start = NULL;
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
+        printf("Checking between: %s\n", pos);
+        between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
+    }
+    return NewAST(ctx, start, pos, While, .condition=condition, .body=body, .between=between);
+}
+
 
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     // true_val if cond elseif cond then elseif_val else else_val
@@ -599,7 +615,6 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
 
-    nodent(ctx, &pos);
     while (match_word(&pos, "elseif")) {
         if (!(cond = optional_ast(ctx, &pos, parse_expr)))
             parser_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
@@ -607,7 +622,6 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
             parser_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
         if (!(body = optional_ast(ctx, &pos, parse_expr)))
             parser_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
-        nodent(ctx, &pos);
     }
 
     ast_t *else_ = NULL;
@@ -818,7 +832,6 @@ PARSER(parse_skip) {
     if (!match_word(&pos, "skip")) return NULL;
     spaces(&pos);
     istr_t target = get_word(&pos);
-    if (!target) return NULL;
     return NewAST(ctx, start, pos, Skip, .target=target);
 }
 
@@ -827,7 +840,6 @@ PARSER(parse_stop) {
     if (!match_word(&pos, "stop")) return NULL;
     spaces(&pos);
     istr_t target = get_word(&pos);
-    if (!target) return NULL;
     return NewAST(ctx, start, pos, Stop, .target=target);
 }
 
@@ -1010,6 +1022,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             || (expr=parse_repeat(ctx, pos))
             || (expr=parse_while(ctx, pos)))
             return expr;
+        return NULL;
     }
 
     pos = term->span.end;
@@ -1135,6 +1148,7 @@ PARSER(parse_statement) {
 }
 
 PARSER(parse_block) {
+    size_t block_indent = bl_get_indent(ctx->file, pos);
     const char *start = pos;
     whitespace(&pos);
     NEW_LIST(ast_t*, statements);
@@ -1148,8 +1162,11 @@ PARSER(parse_block) {
         }
         pos = stmt->span.end;
         APPEND(statements, stmt);
-        if (!nodent(ctx, &pos))
+        whitespace(&pos);
+        if (bl_get_indent(ctx->file, pos) != block_indent) {
+            pos = stmt->span.end;
             break;
+        }
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
 }
