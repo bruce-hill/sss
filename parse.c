@@ -63,6 +63,7 @@ PARSER(parse_statement);
 PARSER(parse_block);
 PARSER(parse_opt_indented_block);
 PARSER(parse_var);
+PARSER(parse_func_def);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -296,7 +297,7 @@ PARSER(parse_parens) {
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
     whitespace(&pos);
-    ast_t *expr = optional_ast(ctx, &pos, parse_expr);
+    ast_t *expr = optional_ast(ctx, &pos, parse_statement);
     if (!expr) return NULL;
     expect_str(ctx, start, &pos, ")", "I couldn't find a closing parenthesis");
     expr->span.start = start;
@@ -968,6 +969,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 
     NEW_LIST(ast_t*, args);
     if (match(&pos, ")")) { // no arguments
+        if (!requires_parens) return NULL;
         return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
     }
 
@@ -1020,7 +1022,9 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         if ((expr=parse_if(ctx, pos))
             || (expr=parse_for(ctx, pos))
             || (expr=parse_repeat(ctx, pos))
-            || (expr=parse_while(ctx, pos)))
+            || (expr=parse_while(ctx, pos))
+            || (expr=parse_func_def(ctx, pos))
+            )
             return expr;
         return NULL;
     }
@@ -1180,6 +1184,55 @@ PARSER(parse_opt_indented_block) {
     return body_parser(ctx, pos);
 }
 
+PARSER(parse_func_def) {
+    const char *start = pos;
+    if (!match_word(&pos, "def")) return NULL;
+    spaces(&pos);
+    istr_t name = get_id(&pos);
+    if (!name) parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
+    spaces(&pos);
+    if (!match(&pos, "(")) return NULL;
+
+    NEW_LIST(istr_t, arg_names);
+    NEW_LIST(ast_t*, arg_types);
+    NEW_LIST(ast_t*, arg_defaults);
+    for (;;) {
+        whitespace(&pos);
+        const char *arg_start = pos;
+        istr_t arg_name = get_id(&pos);
+        if (!arg_name) break;
+        APPEND(arg_names, arg_name);
+        spaces(&pos);
+        if (match(&pos, ":")) {
+            ast_t *type = expect_ast(ctx, arg_start, &pos, parse_type,
+                                     "I expected a type for this argument");
+            APPEND(arg_types, type);
+            APPEND(arg_defaults, NULL);
+        } else if (match(&pos, "=")) {
+            ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
+                                        "I expected a default value for this argument");
+            APPEND(arg_defaults, def_val);
+            APPEND(arg_types, NULL);
+        } else {
+            parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
+        }
+    }
+
+    whitespace(&pos);
+    expect_str(ctx, start, &pos, ")", "This function definition needs a closing parenthesis");
+
+    ast_t *ret_type = NULL;
+    spaces(&pos);
+    if (match(&pos, ":")) {
+        ret_type = optional_ast(ctx, &pos, parse_type);
+    }
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
+                             "This function needs a body block");
+    return NewAST(ctx, start, pos, FunctionDef,
+                  .name=name, .arg_names=arg_names, .arg_types=arg_types,
+                  .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body);
+}
+
 PARSER(parse_inline_block) {
     spaces(&pos);
     const char *start = pos;
@@ -1194,7 +1247,6 @@ PARSER(parse_inline_block) {
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
 }
-
 
 ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
     parse_ctx_t ctx = {
