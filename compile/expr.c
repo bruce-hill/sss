@@ -477,7 +477,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (num_values != 1)
                 compile_err(env, ast, "I expected this to have exactly one value");
             ast_t *member_ast = ith(struct_->members, 0);
-            gcc_rvalue_t *rval = compile_expr(env, block, Match(member_ast, StructField)->value);
+            ast_t *value = Match(member_ast, StructField)->value;
+            gcc_rvalue_t *rval = compile_expr(env, block, value);
+            if (!promote(env, get_type(env, value), &rval, t))
+                compile_err(env, ast, "I couldn't promote this value to %s", type_to_string(t));
             if (binding && binding->enum_type)
                 rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
             return rval;
