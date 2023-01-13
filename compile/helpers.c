@@ -463,12 +463,16 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                     gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
                     gcc_field_t *union_field = ith(union_t->fields, u);
                     gcc_func_t *tag_print = get_print_func(env, tag_data_type);
+                    if (tag_data_type->tag != StructType)
+                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(intern_strf("%s{", tag_name)));
                     gcc_rvalue_t *suffix_len = gcc_callx(
                         env->ctx, NULL, tag_print,
                         gcc_rvalue_access_field(data, NULL, union_field),
                         f,
                         gcc_param_as_rvalue(params[2]));
                     gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, suffix_len);
+                    if (tag_data_type->tag != StructType)
+                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("}"));
                     goto found_struct;
                 }
             }

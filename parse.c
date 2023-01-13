@@ -22,7 +22,6 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
 STUB_PARSER(parse_dsl)
-STUB_PARSER(parse_struct)
 STUB_PARSER(parse_cast)
 STUB_PARSER(parse_bitcast)
 #undef STUB
@@ -55,6 +54,7 @@ static inline istr_t get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
+static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 PARSER(parse_expr);
 PARSER(parse_term);
 PARSER(parse_inline_block);
@@ -63,7 +63,7 @@ PARSER(parse_statement);
 PARSER(parse_block);
 PARSER(parse_opt_indented_block);
 PARSER(parse_var);
-PARSER(parse_func_def);
+PARSER(parse_def);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -405,7 +405,10 @@ PARSER(parse_optional_type) {
 PARSER(parse_type_name) {
     const char *start = pos;
     istr_t id = get_id(&pos);
-    return id ? NewAST(ctx, start, pos, Var, .name=id) : NULL;
+    if (!id) return NULL;
+    ast_t *ast = NewAST(ctx, start, pos, Var, .name=id);
+    ast_t *fielded = parse_field_suffix(ctx, ast);
+    return fielded ? fielded : ast;
 }
 
 PARSER(parse_type) {
@@ -480,6 +483,39 @@ PARSER(parse_array) {
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 
     return NewAST(ctx, start, pos, Array, .type=item_type, .items=items);
+}
+
+PARSER(parse_struct) {
+    const char *start = pos;
+    ast_t *type = optional_ast(ctx, &pos, parse_type);
+    spaces(&pos);
+    if (!match(&pos, "{")) return NULL;
+    if (type)
+        printf("Got struct type: %.*s\n", (int)(type->span.end - type->span.start), type->span.start);
+    else
+        puts("Got anon struct");
+    NEW_LIST(ast_t*, members);
+    for (;;) {
+        whitespace(&pos);
+        const char *field_start = pos;
+        istr_t field_name = NULL;
+        if ((field_name=get_id(&pos))) {
+            whitespace(&pos);
+            if (!match(&pos, "=")) goto no_field_name;
+            whitespace(&pos);
+        } else {
+          no_field_name: field_name = NULL;
+          pos = field_start;
+        }
+        ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
+        if (!value) break;
+        APPEND(members, NewAST(ctx, field_start, pos, StructField, .name=field_name, .value=value));
+        whitespace(&pos);
+        match(&pos, ",");
+    }
+    whitespace(&pos);
+    expect_str(ctx, start, &pos, "}", "I expected a closing '}' for this struct");
+    return NewAST(ctx, start, pos, Struct, .type=type, .members=members);
 }
 
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
@@ -877,8 +913,10 @@ PARSER(parse_lambda) {
     }
 
     spaces(&pos);
-    if (!match(&pos, ")"))
+    if (!match(&pos, ")")) {
+        if (LIST_LEN(arg_names) == 0) return NULL;
         parser_err(ctx, start, pos, "This lambda doesn't have a closing '|'");
+    }
     spaces(&pos);
     if (!match(&pos, "=>"))
         return NULL;
@@ -960,6 +998,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     const char *start = fn->span.start;
     const char *pos = fn->span.end;
     const char *paren_pos = pos;
+    if (match(&pos, "{")) return NULL;
     if (match(&pos, "("))
         requires_parens = true;
     else if (requires_parens)
@@ -1023,7 +1062,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             || (expr=parse_for(ctx, pos))
             || (expr=parse_repeat(ctx, pos))
             || (expr=parse_while(ctx, pos))
-            || (expr=parse_func_def(ctx, pos))
+            || (expr=parse_def(ctx, pos))
             )
             return expr;
         return NULL;
@@ -1046,12 +1085,12 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         case '<': ++pos; tag = match(&pos, "=") ? LessEqual : Less; break;
         case '>': ++pos; tag = match(&pos, "=") ? GreaterEqual : Greater; break;
         case '!': {
-            if (!match(&pos, "=")) goto no_more_binops;
+            if (!match(&pos, "!=")) goto no_more_binops;
             tag = NotEqual;
             break;
         }
         case '=': {
-            if (!match(&pos, "=")) goto no_more_binops;
+            if (!match(&pos, "==")) goto no_more_binops;
             tag = Equal;
             break;
         }
@@ -1064,6 +1103,8 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 tag = Xor; break;
             } else if (match_word(&pos, "xor")) {
                 tag = Xor; break;
+            } else if (match_word(&pos, "mod")) {
+                tag = Modulus; break;
             } else {
                 goto no_more_binops;
             }
@@ -1131,6 +1172,20 @@ PARSER(parse_declaration) {
     return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
 }
 
+// PARSER(parse_assignment) {
+//     const char *start = pos;
+//     ast_t *var = parse_var(ctx, pos);
+//     if (!var) return NULL;
+//     pos = var->span.end;
+//     spaces(&pos);
+//     if (!match(&pos, ":=")) return NULL;
+//     spaces(&pos);
+//     ast_t *val = parse_expr(ctx, pos);
+//     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
+//     pos = val->span.end;
+//     return NewAST(ctx, start, pos, Assignment, .var=var, .value=val);
+// }
+
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if (!((stmt=parse_declaration(ctx, pos))
@@ -1184,53 +1239,131 @@ PARSER(parse_opt_indented_block) {
     return body_parser(ctx, pos);
 }
 
-PARSER(parse_func_def) {
+PARSER(parse_struct_field_def) {
+    const char *start = pos;
+    NEW_LIST(istr_t, names);
+    for (;;) {
+        spaces(&pos);
+        istr_t name = get_id(&pos);
+        if (!name) break;
+        APPEND(names, name);
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+    }
+    if (LIST_LEN(names) == 0) return NULL;
+    spaces(&pos);
+    if (!match(&pos, ":")) return NULL;
+    ast_t *type = expect_ast(ctx, pos-1, &pos, parse_type, "I expected a type here");
+    return NewAST(ctx, start, pos, StructFieldDef, .names=names, .type=type);
+}
+
+ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {
+    NEW_LIST(ast_t*, members);
+    for (;;) {
+        whitespace(pos);
+        ast_t *memb = NULL;
+        bool success = (
+            false
+            || (memb=parse_struct_field_def(ctx, *pos))
+            || (memb=parse_def(ctx, *pos))
+            || (memb=parse_declaration(ctx, *pos)));
+        if (!success) break;
+        APPEND(members, memb);
+        *pos = memb->span.end;
+    }
+    whitespace(pos);
+    expect_str(ctx, start, pos, "}", "I expected this struct def to have a closing '}'");
+    return NewAST(ctx, start, *pos, StructDef, .name=name, .members=members);
+}
+
+PARSER(parse_def) {
     const char *start = pos;
     if (!match_word(&pos, "def")) return NULL;
     spaces(&pos);
     istr_t name = get_id(&pos);
     if (!name) parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
     spaces(&pos);
-    if (!match(&pos, "(")) return NULL;
 
-    NEW_LIST(istr_t, arg_names);
-    NEW_LIST(ast_t*, arg_types);
-    NEW_LIST(ast_t*, arg_defaults);
-    for (;;) {
+    if (match(&pos, "(")) { // Function def foo(...)
+        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(ast_t*, arg_types);
+        NEW_LIST(ast_t*, arg_defaults);
+        for (;;) {
+            whitespace(&pos);
+            const char *arg_start = pos;
+            istr_t arg_name = get_id(&pos);
+            if (!arg_name) break;
+            APPEND(arg_names, arg_name);
+            spaces(&pos);
+            if (match(&pos, ":")) {
+                ast_t *type = expect_ast(ctx, arg_start, &pos, parse_type,
+                                         "I expected a type for this argument");
+                APPEND(arg_types, type);
+                APPEND(arg_defaults, NULL);
+            } else if (match(&pos, "=")) {
+                ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
+                                            "I expected a default value for this argument");
+                APPEND(arg_defaults, def_val);
+                APPEND(arg_types, NULL);
+            } else {
+                parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
+            }
+        }
+
         whitespace(&pos);
-        const char *arg_start = pos;
-        istr_t arg_name = get_id(&pos);
-        if (!arg_name) break;
-        APPEND(arg_names, arg_name);
+        expect_str(ctx, start, &pos, ")", "This function definition needs a closing parenthesis");
+
+        ast_t *ret_type = NULL;
         spaces(&pos);
         if (match(&pos, ":")) {
-            ast_t *type = expect_ast(ctx, arg_start, &pos, parse_type,
-                                     "I expected a type for this argument");
-            APPEND(arg_types, type);
-            APPEND(arg_defaults, NULL);
-        } else if (match(&pos, "=")) {
-            ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
-                                        "I expected a default value for this argument");
-            APPEND(arg_defaults, def_val);
-            APPEND(arg_types, NULL);
-        } else {
-            parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
+            ret_type = optional_ast(ctx, &pos, parse_type);
         }
-    }
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
+                                 "This function needs a body block");
+        return NewAST(ctx, start, pos, FunctionDef,
+                      .name=name, .arg_names=arg_names, .arg_types=arg_types,
+                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body);
+    } else if (match(&pos, "{")) { // Struct def Foo{...}
+        return parse_rest_of_struct_def(ctx, start, &pos, name);
+    } else if (match_word(&pos, "oneof")) { // Enum def Foo oneof {...}
+        expect_str(ctx, start, &pos, "{", "I expected a '{' after 'oneof'");
 
-    whitespace(&pos);
-    expect_str(ctx, start, &pos, ")", "This function definition needs a closing parenthesis");
+        NEW_LIST(istr_t, tag_names);
+        NEW_LIST(int64_t, tag_values);
+        NEW_LIST(ast_t*, tag_types);
+        int64_t next_value = 0;
+        for (;;) {
+            whitespace(&pos);
+            const char *tag_start = pos;
+            istr_t tag_name = get_id(&pos);
+            if (!tag_name) break;
+            spaces(&pos);
+            if (match(&pos, "=")) {
+                ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+                next_value = Match(val, Int)->i;
+            }
 
-    ast_t *ret_type = NULL;
-    spaces(&pos);
-    if (match(&pos, ":")) {
-        ret_type = optional_ast(ctx, &pos, parse_type);
+            spaces(&pos);
+            ast_t *type = NULL;
+            if (match(&pos, ":")) {
+                type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type here");
+            } else if (match(&pos, "{")) {
+                type = parse_rest_of_struct_def(ctx, tag_start, &pos, tag_name);
+            }
+
+            APPEND(tag_names, tag_name);
+            APPEND(tag_values, next_value);
+            APPEND(tag_types, type);
+
+            whitespace(&pos);
+            match(&pos, ",");
+
+            ++next_value;
+        }
+        expect_str(ctx, start, &pos, "}", "I expected a '}' to finish this 'def'");
+        return NewAST(ctx, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
     }
-    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
-                             "This function needs a body block");
-    return NewAST(ctx, start, pos, FunctionDef,
-                  .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                  .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body);
+    return NULL;
 }
 
 PARSER(parse_inline_block) {
