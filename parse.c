@@ -1172,23 +1172,39 @@ PARSER(parse_declaration) {
     return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
 }
 
-// PARSER(parse_assignment) {
-//     const char *start = pos;
-//     ast_t *var = parse_var(ctx, pos);
-//     if (!var) return NULL;
-//     pos = var->span.end;
-//     spaces(&pos);
-//     if (!match(&pos, ":=")) return NULL;
-//     spaces(&pos);
-//     ast_t *val = parse_expr(ctx, pos);
-//     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
-//     pos = val->span.end;
-//     return NewAST(ctx, start, pos, Assignment, .var=var, .value=val);
-// }
+PARSER(parse_assignment) {
+    const char *start = pos;
+    NEW_LIST(ast_t*, targets);
+    NEW_LIST(ast_t*, values);
+    for (;;) {
+        ast_t *lhs = optional_ast(ctx, &pos, parse_term);
+        if (!lhs) break;
+        APPEND(targets, lhs);
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+        whitespace(&pos);
+    }
+
+    spaces(&pos);
+    if (!match(&pos, "=")) return NULL;
+    if (match(&pos, "=")) return NULL; // == comparison
+
+    for (;;) {
+        ast_t *rhs = optional_ast(ctx, &pos, parse_expr);
+        if (!rhs) break;
+        APPEND(values, rhs);
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+        whitespace(&pos);
+    }
+
+    return NewAST(ctx, start, pos, Assign, .targets=targets, .values=values);
+}
 
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if (!((stmt=parse_declaration(ctx, pos))
+          || (stmt=parse_assignment(ctx, pos))
           || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
           || (stmt=parse_expr(ctx, pos))))
         return NULL;
