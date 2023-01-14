@@ -539,10 +539,14 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
     // if cond then body elseif body else body
     const char *start = pos;
-    if (!match_word(&pos, "if")) return NULL;
+    bool is_unless;
+    if (match_word(&pos, "if")) is_unless = false;
+    if (match_word(&pos, "unless")) is_unless = true;
+    else return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
+    if (is_unless) cond = FakeAST(Not, .value=cond);
 
     match_word(&pos, "then");
     parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
@@ -640,10 +644,14 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     if (!body) return NULL;
     const char *start = body->span.start;
     const char *pos = body->span.end;
-    if (!match_word(&pos, "if")) return NULL;
+    bool is_unless;
+    if (match_word(&pos, "unless")) is_unless = true;
+    else if (match_word(&pos, "if")) is_unless = false;
+    else return NULL;
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
 
+    if (is_unless) cond = FakeAST(Not, .value=cond);
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
 
@@ -664,6 +672,7 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     }
     if (else_) pos = else_->span.end;
     else if (require_else) return NULL;
+
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
 
