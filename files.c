@@ -29,7 +29,7 @@ static bl_file_t *_load_file(istr_t filename, FILE *file)
         for (p = line_buf; *p == ' ' || *p == '\t'; ++p)
             line_info.indent += *p == ' ' ? 1 : 4;
         line_info.is_empty = *p != '\r' && *p != '\n';
-        list_insert((list_t*)lines, sizeof(line_info), 0, &line_info, NULL);
+        list_append((list_t*)lines, sizeof(line_info), &line_info);
         fwrite(line_buf, sizeof(char), line_len, mem);
         fflush(mem);
     }

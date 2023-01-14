@@ -541,7 +541,7 @@ ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
     const char *start = pos;
     bool is_unless;
     if (match_word(&pos, "if")) is_unless = false;
-    if (match_word(&pos, "unless")) is_unless = true;
+    else if (match_word(&pos, "unless")) is_unless = true;
     else return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
@@ -1144,7 +1144,6 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         LIST_REMOVE(binops, tightest_op);
         ast_t *lhs = LIST_ITEM(terms, tightest_op);
         ast_t *rhs = LIST_ITEM(terms, tightest_op + 1);
-        LIST_REMOVE(terms, tightest_op);
 
         // Unsafe, relies on these having the same type:
         ast_t *merged = new(
@@ -1154,8 +1153,10 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             .__data.Add.lhs=lhs,
             .__data.Add.rhs=rhs);
         // End unsafe
+
+        LIST_REMOVE(terms, tightest_op);
         terms[0][tightest_op] = merged;
-        assert(LIST_ITEM(terms, 0) == merged);
+        // assert(LIST_ITEM(terms, tightest_op) == merged);
     }
 
     ast_t *expr = LIST_ITEM(terms, 0);
