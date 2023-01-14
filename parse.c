@@ -490,10 +490,6 @@ PARSER(parse_struct) {
     ast_t *type = optional_ast(ctx, &pos, parse_type);
     spaces(&pos);
     if (!match(&pos, "{")) return NULL;
-    if (type)
-        printf("Got struct type: %.*s\n", (int)(type->span.end - type->span.start), type->span.start);
-    else
-        puts("Got anon struct");
     NEW_LIST(ast_t*, members);
     for (;;) {
         whitespace(&pos);
@@ -633,7 +629,6 @@ ast_t *parse_while(parse_ctx_t *ctx, const char *pos) {
     ast_t *between = NULL;
     const char *between_start = NULL;
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
-        printf("Checking between: %s\n", pos);
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     }
     return NewAST(ctx, start, pos, While, .condition=condition, .body=body, .between=between);
@@ -1172,10 +1167,34 @@ PARSER(parse_declaration) {
     return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
 }
 
+PARSER(parse_update) {
+    const char *start = pos;
+    ast_t *lhs = optional_ast(ctx, &pos, parse_expr);
+    if (!lhs) return NULL;
+    spaces(&pos);
+    ast_tag_e tag;
+    if (match(&pos, "+=")) tag = AddUpdate;
+    else if (match(&pos, "-=")) tag = SubtractUpdate;
+    else if (match(&pos, "*=")) tag = MultiplyUpdate;
+    else if (match(&pos, "/=")) tag = DivideUpdate;
+    else if (match(&pos, "and=")) tag = AndUpdate;
+    else if (match(&pos, "or=")) tag = AndUpdate;
+    else return NULL;
+    ast_t *rhs = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
+    switch (tag) {
+    case AddUpdate: return NewAST(ctx, start, pos, AddUpdate, .lhs=lhs, .rhs=rhs);
+    case SubtractUpdate: return NewAST(ctx, start, pos, SubtractUpdate, .lhs=lhs, .rhs=rhs);
+    case MultiplyUpdate: return NewAST(ctx, start, pos, MultiplyUpdate, .lhs=lhs, .rhs=rhs);
+    case DivideUpdate: return NewAST(ctx, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
+    case AndUpdate: return NewAST(ctx, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
+    case OrUpdate: return NewAST(ctx, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
+    default: return NULL;
+    }
+}
+
 PARSER(parse_assignment) {
     const char *start = pos;
     NEW_LIST(ast_t*, targets);
-    NEW_LIST(ast_t*, values);
     for (;;) {
         ast_t *lhs = optional_ast(ctx, &pos, parse_term);
         if (!lhs) break;
@@ -1185,17 +1204,25 @@ PARSER(parse_assignment) {
         whitespace(&pos);
     }
 
+    if (LIST_LEN(targets) == 0) return NULL;
+
     spaces(&pos);
     if (!match(&pos, "=")) return NULL;
     if (match(&pos, "=")) return NULL; // == comparison
 
-    for (;;) {
-        ast_t *rhs = optional_ast(ctx, &pos, parse_expr);
-        if (!rhs) break;
+    NEW_LIST(ast_t*, values);
+    if (LIST_LEN(targets) == 1) {
+        ast_t *rhs = expect_ast(ctx, start, &pos, parse_statement, "I expected an expression here");
         APPEND(values, rhs);
-        spaces(&pos);
-        if (!match(&pos, ",")) break;
-        whitespace(&pos);
+    } else {
+        for (;;) {
+            ast_t *rhs = optional_ast(ctx, &pos, parse_expr);
+            if (!rhs) break;
+            APPEND(values, rhs);
+            spaces(&pos);
+            if (!match(&pos, ",")) break;
+            whitespace(&pos);
+        }
     }
 
     return NewAST(ctx, start, pos, Assign, .targets=targets, .values=values);
@@ -1204,6 +1231,7 @@ PARSER(parse_assignment) {
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if (!((stmt=parse_declaration(ctx, pos))
+          || (stmt=parse_update(ctx, pos))
           || (stmt=parse_assignment(ctx, pos))
           || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
           || (stmt=parse_expr(ctx, pos))))
@@ -1228,18 +1256,17 @@ PARSER(parse_block) {
     whitespace(&pos);
     NEW_LIST(ast_t*, statements);
     while (*pos) {
-        ast_t *stmt = parse_statement(ctx, pos);
+        ast_t *stmt = optional_ast(ctx, &pos, parse_statement);
         if (!stmt) {
             spaces(&pos);
             if (*pos && *pos != '\r' && *pos != '\n')
                 parser_err(ctx, pos, strchrnul(pos, '\n'), "I couldn't parse this line");
             break;
         }
-        pos = stmt->span.end;
         APPEND(statements, stmt);
         whitespace(&pos);
         if (bl_get_indent(ctx->file, pos) != block_indent) {
-            pos = stmt->span.end;
+            pos = stmt->span.end; // backtrack
             break;
         }
     }
@@ -1251,8 +1278,7 @@ PARSER(parse_indented_block) {
 }
 
 PARSER(parse_opt_indented_block) {
-    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-    return body_parser(ctx, pos);
+    return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_statement(ctx, pos);
 }
 
 PARSER(parse_struct_field_def) {
