@@ -64,6 +64,7 @@ static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
 static PARSER(parse_do);
+static PARSER(parse_when);
 static PARSER(parse_expr);
 static PARSER(parse_extended_expr);
 static PARSER(parse_term);
@@ -539,6 +540,7 @@ PARSER(parse_array) {
               || (item=optional_ast(ctx, &pos, parse_if))
               || (item=optional_ast(ctx, &pos, parse_for))
               || (item=optional_ast(ctx, &pos, parse_while))
+              || (item=optional_ast(ctx, &pos, parse_when))
               || (item=optional_ast(ctx, &pos, parse_repeat))
               || (item=optional_ast(ctx, &pos, parse_do))
               || (item=optional_ast(ctx, &pos, parse_expr))
@@ -682,6 +684,46 @@ PARSER(parse_if) {
         else_ = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'else'"); 
     }
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
+}
+
+PARSER(parse_when) {
+    // when <expr> is [<var>:]<tag> <body> *(is ...) else <body>
+    const char *start = pos;
+    if (!match_word(&pos, "when"))
+        return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
+    ast_t *subj = expect_ast(ctx, start, &pos, parse_expr,
+                             "I expected to find an expression for this 'when'");
+
+    NEW_LIST(ast_case_t, cases);
+    for (;;) {
+        whitespace(&pos);
+        if (bl_get_indent(ctx->file, pos) != starting_indent) break;
+        if (!match_word(&pos, "is")) break;
+        ast_t *var = optional_ast(ctx, &pos, parse_var);
+        ast_t *tag;
+        spaces(&pos);
+        if (var && match(&pos, ":")) {
+            tag = optional_ast(ctx, &pos, parse_type);
+        } else {
+            tag = var;
+            var = NULL;
+        }
+        parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+        ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'when'"); 
+        ast_case_t case_ = {.var=var, .tag=tag, .body=body};
+        list_append((list_t*)cases, sizeof(ast_case_t), &case_);
+    }
+
+    ast_t *else_ = NULL;
+    const char *else_start = pos;
+    whitespace(&else_start);
+    if (bl_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
+        pos = else_start;
+        parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+        else_ = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'else'"); 
+    }
+    return NewAST(ctx, start, pos, When, .subject=subj, .cases=cases, .default_body=else_);
 }
 
 PARSER(parse_do) {
@@ -1372,6 +1414,7 @@ PARSER(parse_statement) {
         || (stmt=parse_for(ctx, pos))
         || (stmt=parse_repeat(ctx, pos))
         || (stmt=parse_while(ctx, pos))
+        || (stmt=parse_when(ctx, pos))
         || (stmt=parse_do(ctx, pos))
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_declaration(ctx, pos))
