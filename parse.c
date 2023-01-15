@@ -56,6 +56,7 @@ static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 PARSER(parse_expr);
+PARSER(parse_extended_expr);
 PARSER(parse_term);
 PARSER(parse_inline_block);
 PARSER(parse_type);
@@ -297,7 +298,7 @@ PARSER(parse_parens) {
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
     whitespace(&pos);
-    ast_t *expr = optional_ast(ctx, &pos, parse_statement);
+    ast_t *expr = optional_ast(ctx, &pos, parse_extended_expr);
     if (!expr) return NULL;
     expect_str(ctx, start, &pos, ")", "I couldn't find a closing parenthesis");
     expr->span.start = start;
@@ -530,7 +531,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char *pos = lhs->span.end;
     whitespace(&pos);
     if (!match(&pos, "[")) return NULL;
-    ast_t *index = expect_ast(ctx, start, &pos, parse_expr,
+    ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
     expect_str(ctx, start, &pos, "]", "I expected to find a closing ']' here");
     return NewAST(ctx, start, pos, Index, .indexed=lhs, .index=index);
@@ -941,7 +942,7 @@ PARSER(parse_nil) {
 PARSER(parse_fail) {
     const char *start = pos;
     if (!match_word(&pos, "fail")) return NULL;
-    ast_t *msg = parse_expr(ctx, pos);
+    ast_t *msg = parse_term(ctx, pos);
     return NewAST(ctx, start, msg ? msg->span.end : pos, Fail, .message=msg);
 }
 
@@ -1059,20 +1060,8 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 }
 
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
-    ast_t *term = parse_term(ctx, pos);
-    if (!term) {
-        ast_t *expr = NULL;
-        if ((expr=parse_if(ctx, pos))
-            || (expr=parse_for(ctx, pos))
-            || (expr=parse_repeat(ctx, pos))
-            || (expr=parse_while(ctx, pos))
-            || (expr=parse_def(ctx, pos))
-            )
-            return expr;
-        return NULL;
-    }
-
-    pos = term->span.end;
+    ast_t *term = optional_ast(ctx, &pos, parse_term);
+    if (!term) return NULL;
 
     NEW_LIST(ast_t*, terms);
     APPEND(terms, term);
@@ -1171,7 +1160,7 @@ PARSER(parse_declaration) {
     spaces(&pos);
     if (!match(&pos, ":=")) return NULL;
     spaces(&pos);
-    ast_t *val = parse_expr(ctx, pos);
+    ast_t *val = parse_extended_expr(ctx, pos);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
     pos = val->span.end;
     return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
@@ -1190,7 +1179,7 @@ PARSER(parse_update) {
     else if (match(&pos, "and=")) tag = AndUpdate;
     else if (match(&pos, "or=")) tag = AndUpdate;
     else return NULL;
-    ast_t *rhs = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
+    ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
     switch (tag) {
     case AddUpdate: return NewAST(ctx, start, pos, AddUpdate, .lhs=lhs, .rhs=rhs);
     case SubtractUpdate: return NewAST(ctx, start, pos, SubtractUpdate, .lhs=lhs, .rhs=rhs);
@@ -1222,11 +1211,11 @@ PARSER(parse_assignment) {
 
     NEW_LIST(ast_t*, values);
     if (LIST_LEN(targets) == 1) {
-        ast_t *rhs = expect_ast(ctx, start, &pos, parse_statement, "I expected an expression here");
+        ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
         APPEND(values, rhs);
     } else {
         for (;;) {
-            ast_t *rhs = optional_ast(ctx, &pos, parse_expr);
+            ast_t *rhs = optional_ast(ctx, &pos, parse_extended_expr);
             if (!rhs) break;
             APPEND(values, rhs);
             spaces(&pos);
@@ -1240,12 +1229,41 @@ PARSER(parse_assignment) {
 
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
-    if (!((stmt=parse_declaration(ctx, pos))
-          || (stmt=parse_update(ctx, pos))
-          || (stmt=parse_assignment(ctx, pos))
-          || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
-          || (stmt=parse_expr(ctx, pos))))
-        return NULL;
+    if (false 
+        || (stmt=parse_if(ctx, pos))
+        || (stmt=parse_for(ctx, pos))
+        || (stmt=parse_repeat(ctx, pos))
+        || (stmt=parse_while(ctx, pos))
+        || (stmt=parse_def(ctx, pos))
+        || (stmt=parse_declaration(ctx, pos))
+        || (stmt=parse_update(ctx, pos))
+        || (stmt=parse_assignment(ctx, pos))
+        || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false)))
+        return stmt;
+
+    stmt = parse_expr(ctx, pos);
+    if (!stmt) return NULL;
+
+    for (bool progress = true; progress; ) {
+        ast_t *new_stmt;
+        progress = (
+            (new_stmt=parse_index_suffix(ctx, stmt))
+            || (new_stmt=parse_field_suffix(ctx, stmt))
+            || (new_stmt=parse_suffix_if(ctx, stmt, false))
+            || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
+            );
+        if (progress) stmt = new_stmt;
+    }
+    return stmt;
+}
+
+PARSER(parse_extended_expr) {
+    ast_t *stmt = NULL;
+    if ((stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false)))
+        return stmt;
+
+    stmt = parse_expr(ctx, pos);
+    if (!stmt) return NULL;
 
     for (bool progress = true; progress; ) {
         ast_t *new_stmt;
