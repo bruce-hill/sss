@@ -59,20 +59,21 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
-static ast_t *parse_if(parse_ctx_t *ctx, const char *pos);
-static ast_t *parse_for(parse_ctx_t *ctx, const char *pos);
-static ast_t *parse_while(parse_ctx_t *ctx, const char *pos);
-static ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos);
-PARSER(parse_expr);
-PARSER(parse_extended_expr);
-PARSER(parse_term);
-PARSER(parse_inline_block);
-PARSER(parse_type);
-PARSER(parse_statement);
-PARSER(parse_block);
-PARSER(parse_opt_indented_block);
-PARSER(parse_var);
-PARSER(parse_def);
+static PARSER(parse_if);
+static PARSER(parse_for);
+static PARSER(parse_while);
+static PARSER(parse_repeat);
+static PARSER(parse_do);
+static PARSER(parse_expr);
+static PARSER(parse_extended_expr);
+static PARSER(parse_term);
+static PARSER(parse_inline_block);
+static PARSER(parse_type);
+static PARSER(parse_statement);
+static PARSER(parse_block);
+static PARSER(parse_opt_indented_block);
+static PARSER(parse_var);
+static PARSER(parse_def);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -539,6 +540,7 @@ PARSER(parse_array) {
               || (item=optional_ast(ctx, &pos, parse_for))
               || (item=optional_ast(ctx, &pos, parse_while))
               || (item=optional_ast(ctx, &pos, parse_repeat))
+              || (item=optional_ast(ctx, &pos, parse_do))
               || (item=optional_ast(ctx, &pos, parse_expr))
               ))
             break;
@@ -638,7 +640,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx, start, pos, Index, .indexed=lhs, .index=index);
 }
 
-ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
+PARSER(parse_if) {
     // if cond then body elseif body else body
     const char *start = pos;
     bool is_unless;
@@ -682,7 +684,17 @@ ast_t *parse_if(parse_ctx_t *ctx, const char *pos) {
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
 
-ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
+PARSER(parse_do) {
+    // do [<indent>] body
+    const char *start = pos;
+    if (!match_word(&pos, "do")) return NULL;
+    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
+    ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'do'"); 
+    return NewAST(ctx, start, pos, Do, .blocks=LIST(ast_t*, body));
+}
+
+
+PARSER(parse_for) {
     // for [k,] v in iter [do] [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "for")) return NULL;
@@ -724,7 +736,7 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
     return NewAST(ctx, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body);
 }
 
-ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos) {
+PARSER(parse_repeat) {
     // repeat [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "repeat")) return NULL;
@@ -739,7 +751,7 @@ ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos) {
     return NewAST(ctx, start, pos, Repeat, .body=body, .between=between);
 }
 
-ast_t *parse_while(parse_ctx_t *ctx, const char *pos) {
+PARSER(parse_while) {
     // while condition [do] [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "while")) return NULL;
@@ -815,6 +827,7 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 }
 #define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-")
 #define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@")
+#define parse_dereference(...) parse_unary(__VA_ARGS__, Dereference, "*")
 #define parse_len(...) parse_unary(__VA_ARGS__, Len, "#")
 #define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?")
 #define parse_not(...) parse_unary(__VA_ARGS__, Not, "not")
@@ -1086,6 +1099,7 @@ PARSER(parse_term) {
         || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
+        || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
         || (term=parse_maybe(ctx, pos))
         || (term=parse_not(ctx, pos))
@@ -1358,6 +1372,7 @@ PARSER(parse_statement) {
         || (stmt=parse_for(ctx, pos))
         || (stmt=parse_repeat(ctx, pos))
         || (stmt=parse_while(ctx, pos))
+        || (stmt=parse_do(ctx, pos))
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_declaration(ctx, pos))
         || (stmt=parse_update(ctx, pos))
