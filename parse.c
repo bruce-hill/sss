@@ -301,9 +301,10 @@ PARSER(parse_parens) {
     ast_t *expr = optional_ast(ctx, &pos, parse_extended_expr);
     if (!expr) return NULL;
     expect_str(ctx, start, &pos, ")", "I couldn't find a closing parenthesis");
-    expr->span.start = start;
-    expr->span.end = pos;
-    return expr;
+
+    // Update the span to include the parens:
+    return new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
+               .tag=expr->tag, .__data=expr->__data);
 }
 
 istr_t match_units(const char **out) {
@@ -376,7 +377,24 @@ PARSER(parse_int) {
 STUB_PARSER(parse_measure_type)
 STUB_PARSER(parse_table_type)
 STUB_PARSER(parse_tuple_type)
-STUB_PARSER(parse_func_type)
+
+PARSER(parse_func_type) {
+    const char *start = pos;
+    if (!match(&pos, "(")) return NULL;
+    NEW_LIST(ast_t*, arg_types);
+    for (;;) {
+        ast_t *arg_t = optional_ast(ctx, &pos, parse_type);
+        if (!arg_t) break;
+        APPEND(arg_types, arg_t);
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+    }
+    expect_str(ctx, start, &pos, ")", "I don't see any closing ')' here");
+    spaces(&pos);
+    if (!match(&pos, "=>")) return NULL;
+    ast_t *ret = optional_ast(ctx, &pos, parse_type);
+    return NewAST(ctx, start, pos, TypeFunction, .arg_types=arg_types, .ret_type=ret);
+}
 
 PARSER(parse_array_type) {
     const char *start = pos;
@@ -413,6 +431,7 @@ PARSER(parse_type_name) {
 }
 
 PARSER(parse_type) {
+    const char *start = pos;
     ast_t *type = NULL;
     bool success = (
         (type=parse_optional_type(ctx, pos))
@@ -424,7 +443,16 @@ PARSER(parse_type) {
         || (type=parse_type_name(ctx, pos))
         || (type=parse_func_type(ctx, pos))
     );
-    (void)success;
+    if (!success && match(&pos, "(")) {
+        whitespace(&pos);
+        type = optional_ast(ctx, &pos, parse_type);
+        if (!type) return NULL;
+        whitespace(&pos);
+        expect_str(ctx, start, &pos, ")", "I expected a closing ')' for this type");
+        // Use the enclosing span
+        type = new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
+                   .tag=type->tag, .__data=type->__data);
+    }
     return type;
 }
 
@@ -1378,6 +1406,8 @@ PARSER(parse_def) {
             } else {
                 parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
             }
+            spaces(&pos);
+            if (!match(&pos, ",")) break;
         }
 
         whitespace(&pos);
