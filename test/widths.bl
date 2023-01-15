@@ -1,10 +1,10 @@
 ints := [10, 20, 30]
 say "$(typeof ints) $ints"
 
-ints := [10 as Int32, 20 as Int32, 30 as Int32]
+ints := [10i32, 20i32, 30i32]
 say "$(typeof ints) $ints"
 
-ints := [10 as Int16, 20 as Int16, 30 as Int16]
+ints := [10i16, 20i16, 30i16]
 say "$(typeof ints) $ints"
 
 bools := [yes, no, yes, no]
