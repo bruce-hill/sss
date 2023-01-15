@@ -1522,9 +1522,10 @@ ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char 
         ast_t *memb = NULL;
         bool success = (
             false
+            || (memb=parse_declaration(ctx, *pos))
             || (memb=parse_struct_field_def(ctx, *pos))
             || (memb=parse_def(ctx, *pos))
-            || (memb=parse_declaration(ctx, *pos)));
+        );
         if (!success) break;
         APPEND(members, memb);
         *pos = memb->span.end;
