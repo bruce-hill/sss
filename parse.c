@@ -48,6 +48,7 @@ static inline size_t spaces(const char **pos);
 static inline size_t whitespace(const char **pos);
 static inline size_t match(const char **pos, const char *target);
 static inline void expect_str(parse_ctx_t *ctx, const char *start, const char **pos, const char *target, const char *fmt, ...);
+static inline void expect_closing(parse_ctx_t *ctx, const char **pos, const char *target, const char *fmt, ...);
 static inline size_t match_word(const char **pos, const char *word);
 static inline istr_t get_word(const char **pos);
 static inline istr_t get_id(const char **pos);
@@ -180,6 +181,28 @@ static void expect_str(
 }
 
 //
+// Helper for matching closing parens with good error messages
+//
+static void expect_closing(
+    parse_ctx_t *ctx, const char **pos, const char *closing, const char *fmt, ...) {
+    const char *start = *pos;
+    spaces(pos);
+    if (match(pos, closing))
+        return;
+
+    const char *eol = strchr(*pos, '\n');
+    const char *next = strstr(*pos, closing);
+    
+    const char *end = eol < next ? eol : next;
+
+    fputs("\x1b[31;1;7m", stderr);
+    va_list args;
+    va_start(args, fmt);
+    vparser_err(ctx, start, end, fmt, args);
+    va_end(args);
+}
+
+//
 // Expect an AST (potentially after whitespace) and emit a parser error if it's not there
 //
 static ast_t *expect_ast(
@@ -303,7 +326,7 @@ PARSER(parse_parens) {
     whitespace(&pos);
     ast_t *expr = optional_ast(ctx, &pos, parse_extended_expr);
     if (!expr) return NULL;
-    expect_str(ctx, start, &pos, ")", "I couldn't find a closing parenthesis");
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this expression");
 
     // Update the span to include the parens:
     return new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
@@ -392,7 +415,7 @@ PARSER(parse_func_type) {
         spaces(&pos);
         if (!match(&pos, ",")) break;
     }
-    expect_str(ctx, start, &pos, ")", "I don't see any closing ')' here");
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function call");
     spaces(&pos);
     if (!match(&pos, "=>")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, parse_type);
@@ -404,7 +427,7 @@ PARSER(parse_array_type) {
     if (!match(&pos, "[")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse an array item type after this point");
-    expect_str(ctx, start, &pos, "]", "I don't see any closing ']' here");
+    expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array type");
     return NewAST(ctx, start, pos, TypeArray, .item_type=type);
 }
 
@@ -451,7 +474,7 @@ PARSER(parse_type) {
         type = optional_ast(ctx, &pos, parse_type);
         if (!type) return NULL;
         whitespace(&pos);
-        expect_str(ctx, start, &pos, ")", "I expected a closing ')' for this type");
+        expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
         // Use the enclosing span
         type = new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
                    .tag=type->tag, .__data=type->__data);
@@ -525,7 +548,7 @@ PARSER(parse_array) {
     whitespace(&pos);
     match(&pos, ",");
     whitespace(&pos);
-    expect_str(ctx, start, &pos, "]", "I couldn't find a closing ']' for this array");
+    expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array");
 
     if (!item_type && LIST_LEN(items) == 0)
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
@@ -558,7 +581,7 @@ PARSER(parse_struct) {
         match(&pos, ",");
     }
     whitespace(&pos);
-    expect_str(ctx, start, &pos, "}", "I expected a closing '}' for this struct");
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
     return NewAST(ctx, start, pos, Struct, .type=type, .members=members);
 }
 
@@ -580,7 +603,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!match(&pos, "[")) return NULL;
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
-    expect_str(ctx, start, &pos, "]", "I expected to find a closing ']' here");
+    expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
     return NewAST(ctx, start, pos, Index, .indexed=lhs, .index=index);
 }
 
@@ -1415,7 +1438,7 @@ ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char 
         *pos = memb->span.end;
     }
     whitespace(pos);
-    expect_str(ctx, start, pos, "}", "I expected this struct def to have a closing '}'");
+    expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
     return NewAST(ctx, start, *pos, StructDef, .name=name, .members=members);
 }
 
@@ -1456,7 +1479,7 @@ PARSER(parse_def) {
         }
 
         whitespace(&pos);
-        expect_str(ctx, start, &pos, ")", "This function definition needs a closing parenthesis");
+        expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function definition");
 
         ast_t *ret_type = NULL;
         spaces(&pos);
@@ -1505,7 +1528,7 @@ PARSER(parse_def) {
 
             ++next_value;
         }
-        expect_str(ctx, start, &pos, "}", "I expected a '}' to finish this 'def'");
+        expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
         return NewAST(ctx, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
     }
     return NULL;
