@@ -535,37 +535,12 @@ PARSER(parse_array) {
 
     for (;;) {
         whitespace(&pos);
-        ast_t *item;
-        if (!(false
-              || (item=optional_ast(ctx, &pos, parse_if))
-              || (item=optional_ast(ctx, &pos, parse_for))
-              || (item=optional_ast(ctx, &pos, parse_while))
-              || (item=optional_ast(ctx, &pos, parse_when))
-              || (item=optional_ast(ctx, &pos, parse_repeat))
-              || (item=optional_ast(ctx, &pos, parse_do))
-              || (item=optional_ast(ctx, &pos, parse_expr))
-              ))
-            break;
-
-        for (bool progress = true; progress; ) {
-            ast_t *new_item;
-            progress = (false
-                || (new_item=parse_suffix_if(ctx, item, false))
-                || (new_item=parse_suffix_for(ctx, item))
-                || (new_item=parse_suffix_while(ctx, item))
-            );
-            if (progress) {
-                item = new_item;
-                pos = item->span.end;
-            }
-        }
-
+        ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
+        if (!item) break;
         APPEND(items, item);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
     }
-    whitespace(&pos);
-    match(&pos, ",");
     whitespace(&pos);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array");
 
@@ -1199,8 +1174,20 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     for (;;) {
         const char *arg_start = pos;
         istr_t name = get_id(&pos);
+        spaces(&pos);
+        if (LIST_LEN(args) == 0 && !requires_parens) {
+            // Prevent matching infix ops:
+            switch (*pos) {
+            case '<': case '>': case '=': case ':': case '!':
+            case '+': case '-': case '*': case '/': case '^': return NULL;
+            case 'a': if (match_word(&pos, "and")) return NULL; else break;
+            case 'o': if (match_word(&pos, "or")) return NULL; else break;
+            case 'x': if (match_word(&pos, "xor")) return NULL; else break;
+            case 'm': if (match_word(&pos, "mod")) return NULL; else break;
+            default: break;
+            }
+        }
         if (name) {
-            spaces(&pos);
             if (match(&pos, "=")) {
                 spaces(&pos);
                 ast_t *arg = parse_expr(ctx, pos);
@@ -1409,22 +1396,15 @@ PARSER(parse_assignment) {
 
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
-    if (false 
-        || (stmt=parse_if(ctx, pos))
-        || (stmt=parse_for(ctx, pos))
-        || (stmt=parse_repeat(ctx, pos))
-        || (stmt=parse_while(ctx, pos))
-        || (stmt=parse_when(ctx, pos))
-        || (stmt=parse_do(ctx, pos))
-        || (stmt=parse_def(ctx, pos))
-        || (stmt=parse_declaration(ctx, pos))
-        || (stmt=parse_update(ctx, pos))
-        || (stmt=parse_assignment(ctx, pos))
-        || (stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false)))
+    if ((stmt=parse_declaration(ctx, pos))
+        || (stmt=parse_def(ctx, pos)))
         return stmt;
 
-    stmt = parse_expr(ctx, pos);
-    if (!stmt) return NULL;
+    if (!(false 
+        || (stmt=parse_update(ctx, pos))
+        || (stmt=parse_assignment(ctx, pos))
+    ))
+        return parse_extended_expr(ctx, pos);
 
     for (bool progress = true; progress; ) {
         ast_t *new_stmt;
@@ -1435,33 +1415,44 @@ PARSER(parse_statement) {
             || (new_stmt=parse_suffix_for(ctx, stmt))
             || (new_stmt=parse_suffix_while(ctx, stmt))
             || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
-            );
+        );
         if (progress) stmt = new_stmt;
     }
     return stmt;
+
 }
 
 PARSER(parse_extended_expr) {
-    ast_t *stmt = NULL;
-    if ((stmt=parse_fncall_suffix(ctx, parse_term(ctx, pos), false)))
-        return stmt;
+    ast_t *expr = NULL;
 
-    stmt = parse_expr(ctx, pos);
-    if (!stmt) return NULL;
+    if (false
+        || (expr=optional_ast(ctx, &pos, parse_if))
+        || (expr=optional_ast(ctx, &pos, parse_for))
+        || (expr=optional_ast(ctx, &pos, parse_while))
+        || (expr=optional_ast(ctx, &pos, parse_when))
+        || (expr=optional_ast(ctx, &pos, parse_repeat))
+        || (expr=optional_ast(ctx, &pos, parse_do)))
+        return expr;
+
+    if (!(false
+          || (expr=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
+          || (expr=parse_expr(ctx, pos))
+          ))
+        return NULL;
 
     for (bool progress = true; progress; ) {
         ast_t *new_stmt;
-        progress = (
-            (new_stmt=parse_index_suffix(ctx, stmt))
-            || (new_stmt=parse_field_suffix(ctx, stmt))
-            || (new_stmt=parse_suffix_if(ctx, stmt, false))
-            || (new_stmt=parse_suffix_for(ctx, stmt))
-            || (new_stmt=parse_suffix_while(ctx, stmt))
-            || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
+        progress = (false
+            || (new_stmt=parse_index_suffix(ctx, expr))
+            || (new_stmt=parse_field_suffix(ctx, expr))
+            || (new_stmt=parse_suffix_if(ctx, expr, false))
+            || (new_stmt=parse_suffix_for(ctx, expr))
+            || (new_stmt=parse_suffix_while(ctx, expr))
+            || (new_stmt=parse_fncall_suffix(ctx, expr, true))
             );
-        if (progress) stmt = new_stmt;
+        if (progress) expr = new_stmt;
     }
-    return stmt;
+    return expr;
 }
 
 PARSER(parse_block) {
