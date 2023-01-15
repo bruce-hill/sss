@@ -1,12 +1,12 @@
-extern hypot(Num,Num):Num
+extern hypot:(Num,Num)=>Num
 def Vec {
     x,y:Num
 
     def len(v:Vec):Num
         return hypot(v.x, v.y)
 
-    def dot(v:Vec, other:Vec):Num = v.x*other.x + v.y*other.y
-    def as_string(v:Vec):String = "Vec<$(v.x),$(v.y)>"
+    def dot(v:Vec, other:Vec):Num return v.x*other.x + v.y*other.y
+    def as_string(v:Vec):String return "Vec<$(v.x),$(v.y)>"
 }
 // or: struct Vec{x:Num,y:Num}
 
