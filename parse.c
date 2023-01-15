@@ -408,7 +408,30 @@ PARSER(parse_int) {
 
 STUB_PARSER(parse_measure_type)
 STUB_PARSER(parse_table_type)
-STUB_PARSER(parse_tuple_type)
+
+PARSER(parse_tuple_type) {
+    const char *start = pos;
+    if (!match(&pos, "{")) return NULL;
+    NEW_LIST(istr_t, member_names);
+    NEW_LIST(ast_t*, member_types);
+    for (;;) {
+        whitespace(&pos);
+        const char *field_start = pos;
+        istr_t field_name = get_id(&pos);
+        if (!field_name) parser_err(ctx, field_start, pos, "I expected a field name for this tuple");
+        whitespace(&pos);
+        if (!match(&pos, ":")) parser_err(ctx, field_start, pos, "I expected field:type for this tuple field");
+        whitespace(&pos);
+        ast_t *t = expect_ast(ctx, field_start, &pos, parse_type, "I couldn't parse the type for this field");
+        APPEND(member_names, field_name);
+        APPEND(member_types, t);
+        whitespace(&pos);
+        if (!match(&pos, ",")) break;
+    }
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tuple type");
+    return NewAST(ctx, start, pos, TypeTuple, .member_names=member_names, .member_types=member_types);
+}
 
 PARSER(parse_func_type) {
     const char *start = pos;
@@ -839,6 +862,8 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 #define parse_len(...) parse_unary(__VA_ARGS__, Len, "#")
 #define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?")
 #define parse_not(...) parse_unary(__VA_ARGS__, Not, "not")
+#define parse_typeof(...) parse_unary(__VA_ARGS__, TypeOf, "typeof")
+#define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof")
 
 PARSER(parse_bool) {
     const char *start = pos;
@@ -1109,7 +1134,6 @@ PARSER(parse_var) {
     return NewAST(ctx, start, pos, Var, .name=name);
 }
 
-
 PARSER(parse_cast) {
     const char *start = pos;
     if (!match_word(&pos, "cast")) return NULL;
@@ -1149,6 +1173,8 @@ PARSER(parse_term) {
         || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
         || (term=parse_maybe(ctx, pos))
+        || (term=parse_typeof(ctx, pos))
+        || (term=parse_sizeof(ctx, pos))
         || (term=parse_not(ctx, pos))
         || (term=parse_bool(ctx, pos))
         || (term=parse_char(ctx, pos))
