@@ -16,7 +16,7 @@ say ""
 
 say "$i" for i in 100..102
 
-extern random():Int
+extern random:()=>Int
 
 def retry():Bool
     r := random()
