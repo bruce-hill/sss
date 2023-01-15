@@ -59,6 +59,10 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
+static ast_t *parse_if(parse_ctx_t *ctx, const char *pos);
+static ast_t *parse_for(parse_ctx_t *ctx, const char *pos);
+static ast_t *parse_while(parse_ctx_t *ctx, const char *pos);
+static ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos);
 PARSER(parse_expr);
 PARSER(parse_extended_expr);
 PARSER(parse_term);
@@ -529,8 +533,15 @@ PARSER(parse_array) {
 
     for (;;) {
         whitespace(&pos);
-        ast_t *item = optional_ast(ctx, &pos, parse_expr);
-        if (!item) break;
+        ast_t *item;
+        if (!(false
+              || (item=optional_ast(ctx, &pos, parse_if))
+              || (item=optional_ast(ctx, &pos, parse_for))
+              || (item=optional_ast(ctx, &pos, parse_while))
+              || (item=optional_ast(ctx, &pos, parse_repeat))
+              || (item=optional_ast(ctx, &pos, parse_expr))
+              ))
+            break;
 
         for (bool progress = true; progress; ) {
             ast_t *new_item;

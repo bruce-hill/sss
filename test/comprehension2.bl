@@ -1,7 +1,7 @@
 
 remaining := 1000
 hybrid_list := [
-    1,2,3,i for i in 4..10 if i mod 2 == 0, 11,12,13,99 if no,100 if yes,
+    1,2,3,i if i mod 2 == 0 for i in 4..10, 11,12,13,99 if no,100 if yes,
     while remaining > 997
         remaining -= 1
         remaining

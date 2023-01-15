@@ -1,16 +1,13 @@
 x := [i*100 for i in 1..10]
 say "$x"
 
-y := [i*100 for i in 1..999 stop if i > 5]
-say "$y"
-
-z := [i*100 for i in 1..10 skip if i mod 2 == 0]
+z := [i*100 unless i mod 3 == 0 for i in 1..10]
 say "$z"
 
-w := [i*100 for i in 1..10 if i mod 2 == 0]
+w := [i*100 if i mod 2 == 0 for i in 1..10]
 say "$w"
 
-p := [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
+p := [s if i mod 2 == 0 for i,s in ["a","b","c","d"]]
 say "$p"
 
 // t := {[i]=i*i for i in 1.. stop if i > 6}

@@ -224,7 +224,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
 
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
-    auto statements = Match(ast, Block)->statements;
+    auto statements = ast->tag == Block ? Match(ast, Block)->statements : LIST(ast_t*, ast);
 
     // Struct and enum defs are visible in the entire block (allowing corecursive structs)
     foreach (statements, stmt, _) {
