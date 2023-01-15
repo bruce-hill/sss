@@ -1177,6 +1177,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
         if (LIST_LEN(args) == 0 && !requires_parens) {
             // Prevent matching infix ops:
             switch (*pos) {
+            case '.':
             case '<': case '>': case '=': case ':': case '!':
             case '+': case '-': case '*': case '/': case '^': return NULL;
             case 'a': if (match_word(&pos, "and")) return NULL; else break;
