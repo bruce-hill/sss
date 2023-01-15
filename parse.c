@@ -55,6 +55,9 @@ static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
+static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
+static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
+static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 PARSER(parse_expr);
 PARSER(parse_extended_expr);
 PARSER(parse_term);
@@ -459,9 +462,11 @@ PARSER(parse_type) {
 PARSER(parse_num) {
     const char *start = pos;
     bool negative = match(&pos, "-");
-    if (!isdigit(*pos)) return false;
+    if (!isdigit(*pos) && *pos != '.') return NULL;
 
-    size_t len = strspn(pos, "0123456789_.");
+    size_t len = strspn(pos, "0123456789_");
+    if (pos[len] == '.')
+        len += 1 + strspn(pos + len + 1, "0123456789");
     if (pos[len] == 'e')
         len += 1 + strspn(pos + len + 1, "-0123456789_");
     char *buf = GC_MALLOC_ATOMIC(len+1);
@@ -499,6 +504,20 @@ PARSER(parse_array) {
         whitespace(&pos);
         ast_t *item = optional_ast(ctx, &pos, parse_expr);
         if (!item) break;
+
+        for (bool progress = true; progress; ) {
+            ast_t *new_item;
+            progress = (false
+                || (new_item=parse_suffix_if(ctx, item, false))
+                || (new_item=parse_suffix_for(ctx, item))
+                || (new_item=parse_suffix_while(ctx, item))
+            );
+            if (progress) {
+                item = new_item;
+                pos = item->span.end;
+            }
+        }
+
         APPEND(items, item);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
@@ -549,7 +568,7 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
     istr_t field = get_id(&pos);
-    if (!field) parser_err(ctx, lhs->span.start, pos, "I expected to find the name of a field here");
+    if (!field) return NULL;
     return NewAST(ctx, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
@@ -621,7 +640,7 @@ ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
         value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
     }
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
-    ast_t *iter = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
+    ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
 
     match_word(&pos, "do"); // Optional
 
@@ -633,6 +652,22 @@ ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     }
     return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body, .between=between);
+}
+
+ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
+    if (!body) return NULL;
+    const char *start = body->span.start;
+    const char *pos = body->span.end;
+    if (!match_word(&pos, "for")) return NULL;
+    ast_t *key = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
+    spaces(&pos);
+    ast_t *value = NULL;
+    if (match(&pos, ","))
+        value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
+    expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
+    ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
+    // TODO: filter
+    return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body);
 }
 
 ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos) {
@@ -661,12 +696,19 @@ ast_t *parse_while(parse_ctx_t *ctx, const char *pos) {
     whitespace(&pos);
     ast_t *between = NULL;
     const char *between_start = NULL;
-    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between"))
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
-    }
     return NewAST(ctx, start, pos, While, .condition=condition, .body=body, .between=between);
 }
 
+ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
+    if (!body) return NULL;
+    const char *start = body->span.start;
+    const char *pos = body->span.end;
+    if (!match_word(&pos, "while")) return NULL;
+    ast_t *cond = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
+    return NewAST(ctx, start, pos, While, .condition=cond, .body=body);
+}
 
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     // true_val if cond elseif cond then elseif_val else else_val
@@ -1018,7 +1060,6 @@ PARSER(parse_term) {
         progress = (
             (new_term=parse_index_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
-            || (new_term=parse_suffix_if(ctx, term, true))
             || (new_term=parse_fncall_suffix(ctx, term, true))
             );
         if (progress) term = new_term;
@@ -1278,6 +1319,8 @@ PARSER(parse_statement) {
             (new_stmt=parse_index_suffix(ctx, stmt))
             || (new_stmt=parse_field_suffix(ctx, stmt))
             || (new_stmt=parse_suffix_if(ctx, stmt, false))
+            || (new_stmt=parse_suffix_for(ctx, stmt))
+            || (new_stmt=parse_suffix_while(ctx, stmt))
             || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
             );
         if (progress) stmt = new_stmt;
@@ -1299,6 +1342,8 @@ PARSER(parse_extended_expr) {
             (new_stmt=parse_index_suffix(ctx, stmt))
             || (new_stmt=parse_field_suffix(ctx, stmt))
             || (new_stmt=parse_suffix_if(ctx, stmt, false))
+            || (new_stmt=parse_suffix_for(ctx, stmt))
+            || (new_stmt=parse_suffix_while(ctx, stmt))
             || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
             );
         if (progress) stmt = new_stmt;
