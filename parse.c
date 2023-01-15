@@ -342,7 +342,7 @@ PARSER(parse_parens) {
 istr_t match_units(const char **out) {
     const char *pos = *out;
     if (!match(&pos, "<")) return NULL;
-    pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789-");
+    pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789- ");
     if (!match(&pos, ">")) return NULL;
     istr_t buf = intern_strn(*out + 1, (size_t)(pos-1-(*out+1)));
     istr_t ret = unit_string(buf);
@@ -406,7 +406,6 @@ PARSER(parse_int) {
     return NewAST(ctx, start, pos, Int, .i=i, .precision=precision, .units=units);
 }
 
-STUB_PARSER(parse_measure_type)
 STUB_PARSER(parse_table_type)
 
 PARSER(parse_tuple_type) {
@@ -485,6 +484,15 @@ PARSER(parse_type_name) {
     return fielded ? fielded : ast;
 }
 
+static istr_t get_units(const char **pos) {
+    // +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (_[`*,/_])
+    size_t len = strcspn(*pos, ">");
+    // TODO: verify
+    istr_t units = intern_strn(*pos, len);
+    *pos += len;
+    return units;
+}
+
 PARSER(parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
@@ -492,7 +500,6 @@ PARSER(parse_type) {
         (type=parse_optional_type(ctx, pos))
         || (type=parse_pointer_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
-        || (type=parse_measure_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_tuple_type(ctx, pos))
         || (type=parse_type_name(ctx, pos))
@@ -507,6 +514,16 @@ PARSER(parse_type) {
         // Use the enclosing span
         type = new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
                    .tag=type->tag, .__data=type->__data);
+    }
+
+    if (!type) return NULL;
+
+    pos = type->span.end;
+    // Measure type
+    if (match(&pos, "<")) {
+        istr_t units = get_units(&pos);
+        expect_closing(ctx, &pos, ">", "I expected a closing '>' for these units");
+        type = NewAST(ctx, type->span.start, pos, TypeMeasure, .type=type, .units=units);
     }
     return type;
 }
@@ -980,7 +997,7 @@ PARSER(parse_string) {
             ast_t *last_chunk = LIST_ITEM(chunks, LIST_LEN(chunks)-1);
             if (last_chunk->tag == StringLiteral) {
                 auto str = Match(last_chunk, StringLiteral);
-                istr_t trimmed = intern_strf("%.*s", (int)strlen(str->str)-1, str->str);
+                istr_t trimmed = intern_strn(str->str, strlen(str->str)-1);
                 chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
             }
         }
