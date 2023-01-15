@@ -400,7 +400,7 @@ PARSER(parse_array_type) {
     const char *start = pos;
     if (!match(&pos, "[")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
-                             "I couldn't parse any type after this point");
+                             "I couldn't parse an array item type after this point");
     expect_str(ctx, start, &pos, "]", "I don't see any closing ']' here");
     return NewAST(ctx, start, pos, TypeArray, .item_type=type);
 }
@@ -409,7 +409,7 @@ PARSER(parse_pointer_type) {
     const char *start = pos;
     if (!match(&pos, "@")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
-                             "I couldn't parse any type after this point");
+                             "I couldn't parse a pointer type after this point");
     return NewAST(ctx, start, pos, TypePointer, .pointed=type);
 }
 
@@ -417,7 +417,7 @@ PARSER(parse_optional_type) {
     const char *start = pos;
     if (!match(&pos, "?")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
-                             "I couldn't parse any type after this point");
+                             "I couldn't parse a pointer type after this point");
     return NewAST(ctx, start, pos, TypeOptional, .type=type);
 }
 
@@ -516,7 +516,7 @@ PARSER(parse_array) {
 
 PARSER(parse_struct) {
     const char *start = pos;
-    ast_t *type = optional_ast(ctx, &pos, parse_type);
+    ast_t *type = optional_ast(ctx, &pos, parse_type_name);
     spaces(&pos);
     if (!match(&pos, "{")) return NULL;
     NEW_LIST(ast_t*, members);
