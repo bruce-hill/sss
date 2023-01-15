@@ -394,7 +394,7 @@ PARSER(parse_int) {
     else if (match(&pos, "i32")) precision = 32;
     else if (match(&pos, "i16")) precision = 16;
     else if (match(&pos, "i8")) precision = 8;
-    else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
+    // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
     istr_t units = match_units(&pos);
     return NewAST(ctx, start, pos, Int, .i=i, .precision=precision, .units=units);
@@ -488,8 +488,12 @@ PARSER(parse_num) {
     if (!isdigit(*pos) && *pos != '.') return NULL;
 
     size_t len = strspn(pos, "0123456789_");
-    if (pos[len] == '.')
+    if (strncmp(pos+len, "..", 2) == 0)
+        return NULL;
+    else if (pos[len] == '.')
         len += 1 + strspn(pos + len + 1, "0123456789");
+    else
+        return NULL;
     if (pos[len] == 'e')
         len += 1 + strspn(pos + len + 1, "-0123456789_");
     char *buf = GC_MALLOC_ATOMIC(len+1);
@@ -595,6 +599,22 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
+PARSER(parse_range) {
+    const char *start = pos;
+    ast_t *first = optional_ast(ctx, &pos, parse_term);
+    if (!match(&pos, "..")) return NULL;
+    match(&pos, "+");
+    ast_t *step = optional_ast(ctx, &pos, parse_term);
+    ast_t *last = NULL;
+    if (step && match(&pos, "..")) {
+        last = optional_ast(ctx, &pos, parse_term);
+    } else {
+        last = step;
+        step = NULL;
+    }
+    return NewAST(ctx, start, pos, Range, .first=first, .step=step, .last=last);
+}
+
 ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *start = lhs->span.start;
@@ -674,7 +694,7 @@ ast_t *parse_for(parse_ctx_t *ctx, const char *pos) {
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     }
-    return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body, .between=between);
+    return NewAST(ctx, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body, .between=between);
 }
 
 ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
@@ -690,7 +710,7 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
     // TODO: filter
-    return NewAST(ctx, start, pos, For, .key=key, .value=value, .iter=iter, .body=body);
+    return NewAST(ctx, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body);
 }
 
 ast_t *parse_repeat(parse_ctx_t *ctx, const char *pos) {
@@ -1051,8 +1071,8 @@ PARSER(parse_term) {
     ast_t *term = NULL;
     bool success = (
         false
-        || (term=parse_int(ctx, pos))
         || (term=parse_num(ctx, pos))
+        || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
         || (term=parse_len(ctx, pos))
@@ -1080,8 +1100,8 @@ PARSER(parse_term) {
 
     for (bool progress = true; progress; ) {
         ast_t *new_term;
-        progress = (
-            (new_term=parse_index_suffix(ctx, term))
+        progress = (false
+            || (new_term=parse_index_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
             || (new_term=parse_fncall_suffix(ctx, term, true))
             );
@@ -1152,7 +1172,8 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 }
 
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
-    ast_t *term = optional_ast(ctx, &pos, parse_term);
+    ast_t *term = optional_ast(ctx, &pos, parse_range);
+    if (!term) term = optional_ast(ctx, &pos, parse_term);
     if (!term) return NULL;
 
     NEW_LIST(ast_t*, terms);
