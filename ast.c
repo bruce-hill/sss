@@ -9,12 +9,16 @@ const char *ast_list_to_str(const char *name, List(ast_t*) asts)
     char *buf; size_t size;
     FILE *mem = open_memstream(&buf, &size);
     if (name) fprintf(mem, "%s=", name);
-    fputs("[", mem);
-    for (int64_t i = 0, len = LIST_LEN(asts); i < len; i++) {
-        if (i > 0) fputs(", ", mem);
-        fputs(_ast_to_str(NULL, LIST_ITEM(asts, i)), mem);
+    if (asts) {
+        fputs("[", mem);
+        for (int64_t i = 0, len = LIST_LEN(asts); i < len; i++) {
+            if (i > 0) fputs(", ", mem);
+            fputs(_ast_to_str(NULL, LIST_ITEM(asts, i)), mem);
+        }
+        fputs("]", mem);
+    } else {
+        fputs("\x1b[35mNULL\x1b[m", mem);
     }
-    fputs("]", mem);
     fflush(mem);
     char *ret = GC_MALLOC_ATOMIC(size+1);
     memcpy(ret, buf, size);
@@ -35,12 +39,16 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
     char *buf; size_t size;
     FILE *mem = open_memstream(&buf, &size);
     if (name) fprintf(mem, "%s=", name);
-    fputs("[", mem);
-    for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
-        if (i > 0) fputs(", ", mem);
-        fputs(LIST_ITEM(strs, i), mem);
+    if (strs) {
+        fputs("[", mem);
+        for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
+            if (i > 0) fputs(", ", mem);
+            fputs(LIST_ITEM(strs, i), mem);
+        }
+        fputs("]", mem);
+    } else {
+        fputs("\x1b[35mNULL\x1b[m", mem);
     }
-    fputs("]", mem);
     fflush(mem);
     char *ret = GC_MALLOC_ATOMIC(size+1);
     memcpy(ret, buf, size);

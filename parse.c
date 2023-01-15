@@ -75,6 +75,7 @@ static PARSER(parse_block);
 static PARSER(parse_opt_indented_block);
 static PARSER(parse_var);
 static PARSER(parse_def);
+static PARSER(parse_extern);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -265,9 +266,9 @@ bool match_group(const char **out, char open) {
 
 istr_t get_word(const char **inout) {
     const char *pos = *inout;
+    spaces(&pos);
     if (!isalpha(*pos) && *pos != '_')
         return NULL;
-    spaces(&pos);
     const char *word = pos;
     ++pos;
     while (isalpha(*pos) || isdigit(*pos) || *pos == '_')
@@ -1327,6 +1328,7 @@ PARSER(parse_declaration) {
     spaces(&pos);
     if (!match(&pos, ":=")) return NULL;
     spaces(&pos);
+    if (match_word(&pos, "extern")) return NULL;
     ast_t *val = parse_extended_expr(ctx, pos);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
     pos = val->span.end;
@@ -1397,6 +1399,7 @@ PARSER(parse_assignment) {
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
+        || (stmt=parse_extern(ctx, pos))
         || (stmt=parse_def(ctx, pos)))
         return stmt;
 
@@ -1613,6 +1616,26 @@ PARSER(parse_def) {
         return NewAST(ctx, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
     }
     return NULL;
+}
+
+PARSER(parse_extern) {
+    const char *start = pos;
+    istr_t bl_name = get_id(&pos);
+    if (bl_name) {
+        spaces(&pos);
+        if (!match(&pos, ":=")) return NULL;
+    }
+    if (!match_word(&pos, "extern")) return NULL;
+    istr_t name = get_id(&pos);
+    if (!bl_name) bl_name = name;
+    ast_t *type;
+    spaces(&pos);
+    if (match(&pos, ":")) {
+        type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this extern");
+    } else {
+        parser_err(ctx, start, pos, "I couldn't get a type for this extern");
+    }
+    return NewAST(ctx, start, pos, Extern, .name=name, .bl_name=bl_name, .type=type);
 }
 
 PARSER(parse_inline_block) {
