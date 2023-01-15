@@ -1053,9 +1053,7 @@ PARSER(parse_lambda) {
         if (match(&pos, "=>")) goto thunk;
         return NULL;
     }
-    spaces(&pos);
-    for (;;) {
-        spaces(&pos);
+    for (spaces(&pos); ; spaces(&pos)) {
         istr_t name = get_id(&pos);
         if (!name) break;
         APPEND(arg_names, name);
@@ -1066,16 +1064,17 @@ PARSER(parse_lambda) {
                 parser_err(ctx, pos, pos, "I expected a type annotation here");
             return NULL; // otherwise just a parse failure
         }
-        ast_t *type = parse_type(ctx, pos);
-        if (!type) parser_err(ctx, pos, pos + strcspn(pos, ",;|\r\n"), "I wasn't able to parse this type");
+        ast_t *type = optional_ast(ctx, &pos, parse_type);
+        if (!type) parser_err(ctx, pos, pos + strcspn(pos, ",;)\r\n"), "I wasn't able to parse this type");
         APPEND(arg_types, type);
-        pos = type->span.end;
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
     }
 
     spaces(&pos);
     if (!match(&pos, ")")) {
         if (LIST_LEN(arg_names) == 0) return NULL;
-        parser_err(ctx, start, pos, "This lambda doesn't have a closing '|'");
+        parser_err(ctx, start, pos, "This lambda doesn't have a closing ')'");
     }
     spaces(&pos);
     if (!match(&pos, "=>"))
