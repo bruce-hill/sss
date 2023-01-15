@@ -636,7 +636,8 @@ PARSER(parse_if) {
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
 
-    while (match_word(&pos, "elseif")) {
+    whitespace(&pos);
+    while (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "elseif")) {
         cond = expect_ast(ctx, pos, &pos, parse_expr, "I couldn't parse this condition");
         match_word(&pos, "then");
         body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
@@ -644,10 +645,6 @@ PARSER(parse_if) {
         APPEND(conditions, cond);
         APPEND(blocks, body);
         whitespace(&pos);
-        if (bl_get_indent(ctx->file, pos) != starting_indent) {
-            pos = body->span.end;
-            break;
-        }
     }
 
     ast_t *else_ = NULL;
