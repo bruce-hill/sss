@@ -22,8 +22,6 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
 STUB_PARSER(parse_dsl)
-STUB_PARSER(parse_cast)
-STUB_PARSER(parse_bitcast)
 #undef STUB
 
 static int op_tightness[NUM_AST_TAGS] = {
@@ -39,7 +37,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","elseif","else","do","deftype",
-    "def","between","as","and", NULL,
+    "def","cast","bitcast","between","as","and", NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -1111,11 +1109,39 @@ PARSER(parse_var) {
     return NewAST(ctx, start, pos, Var, .name=name);
 }
 
+
+PARSER(parse_cast) {
+    const char *start = pos;
+    if (!match_word(&pos, "cast")) return NULL;
+    ast_t *expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
+    spaces(&pos);
+    if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this cast");
+    ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this cast");
+    return NewAST(ctx, start, pos, Cast, .value=expr, .type=t);
+}
+
+PARSER(parse_bitcast) {
+    const char *start = pos;
+    if (!match_word(&pos, "bitcast")) return NULL;
+    ast_t *expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
+    spaces(&pos);
+    if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this bitcast");
+    ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this bitcast");
+    return NewAST(ctx, start, pos, Bitcast, .value=expr, .type=t);
+}
+
 PARSER(parse_term) {
     spaces(&pos);
     ast_t *term = NULL;
     bool success = (
         false
+        || (term=parse_nil(ctx, pos))
+        || (term=parse_fail(ctx, pos))
+        || (term=parse_skip(ctx, pos))
+        || (term=parse_stop(ctx, pos))
+        || (term=parse_return(ctx, pos))
+        || (term=parse_cast(ctx, pos))
+        || (term=parse_bitcast(ctx, pos))
         || (term=parse_num(ctx, pos))
         || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
@@ -1128,18 +1154,11 @@ PARSER(parse_term) {
         || (term=parse_char(ctx, pos))
         || (term=parse_string(ctx, pos))
         || (term=parse_dsl(ctx, pos))
-        || (term=parse_nil(ctx, pos))
-        || (term=parse_fail(ctx, pos))
-        || (term=parse_skip(ctx, pos))
-        || (term=parse_stop(ctx, pos))
-        || (term=parse_return(ctx, pos))
         || (term=parse_lambda(ctx, pos))
         || (term=parse_parens(ctx, pos))
         || (term=parse_struct(ctx, pos))
         || (term=parse_var(ctx, pos))
         || (term=parse_array(ctx, pos))
-        || (term=parse_cast(ctx, pos))
-        || (term=parse_bitcast(ctx, pos))
         );
 
     if (!success) return NULL;
