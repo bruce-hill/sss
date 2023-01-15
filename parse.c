@@ -80,9 +80,12 @@ static PARSER(parse_extern);
 //
 __attribute__((noreturn))
 static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, va_list args) {
-    fputs("\x1b[31;1;7m", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[31;1;7m", stderr);
     vfprintf(stderr, fmt, args);
-    fputs("\x1b[m\n\n", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[m", stderr);
+    fputs("\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};
     fprint_span(stderr, span, "\x1b[31;1;7m", 2);
@@ -178,7 +181,8 @@ static void expect_str(
             return;
     }
 
-    fputs("\x1b[31;1;7m", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);
     vparser_err(ctx, start, *pos, fmt, args);
@@ -200,7 +204,8 @@ static void expect_closing(
     
     const char *end = eol < next ? eol : next;
 
-    fputs("\x1b[31;1;7m", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);
     vparser_err(ctx, start, end, fmt, args);
@@ -219,7 +224,8 @@ static ast_t *expect_ast(
         return ast;
     }
 
-    fputs("\x1b[31;1;7m", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);
     vparser_err(ctx, start, *pos, fmt, args);
