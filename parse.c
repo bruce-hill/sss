@@ -1123,7 +1123,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         int tightest_op = 0;
         for (int i = 1; i < LIST_LEN(binops); i++) {
             if (op_tightness[LIST_ITEM(binops, i)]
-                > op_tightness[LIST_ITEM(binops, tightest_op)]) {
+                < op_tightness[LIST_ITEM(binops, tightest_op)]) {
                 tightest_op = i;
             }
         }
