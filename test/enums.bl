@@ -1,4 +1,4 @@
-enum Foo { A, B, C, D }
+def Foo oneof { A, B, C, D }
 
 say "$(Foo.A)"
 fail unless "$(Foo.A)" == "Foo.A"
@@ -11,7 +11,7 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     else
         say "$x is something else"
 
-enum Baz {
+def Baz oneof {
     Text:String
     Integer:Int
     Vec2{
