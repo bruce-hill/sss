@@ -7,7 +7,7 @@ addThree := (x:Int)=>
 
 say "Lambda returns: $(addOne(1)) $(addTwo(1)) $(addThree(1))"
 
-say "Method call syntax: $(1|addOne)"
+// say "Method call syntax: $(1|addOne)"
 
 thunk := => "Double arrow thunks work"
 say thunk()

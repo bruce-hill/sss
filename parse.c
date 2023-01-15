@@ -630,8 +630,7 @@ PARSER(parse_if) {
     if (is_unless) cond = FakeAST(Not, .value=cond);
 
     match_word(&pos, "then");
-    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-    ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'if'"); 
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if'"); 
 
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
@@ -640,8 +639,7 @@ PARSER(parse_if) {
     while (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "elseif")) {
         cond = expect_ast(ctx, pos, &pos, parse_expr, "I couldn't parse this condition");
         match_word(&pos, "then");
-        body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-        body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'elseif'"); 
+        body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'elseif'"); 
         APPEND(conditions, cond);
         APPEND(blocks, body);
         whitespace(&pos);
@@ -652,8 +650,7 @@ PARSER(parse_if) {
     whitespace(&else_start);
     if (bl_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
         pos = else_start;
-        body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-        else_ = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'else'"); 
+        else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
     }
     return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
 }
@@ -681,8 +678,7 @@ PARSER(parse_when) {
             tag = var;
             var = NULL;
         }
-        parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-        ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'when'"); 
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when'"); 
         ast_case_t case_ = {.var=var, .tag=tag, .body=body};
         list_append((list_t*)cases, sizeof(ast_case_t), &case_);
     }
@@ -692,8 +688,7 @@ PARSER(parse_when) {
     whitespace(&else_start);
     if (bl_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
         pos = else_start;
-        parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-        else_ = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'else'"); 
+        else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
     }
     return NewAST(ctx, start, pos, When, .subject=subj, .cases=cases, .default_body=else_);
 }
@@ -702,8 +697,7 @@ PARSER(parse_do) {
     // do [<indent>] body
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
-    parser_t *body_parser = indent(ctx, &pos) ? parse_block : parse_statement;
-    ast_t *body = expect_ast(ctx, start, &pos, body_parser, "I expected a body for this 'do'"); 
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
     return NewAST(ctx, start, pos, Do, .blocks=LIST(ast_t*, body));
 }
 
@@ -1046,10 +1040,13 @@ PARSER(parse_return) {
 
 PARSER(parse_lambda) {
     const char *start = pos;
-    if (!match(&pos, "(")) return NULL;
-    spaces(&pos);
     NEW_LIST(istr_t, arg_names);
     NEW_LIST(ast_t*, arg_types);
+    if (!match(&pos, "(")) {
+        if (match(&pos, "=>")) goto thunk;
+        return NULL;
+    }
+    spaces(&pos);
     for (;;) {
         spaces(&pos);
         istr_t name = get_id(&pos);
@@ -1077,7 +1074,8 @@ PARSER(parse_lambda) {
     if (!match(&pos, "=>"))
         return NULL;
 
-    ast_t *body = optional_ast(ctx, &pos, parse_inline_block);
+  thunk:
+    ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block);
 
     return NewAST(ctx, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
 }
@@ -1153,6 +1151,15 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     if (!fn) return NULL;
     const char *start = fn->span.start;
     const char *pos = fn->span.end;
+
+    // No arguments fn()
+    if (match(&pos, "(")) {
+        spaces(&pos);
+        if (match(&pos, ")"))
+            return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=LIST(ast_t*));
+        pos = fn->span.end;
+    }
+
     const char *paren_pos = pos;
     if (match(&pos, "{")) return NULL;
     if (match(&pos, "("))
@@ -1163,11 +1170,6 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     spaces(&pos);
 
     NEW_LIST(ast_t*, args);
-    if (match(&pos, ")")) { // no arguments
-        if (!requires_parens) return NULL;
-        return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
-    }
-
     for (;;) {
         const char *arg_start = pos;
         istr_t name = get_id(&pos);
@@ -1480,7 +1482,7 @@ PARSER(parse_indented_block) {
 }
 
 PARSER(parse_opt_indented_block) {
-    return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_statement(ctx, pos);
+    return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
 PARSER(parse_struct_field_def) {
@@ -1618,10 +1620,10 @@ PARSER(parse_inline_block) {
     NEW_LIST(ast_t*, statements);
     while (*pos) {
         spaces(&pos);
-        ast_t *stmt = parse_statement(ctx, pos);
+        ast_t *stmt = optional_ast(ctx, &pos, parse_statement);
         if (!stmt) break;
-        pos = stmt->span.end;
         APPEND(statements, stmt);
+        spaces(&pos);
         if (!match(&pos, ";")) break;
     }
     return NewAST(ctx, start, pos, Block, .statements=statements);
