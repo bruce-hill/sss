@@ -308,15 +308,16 @@ bool indent(parse_ctx_t *ctx, const char **out) {
     return false;
 }
 
-bool match_indentation(const char **out, size_t indentation) {
+bool match_indentation(const char **out, size_t target) {
     const char *pos = *out;
-    while (indentation > 0) {
+    for (size_t indentation = 0; indentation < target; ) {
         switch (*pos) {
         case ' ': indentation += 1; ++pos; break;
         case '\t': indentation += 4; ++pos; break;
         default: return false;
         }
     }
+    *out = pos;
     return true;
 }
 
@@ -897,37 +898,27 @@ PARSER(parse_string) {
         match(&pos, "\r");
         match(&pos, "\n");
         size_t first_line = bl_get_line_number(ctx->file, pos);
-        size_t indented = starting_indent + 4;
+        auto line = LIST_ITEM(ctx->file->lines, first_line-1);
+        size_t indented = line.indent;
         for (size_t i = first_line; i < (size_t)LIST_LEN(ctx->file->lines); i++) {
-            auto line = LIST_ITEM(ctx->file->lines, i);
-            if (line.is_empty) {
-                continue;
-            } else if (line.indent > starting_indent) {
-                indented = line.indent;
-                break;
-            } else {
-                // TODO: error
-                return NULL;
-            }
-        }
-        for (size_t i = first_line; i < (size_t)LIST_LEN(ctx->file->lines); i++) {
-            auto line = LIST_ITEM(ctx->file->lines, i);
+            auto line = LIST_ITEM(ctx->file->lines, i-1);
             pos = ctx->file->text + line.offset;
-            if (line.is_empty) {
+            if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
                 ast_t *ast = NewAST(ctx, pos, pos, StringLiteral, .str="\n");
                 APPEND(chunks, ast);
                 continue;
             }
             if (!match_indentation(&pos, starting_indent))
-                return NULL;
+                parser_err(ctx, pos, strchrnul(pos, '\n'), "This isn't a valid indentation level for this unterminated string");
 
             if (match(&pos, delims[d].close))
                 goto finished;
 
             if (!match_indentation(&pos, (indented - starting_indent)))
-                return NULL; // TODO: error
+                parser_err(ctx, pos, strchrnul(pos, '\n'), "I was expecting this to have %lu extra indentation beyond %lu",
+                           (indented - starting_indent), starting_indent);
 
-            for (;;) {
+            for (const char *eol = strchrnul(pos, '\n'); pos < eol+1; ) {
                 size_t len = strcspn(pos, delims[d].special[0] == '$' ? "\\$\r\n" : "\r\n");
                 if (pos[len] == '\r') ++len;
                 if (pos[len] == '\n') ++len;
@@ -951,10 +942,21 @@ PARSER(parse_string) {
                     istr_t unescaped = unescape(&pos);
                     ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=unescaped);
                     APPEND(chunks, chunk);
+                    ++pos;
                     break;
                 }
                 default: break;
                 }
+            }
+        }
+      finished:;
+        // Strip trailing newline:
+        if (LIST_LEN(chunks) > 0) {
+            ast_t *last_chunk = LIST_ITEM(chunks, LIST_LEN(chunks)-1);
+            if (last_chunk->tag == StringLiteral) {
+                auto str = Match(last_chunk, StringLiteral);
+                istr_t trimmed = intern_strf("%.*s", (int)strlen(str->str)-1, str->str);
+                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
             }
         }
     } else {
@@ -1009,7 +1011,6 @@ PARSER(parse_string) {
             }
         }
     }
-  finished:;
     return NewAST(ctx, string_start, pos, StringJoin, .children=chunks);
 }
 
