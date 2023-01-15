@@ -1019,7 +1019,11 @@ PARSER(parse_skip) {
     const char *start = pos;
     if (!match_word(&pos, "skip")) return NULL;
     spaces(&pos);
-    istr_t target = get_word(&pos);
+    istr_t target;
+    if (match_word(&pos, "for")) target = intern_str("for");
+    else if (match_word(&pos, "while")) target = intern_str("while");
+    else if (match_word(&pos, "repeat")) target = intern_str("repeat");
+    else target = get_id(&pos);
     return NewAST(ctx, start, pos, Skip, .target=target);
 }
 
@@ -1027,7 +1031,11 @@ PARSER(parse_stop) {
     const char *start = pos;
     if (!match_word(&pos, "stop")) return NULL;
     spaces(&pos);
-    istr_t target = get_word(&pos);
+    istr_t target;
+    if (match_word(&pos, "for")) target = intern_str("for");
+    else if (match_word(&pos, "while")) target = intern_str("while");
+    else if (match_word(&pos, "repeat")) target = intern_str("repeat");
+    else target = get_id(&pos);
     return NewAST(ctx, start, pos, Stop, .target=target);
 }
 
