@@ -12,6 +12,7 @@
 #include "compile/libgccjit_abbrev.h"
 #include "libblang/list.h"
 #include "types.h"
+#include "units.h"
 
 typedef struct loop_label_s {
     struct loop_label_s *enclosing;
@@ -47,6 +48,7 @@ typedef struct env_s {
     hashmap_t *tuple_types; // istr_t -> bl_type_t
     bl_type_t *return_type;
     loop_label_t *loop_label;
+    derived_units_t *derived_units;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     bool debug;

@@ -42,6 +42,7 @@ typedef enum {
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
     Index, FieldAccess,
+    UnitDef,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -242,6 +243,9 @@ struct ast_s {
             ast_t *fielded;
             istr_t field;
         } FieldAccess;
+        struct {
+            ast_t *derived, *base;
+        } UnitDef;
     } __data;
 };
 

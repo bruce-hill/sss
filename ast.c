@@ -141,6 +141,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(EnumField, F(name), F(value))
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))
+        T(UnitDef, F(derived), F(base))
 #undef BINOP
 #undef UNOP
 #undef F

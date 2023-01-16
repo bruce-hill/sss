@@ -1621,7 +1621,10 @@ PARSER(parse_def) {
     if (!match_word(&pos, "def")) return NULL;
     spaces(&pos);
     istr_t name = get_id(&pos);
-    if (!name) parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
+    if (!name) {
+        if (isdigit(*pos)) goto derived_unit;
+        parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
+    }
     spaces(&pos);
 
     if (match(&pos, "(")) { // Function def foo(...)
@@ -1704,6 +1707,34 @@ PARSER(parse_def) {
         }
         expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
         return NewAST(ctx, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+    } else if (isdigit(*pos)) { // derived unit def
+      derived_unit:;
+        ast_t *derived;
+        if (!(derived=optional_ast(ctx, &pos, parse_num))
+            && !(derived=optional_ast(ctx, &pos, parse_int)))
+            parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+        if (derived->tag == Int)
+            derived = NewAST(ctx, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
+
+        if (derived->tag != Num || Match(derived, Num)->units == NULL)
+            parser_err(ctx, derived->span.start, derived->span.end, "Derived units must have units");
+
+        spaces(&pos);
+        if (!match(&pos, ":="))
+            parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+        ast_t *base;
+        if (!(base=optional_ast(ctx, &pos, parse_num))
+            && !(base=optional_ast(ctx, &pos, parse_int)))
+            parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+        if (base->tag == Int)
+            base = NewAST(ctx, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
+
+        if (base->tag != Num || Match(base, Num)->units == NULL)
+            parser_err(ctx, base->span.start, base->span.end, "Derived units must have units");
+        return NewAST(ctx, start, pos, UnitDef, .derived=derived, .base=base);
     }
     return NULL;
 }

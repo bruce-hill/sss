@@ -10,6 +10,7 @@
 #include "environment.h"
 #include "typecheck.h"
 #include "types.h"
+#include "units.h"
 #include "util.h"
 
 static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
@@ -139,20 +140,26 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Int: {
         auto i = Match(ast, Int);
+        istr_t units = i->units;
+        units = unit_derive(units, NULL, env->derived_units);
+
         switch (i->precision) {
-        case 64: return Type(IntType, .units=i->units);
-        case 32: return Type(Int32Type, .units=i->units);
-        case 16: return Type(Int16Type, .units=i->units);
-        case 8: return Type(Int8Type, .units=i->units);
+        case 64: return Type(IntType, .units=units);
+        case 32: return Type(Int32Type, .units=units);
+        case 16: return Type(Int16Type, .units=units);
+        case 8: return Type(Int8Type, .units=units);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
     case Char: return Type(CharType);
     case Num: {
         auto n = Match(ast, Num);
+        istr_t units = n->units;
+        units = unit_derive(units, NULL, env->derived_units);
+
         switch (n->precision) {
-        case 64: return Type(NumType, .units=n->units);
-        case 32: return Type(Num32Type, .units=n->units);
+        case 64: return Type(NumType, .units=units);
+        case 32: return Type(Num32Type, .units=units);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -574,7 +581,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
-    case StructDef: case EnumDef: {
+    case StructDef: case EnumDef: case UnitDef: {
         return Type(VoidType);
     }
 

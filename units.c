@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "units.h"
 #include "libblang/list.h"
 
 typedef struct {
@@ -175,6 +176,40 @@ istr_t unit_string_mul(const char *a, const char *b)
 istr_t unit_string_div(const char *a, const char *b)
 {
     return unit_to_string(unit_div(unit_from_string(a), unit_from_string(b)));
+}
+
+istr_t unit_derive(istr_t unit_str, double *d, derived_units_t *conversions)
+{
+    Unit *unit = unit_from_string(unit_str);
+    for ( ; conversions; conversions = conversions->next) {
+        Unit *derived = unit_from_string(conversions->derived);
+        int exponent = 999;
+        for (size_t d = 0; d < derived->len; d++) {
+            for (size_t u = 0; u < unit->len; u++) {
+                if (unit->components[u].name == derived->components[d].name) {
+                    int e = unit->components[u].exponent / derived->components[d].exponent;
+                    if (e*e < exponent*exponent)
+                        exponent = e;
+                    goto found;
+                }
+            }
+            exponent = 0;
+            break;
+
+          found: continue;
+        }
+
+        if (exponent == 0) continue;
+
+        Unit *base = unit_from_string(conversions->base);
+        Unit *factor = exponent > 0 ? unit_div(base, derived) : unit_div(derived, base);
+        double ratio = exponent > 0 ? conversions->ratio : 1./conversions->ratio;
+        for (int i = 0; i*i < exponent*exponent; i++) {
+            unit = unit_mul(unit, factor);
+            if (d) *d *= ratio;
+        }
+    }
+    return unit_to_string(unit);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

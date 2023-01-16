@@ -14,6 +14,7 @@
 #include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
+#include "../units.h"
 #include "../util.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
@@ -137,16 +138,38 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         return binding->rval;
     }
     case Int: {
-        // TODO: check if literal exceeds numeric precision
         gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env, ast));
-        return gcc_rvalue_from_long(env->ctx, gcc_t, Match(ast, Int)->i);
+
+        auto intval = Match(ast, Int);
+        int64_t i = intval->i;
+        double n = (double)i;
+        istr_t units = intval->units;
+        if (units) {
+            units = unit_derive(units, &n, env->derived_units);
+            if ((double)((int64_t)n) == n) // no floating point rounding
+                i = (int64_t)n;
+            else
+                compile_err(env, ast, "This is an integer with a derived unit of measure (%s) which is %g<%s> in base units, "
+                            "but that can't be represented as an integer without rounding errors",
+                            intval->units, n, units);
+        }
+
+        if ((((uint64_t)i) >> (uint64_t)(intval->precision-1)) > 1) {
+            compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision,
+                        (((uint64_t)i) >> (uint64_t)intval->precision));
+        }
+
+        return gcc_rvalue_from_long(env->ctx, gcc_t, i);
     }
     case Char: {
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, CHAR), Match(ast, Char)->c);
     }
     case Num: {
         gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env, ast));
-        return gcc_rvalue_from_double(env->ctx, gcc_t, Match(ast, Num)->n);
+        double n = Match(ast, Num)->n;
+        istr_t units = Match(ast, Num)->units;
+        units = unit_derive(units, &n, env->derived_units);
+        return gcc_rvalue_from_double(env->ctx, gcc_t, n);
     }
     default: break;
     }
@@ -418,6 +441,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_array(env, block, ast);
     }
     case EnumDef: {
+        return NULL;
+    }
+    case UnitDef: {
+        auto unit_def = Match(ast, UnitDef);
+        env->derived_units = new(derived_units_t, 
+                                 .derived=Match(unit_def->derived, Num)->units,
+                                 .base=Match(unit_def->base, Num)->units,
+                                 .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
+                                 .next=env->derived_units);
         return NULL;
     }
     case StructDef: {
