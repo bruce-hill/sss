@@ -15,3 +15,8 @@ doops := [Doop{123, yes}, Doop{456, no}, Doop{789, yes}]
 say "$:doops $:doops.b $:doops.x"
 fail unless "$doops.b" == "[yes, no, yes]"
 fail unless "$doops.x" == "[123, 456, 789]"
+
+def Nested{boop:Boop, doop:Doop}
+nested := [Nested{Boop{yes,123},Doop{456,yes}}, Nested{Boop{no,789},Doop{101112,no}}]
+say "$:nested $:nested.boop.x"
+fail unless "$nested.boop.x" == "[123, 789]"
