@@ -155,8 +155,8 @@ do_thing(foo)
 foo := maybe_val() or fail "I couldn't get a value!"
 do_thing(foo)
 
-// Option 3: Pattern match
-when maybe_val() is foo
+// Option 3: Conditional check
+if foo := maybe_val()
     do_thing(foo)
 else
     say "I didn't get a value"

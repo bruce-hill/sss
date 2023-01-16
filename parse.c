@@ -684,11 +684,11 @@ PARSER(parse_if) {
     else if (match_word(&pos, "unless")) is_unless = true;
     else return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
-    ast_t *cond = optional_ast(ctx, &pos, parse_declaration);
+    ast_t *cond = is_unless ? NULL : optional_ast(ctx, &pos, parse_declaration);
     if (!cond)
         cond = expect_ast(ctx, start, &pos, parse_expr,
                           "I expected to find a condition for this 'if'");
-    if (is_unless) cond = FakeAST(Not, .value=cond);
+    if (is_unless) cond = NewAST(ctx, cond->span.start, cond->span.end, Not, .value=cond);
 
     match_word(&pos, "then");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if'"); 
@@ -857,7 +857,7 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
 
-    if (is_unless) cond = FakeAST(Not, .value=cond);
+    if (is_unless) cond = NewAST(ctx, cond->span.start, cond->span.end, Not, .value=cond);
     List(ast_t*) conditions = LIST(ast_t*, cond);
     List(ast_t*) blocks = LIST(ast_t*, body);
 

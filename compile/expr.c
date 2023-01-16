@@ -1046,6 +1046,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
         else if (is_integral(t))
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
+        else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
+            return gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
         else
             compile_err(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }

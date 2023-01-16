@@ -502,6 +502,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *t = get_type(env, Match(ast, Not)->value);
         if (t->tag == BoolType || is_integral(t))
             return t;
+        else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
+            return Type(BoolType);
         compile_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %s", type_to_string(t)); 
     }
 
