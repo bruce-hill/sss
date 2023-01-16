@@ -216,7 +216,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Array: {
         auto list = Match(ast, Array);
         if (list->type)
-            return parse_type_ast(env, list->type);
+            return Type(ArrayType, .item_type=parse_type_ast(env, list->type));
 
         bl_type_t *item_type = NULL;
         for (int64_t i = 0; i < LIST_LEN(list->items); i++) {
