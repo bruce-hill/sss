@@ -443,7 +443,13 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         const char *fmt;
         switch (t->tag) {
         case Int32Type: case Int16Type: case Int8Type: fmt = "%d"; break;
-        case NumType: case Num32Type: fmt = "%g"; break;
+        case NumType: fmt = "%g"; break;
+        case Num32Type: {
+            // I'm not sure why, but printf() gets confused if you pass a 'float' here instead of a 'double'
+            obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, DOUBLE));
+            fmt = "%g";
+            break;
+        }
         default: fmt = "%ld"; break;
         }
         istr_t units = type_units(t);

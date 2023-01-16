@@ -169,7 +169,35 @@ static void define_num_types(env_t *env)
         extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
                       Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type, num32_type), .arg_names=LIST(istr_t, arg1, arg2), .ret=num32_type), 0);
     }
-    // odd: ldexp isinf finite nan isnan jn yn llogb lrint lround fma
+
+    const char *bool_methods[][2] = {
+        {"isinf","is_infinite"}, {"finite","is_finite"}, {"isnan","is_nan"},
+    };
+    for (size_t i = 0; i < sizeof(bool_methods)/sizeof(bool_methods[0]); i++) {
+        const char *c_name = bool_methods[i][0];
+        const char *alias = bool_methods[i][1];
+        if (!alias) alias = c_name;
+        extern_method(env, c_name, num_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
+        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
+    }
+
+    { // Num NaN:
+        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, num_type),
+                                            "nan", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
+        gcc_rvalue_t *rval = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
+        hashmap_set(get_namespace(env, num_type), intern_str("NaN"), new(binding_t, .is_global=true, .type=num_type, .rval=rval));
+    }
+
+    { // Num32 NaN
+        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, num32_type),
+                                            "nanf", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
+        gcc_rvalue_t *rval = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
+        hashmap_set(get_namespace(env, num32_type), intern_str("NaN"), new(binding_t, .is_global=true, .type=num32_type, .rval=rval));
+    }
+
+    // oddballs: ldexp jn yn llogb lrint lround fma
 }
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug)
