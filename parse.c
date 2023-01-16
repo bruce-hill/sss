@@ -74,6 +74,7 @@ static PARSER(parse_opt_indented_block);
 static PARSER(parse_var);
 static PARSER(parse_def);
 static PARSER(parse_extern);
+static PARSER(parse_declaration);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -683,8 +684,10 @@ PARSER(parse_if) {
     else if (match_word(&pos, "unless")) is_unless = true;
     else return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
-    ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
-                             "I expected to find a condition for this 'if'");
+    ast_t *cond = optional_ast(ctx, &pos, parse_declaration);
+    if (!cond)
+        cond = expect_ast(ctx, start, &pos, parse_expr,
+                          "I expected to find a condition for this 'if'");
     if (is_unless) cond = FakeAST(Not, .value=cond);
 
     match_word(&pos, "then");
