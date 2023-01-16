@@ -1,9 +1,8 @@
 #pragma once
-#include <intern.h>
 #include <stdint.h>
 
 typedef struct {
-    istr_t data;
+    const char *data;
     int32_t length, stride;
 } string_t;
 

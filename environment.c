@@ -69,7 +69,7 @@ static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, con
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn->ret),
                                     extern_name, LIST_LEN(fn->arg_types), params, is_vararg);
     hashmap_t *ns = get_namespace(env, t);
-    hashmap_set(ns, method_name, new(binding_t, .is_global=true, .type=fn_type, .func=func));
+    hashmap_set(ns, intern_str(method_name), new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
 
 static bl_type_t *define_string_type(env_t *env)

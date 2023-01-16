@@ -4,7 +4,6 @@
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
-#include <intern.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -184,5 +183,32 @@ int32_t bl_string_find(string_t str, string_t pat)
     // }
     // return 0;
 }
+
+string_t bl_string_replace(string_t text, string_t pat, string_t replacement, int64_t limit) {
+    text = flatten(text);
+    pat = flatten(pat);
+    replacement = flatten(replacement);
+    char *buf;
+    size_t size;
+    FILE *mem = open_memstream(&buf, &size);
+    for (const char *pos = text.data; limit != 0; --limit) {
+        const char *match = memmem(pos, (size_t)text.length - (size_t)(pos - text.data), pat.data, pat.length);
+        if (match) {
+            fwrite(pos, 1, (size_t)(match - pos), mem);
+            fwrite(replacement.data, 1, replacement.length, mem);
+            pos = match + pat.length;
+        } else {
+            fwrite(pos, 1, (size_t)text.length - (size_t)(pos - text.data), mem);
+            break;
+        }
+    }
+    fflush(mem);
+    char *str = GC_MALLOC_ATOMIC(size + 1);
+    memcpy(str, buf, size+1);
+    fclose(mem);
+    free(buf);
+    return (string_t){.data=str, .length=size, .stride=1};
+}
+
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
