@@ -26,6 +26,7 @@ static int fputc_column(FILE *out, char c, char print_char, int *column)
 
 int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lines)
 {
+    if (!span.file) return 0;
     const char *lineno_fmt, *normal_color, *empty_marker;
     bool print_carets = false;
     int printed = 0;
