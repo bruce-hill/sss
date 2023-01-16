@@ -8,7 +8,7 @@ backend IR, and compiles from there to assembly code and then to a binary.
 
 ```
 def sing_bottles_song(n:Int)
-    for i in n,-1..0
+    for i in n..-1..0
         when i is 0
             say "No more bottles of beer on the wall! :("
         is 1
