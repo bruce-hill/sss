@@ -96,9 +96,16 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
             printed += fputs(": ", out);
             int column = 0;
             for (const char *sp = line; *sp && *sp != '\n'; ++sp) {
-                bool is_match_char = (span.start <= sp && sp < span.end) || (sp == span.start && sp == span.end);
-                char c = is_match_char ? '^' : ' ';
-                printed += fputc_column(out, *sp, c, &column);
+                char print_char;
+                if (sp < span.start)
+                    print_char = ' ';
+                else if (sp == span.start && sp == span.end)
+                    print_char = '^';
+                else if (sp >= span.start && sp < span.end)
+                    print_char = '-';
+                else
+                    print_char = ' ';
+                printed += fputc_column(out, *sp, print_char, &column);
             }
             printed += fputs("\n", out);
         }
