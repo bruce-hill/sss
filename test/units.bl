@@ -1,0 +1,24 @@
+// Units of measure
+speed := 10<km/  hr>
+say "$:speed"
+fail unless "$speed" == "10<km/hr>"
+
+dist := speed * 1<hr>
+say "$:dist"
+fail unless "$dist" == "10<km>"
+
+speed += 1<km/hr>
+
+def Vel {x,y:Num<km/hr>}
+
+vel := Vel{5<km/hr>, 10<km/hr>}
+say "$:vel"
+
+// Test derived units:
+def 1<hr> := 3600<s>
+def 1<inch> := 0.0254<m>
+def 1<ft> := 12<inch>
+def 1<mi> := 5280<ft>
+
+say "$:(1.<mi/hr> + 2<m/s>)"
+fail unless "$(1.<mi/hr>)" == "0.44704<m/s>"
