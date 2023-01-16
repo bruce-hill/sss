@@ -263,7 +263,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             if (binding)
                 return binding->type;
             else
-                compile_err(env, ast, "I can't find anything called %s on type %s", access->field, type_to_string(fielded_t));
+                compile_err(env, ast, "I can't find anything called %s on this type", access->field);
         }
         case ArrayType: {
             auto array = Match(fielded_t, ArrayType);

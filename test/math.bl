@@ -46,6 +46,9 @@ say "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"
 result := fast_inverse_sqrt(16.)
 fail "got $result instead of 0.25" unless "$result" == "0.25"
 
+say "$:(Num.NaN) $:(Num.Infinity)"
+say "$:(Num32.NaN) $:(Num32.Infinity)"
+
 // Methods:
 n := 5.0
 say "$:(n.sqrt())"

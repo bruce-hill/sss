@@ -183,18 +183,26 @@ static void define_num_types(env_t *env)
                       Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
     }
 
-    { // Num NaN:
-        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, num_type),
+    { // Num NaN and Infinity:
+        gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num_type);
+        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_num_t,
                                             "nan", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
-        gcc_rvalue_t *rval = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
-        hashmap_set(get_namespace(env, num_type), intern_str("NaN"), new(binding_t, .is_global=true, .type=num_type, .rval=rval));
+        gcc_rvalue_t *nan_val = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
+        hashmap_t *ns = get_namespace(env, num_type);
+        hashmap_set(ns, intern_str("NaN"), new(binding_t, .is_global=true, .type=num_type, .rval=nan_val));
+        gcc_rvalue_t *inf_val = gcc_binary_op(env->ctx, NULL, GCC_BINOP_DIVIDE, gcc_num_t, gcc_one(env->ctx, gcc_num_t), gcc_zero(env->ctx, gcc_num_t));
+        hashmap_set(ns, intern_str("Infinity"), new(binding_t, .is_global=true, .type=num_type, .rval=inf_val));
     }
 
-    { // Num32 NaN
-        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, num32_type),
+    { // Num32 NaN and Infinity:
+        gcc_type_t *gcc_num32_t = bl_type_to_gcc(env, num32_type);
+        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_num32_t,
                                             "nanf", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
-        gcc_rvalue_t *rval = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
-        hashmap_set(get_namespace(env, num32_type), intern_str("NaN"), new(binding_t, .is_global=true, .type=num32_type, .rval=rval));
+        gcc_rvalue_t *nan_val = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
+        hashmap_t *ns = get_namespace(env, num32_type);
+        hashmap_set(ns, intern_str("NaN"), new(binding_t, .is_global=true, .type=num32_type, .rval=nan_val));
+        gcc_rvalue_t *inf_val = gcc_binary_op(env->ctx, NULL, GCC_BINOP_DIVIDE, gcc_num32_t, gcc_one(env->ctx, gcc_num32_t), gcc_zero(env->ctx, gcc_num32_t));
+        hashmap_set(ns, intern_str("Infinity"), new(binding_t, .is_global=true, .type=num32_type, .rval=inf_val));
     }
 
     // oddballs: ldexp jn yn llogb lrint lround fma
