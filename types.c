@@ -157,7 +157,7 @@ bl_type_t *with_units(bl_type_t *t, istr_t units)
         auto s = Match(t, StructType);
         return Type(StructType, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
     }
-    default: return NULL;
+    default: return t;
     }
 }
 
