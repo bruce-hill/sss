@@ -1,7 +1,7 @@
 x := 5
 if not x > 10
     say "x is small"
-elseif x > 100
+else if x > 100
     say "x is HUGE"
 else
     say "x is big"

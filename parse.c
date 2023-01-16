@@ -36,7 +36,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","elseif","else","do","deftype",
+    "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","else","do","deftype",
     "def","cast","bitcast","between","as","and", NULL,
 };
 
@@ -677,7 +677,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 }
 
 PARSER(parse_if) {
-    // if cond then body elseif body else body
+    // if cond then body else body
     const char *start = pos;
     bool is_unless;
     if (match_word(&pos, "if")) is_unless = false;
@@ -693,19 +693,6 @@ PARSER(parse_if) {
     match_word(&pos, "then");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if'"); 
 
-    List(ast_t*) conditions = LIST(ast_t*, cond);
-    List(ast_t*) blocks = LIST(ast_t*, body);
-
-    whitespace(&pos);
-    while (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "elseif")) {
-        cond = expect_ast(ctx, pos, &pos, parse_expr, "I couldn't parse this condition");
-        match_word(&pos, "then");
-        body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'elseif'"); 
-        APPEND(conditions, cond);
-        APPEND(blocks, body);
-        whitespace(&pos);
-    }
-
     ast_t *else_ = NULL;
     const char *else_start = pos;
     whitespace(&else_start);
@@ -713,7 +700,7 @@ PARSER(parse_if) {
         pos = else_start;
         else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
     }
-    return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
+    return NewAST(ctx, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
 PARSER(parse_when) {
@@ -846,7 +833,7 @@ ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
 }
 
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
-    // true_val if cond elseif cond then elseif_val else else_val
+    // true_val if cond then val else else_val
     if (!body) return NULL;
     const char *start = body->span.start;
     const char *pos = body->span.end;
@@ -858,17 +845,6 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
                              "I expected to find a condition for this 'if'");
 
     if (is_unless) cond = NewAST(ctx, cond->span.start, cond->span.end, Not, .value=cond);
-    List(ast_t*) conditions = LIST(ast_t*, cond);
-    List(ast_t*) blocks = LIST(ast_t*, body);
-
-    while (match_word(&pos, "elseif")) {
-        if (!(cond = optional_ast(ctx, &pos, parse_expr)))
-            parser_err(ctx, pos, pos+strcspn(pos,"\r\n"), "I couldn't parse this condition");
-        if (!match_word(&pos, "then"))
-            parser_err(ctx, cond->span.start, pos, "I expected a 'then' after this 'elseif'");
-        if (!(body = optional_ast(ctx, &pos, parse_expr)))
-            parser_err(ctx, cond->span.start, pos, "I couldn't find the body for this 'elseif'");
-    }
 
     ast_t *else_ = NULL;
     const char *else_start = pos;
@@ -879,7 +855,7 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     if (else_) pos = else_->span.end;
     else if (require_else) return NULL;
 
-    return NewAST(ctx, start, pos, If, .conditions=conditions, .blocks=blocks, .else_body=else_);
+    return NewAST(ctx, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
 ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix) {

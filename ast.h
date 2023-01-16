@@ -151,9 +151,7 @@ struct ast_s {
             List(ast_t*) blocks;
         } Do;
         struct {
-            List(ast_t*) conditions;
-            List(ast_t*) blocks;
-            ast_t *else_body;
+            ast_t *condition, *body, *else_body;
         } If;
         struct {
             ast_t *key, *value, *iter, *body, *between;

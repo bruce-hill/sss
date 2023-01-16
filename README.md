@@ -11,7 +11,7 @@ def sing_bottles_song(n:Int)
     for i in n..-1..0
         if i == 0
             say "No more bottles of beer on the wall! :("
-        elseif i == 1
+        else if i == 1
             say "One last bottle of beer on the wall"
         else
             say "$i bottles of beer on the wall"

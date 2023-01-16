@@ -23,7 +23,7 @@ def contains(tree:BinaryTree<T>, obj:T):Bool
     return yes if tree.value == obj
     if (left := tree.left) and obj < tree.value
         return contains(left)
-    elseif (right := tree.right) and obj > tree.value
+    else if (right := tree.right) and obj > tree.value
         return contains(right)
     else
         return no

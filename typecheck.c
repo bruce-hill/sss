@@ -625,17 +625,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case If: {
         bl_type_t *t = NULL;
         auto if_ = Match(ast, If);
-        for (int64_t i = 0; i < length(if_->conditions); i++) {
-            ast_t *cond = ith(if_->conditions, i);
-            ast_t *body = ith(if_->blocks, i);
-            bl_type_t *clause_t = get_clause_type(env, cond, body);
-            bl_type_t *t2 = type_or_type(t, clause_t);
-            if (!t2)
-                compile_err(env, body,
-                            "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
-                            type_to_string(t), type_to_string(clause_t));
-            t = t2;
-        }
+        ast_t *cond = if_->condition;
+        ast_t *body = if_->body;
+        bl_type_t *clause_t = get_clause_type(env, cond, body);
+        bl_type_t *t2 = type_or_type(t, clause_t);
+        if (!t2)
+            compile_err(env, body,
+                        "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
+                        type_to_string(t), type_to_string(clause_t));
+        t = t2;
+
         if (if_->else_body) {
             bl_type_t *else_type = get_type(env, if_->else_body);
             bl_type_t *t2 = type_or_type(t, else_type);

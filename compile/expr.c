@@ -1232,29 +1232,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_block_t *end_if = if_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
-        for (int64_t i = 0; i < length(if_->conditions); i++) {
-            ast_t *condition = ith(if_->conditions, i);
-            ast_t *body = ith(if_->blocks, i);
-            gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
-            gcc_block_t *if_falsey = gcc_new_block(func, fresh("elseif"));
+        ast_t *condition = if_->condition;
+        ast_t *body = if_->body;
+        gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
+        gcc_block_t *if_falsey = gcc_new_block(func, fresh("else"));
 
-            env_t branch_env = *env;
-            branch_env.bindings = hashmap_new();
-            branch_env.bindings->fallback = env->bindings;
-            assert(if_truthy && if_falsey);
-            check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
+        env_t branch_env = *env;
+        branch_env.bindings = hashmap_new();
+        branch_env.bindings->fallback = env->bindings;
+        check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
+        *block = NULL;
 
-            if (if_t->tag == GeneratorType && env->comprehension_callback) {
-                if (!env->comprehension_callback)
-                    compile_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
-                env->comprehension_callback(&branch_env, &if_truthy, body, env->comprehension_userdata);
-                assert(end_if);
-                if (if_truthy)
-                    gcc_jump(if_truthy, loc, end_if);
-                *block = if_falsey;
-                continue;
-            }
-
+        if (if_t->tag == GeneratorType && env->comprehension_callback) {
+            if (!env->comprehension_callback)
+                compile_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
+            env->comprehension_callback(&branch_env, &if_truthy, body, env->comprehension_userdata);
+            assert(end_if);
+            if (if_truthy)
+                gcc_jump(if_truthy, loc, end_if);
+        } else {
             gcc_rvalue_t *branch_val = compile_expr(&branch_env, &if_truthy, body);
             if (if_truthy) {
                 if (branch_val) {
@@ -1271,12 +1267,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 assert(end_if);
                 gcc_jump(if_truthy, loc, end_if);
             }
-            *block = if_falsey;
         }
+
+        *block = if_falsey;
         if (if_->else_body) {
             gcc_rvalue_t *branch_val = compile_expr(env, block, if_->else_body);
             if (branch_val) {
                 if (has_value) {
+                    assert(*block);
                     bl_type_t *actual = get_type(env, if_->else_body);
                     if (!promote(env, actual, &branch_val, if_t))
                         compile_err(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
@@ -1286,15 +1284,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_eval(*block, loc, branch_val);
                 }
             }
-            if (*block) {
-                assert(end_if); // AbortTypes shouldn't leave *block as non-null when compiling
-                gcc_jump(*block, loc, end_if);
-            }
-            *block = NULL;
-        } else {
-            if (*block)
-                gcc_jump(*block, loc, end_if);
-            *block = NULL;
+        }
+
+        if (*block) {
+            assert(end_if);
+            gcc_jump(*block, loc, end_if);
         }
         *block = end_if;
         return has_value ? gcc_rval(if_ret) : NULL;
