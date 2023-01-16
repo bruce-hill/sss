@@ -77,6 +77,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
 
     gcc_lvalue_t *array_var = gcc_local(func, NULL, gcc_t, fresh("array"));
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+    // TODO: use GC_malloc_atomic(1) if array doesn't hold any pointers
     gcc_assign(*block, NULL, array_var,
                gcc_struct_constructor(env->ctx, NULL, gcc_t, 1,
                                       (gcc_field_t*[]){gcc_get_field(gcc_struct, 2)}, // stride = 1
