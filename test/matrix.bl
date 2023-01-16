@@ -1,0 +1,59 @@
+def dot(a:[Num],b:[Num]):Num
+    fail unless #a == #b
+    sum := 0.
+    for i, ai in a
+        bi := b[i]
+        sum += ai*bi
+    return sum
+
+def Mat2D {
+    rows,cols:Int
+    data:[Num]
+
+    def from_nested(data:[[Num]]):Mat2D
+        fail unless #row == #data[1] for row in data[2..]
+        return Mat2D{#data,#data[1], [x for x in row for row in data]}
+
+    def get(mat:Mat2D, row:Int, col:Int):Num
+        return mat.data[row + (col-1)*mat.rows]
+
+    def row(mat:Mat2D, row:Int):[Num]
+        start := 1+(row-1)*mat.cols
+        return mat.data[start..(start+mat.cols-1)]
+
+    def col(mat:Mat2D, col:Int):[Num]
+        return mat.data[col..+mat.cols..]
+
+    def mul(a:Mat2D, b:Mat2D):Mat2D
+        fail unless a.cols == b.rows
+        rows := a.rows
+        cols := b.cols
+        data := [
+            for a_row in 1..rows
+                for b_col in 1..cols
+                    dot(a.row(a_row), b.col(b_col))
+        ]
+        return Mat2D{rows,cols,data}
+
+    def tostring(mat:Mat2D):String
+        s := "["
+        for row_num in 1..mat.rows
+            for x in mat.row(row_num)
+                s = "$s$x"
+            between
+                s = "$s "
+        between
+            s = "$s; "
+        s = "$s]"
+        return s
+}
+
+mat := Mat2D.from_nested([[1.,2,3], [4.,5,6]])
+say "$:mat $(mat.row(1)) $(mat.col(1))"
+say "$:mat $(mat.row(2)) $(mat.col(2))"
+
+a := Mat2D.from_nested([[1.,0,1],[2.,1,1],[0.,1,1],[1.,1,2]])
+b := Mat2D.from_nested([[1.,2,1],[2.,3,1],[4.,2,2]])
+say "$(a.tostring())"
+say "$(b.tostring())"
+say "$(a.mul(b).tostring())"

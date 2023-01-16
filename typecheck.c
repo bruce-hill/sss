@@ -325,7 +325,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
-        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
+        int64_t len = LIST_LEN(block->statements);
+        assert(len > 0);
+        ast_t *last = LIST_ITEM(block->statements, len-1);
         return get_type(env, last);
     }
     case Do: {
