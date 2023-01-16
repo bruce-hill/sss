@@ -27,6 +27,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
     };
     const char *main_name = "main";
+    (void)fresh("main"); // ensure the unadorned name isn't used for anything else
     gcc_func_t *main_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, INT),
         main_name, 2, main_params, 0);
