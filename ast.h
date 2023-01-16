@@ -16,7 +16,7 @@ typedef enum {
     Unknown = 0,
     Nil, Bool, Var,
     Int, Num, Range, Char,
-    StringLiteral, StringJoin, DSL, Interp,
+    StringLiteral, StringJoin, Interp,
     Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
     AndUpdate, OrUpdate,
@@ -88,6 +88,7 @@ struct ast_s {
             istr_t str;
         } StringLiteral;
         struct {
+            istr_t dsl;
             List(ast_t*) children;
         } StringJoin;
         struct {

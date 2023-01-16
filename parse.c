@@ -21,8 +21,6 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 #define PARSER(name) ast_t *name(parse_ctx_t *ctx, const char *pos)
 
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
-STUB_PARSER(parse_dsl)
-#undef STUB
 
 static int op_tightness[NUM_AST_TAGS] = {
     [Power]=1,
@@ -911,28 +909,29 @@ PARSER(parse_interpolation) {
 }
 
 PARSER(parse_string) {
-    const char *string_start = pos;
-    static struct {
-        const char *start, *special, *open, *close;
-    } delims[] = {
-        {"\"", "$\\\"\r\n",  NULL, "\""},
-        {"'",  "'\r\n",      NULL, "'"},
-        {"%{", "$\\{}\r\n",  "{",  "}"},
-        {"%[", "$\\[]\r\n",  "[",  "]"},
-        {"%(", "()\r\n",     "(",  ")"},
-        {"%<", "$\\<>\r\n",  "<",  ">"},
-    };
-    size_t d;
-    for (d = 0; d < sizeof(delims)/sizeof(delims[0]); d++) {
-        if (match(&pos, delims[d].start))
-            goto found_delim;
-    }
-    return NULL;
+    static const char closing[128] = {['(']=')', ['[']=']', ['<']='>', ['{']='}'};
+    static const bool interps_banned[128] = {['\'']=true, ['(']=true};
+    static const bool escapes_banned[128] = {['\'']=true, ['(']=true};
 
-  found_delim:;
+    const char *string_start = pos;
+    const char *dsl = NULL;
+    char open, close;
+    if (match(&pos, "$")) {
+        dsl = isalpha(*pos) || *pos == '_' ? get_id(&pos) : NULL;
+        open = *pos;
+        close = closing[(int)open] ? closing[(int)open] : open;
+        ++pos;
+    } else {
+        if (*pos != '\'' && *pos != '"')
+            return NULL;
+        open = *pos;
+        close = *pos;
+        ++pos;
+    }
 
     NEW_LIST(ast_t*, chunks);
     if (*pos == '\r' || *pos == '\n') {
+        char special[] = {'\n','\r',interps_banned[(int)open] ? open : '$', escapes_banned[(int)open] ? open : '\\', '\0'};
         size_t starting_indent = bl_get_indent(ctx->file, pos); 
         // indentation-delimited string
         match(&pos, "\r");
@@ -951,15 +950,17 @@ PARSER(parse_string) {
             if (!match_indentation(&pos, starting_indent))
                 parser_err(ctx, pos, strchrnul(pos, '\n'), "This isn't a valid indentation level for this unterminated string");
 
-            if (match(&pos, delims[d].close))
+            if (*pos == close) {
+                ++pos;
                 goto finished;
+            }
 
             if (!match_indentation(&pos, (indented - starting_indent)))
                 parser_err(ctx, pos, strchrnul(pos, '\n'), "I was expecting this to have %lu extra indentation beyond %lu",
                            (indented - starting_indent), starting_indent);
 
             for (const char *eol = strchrnul(pos, '\n'); pos < eol+1; ) {
-                size_t len = strcspn(pos, delims[d].special[0] == '$' ? "\\$\r\n" : "\r\n");
+                size_t len = strcspn(pos, special);
                 if (pos[len] == '\r') ++len;
                 if (pos[len] == '\n') ++len;
 
@@ -1000,14 +1001,15 @@ PARSER(parse_string) {
             }
         }
     } else {
+        char special[] = {'\n','\r',open,close, interps_banned[(int)open] ? open : '$', escapes_banned[(int)open] ? open : '\\', '\0'};
         // Inline string:
         int depth = 1;
         while (depth > 0 && *pos) {
-            size_t len = strcspn(pos, delims[d].special);
+            size_t len = strcspn(pos, special);
             if (len > 0) {
                 ast_t *chunk = NewAST(ctx, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
                 APPEND(chunks, chunk);
-                pos = chunk->span.end;
+                pos += len;
             }
 
             switch (*pos) {
@@ -1025,33 +1027,29 @@ PARSER(parse_string) {
                 break;
             }
             case '\r': case '\n': {
+                if (open == ' ' || open == ':') goto string_finished;
                 parser_err(ctx, string_start, pos, "This line ended without closing the string");
             }
             default: {
-                const char *start = pos;
-                if (delims[d].open && match(&pos, delims[d].open)) {
-                    ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=intern_str(delims[d].open));
-                    APPEND(chunks, chunk);
-                    ++depth;
-                    continue;
-                }
-                start = pos;
-                if (match(&pos, delims[d].close)) {
+                if (*pos == close) { // if open == close, then don't do nesting (i.e. check 'close' first)
                     --depth;
-                    if (depth > 0) {
-                        ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=intern_str(delims[d].close));
-                        APPEND(chunks, chunk);
-                    } else {
+                    if (depth <= 0) {
+                        ++pos;
                         break;
                     }
+                } else if (*pos == open) {
+                    ++depth;
                 }
+                ast_t *chunk = NewAST(ctx, pos, pos+1, StringLiteral, .str=intern_strn(pos, 1));
                 ++pos;
+                APPEND(chunks, chunk);
                 break;
             }
             }
         }
     }
-    return NewAST(ctx, string_start, pos, StringJoin, .children=chunks);
+  string_finished:;
+    return NewAST(ctx, string_start, pos, StringJoin, .children=chunks, .dsl=dsl);
 }
 
 PARSER(parse_skip) {
@@ -1194,7 +1192,6 @@ PARSER(parse_term) {
         || (term=parse_bool(ctx, pos))
         || (term=parse_char(ctx, pos))
         || (term=parse_string(ctx, pos))
-        || (term=parse_dsl(ctx, pos))
         || (term=parse_lambda(ctx, pos))
         || (term=parse_parens(ctx, pos))
         || (term=parse_struct(ctx, pos))
