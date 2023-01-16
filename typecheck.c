@@ -438,7 +438,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             istr_t u1 = num_units(t1), u2 = num_units(t2);
             switch (ast->tag) {
             case Subtract: case Add:
-                if (u1 != u2) compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1, u2);
+                if (u1 != u2) compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
                 return t;
             case Multiply: {
                 struct bl_type_s t_units = *t;
@@ -452,16 +452,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
             case Modulus: {
                 if (u2)
-                    compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
+                    compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
                 struct bl_type_s t_units = *t;
                 t_units.__data.IntType.units = u1;
                 return intern_bytes(&t_units, sizeof(t_units));
             }
             case Power: {
                 if (u1)
-                    compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
+                    compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
                 if (u2)
-                    compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
+                    compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2 ? u2 : "");
                 return t;
             }
             default: break;

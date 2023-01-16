@@ -78,6 +78,7 @@ static Unit *make_unit(size_t len, component_t components[len])
         u->len = len;
         memcpy(u->components, buf, sizeof(component_t)*len);
     }
+    bool has_percent = false;
     size_t merge_len = 0;
     for (size_t i = 0; i < len; ) {
         istr_t name = buf[i].name;
@@ -85,12 +86,23 @@ static Unit *make_unit(size_t len, component_t components[len])
         for (; i < len && buf[i].name == name; ++i)
             exponent += buf[i].exponent;
 
+        if (strcmp(name, "%") == 0) {
+            has_percent = true;
+            continue;
+        }
+
         if (exponent != 0) {
             buf[merge_len] = (component_t){exponent, name};
             ++merge_len;
         }
     }
     qsort(buf, merge_len, sizeof(component_t), cmp_component_exponents);
+
+    if (merge_len == 0 && has_percent) {
+        buf[0].exponent = 1;
+        buf[0].name = intern_str("%");
+        ++merge_len;
+    }
 
     Unit *u = GC_MALLOC(sizeof(Unit) - sizeof(component_t) + merge_len*sizeof(component_t));
     u->len = merge_len;
@@ -104,9 +116,9 @@ static Unit *unit_from_string(const char *str)
     NEW_LIST(component_t, components);
     bool in_denominator = false;
     for (const char *p = str; *p; ) {
-        if (isalpha(*p)) {
+        if (isalpha(*p) || *p == '_' || *p == '%') {
             const char *name = p;
-            while (isalpha(*p)) ++p;
+            while (isalpha(*p) || *p == '_' || *p == '%') ++p;
             name = intern_strn(name, (size_t)(p - name));
 
             int exponent = 1;

@@ -413,9 +413,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         default: fmt = "%ld"; break;
         }
         istr_t units = num_units(t);
-
-        if (units && strlen(units) > 0)
+        if (units == intern_str("%")) {
+            fmt = intern_strf("%s%%%%", fmt);
+            obj = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, gcc_t, obj, gcc_rvalue_from_long(env->ctx, gcc_t, 100));
+        } else if (units && strlen(units) > 0) {
             fmt = intern_strf("%s<%s>", fmt, units);
+        }
         gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
         break;

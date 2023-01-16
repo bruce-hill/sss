@@ -401,6 +401,11 @@ PARSER(parse_int) {
 
     if (negative) i *= -1;
 
+    if (match(&pos, "%")) {
+        double d = (double)i / 100.;
+        return NewAST(ctx, start, pos, Num, .n=d, .precision=64, .units=intern_str("%"));
+    }
+
     int64_t precision = 64;
     if (match(&pos, "i64")) precision = 64;
     else if (match(&pos, "i32")) precision = 32;
@@ -562,7 +567,14 @@ PARSER(parse_num) {
     if (match(&pos, "f64")) precision = 64;
     else if (match(&pos, "f32")) precision = 32;
 
-    istr_t units = match_units(&pos);
+    istr_t units;
+    if (match(&pos, "%")) {
+        d /= 100.;
+        units = intern_str("%");
+    } else {
+        units = match_units(&pos);
+    }
+
     return NewAST(ctx, start, pos, Num, .n=d, .precision=precision, .units=units);
 }
 
