@@ -45,3 +45,9 @@ test := 16.
 say "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"
 result := fast_inverse_sqrt(16.)
 fail "got $result instead of 0.25" unless "$result" == "0.25"
+
+// Methods:
+n := 5.0
+say "$:(n.sqrt())"
+say "$:(Num32.atan2(x=1.f32, y=2.f32))"
+say "$:(n.max(10.))"

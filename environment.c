@@ -113,6 +113,65 @@ static bl_type_t *define_string_type(env_t *env)
     return str_type;
 }
 
+static void define_num_types(env_t *env)
+{
+    bl_type_t *num_type = Type(NumType);
+    {
+        gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
+        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num_type);
+        hashmap_set(env->bindings, intern_str("Num"), binding);
+        hashmap_set(env->bindings, num_type, binding);
+    }
+
+    bl_type_t *num32_type = Type(Num32Type);
+    {
+        gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
+        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num32_type);
+        hashmap_set(env->bindings, intern_str("Num32"), binding);
+        hashmap_set(env->bindings, num32_type, binding);
+    }
+
+    const char *unary_methods[][2] = {
+        {"acos"},{"asin"},{"atan"},{"cos"},{"sin"},{"tan"},{"cosh"},{"sinh"},
+        {"tanh"},{"acosh"},{"asinh"},{"atanh"},{"exp"},{"log"},{"log10"},
+        {"exp10"},{"expm1"}, {"log1p"}, {"logb"}, {"exp2"}, {"log2"},
+        {"sqrt"}, {"cbrt"}, {"ceil"}, {"fabs", "abs"}, {"floor"},
+        {"significand"}, {"j0"}, {"j1"}, {"y0"}, {"y1"}, {"erf"}, {"erfc"},
+        {"tgamma"}, {"rint"}, {"nextdown","next_lowest"}, {"nextup","next_highest"}, {"round"}, {"trunc","truncate"},
+        {"roundeven","round_even"},
+    };
+    for (size_t i = 0; i < sizeof(unary_methods)/sizeof(unary_methods[0]); i++) {
+        const char *c_name = unary_methods[i][0];
+        const char *alias = unary_methods[i][1];
+        if (!alias) alias = c_name;
+        extern_method(env, c_name, num_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=num_type), 0);
+        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=num32_type), 0);
+    }
+
+    const char *binary_methods[][4] = {
+        {"atan2",NULL,"y","x"}, {"pow",NULL,"base","exponent"},
+        {"hypot",NULL,"x","y"}, {"fmod","mod","num","modulus"}, {"copysign","copy_sign","num","with_sign"},
+        {"nextafter","next_toward","num","toward"}, {"remainder",NULL,"num","divisor"},
+        {"fmax","max","x","y"}, {"fmin", "min","x","y"},
+        {"fmaxmag","biggest","x","y"}, {"fminmag","smallest","x","y"},
+        {"fdim","distance","x","y"},
+    };
+    for (size_t i = 0; i < sizeof(binary_methods)/sizeof(binary_methods[0]); i++) {
+        const char *c_name = binary_methods[i][0];
+        const char *alias = binary_methods[i][1];
+        if (!alias) alias = c_name;
+        istr_t arg1 = intern_str(binary_methods[i][2]);
+        istr_t arg2 = intern_str(binary_methods[i][3]);
+        extern_method(env, c_name, num_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type, num_type), .arg_names=LIST(istr_t, arg1, arg2), .ret=num_type), 0);
+        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
+                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type, num32_type), .arg_names=LIST(istr_t, arg1, arg2), .ret=num32_type), 0);
+    }
+    // odd: ldexp isinf finite nan isnan jn yn llogb lrint lround fma
+}
+
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug)
 {
     env_t *env = new(env_t,
@@ -146,11 +205,13 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env->bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
+    define_num_types(env);
 #define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_str(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
-    DEFTYPE(Num); DEFTYPE(Num32);
+    // DEFTYPE(Num);
+    // DEFTYPE(Num32);
 #undef DEFTYPE
 
     return env;

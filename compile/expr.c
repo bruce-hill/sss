@@ -721,6 +721,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // Find the next unspecified arg:
             while (arg_vals[pos]) {
                 ++pos;
+                if (pos >= num_args)
+                    compile_err(env, arg, "This is one argument too many for this function call");
                 assert(pos < num_args);
             }
             gcc_rvalue_t *val = compile_expr(env, block, arg);
