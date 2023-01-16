@@ -813,12 +813,64 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case StructType: {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
+            gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
             auto struct_type = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
                 if (ith(struct_type->field_names, i) == access->field) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, loc, field);
+                }
+            }
+            break;
+        }
+        case ArrayType: { // [Vec{1,2}, Vec{3,4]].x ==> [1,3]
+            auto array = Match(fielded_t, ArrayType);
+            if (array->item_type->tag != StructType)
+                break; // TODO: support pointers?
+
+            gcc_type_t *array_gcc_t = bl_type_to_gcc(env, fielded_t);
+            gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+
+            gcc_type_t *item_gcc_t = bl_type_to_gcc(env, array->item_type);
+            gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
+
+            auto struct_type = Match(array->item_type, StructType);
+            for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
+                if (ith(struct_type->field_names, i) == access->field) {
+                    bl_type_t *field_type = ith(struct_type->field_types, i);
+
+                    // items = &(array.items->field)
+                    gcc_field_t *items_field = gcc_get_field(gcc_array_struct, 0);
+                    gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, items_field);
+                    gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, (size_t)i);
+                    gcc_lvalue_t *field = gcc_rvalue_dereference_field(items, loc, struct_field);
+                    gcc_rvalue_t *field_addr = gcc_lvalue_address(field, loc);
+
+                    // length = array->length
+                    gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
+
+                    // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
+                    gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
+                    stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
+                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, array->item_type)));
+                    stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_DIVIDE, gcc_type(env->ctx, INT32), stride,
+                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, field_type)));
+
+                    gcc_type_t *slice_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
+                    gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
+                    gcc_field_t *fields[3] = {
+                        gcc_get_field(slice_struct, 0),
+                        gcc_get_field(slice_struct, 1),
+                        gcc_get_field(slice_struct, 2),
+                    };
+
+                    gcc_rvalue_t *rvals[3] = {
+                        field_addr,
+                        len,
+                        stride,
+                    };
+
+                    return gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 3, fields, rvals);
                 }
             }
             break;

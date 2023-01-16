@@ -264,6 +264,23 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             else
                 compile_err(env, ast, "I can't find anything called %s on type %s", access->field, type_to_string(fielded_t));
         }
+        case ArrayType: {
+            auto array = Match(fielded_t, ArrayType);
+            bl_type_t *item_t = array->item_type;
+            // TODO: support other things like pointers
+            if (item_t->tag == StructType) {
+                // vecs.x ==> [v.x for v in vecs]
+                auto struct_ = Match(item_t, StructType);
+                for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
+                    if (LIST_ITEM(struct_->field_names, i) == access->field) {
+                        if (is_optional)
+                            compile_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
+                        return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
+                    }
+                }
+            }
+            goto class_lookup;
+        }
         default: {
           class_lookup:;
             binding_t *binding = get_from_namespace(env, value_t, access->field);

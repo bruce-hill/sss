@@ -78,12 +78,12 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         foreach (struct_type->field_types, ftype, _) {
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > 1 && size % field_align)
-                size += (field_align - size) % field_align; // padding
+                size += field_align - (size % field_align); // padding
             size += gcc_sizeof(env, *ftype);
             if (field_align > max_align) max_align = field_align;
         }
         if (max_align > 1 && size % max_align)
-            size += (max_align - size) % max_align; // padding
+            size += max_align - (size % max_align); // padding
         return size;
     }
     case UnionType: {

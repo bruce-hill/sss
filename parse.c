@@ -1590,13 +1590,14 @@ ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char 
         ast_t *memb = NULL;
         bool success = (
             false
-            || (memb=parse_declaration(ctx, *pos))
-            || (memb=parse_struct_field_def(ctx, *pos))
-            || (memb=parse_def(ctx, *pos))
+            || (memb=optional_ast(ctx, pos, parse_declaration))
+            || (memb=optional_ast(ctx, pos, parse_struct_field_def))
+            || (memb=optional_ast(ctx, pos, parse_def))
         );
         if (!success) break;
         APPEND(members, memb);
-        *pos = memb->span.end;
+        spaces(pos);
+        match(pos, ",");
     }
     whitespace(pos);
     expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
