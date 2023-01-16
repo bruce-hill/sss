@@ -211,6 +211,7 @@ struct ast_s {
         struct {
             ast_t *type;
             List(ast_t *) members;
+            istr_t units;
         } Struct;
         struct {
             istr_t name;

@@ -284,13 +284,13 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         return true;
 
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed)) {
-        return num_units(actual) == num_units(needed);
+        return type_units(actual) == type_units(needed);
     }
 
     // Numeric promotion:
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed)) {
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
-        return num_units(actual) == num_units(needed);
+        return type_units(actual) == type_units(needed);
     }
 
     // Optional promotion:
@@ -446,7 +446,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         case NumType: case Num32Type: fmt = "%g"; break;
         default: fmt = "%ld"; break;
         }
-        istr_t units = num_units(t);
+        istr_t units = type_units(t);
         if (units == intern_str("%")) {
             fmt = intern_strf("%s%%%%", fmt);
             obj = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, gcc_t, obj, gcc_rvalue_from_long(env->ctx, gcc_t, 100));
@@ -600,6 +600,11 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         }
 
         written = ADD_INT(written, WRITE_LITERAL("}"));
+
+        istr_t units = type_units(t);
+        if (units && strlen(units) > 0)
+            written = ADD_INT(written, WRITE_LITERAL(intern_strf("<%s>", units)));
+
         gcc_return(block, NULL, written);
         break;
     }

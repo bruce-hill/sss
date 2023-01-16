@@ -78,20 +78,10 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
         bl_type_t *raw = parse_type_ast(env, measure->type);
-        bl_type_t *measured = NULL;
-        switch (raw->tag) {
-        case IntType: measured = Type(IntType, .units=measure->units); break;
-        case Int32Type: measured = Type(Int32Type, .units=measure->units); break;
-        case Int16Type: measured = Type(Int16Type, .units=measure->units); break;
-        case Int8Type: measured = Type(Int8Type, .units=measure->units); break;
-        case NumType: measured = Type(NumType, .units=measure->units); break;
-        case Num32Type: measured = Type(Num32Type, .units=measure->units); break;
-        default: compile_err(env, measure->type, "This type shouldn't have units on it");
-        }
-        istr_t raw_units = num_units(raw);
+        istr_t raw_units = type_units(raw);
         if (raw_units)
             compile_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
-        return measured;
+        return with_units(raw, measure->units);
     }
 
     case TypeFunction: {
@@ -245,7 +235,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 if (LIST_ITEM(struct_t->field_names, i) == access->field) {
                     if (is_optional)
                         compile_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
-                    return LIST_ITEM(struct_t->field_types, i);
+
+                    bl_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
+                    if (struct_t->units)
+                        field_t = with_units(field_t, struct_t->units);
+                    return field_t;
                 }
             }
             goto class_lookup;
@@ -432,68 +426,96 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
         return Type(VoidType);
     }
-    case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
+    case Add: case Subtract: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
-        ast_t *lhs = ast->__data.Add.lhs,
-              *rhs = ast->__data.Add.rhs;
+        ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
         // Okay safe again
-        bl_type_t *t1 = get_type(env, lhs),
-                  *t2 = get_type(env, rhs);
 
-        if (is_numeric(t1) && is_numeric(t2)) {
-            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
-            istr_t u1 = num_units(t1), u2 = num_units(t2);
-            switch (ast->tag) {
-            case Subtract: case Add:
-                if (u1 != u2) compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
-                return t;
-            case Multiply: {
-                struct bl_type_s t_units = *t;
-                t_units.__data.IntType.units = unit_string_mul(u1, u2);
-                return intern_bytes(&t_units, sizeof(t_units));
-            }
-            case Divide: {
-                struct bl_type_s t_units = *t;
-                t_units.__data.IntType.units = unit_string_div(u1, u2);
-                return intern_bytes(&t_units, sizeof(t_units));
-            }
-            case Modulus: {
-                if (u2)
-                    compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
-                struct bl_type_s t_units = *t;
-                t_units.__data.IntType.units = u1;
-                return intern_bytes(&t_units, sizeof(t_units));
-            }
-            case Power: {
-                if (u1)
-                    compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
-                if (u2)
-                    compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2 ? u2 : "");
-                return t;
-            }
-            default: break;
-            }
-        }
+        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
 
-        // TODO: support unit stuff with struct/num operations
+        if (u1 != u2)
+            compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
+
         if (t1 == t2) {
             return t1;
+        } if (is_numeric(t1) && is_numeric(t2)) {
+            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
+            return with_units(t, u1);
         } else if (is_numeric(t1) && t2->tag == StructType) {
-            istr_t u1 = num_units(t1);
-            if (u1 && strcmp(u1, "%") != 0)
-                compile_err(env, ast, "I don't currently support math operations between unitful numbers and structs");
+            return with_units(t2, u1);
+        } else if (is_numeric(t2) && t1->tag == StructType) {
+            return with_units(t1, u1);
+        } else {
+            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                        type_to_string(t1), type_to_string(t2));
+        }
+    }
+    case Divide: case Multiply: {
+        ast_t *lhs = ast->tag == Divide ? Match(ast, Divide)->lhs : Match(ast, Multiply)->lhs,
+              *rhs = ast->tag == Divide ? Match(ast, Divide)->rhs : Match(ast, Multiply)->rhs;
+        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
+        istr_t u = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
+
+        if (t1 == t2) {
+            return with_units(t1, u);
+        } else if (is_numeric(t1) && is_numeric(t2)) {
+            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
+            return with_units(t, u);
+        } else if (is_numeric(t1) && t2->tag == StructType) {
+            return with_units(t2, u);
+        } else if (is_numeric(t2) && t1->tag == StructType) {
+            return with_units(t1, u);
+        } else {
+            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                        type_to_string(t1), type_to_string(t2));
+        }
+    }
+    case Power: {
+        ast_t *lhs = Match(ast, Power)->lhs, *rhs = Match(ast, Power)->rhs;
+        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
+
+        if (u1 && strlen(u1) > 0)
+            compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
+        else if (u2 && strlen(u2) > 0)
+            compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2 ? u2 : "");
+
+        if (t1 == t2) {
+            return t1;
+        } else if (is_numeric(t1) && is_numeric(t2)) {
+            return numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
+        } else if (is_numeric(t1) && t2->tag == StructType) {
             return t2;
         } else if (is_numeric(t2) && t1->tag == StructType) {
-            istr_t u2 = num_units(t2);
-            if (u2 && strcmp(u2, "%") != 0)
-                compile_err(env, ast, "I don't currently support math operations between unitful numbers and structs");
             return t1;
+        } else {
+            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                        type_to_string(t1), type_to_string(t2));
         }
-
-        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                    type_to_string(t1), type_to_string(t2));
     }
+    case Modulus: {
+        ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
+        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
 
+        if (u2 && strlen(u2) > 0)
+            compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
+
+        if (t1 == t2) {
+            return t1;
+        } else if (is_numeric(t1) && is_numeric(t2)) {
+            return with_units(numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2, u1);
+        } else if (is_numeric(t1) && t2->tag == StructType) {
+            return with_units(t2, u1);
+        } else if (is_numeric(t2) && t1->tag == StructType) {
+            return with_units(t1, u1);
+        } else {
+            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                        type_to_string(t1), type_to_string(t2));
+        }
+    }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
         return Type(BoolType);
     }
@@ -601,7 +623,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 APPEND(field_types, field_type);
             }
 
-            bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types);
+            bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
             bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
             if (memoized) {
                 t = memoized;
@@ -613,13 +635,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         binding_t *b = get_ast_binding(env, struct_->type);
         if (!b)
             compile_err(env, struct_->type, "I can't figure out this type");
+
+        bl_type_t *t;
         if (b->enum_type)
-            return b->enum_type;
+            t = b->enum_type;
         else if (b->type_value)
-            return b->type_value;
+            t = b->type_value;
         else
             compile_err(env, ast, "There isn't any kind of struct like this");
-        // return parse_type_ast(env, struct_->type);
+
+        return struct_->units ? with_units(t, struct_->units) : t;
     }
 
     case If: {

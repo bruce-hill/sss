@@ -130,7 +130,7 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     return NULL;
 }
 
-istr_t num_units(bl_type_t *t)
+istr_t type_units(bl_type_t *t)
 {
     switch (t->tag) {
     case IntType: return Match(t, IntType)->units;
@@ -139,6 +139,24 @@ istr_t num_units(bl_type_t *t)
     case Int8Type: return Match(t, Int8Type)->units;
     case NumType: return Match(t, NumType)->units;
     case Num32Type: return Match(t, Num32Type)->units;
+    case StructType: return Match(t, StructType)->units;
+    default: return NULL;
+    }
+}
+
+bl_type_t *with_units(bl_type_t *t, istr_t units)
+{
+    switch (t->tag) {
+    case IntType: return Type(IntType, .units=units);
+    case Int32Type: return Type(Int32Type, .units=units);
+    case Int16Type: return Type(Int16Type, .units=units);
+    case Int8Type: return Type(Int8Type, .units=units);
+    case NumType: return Type(NumType, .units=units);
+    case Num32Type: return Type(Num32Type, .units=units);
+    case StructType: {
+        auto s = Match(t, StructType);
+        return Type(StructType, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
+    }
     default: return NULL;
     }
 }

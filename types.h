@@ -66,6 +66,7 @@ struct bl_type_s {
             istr_t name;
             List(istr_t) field_names;
             List(bl_type_t*) field_types;
+            istr_t units;
         } StructType;
         struct {
             istr_t name;
@@ -93,7 +94,8 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b);
 bool is_integral(bl_type_t *t);
 bool is_numeric(bl_type_t *t);
 int numtype_priority(bl_type_t *t);
-istr_t num_units(bl_type_t *t);
+istr_t type_units(bl_type_t *t);
+bl_type_t *with_units(bl_type_t *t, istr_t units);
 bool is_comparable(bl_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

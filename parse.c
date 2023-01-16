@@ -635,7 +635,8 @@ PARSER(parse_struct) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
-    return NewAST(ctx, start, pos, Struct, .type=type, .members=members);
+    istr_t units = match_units(&pos);
+    return NewAST(ctx, start, pos, Struct, .type=type, .members=members, .units=units);
 }
 
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
