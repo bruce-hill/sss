@@ -11,14 +11,18 @@ say "Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!"
 say "\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done"
 say "Fn: $( (x:Int,y:Int)=> x + y )"
 
-// toslice := "Hello world"
-// char := toslice[1]
-// slice := toslice[2..6]
-// say "Char: $char Slice: $slice"
+toslice := "Hello world"
+char := toslice[1]
+slice := toslice[2..6]
+say "Char: $char Slice: $slice"
 // say "Invalid char: $(toslice[-10]) Invalid slice: '$(toslice[-100..-5])'"
-// say "First slice: '$(toslice[..5])' Backwards: '$(toslice[-(1..)])'"
-// say "Whole slice: '$(toslice[..])' Every other: '$(toslice[1,3..])'"
+say "First slice: '$(toslice[..5])' Backwards: '$(toslice[..-1..])'"
+say "Whole slice: '$(toslice[..])' Every other: '$(toslice[1..+2..])'"
 
+say "$:(toslice.replace("o","XXX"))"
+say "|$:("  one two  ".trimmed())|"
+say "|$:("  one two  ".trimmed(chars=" on"))|"
+say "|$:("  one two  ".trimmed(trim_left=no))|"
 // say("string" + " + " + "concatenation")
 // say "string repeating: $("Ha".repeated(5))"
 

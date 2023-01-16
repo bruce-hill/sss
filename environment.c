@@ -81,19 +81,34 @@ static bl_type_t *define_string_type(env_t *env)
     hashmap_set(env->bindings, str_type, binding);
 
     extern_method(env, "bl_string_uppercased", str_type, "uppercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
     extern_method(env, "bl_string_lowercased", str_type, "lowercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
     extern_method(env, "bl_string_capitalized", str_type, "capitalized",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
     extern_method(env, "bl_string_titlecased", str_type, "titlecased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .ret=str_type), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
     extern_method(env, "bl_string_starts_with", str_type, "starts_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type), .ret=Type(BoolType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type),
+                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("prefix")), 
+                       .ret=Type(BoolType)), 0);
     extern_method(env, "bl_string_ends_with", str_type, "ends_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type), .ret=Type(BoolType)), 0);
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type),
+                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("suffix")), 
+                       .ret=Type(BoolType)), 0);
+    extern_method(env, "bl_string_trimmed", str_type, "trimmed",
+                  Type(FunctionType,
+                       .arg_types=LIST(bl_type_t*, str_type, str_type, Type(BoolType), Type(BoolType)),
+                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("chars"), intern_str("trim_left"), intern_str("trim_right")),
+                       .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=intern_str(" \t\r\n")))),
+                                          FakeAST(Bool, .b=true), FakeAST(Bool, .b=true)),
+                       .ret=str_type), 0);
     extern_method(env, "bl_string_replace", str_type, "replace",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type, str_type), .ret=str_type), 0);
+                  Type(FunctionType,
+                       .arg_types=LIST(bl_type_t*, str_type, str_type, str_type, Type(IntType)),
+                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("pattern"), intern_str("replacement"), intern_str("limit")),
+                       .arg_defaults=LIST(ast_t*, NULL, NULL, NULL, FakeAST(Int, .i=-1, .precision=64)),
+                       .ret=str_type), 0);
 
     return str_type;
 }

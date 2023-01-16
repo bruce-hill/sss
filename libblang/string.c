@@ -191,8 +191,8 @@ string_t bl_string_replace(string_t text, string_t pat, string_t replacement, in
     char *buf;
     size_t size;
     FILE *mem = open_memstream(&buf, &size);
-    for (const char *pos = text.data; limit != 0; --limit) {
-        const char *match = memmem(pos, (size_t)text.length - (size_t)(pos - text.data), pat.data, pat.length);
+    for (const char *pos = text.data; ; --limit) {
+        const char *match = limit == 0 ? NULL : memmem(pos, (size_t)text.length - (size_t)(pos - text.data), pat.data, pat.length);
         if (match) {
             fwrite(pos, 1, (size_t)(match - pos), mem);
             fwrite(replacement.data, 1, replacement.length, mem);
