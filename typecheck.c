@@ -468,14 +468,17 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
         }
 
+        // TODO: support unit stuff with struct/num operations
         if (t1 == t2) {
             return t1;
         } else if (is_numeric(t1) && t2->tag == StructType) {
-            if (num_units(t1))
+            istr_t u1 = num_units(t1);
+            if (u1 && strcmp(u1, "%") != 0)
                 compile_err(env, ast, "I don't currently support math operations between unitful numbers and structs");
             return t2;
         } else if (is_numeric(t2) && t1->tag == StructType) {
-            if (num_units(t2))
+            istr_t u2 = num_units(t2);
+            if (u2 && strcmp(u2, "%") != 0)
                 compile_err(env, ast, "I don't currently support math operations between unitful numbers and structs");
             return t1;
         }
