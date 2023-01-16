@@ -22,9 +22,6 @@ And `for` loops iterate over values in an iterable container or numeric range:
 for item in list
     say "$item"
 
-for key in table
-    say "$key: $(table[key])"
-
 for i in 1..5
     say "$i"
 ```
@@ -34,9 +31,6 @@ for i in 1..5
 ```python
 for i,item in list
     say "$i: $item"
-
-for key,value in table
-    say "$key: $value"
 
 for i,n in 99..150
     say "#$i = $n"
@@ -111,23 +105,24 @@ Blang supports typed units of measure with typechecking and automatic
 conversions between units.
 
 ```python
-unit km = 1_000<m>
-unit cm = .01<m>
-unit mm = .001<m>
+def 1<km> := 1_000<m>
+def 100<cm> := 1<m>
+def 10<mm> := 1<cm>
 
 1<m> + 1<cm> == 1.01<m>
 
 10.0 * 2.5<m> == 25.0<m>
 
-unit min = 60<s>
-unit hr = 60<min>
+def 1<min> := 60<s>
+def 1<hr> := 60<min>
 
-1<m> + 1<hr> // Type error!
+1<km> + 1<hr> // Type error!
+12 + 1<hr> // Type error!
 
-unit inch = 0.0254<m>
-unit ft = 12<inch>
-unit yd = 3<ft>
-unit mi = 5_280<ft>
+def 1<inch> := 2.54<cm>
+def 1<ft> := 12<inch>
+def 1<yd> := 3<ft>
+def 1<mi> := 5_280<ft>
 
 10<mi> / 2<hr> == 5<mi/hr> == 2.2352<m/s>
 1<mi>/1<km> == 1<mi/km> == 1.60934
@@ -152,47 +147,20 @@ program with an error status) if a nil value appears, or pattern match for a
 non-nil value:
 
 ```python
-// nums:{Int=Int}
-
 // Option 1: Fallback value
-n := nums[x] or 0
-do_thing(n)
+foo := maybe_val() or @Foo{...}
+do_thing(foo)
 
 // Option 2: Exit if nil is encountered:
-n := nums[x] or fail "Not a valid key: $x"
-do_thing(n)
+foo := maybe_val() or fail "I couldn't get a value!"
+do_thing(foo)
 
 // Option 3: Pattern match
-if n := nums[x]
-    do_thing(n)
+when maybe_val() is foo
+    do_thing(foo)
 else
-    missing_num_logic()
+    say "I didn't get a value"
 ```
-
-### A Note on Truthiness
-
-Blang has only three types of values that are "falsey": `no` (i.e. the boolean
-value False), nil values, and `NaN`. For conditionals like `if`, ternary
-operators (`cond ? val1 ; val2`), and boolean logic (`and`, `xor`, and `or`),
-falsey values will behave like `false` in other languages, and all other values
-will behave like `true`. This means that the integer `0` is truthy, as are
-empty lists, empty strings, etc.
-
-Boolean logic operates on short-circuiting rules and returns the first truthy
-or falsey value without evaluating more expressions than necessary. So, for
-example: `x or y or z` will return the first truthy value among `x`, `y`, `z`
-or `z` if all three are falsey. Similarly, `x and y and z` will return the
-first falsey value among the three, or `z` if all three are truthy.
-
-The special keyword `fail` and the control flow statements `stop`, `skip`, and
-`return` can be used as a value in boolean logic. The compiler will evaluate
-the type of the resulting expression as truthy/non-optional, since the
-statement in which the expression is being used will only execute for truthy
-values (otherwise control flow will move to a different part of the program).
-So if `x` has type `String?` (optional), then `(x or fail)` has type `String`
-(non-optional), since the program will only ever continue execution when `x` is
-not nil. Similarly, `(x or stop)`, `(x or skip)`, and `(x or return 5)` will
-have the type `String`. 
 
 ## String Interpolation
 
@@ -202,6 +170,9 @@ which makes it easy to insert values into strings:
 ```python
 say "Hi, my name is $my_name and my favorite number is $(random())"
 ```
+
+Blang provides useful default implementations of tostring functions, so you can
+easily introspect what's in structs, arrays, etc.
 
 ## DSLs
 
