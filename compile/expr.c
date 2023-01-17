@@ -228,7 +228,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // } else {
         gcc_func_t *func = gcc_block_func(*block);
         istr_t name = Match(decl->var, Var)->name;
-        lval = gcc_local(func, ast_loc(env, ast), gcc_t, fresh(name));
+        lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
         // }
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type_value)
