@@ -65,14 +65,12 @@ static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info
 {
     (void)info;
     ast_t *ast = (ast_t*)data;
-    if (ast->tag == While) {
-        auto loop = Match(ast, While);
-        if (loop->between)
-            compile_block_statement(env, block, loop->between);
-    } else {
-        auto loop = Match(ast, Repeat);
-        if (loop->between)
-            compile_block_statement(env, block, loop->between);
+    ast_t *between = ast->tag == While ? Match(ast, While)->between : Match(ast, Repeat)->between;
+    if (between) {
+        if (get_type(env, between)->tag != GeneratorType && env->comprehension_callback)
+            env->comprehension_callback(env, block, between, env->comprehension_userdata);
+        else
+            compile_block_statement(env, block, between);
     }
 }
 
