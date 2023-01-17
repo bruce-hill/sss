@@ -699,7 +699,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
 {
     // (int)((a > b) - (a < b))
-    if (is_numeric(t) || t->tag == PointerType) {
+    if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == BoolType) {
         gcc_type_t *int_t = gcc_type(env->ctx, INT);
         return gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int_t,
                              gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, a, b), int_t),
@@ -884,7 +884,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         break;
     }
     default: {
-        if (is_numeric(t) || t->tag == PointerType) {
+        if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == BoolType) {
             gcc_return(block, NULL, compare_values(env, t, lhs, rhs));
             break;
         }
