@@ -1235,9 +1235,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             && !promote(env, rhs_t, &rhs_val, lhs_t))
             compile_err(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
-        if (t->tag == NumType || t->tag == Num32Type) {
+        if (t->tag == NumType) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
             return gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
+        } else if (t->tag == Num32Type) {
+            gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
+            return gcc_cast(
+                env->ctx, loc,
+                gcc_callx(env->ctx, loc, sane_fmod_func,
+                          gcc_cast(env->ctx, loc, lhs_val, gcc_type(env->ctx, DOUBLE)),
+                          gcc_cast(env->ctx, loc, rhs_val, gcc_type(env->ctx, DOUBLE))),
+                gcc_type(env->ctx, FLOAT));
         } else {
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
