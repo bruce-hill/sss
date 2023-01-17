@@ -103,11 +103,27 @@ static void math_update_rec(
     gcc_type_t *gcc_t = bl_type_to_gcc(env, lhs_t);
     gcc_loc_t *loc = ast_loc(env, ast);
 
-    if (lhs_t->tag == StructType && rhs_t->tag == StructType && lhs_t != rhs_t)
-        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+    if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
+        compile_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
+    else if (type_units(lhs_t) != type_units(rhs_t) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
+        compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
 
-    if (lhs_t->tag == StructType) {
+    if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
+        if (with_units(lhs_t, NULL) != with_units(rhs_t, NULL))
+            compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
+                        type_to_string(lhs_t), type_to_string(rhs_t));
+
+        auto struct_ = Match(lhs_t, StructType);
+        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+        for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
+            gcc_field_t *field = gcc_get_field(struct_t, i);
+            bl_type_t *field_t = ith(struct_->field_types, i);
+            math_update_rec(
+                env, block, ast, field_t, gcc_lvalue_access_field(lhs, loc, field),
+                op, field_t, gcc_rvalue_access_field(rhs, loc, field));
+        }
+    } else if (lhs_t->tag == StructType) {
         auto struct_ = Match(lhs_t, StructType);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
@@ -116,20 +132,19 @@ static void math_update_rec(
             gcc_rvalue_t *rhs_field = rhs_t->tag == StructType ? gcc_rvalue_access_field(rhs, loc, field) : rhs;
             bl_type_t *rhs_field_t = rhs_t->tag == StructType ? field_t : rhs_t;
             math_update_rec(
-                env, block, ast, field_t, gcc_lvalue_access_field(lhs, loc, field),
+                env, block, ast, with_units(field_t, type_units(lhs_t)), gcc_lvalue_access_field(lhs, loc, field),
                 op, rhs_field_t, rhs_field);
         }
-    } else {
-        if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
-
+    } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
             rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
         else if (numtype_priority(lhs_t) < numtype_priority(rhs_t))
             compile_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));
         return gcc_update(*block, loc, lhs, op, rhs);
+    } else {
+        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                    type_to_string(lhs_t), type_to_string(rhs_t));
     }
 }
 

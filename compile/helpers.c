@@ -133,6 +133,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {
+    t = with_units(t, NULL);
     gcc_type_t *gcc_t = hashmap_get(env->gcc_types, type_to_string(t));
     if (gcc_t) return gcc_t;
 

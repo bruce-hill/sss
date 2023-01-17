@@ -50,8 +50,13 @@ static CORD type_to_cord(bl_type_t *t) {
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            if (struct_->name)
-                return struct_->name;
+            if (struct_->name) {
+                if (!struct_->units)
+                    return struct_->name;
+                CORD c;
+                CORD_sprintf(&c, "%s<%s>", struct_->name, struct_->units);
+                return c;
+            }
             CORD c = CORD_cat(NULL, "{");
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 bl_type_t *ft = LIST_ITEM(struct_->field_types, i);
@@ -66,6 +71,8 @@ static CORD type_to_cord(bl_type_t *t) {
                 c = CORD_cat(c, fstr);
             }
             c = CORD_cat(c, "}");
+            if (struct_->units)
+                CORD_sprintf(&c, "%r<%s>", c, struct_->units);
             return c;
         }
         case PointerType: {
