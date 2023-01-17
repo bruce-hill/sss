@@ -941,6 +941,9 @@ PARSER(parse_string) {
         ++pos;
     }
 
+    if (open == ':' || open == '>')
+        spaces(&pos);
+
     NEW_LIST(ast_t*, chunks);
     if (*pos == '\r' || *pos == '\n') {
         char special[] = {'\n','\r',interps_banned[(int)open] ? open : '$', escapes_banned[(int)open] ? open : '\\', '\0'};
@@ -1039,7 +1042,7 @@ PARSER(parse_string) {
                 break;
             }
             case '\r': case '\n': {
-                if (open == ' ' || open == ':') goto string_finished;
+                if (open == ' ' || open == ':' || open == '>') goto string_finished;
                 parser_err(ctx, string_start, pos, "This line ended without closing the string");
             }
             default: {
