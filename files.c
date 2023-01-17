@@ -57,7 +57,7 @@ bl_file_t *bl_load_file(istr_t filename)
 //
 bl_file_t *bl_spoof_file(istr_t filename, const char *text)
 {
-    FILE *file = fmemopen((char*)text, strlen(text), "r");
+    FILE *file = fmemopen((char*)text, strlen(text)+1, "r");
     return _load_file(filename, file);
 }
 
