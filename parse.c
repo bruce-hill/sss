@@ -669,7 +669,6 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *start = lhs->span.start;
     const char *pos = lhs->span.end;
-    whitespace(&pos);
     if (!match(&pos, "[")) return NULL;
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
