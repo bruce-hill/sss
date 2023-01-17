@@ -114,7 +114,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         size_t len = 0;
         ssize_t nread;
         while ((nread = getline(&line, &len, stdin)) != -1) {
-            if (nread == 1) break;
+            if (nread <= 1) break;
             fwrite(line, 1, nread, buf_file);
             fputs(continue_prompt, stdout);
             fflush(stdout);
@@ -122,19 +122,31 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         if (line) free(line);
 
         fflush(buf_file);
-        if (buf_size == 0) break;
+
+        gcc_jit_result *result = NULL;
+#define CLEANUP() do { \
+        if (result) gcc_jit_result_release(result); \
+        fclose(buf_file); \
+        free(buf); } while (0) \
+
+        if (buf_size == 0) {
+            CLEANUP();
+            break;
+        }
 
         bl_file_t *f = bl_spoof_file("<repl>", buf);
         env->file = f;
-        if (setjmp(on_err) != 0)
+        if (setjmp(on_err) != 0) {
+            CLEANUP();
             continue;
+        }
 
         ast_t *ast = parse_file(f, &on_err);
         if (!is_discardable(env, ast))
             ast = FakeAST(Block, .statements=LIST(
                     ast_t*, 
                     FakeAST(FunctionCall, .fn=FakeAST(Var, .name=intern_str("say")),
-                            .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, ast))))));
+                            .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, FakeAST(Interp, .value=ast)))))));
 
         const char *repl_name = fresh("repl");
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
@@ -144,7 +156,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         if (block)
             gcc_return_void(block, NULL);
 
-        gcc_jit_result *result = gcc_compile(ctx);
+        result = gcc_compile(ctx);
         if (result == NULL)
             compile_err(env, NULL, "Compilation failed");
 
@@ -156,9 +168,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         run_line();
         fputs("\x1b[m", stdout);
         fflush(stdout);
-        gcc_jit_result_release(result);
-        fclose(buf_file);
-        free(buf);
+
+        CLEANUP();
+#undef CLEANUP
     }
     fputs("\n", stdout);
     fflush(stdout);
