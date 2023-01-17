@@ -1,10 +1,12 @@
+// Code related to the ambient state/environment used in compilation
 #include <intern.h>
+#include <limits.h>
+#include <math.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <limits.h>
 
 #include "ast.h"
 #include "files.h"
@@ -189,26 +191,27 @@ static void define_num_types(env_t *env)
                       Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
     }
 
+    struct {const char *name; double val;} constants[] = {
+        {"E", M_E}, {"Log2_E", M_LOG2E}, {"Log10_E", M_LOG10E}, {"Ln_2", M_LN2}, {"Ln_10", M_LN10},
+        {"Pi", M_PI}, {"Tau", 2*M_PI}, {"HalfPi", M_PI_2}, {"QuarterPi", M_PI_4}, {"InversePi", M_1_PI},
+        {"DoubleInversePi", M_2_PI}, {"DoubleInverseSqrtPi", M_2_SQRTPI}, {"Sqrt2", M_SQRT2}, {"InverseSqrt2", M_SQRT1_2},
+        {"NaN", nan("")}, {"Infinity", 1./0.},
+    };
+
     { // Num NaN and Infinity:
         gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num_type);
-        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_num_t,
-                                            "nan", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
-        gcc_rvalue_t *nan_val = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
         hashmap_t *ns = get_namespace(env, num_type);
-        hashmap_set(ns, intern_str("NaN"), new(binding_t, .is_global=true, .type=num_type, .rval=nan_val));
-        gcc_rvalue_t *inf_val = gcc_binary_op(env->ctx, NULL, GCC_BINOP_DIVIDE, gcc_num_t, gcc_one(env->ctx, gcc_num_t), gcc_zero(env->ctx, gcc_num_t));
-        hashmap_set(ns, intern_str("Infinity"), new(binding_t, .is_global=true, .type=num_type, .rval=inf_val));
+        for (size_t i = 0; i < sizeof(constants)/sizeof(constants[0]); i++)
+            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .is_global=true, .type=num_type,
+                                                               .rval=gcc_rvalue_from_double(env->ctx, gcc_num_t, constants[i].val)));
     }
 
     { // Num32 NaN and Infinity:
         gcc_type_t *gcc_num32_t = bl_type_to_gcc(env, num32_type);
-        gcc_func_t *nan_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_num32_t,
-                                            "nanf", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "tag")}, 0);
-        gcc_rvalue_t *nan_val = gcc_callx(env->ctx, NULL, nan_func, gcc_str(env->ctx, ""));
         hashmap_t *ns = get_namespace(env, num32_type);
-        hashmap_set(ns, intern_str("NaN"), new(binding_t, .is_global=true, .type=num32_type, .rval=nan_val));
-        gcc_rvalue_t *inf_val = gcc_binary_op(env->ctx, NULL, GCC_BINOP_DIVIDE, gcc_num32_t, gcc_one(env->ctx, gcc_num32_t), gcc_zero(env->ctx, gcc_num32_t));
-        hashmap_set(ns, intern_str("Infinity"), new(binding_t, .is_global=true, .type=num32_type, .rval=inf_val));
+        for (size_t i = 0; i < sizeof(constants)/sizeof(constants[0]); i++)
+            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .is_global=true, .type=num32_type,
+                                                               .rval=gcc_rvalue_from_double(env->ctx, gcc_num32_t, constants[i].val)));
     }
 
     // oddballs: ldexp jn yn llogb lrint lround fma
