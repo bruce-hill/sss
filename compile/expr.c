@@ -491,7 +491,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             .arg_types=LIST(ast_t*, convert->source_type),
             .ret_type=convert->target_type,
             .body=convert->body);
-        gcc_func_t *func = get_function_def(env, def, intern_str("convert"), false);
+        gcc_func_t *func = get_function_def(env, def, fresh("convert"), false);
         compile_function(env, func, def);
         env->conversions = new(conversions_t, .src=src_t, .dest=target_t, .func=func, .next=env->conversions);
         return NULL;
@@ -1077,7 +1077,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (!((is_numeric(src_t) && is_numeric(cast_t))
               || (is_numeric(src_t) && cast_t->tag == BoolType)
               || (is_numeric(cast_t) && src_t->tag == BoolType)))
-            compile_err(env, ast, "Casting is only supported between numeric/boolean types. You may need to use 'bitcast' instead.");
+            compile_err(env, ast, "I don't know how to convert %s to %s. "
+                        "Maybe you could use 'bitcast' instead or implement a conversion function.",
+                        type_to_string(src_t), type_to_string(cast_t));
         return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, cast_t));
     }
     case Bitcast: {

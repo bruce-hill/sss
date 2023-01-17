@@ -1,0 +1,20 @@
+
+name := "Robert'; drop table students;--"
+
+def s:String => $SQL
+    return bitcast "'$(s.replace("'","''"))'" : $SQL
+
+def i:Int => $SQL return bitcast "$i" : $SQL
+def n:Num => $SQL return bitcast "$n" : $SQL
+
+age := 10
+s := $SQL"SELECT * FROM students WHERE name = $name AND age > $age"
+say "$s"
+
+def s:String => $Quoted
+    return bitcast "\"$(s.replace('\','\\').replace('"','\"'))\"" : $Quoted
+
+str := "one two"
+str2 := 'with "quotes" in it'
+say "$($Quoted[my strings are $str and $str2])"
+
