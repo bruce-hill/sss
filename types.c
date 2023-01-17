@@ -184,9 +184,10 @@ bool is_integral(bl_type_t *t)
 bool is_numeric(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
+    case IntType: case Int32Type: case Int16Type: case Int8Type:
     case NumType: case Num32Type:
         return true;
+    case CharType: return false;
     default:
         return false;
     }
