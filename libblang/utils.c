@@ -14,6 +14,7 @@
 
 #include "utils.h"
 #include "string.h"
+#include "range.h"
 
 str_array_t arg_list(int argc, char *argv[]) {
     // Skip program name:
@@ -132,9 +133,6 @@ bl_fileinfo_t *bl_fstat(FILE* f)
     return ret;
 }
 
-typedef struct {
-    int64_t first,stride,last;
-} range_t;
 int range_print(range_t range, FILE *f, void *stack) {
     (void)stack;
     int printed = 0;

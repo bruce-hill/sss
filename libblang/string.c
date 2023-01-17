@@ -112,15 +112,12 @@ string_t bl_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool
     return (string_t){.data=buf, .length=len, .stride=1};
 }
 
-typedef struct {
-    int64_t first,step,last;
-} range_t;
 string_t bl_string_slice(string_t s, range_t *r) {
-    int32_t step = (int32_t)r->step;
+    int32_t stride = (int32_t)r->stride;
     int32_t first = (int32_t)CLAMP(r->first-1, 0, (int64_t)s.length-1),
             last = (int32_t)CLAMP(r->last-1, 0, (int64_t)s.length-1);
-    int32_t slice_len = (last - first)/step;
-    return (string_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=step};
+    int32_t slice_len = (last - first)/stride;
+    return (string_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
 string_t flatten(string_t str)
@@ -210,5 +207,41 @@ string_t bl_string_replace(string_t text, string_t pat, string_t replacement, in
     return (string_t){.data=str, .length=size, .stride=1};
 }
 
+string_t bl_string_quoted(string_t text, bool colorize) {
+    char *buf;
+    size_t size;
+    FILE *mem = open_memstream(&buf, &size);
+    if (colorize) fputs("\x1b[35m", mem);
+    const char *escape_color = colorize ? "\x1b[1;34m" : "";
+    const char *reset_color = colorize ? "\x1b[0;35m" : "";
+    fputc('"', mem);
+    for (int i = 0; i < text.length; i++) {
+        char c = text.data[i*text.stride];
+        switch (c) {
+        case '\\': fprintf(mem, "%s\\\\%s", escape_color, reset_color); break;
+        case '"': fprintf(mem, "%s\\\"%s", escape_color, reset_color); break;
+        case '\n': fprintf(mem, "%s\\n%s", escape_color, reset_color); break;
+        case '\t': fprintf(mem, "%s\\t%s", escape_color, reset_color); break;
+        case '\r': fprintf(mem, "%s\\r%s", escape_color, reset_color); break;
+        case '\a': fprintf(mem, "%s\\a%s", escape_color, reset_color); break;
+        case '\b': fprintf(mem, "%s\\b%s", escape_color, reset_color); break;
+        case '\v': fprintf(mem, "%s\\v%s", escape_color, reset_color); break;
+        default: {
+            if (isprint(c))
+                fputc(c, mem);
+            else
+                fprintf(mem, "%s\\x%02X%s", escape_color, (int)c, reset_color);
+        }
+        }
+    }
+    fputc('"', mem);
+    if (colorize) fputs("\x1b[m", mem);
+    fflush(mem);
+    char *str = GC_MALLOC_ATOMIC(size + 1);
+    memcpy(str, buf, size+1);
+    fclose(mem);
+    free(buf);
+    return (string_t){.data=str, .length=size, .stride=1};
+}
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

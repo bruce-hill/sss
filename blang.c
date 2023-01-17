@@ -151,10 +151,19 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         const char *color = "\x1b[0;1m";
         if (!is_discardable(env, ast)) {
             color = "\x1b[35m";
+            bl_type_t *t = get_type(env, ast);
+            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
+                if (Match(t, ArrayType)->dsl)
+                    ast = WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)));
+
+                ast = WrapAST(FunctionCall, .fn=WrapAST(FieldAccess, .fielded=ast, .field=intern_str("quoted")),
+                              .args=LIST(ast_t*, FakeAST(Bool, .b=true)));
+            }
+            ast_t *type_info = WrapAST(StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
             ast = WrapAST(Block, .statements=LIST(
                     ast_t*, 
                     WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")),
-                            .args=LIST(ast_t*, WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)))))));
+                            .args=LIST(ast_t*, WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast), type_info))))));
         }
 
         const char *repl_name = fresh("repl");

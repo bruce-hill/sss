@@ -89,6 +89,11 @@ static bl_type_t *define_string_type(env_t *env)
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
     extern_method(env, "bl_string_titlecased", str_type, "titlecased",
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
+    extern_method(env, "bl_string_quoted", str_type, "quoted",
+                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, Type(BoolType)),
+                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("colorize")),
+                       .arg_defaults=LIST(ast_t*, NULL, FakeAST(Bool, .b=false)),
+                       .ret=str_type), 0);
     extern_method(env, "bl_string_starts_with", str_type, "starts_with",
                   Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type),
                        .arg_names=LIST(istr_t, intern_str("str"), intern_str("prefix")), 
