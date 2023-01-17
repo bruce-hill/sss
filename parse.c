@@ -626,7 +626,7 @@ PARSER(parse_struct) {
     spaces(&pos);
     if (!match(&pos, "{")) return NULL;
     NEW_LIST(ast_t*, members);
-    for (;;) {
+    for (int i = 1; ; i++) {
         whitespace(&pos);
         const char *field_start = pos;
         istr_t field_name = NULL;
@@ -639,8 +639,10 @@ PARSER(parse_struct) {
           pos = field_start;
         }
         ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
+        if (!field_name && !type)
+            field_name = intern_strf("_%d", i);
         if (!value) break;
-        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=field_name, .value=value));
+        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=intern_str(field_name), .value=value));
         whitespace(&pos);
         match(&pos, ",");
     }
