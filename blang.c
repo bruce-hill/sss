@@ -134,7 +134,8 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         fclose(buf_file); \
         free(buf); } while (0) \
 
-        if (buf_size == 0) {
+        if (buf_size == 0 || strcmp(buf, "quit\n") == 0 || strcmp(buf, "exit\n") == 0) {
+            printf("\x1b[A\x1b[K\x1b[1mGoodbye!\x1b[m\n");
             CLEANUP();
             break;
         }
@@ -148,22 +149,26 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
 #define WrapAST(...) NewAST(f, ast->span.start, ast->span.end, __VA_ARGS__)
         ast_t *ast = parse_file(f, &on_err);
-        const char *color = "\x1b[0;1m";
         if (!is_discardable(env, ast)) {
-            color = "\x1b[35m";
             bl_type_t *t = get_type(env, ast);
-            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
+            if (t->tag == GeneratorType) {
+                printf("\x1b[31;1mGenerator types can't be used in the REPL\x1b[m\n");
+                CLEANUP();
+                continue;
+            } else if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
                 if (Match(t, ArrayType)->dsl)
                     ast = WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)));
 
+                // Quote the string:
                 ast = WrapAST(FunctionCall, .fn=WrapAST(FieldAccess, .fielded=ast, .field=intern_str("quoted")),
                               .args=LIST(ast_t*, FakeAST(Bool, .b=true)));
             }
+            ast_t *prefix = WrapAST(StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
             ast_t *type_info = WrapAST(StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
-            ast = WrapAST(Block, .statements=LIST(
-                    ast_t*, 
-                    WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")),
-                            .args=LIST(ast_t*, WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast), type_info))))));
+            // Stringify and add type info:
+            ast = WrapAST(StringJoin, .children=LIST(ast_t*, prefix, WrapAST(Interp, .value=ast), type_info));
+            // Call say(str):
+            ast = WrapAST(Block, .statements=LIST(ast_t*, WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")), .args=LIST(ast_t*, ast))));
         }
 
         const char *repl_name = fresh("repl");
@@ -181,7 +186,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
-        fprintf(stdout, "\x1b[A\x1b[K%s", color);
+        fprintf(stdout, "\x1b[A\x1b[K\x1b[0;1m");
         fflush(stdout);
         run_line();
         fputs("\x1b[m", stdout);
