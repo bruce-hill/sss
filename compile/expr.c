@@ -40,8 +40,12 @@ static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t
 {
     (void)info;
     auto for_loop = Match((ast_t*)data, For);
-    if (for_loop->between)
-        compile_block_statement(env, block, for_loop->between);
+    if (for_loop->between) {
+        if (get_type(env, for_loop->between)->tag != GeneratorType && env->comprehension_callback)
+            env->comprehension_callback(env, block, for_loop->between, env->comprehension_userdata);
+        else
+            compile_block_statement(env, block, for_loop->between);
+    }
 }
 
 static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
