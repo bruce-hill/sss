@@ -16,6 +16,8 @@
 #define streq(a,b) (strcmp(a,b) == 0)
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
+#define BLANG_VERSION "0.1.0"
+
 int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, int argc, char *argv[])
 {
     if (verbose)
@@ -101,6 +103,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
 
+    printf("\n\x1b[1;4mWelcome to the Blang v%s interactive console!\x1b[m\n", BLANG_VERSION);
+    printf("       press 'enter' twice to run a command\n\n");
+
     // Read lines until we get a blank line
     for (;;) {
         fputs(prompt, stdout);
@@ -141,12 +146,16 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             continue;
         }
 
+#define WrapAST(...) NewAST(f, ast->span.start, ast->span.end, __VA_ARGS__)
         ast_t *ast = parse_file(f, &on_err);
-        if (!is_discardable(env, ast))
-            ast = FakeAST(Block, .statements=LIST(
+        const char *color = "\x1b[0;1m";
+        if (!is_discardable(env, ast)) {
+            color = "\x1b[35m";
+            ast = WrapAST(Block, .statements=LIST(
                     ast_t*, 
-                    FakeAST(FunctionCall, .fn=FakeAST(Var, .name=intern_str("say")),
-                            .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, FakeAST(Interp, .value=ast)))))));
+                    WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")),
+                            .args=LIST(ast_t*, WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)))))));
+        }
 
         const char *repl_name = fresh("repl");
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
@@ -163,7 +172,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
-        fputs("\x1b[34;1m\x1b[A\x1b[K", stdout);
+        fprintf(stdout, "\x1b[A\x1b[K%s", color);
         fflush(stdout);
         run_line();
         fputs("\x1b[m", stdout);
