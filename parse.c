@@ -34,7 +34,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
+    "yes","xor","with","while","when","using","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","else","do","deftype",
     "def","bitcast","between","as","and", NULL,
 };
@@ -61,6 +61,7 @@ static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
 static PARSER(parse_do);
+static PARSER(parse_using);
 static PARSER(parse_when);
 static PARSER(parse_expr);
 static PARSER(parse_extended_expr);
@@ -759,6 +760,21 @@ PARSER(parse_do) {
     return NewAST(ctx->file, start, pos, Do, .blocks=LIST(ast_t*, body));
 }
 
+PARSER(parse_using) {
+    // using var1,var2,... [<indent>] body
+    const char *start = pos;
+    if (!match_word(&pos, "using")) return NULL;
+    NEW_LIST(ast_t*, vars);
+    for (;;) {
+        ast_t *var = optional_ast(ctx, &pos, parse_var);
+        if (!var) break;
+        APPEND(vars, var);
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+    }
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
+    return NewAST(ctx->file, start, pos, Using, .vars=vars, .body=body);
+}
 
 PARSER(parse_for) {
     // for [k,] v in iter [do] [<indent>] body [<nodent> between [<indent>] body]
@@ -1504,7 +1520,9 @@ PARSER(parse_extended_expr) {
         || (expr=optional_ast(ctx, &pos, parse_while))
         || (expr=optional_ast(ctx, &pos, parse_when))
         || (expr=optional_ast(ctx, &pos, parse_repeat))
-        || (expr=optional_ast(ctx, &pos, parse_do)))
+        || (expr=optional_ast(ctx, &pos, parse_do))
+        || (expr=optional_ast(ctx, &pos, parse_using))
+        )
         return expr;
 
     if (!(false

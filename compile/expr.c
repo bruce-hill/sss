@@ -308,6 +308,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ith(blocks, 1), "`do` statments with else clauses are not currently supported");
         return compile_expr(env, block, ith(blocks, 0));
     }
+    case Using: {
+        auto using = Match(ast, Using);
+        env_t env2 = *env;
+        env2.bindings = global_bindings(env->bindings);
+        for (int64_t i = 0, len = length(using->vars); i < len; i++) {
+            ast_t *var = ith(using->vars, i);
+            binding_t *b = hashmap_get(env->bindings, Match(var, Var)->name);
+            if (!b) compile_err(env, var, "This variable is not defined");
+            hashmap_set(env2.bindings, Match(var, Var)->name, b);
+        }
+        return compile_expr(&env2, block, using->body);
+    }
     case Block: {
         // Create scope:
         env_t block_env = *env;

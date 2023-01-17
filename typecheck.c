@@ -344,6 +344,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto do_ = Match(ast, Do);
         return get_type(env, LIST_ITEM(do_->blocks, 0));
     }
+    case Using: {
+        return get_type(env, Match(ast, Using)->body);
+    }
     case Declare: {
         return Type(VoidType);
     }

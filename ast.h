@@ -30,7 +30,7 @@ typedef enum {
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
-    Do, If, For, While, Repeat, When,
+    Do, Using, If, For, While, Repeat, When,
     Skip, Stop,
     Return,
     Fail,
@@ -152,6 +152,10 @@ struct ast_s {
         struct {
             List(ast_t*) blocks;
         } Do;
+        struct {
+            List(ast_t*) vars;
+            ast_t *body;
+        } Using;
         struct {
             ast_t *condition, *body, *else_body;
         } If;
