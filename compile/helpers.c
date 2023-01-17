@@ -443,18 +443,18 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         const char *fmt;
         switch (t->tag) {
         case IntType: fmt = "%ld"; break;
-        case Int32Type: fmt = "%d"; break;
+        case Int32Type: fmt = "%d_i32"; break;
         case Int16Type: case Int8Type: {
             // I'm not sure why, but printf() gets confused if you pass smaller ints to a "%d" format
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
-            fmt = "%d";
+            fmt = t->tag == Int16Type ? "%d_i16" : "%d_i8";
             break;
         }
         case NumType: fmt = "%g"; break;
         case Num32Type: {
             // I'm not sure why, but printf() gets confused if you pass a 'float' here instead of a 'double'
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, DOUBLE));
-            fmt = "%g";
+            fmt = "%g_f32";
             break;
         }
         default: errx(1, "Unreachable");

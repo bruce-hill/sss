@@ -405,6 +405,7 @@ PARSER(parse_int) {
         return NewAST(ctx, start, pos, Num, .n=d, .precision=64, .units=intern_str("%"));
     }
 
+    match(&pos, "_");
     int64_t precision = 64;
     if (match(&pos, "i64")) precision = 64;
     else if (match(&pos, "i32")) precision = 32;
@@ -563,6 +564,7 @@ PARSER(parse_num) {
     if (negative) d *= -1;
 
     int64_t precision = 64;
+    match(&pos, "_");
     if (match(&pos, "f64")) precision = 64;
     else if (match(&pos, "f32")) precision = 32;
 
