@@ -895,6 +895,7 @@ PARSER(parse_char) {
     if (!match(&pos, "`")) return NULL;
     char c = *pos;
     if (!c) return NULL;
+    ++pos;
     return NewAST(ctx, start, pos, Char, .c=c);
 }
 
