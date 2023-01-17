@@ -926,7 +926,7 @@ PARSER(parse_char) {
 
 PARSER(parse_interpolation) {
     const char *start = pos;
-    if (!match(&pos, "$")) return NULL;
+    ++pos; // ignore the initial character, typically a '$', but might be other stuff like '@' in different contexts
     bool labelled = match(&pos, ":");
     ast_t *value = optional_ast(ctx, &pos, parse_term);
     if (!value) {
@@ -938,8 +938,8 @@ PARSER(parse_interpolation) {
 
 PARSER(parse_string) {
     static const char closing[128] = {['(']=')', ['[']=']', ['<']='>', ['{']='}'};
-    static const bool interps_banned[128] = {['\'']=true, ['(']=true};
-    static const bool escapes_banned[128] = {['\'']=true, ['(']=true};
+    static const bool escapes[128] = {['\'']='\x1B', ['(']='\x1B', ['>']='\x1B', ['/']='\x1B'};
+    static const char interps[128] = {['>']='@', ['/']='@', ['\'']='\x1A', ['(']='\x1A'};
 
     const char *string_start = pos;
     const char *dsl = NULL;
@@ -957,12 +957,15 @@ PARSER(parse_string) {
         ++pos;
     }
 
+    char interp_char = interps[(int)open] ? interps[(int)open] : '$';
+    char escape_char = escapes[(int)open] ? escapes[(int)open] : '\\';
+
     if (open == ':' || open == '>')
         spaces(&pos);
 
     NEW_LIST(ast_t*, chunks);
     if (*pos == '\r' || *pos == '\n') {
-        char special[] = {'\n','\r',interps_banned[(int)open] ? open : '$', escapes_banned[(int)open] ? open : '\\', '\0'};
+        char special[] = {'\n','\r',interp_char,escape_char,'\0'};
         size_t starting_indent = bl_get_indent(ctx->file, pos); 
         // indentation-delimited string
         match(&pos, "\r");
@@ -1002,22 +1005,16 @@ PARSER(parse_string) {
 
                 pos += len;
 
-                switch (*pos) {
-                case '$': { // interpolation
-                    ast_t *chunk = parse_interpolation(ctx, pos);
-                    APPEND(chunks, chunk);
-                    pos = chunk->span.end;
-                    break;
-                }
-                case '\\': { // escape
+                if (*pos == escape_char) {
                     const char *start = pos;
                     istr_t unescaped = unescape(&pos);
                     ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                     APPEND(chunks, chunk);
                     ++pos;
-                    break;
-                }
-                default: break;
+                } else if (*pos == interp_char) {
+                    ast_t *chunk = parse_interpolation(ctx, pos);
+                    APPEND(chunks, chunk);
+                    pos = chunk->span.end;
                 }
             }
         }
@@ -1032,7 +1029,7 @@ PARSER(parse_string) {
             }
         }
     } else {
-        char special[] = {'\n','\r',open,close, interps_banned[(int)open] ? open : '$', escapes_banned[(int)open] ? open : '\\', '\0'};
+        char special[] = {'\n','\r',open,close,interp_char,escape_char,'\0'};
         // Inline string:
         int depth = 1;
         while (depth > 0 && *pos) {
@@ -1043,39 +1040,29 @@ PARSER(parse_string) {
                 pos += len;
             }
 
-            switch (*pos) {
-            case '$': { // interpolation
+            if (*pos == interp_char) {
                 ast_t *chunk = parse_interpolation(ctx, pos);
                 APPEND(chunks, chunk);
                 pos = chunk->span.end;
-                break;
-            }
-            case '\\': { // escape
+            } else if (*pos == escape_char) {
                 const char *start = pos;
                 istr_t unescaped = unescape(&pos);
                 ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                 APPEND(chunks, chunk);
-                break;
-            }
-            case '\r': case '\n': {
+            } else if (*pos == '\r' || *pos == '\n') {
                 if (open == ' ' || open == ':' || open == '>') goto string_finished;
                 parser_err(ctx, string_start, pos, "This line ended without closing the string");
-            }
-            default: {
-                if (*pos == close) { // if open == close, then don't do nesting (i.e. check 'close' first)
-                    --depth;
-                    if (depth <= 0) {
-                        ++pos;
-                        break;
-                    }
-                } else if (*pos == open) {
-                    ++depth;
+            } else if (*pos == close) { // if open == close, then don't do nesting (i.e. check 'close' first)
+                --depth;
+                if (depth <= 0) {
+                    ++pos;
                 }
+            } else if (*pos == open) {
+                ++depth;
+            } else {
                 ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=intern_strn(pos, 1));
                 ++pos;
                 APPEND(chunks, chunk);
-                break;
-            }
             }
         }
     }
