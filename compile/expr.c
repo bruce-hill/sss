@@ -451,11 +451,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *t = get_type(env, interp_value);
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
+            
+            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+            gcc_func_t *hash_new_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, void_star, "hashmap_new", 0, NULL, 0);
+
             gcc_eval(*block, chunk_loc,
                      gcc_callx(env->ctx, chunk_loc, print_fn, 
                                compile_expr(env, block, interp_value),
                                file,
-                               gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+                               gcc_callx(env->ctx, NULL, hash_new_func)));
 
         }
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));

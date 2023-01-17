@@ -392,7 +392,8 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
 
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 {
-    // Create a function `int print(T obj, FILE* file, void* stack)`
+    // Hash map for tracking recursion: {ptr => index, "__max_index" => max_index}
+    // Create a function `int print(T obj, FILE* file, void* recursion)`
     // that prints an object to a given file
 
     // print() is the same for optional/non-optional pointers:
@@ -409,7 +410,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("stack")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("recursion")),
     };
     func = gcc_new_func(
         env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
@@ -420,6 +421,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
     gcc_rvalue_t *f = gcc_param_as_rvalue(params[1]);
+    gcc_rvalue_t *rec = gcc_param_as_rvalue(params[2]);
 
     gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
 
@@ -560,8 +562,53 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
+        // If it's nil, print !Type:
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
         gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
+
+        // If it's non-nil, check for cycles:
+        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+        gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+        gcc_param_t *gcc_hash_get_params[] = {
+            gcc_new_param(env->ctx, NULL, void_star, "h"),
+            gcc_new_param(env->ctx, NULL, void_star, "key"),
+        };
+        gcc_func_t *hash_get_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, i64, "hashmap_get", 2, gcc_hash_get_params, 0);
+
+        // index = hashmap_get(rec, obj)
+        block = nonnil_block;
+        gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
+        gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
+        gcc_lvalue_t *index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("index"));
+        gcc_assign(block, NULL, index, gcc_callx(
+                env->ctx, NULL, hash_get_func, rec, gcc_cast(env->ctx, NULL, obj, void_star)));
+
+        // if (index > 0) goto cycle else goto noncycle
+        gcc_jump_condition(block, NULL,
+                           gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index), gcc_zero(env->ctx, i64)),
+                           cycle_block, noncycle_block);
+
+        // If we're in a recursive cycle, print @?T#index and return without recursing further
+        block = cycle_block;
+        gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
+        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, intern_strf("%s#%%ld", type_to_string(t))), gcc_rval(index)));
+
+        // If this is a nonrecursive situation
+        block = noncycle_block;
+        gcc_assign(block, NULL, index, gcc_callx(
+                env->ctx, NULL, hash_get_func, rec, gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "max_index"), void_star)));
+        gcc_update(block, NULL, index, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
+
+        gcc_param_t *gcc_hash_set_params[] = {
+            gcc_new_param(env->ctx, NULL, void_star, "h"),
+            gcc_new_param(env->ctx, NULL, void_star, "key"),
+            gcc_new_param(env->ctx, NULL, i64, "value"),
+        };
+        gcc_func_t *hash_set_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, VOID), "hashmap_set", 3, gcc_hash_set_params, 0);
+        gcc_eval(block, NULL, gcc_callx(
+                env->ctx, NULL, hash_set_func, rec, gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "max_index"), void_star), gcc_rval(index)));
+        gcc_eval(block, NULL, gcc_callx(
+                env->ctx, NULL, hash_set_func, rec, gcc_cast(env->ctx, NULL, obj, void_star), gcc_rval(index)));
 
         // Prepend "@"
         gcc_rvalue_t *at = WRITE_LITERAL("@");
@@ -572,9 +619,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             env->ctx, NULL, print_fn,
             gcc_rval(gcc_rvalue_dereference(obj, NULL)),
             gcc_param_as_rvalue(params[1]),
-            gcc_param_as_rvalue(params[2]));
+            rec);
 
-        gcc_return(nonnil_block, NULL,
+        gcc_return(noncycle_block, NULL,
                    gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
         break;
     }

@@ -1,0 +1,10 @@
+def Foo{str:String, next:@?Foo, self:@?Foo}
+
+a := @Foo{"A"}
+b := @Foo{"B"}
+c := @Foo{"C"}
+a.next = b
+b.next = c
+b.self = b
+c.next = a
+say "$a"
