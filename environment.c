@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "ast.h"
 #include "files.h"
@@ -208,6 +209,69 @@ static void define_num_types(env_t *env)
     // oddballs: ldexp jn yn llogb lrint lround fma
 }
 
+static void define_int_methods(env_t *env)
+{
+    { // Int64 methods
+        bl_type_t *i64 = Type(IntType);
+        hashmap_t *ns = get_namespace(env, i64);
+        gcc_type_t *gcc_i64 = bl_type_to_gcc(env, i64);
+
+        gcc_func_t *abs_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i64,
+                                            "labs", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_i64, "i")}, 0);
+        hashmap_set(
+            ns, intern_str("abs"),
+            new(binding_t, .is_global=true, .func=abs_func,
+                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, i64), .arg_names=LIST(istr_t, intern_str("i")), .ret=i64)));
+
+        gcc_func_t *rand_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i64, "random", 0, NULL, 0);
+        hashmap_set(
+            ns, intern_str("random"),
+            new(binding_t, .is_global=true, .func=rand_func,
+                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .arg_names=LIST(istr_t), .ret=i64)));
+
+        hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
+        hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
+    }
+
+    { // Int32 methods
+        bl_type_t *i32 = Type(Int32Type);
+        hashmap_t *ns = get_namespace(env, i32);
+        gcc_type_t *gcc_i32 = bl_type_to_gcc(env, i32);
+
+        gcc_func_t *abs_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i32,
+                                            "labs", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_i32, "i")}, 0);
+        hashmap_set(
+            ns, intern_str("abs"),
+            new(binding_t, .is_global=true, .func=abs_func,
+                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, i32), .arg_names=LIST(istr_t, intern_str("i")), .ret=i32)));
+
+        gcc_func_t *rand_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i32, "rand", 0, NULL, 0);
+        hashmap_set(
+            ns, intern_str("random"),
+            new(binding_t, .is_global=true, .func=rand_func,
+                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .arg_names=LIST(istr_t), .ret=i32)));
+
+        hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
+        hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
+    }
+
+    { // Int16 methods
+        bl_type_t *i16 = Type(Int16Type);
+        hashmap_t *ns = get_namespace(env, i16);
+        gcc_type_t *gcc_i16 = bl_type_to_gcc(env, i16);
+        hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
+        hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
+    }
+
+    { // Int8 methods
+        bl_type_t *i8 = Type(Int8Type);
+        hashmap_t *ns = get_namespace(env, i8);
+        gcc_type_t *gcc_i8 = bl_type_to_gcc(env, i8);
+        hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
+        hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
+    }
+}
+
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug)
 {
     env_t *env = new(env_t,
@@ -249,6 +313,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     // DEFTYPE(Num);
     // DEFTYPE(Num32);
 #undef DEFTYPE
+    define_int_methods(env);
 
     return env;
 }

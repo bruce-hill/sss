@@ -48,6 +48,10 @@ fail "got $result instead of 0.25" unless "$result" == "0.25"
 
 say "$:(Num.NaN) $:(Num.Infinity)"
 say "$:(Num32.NaN) $:(Num32.Infinity)"
+say "$:(Int.Min) $:(Int32.Min) $:(Int16.Min) $:(Int8.Min)"
+say "$:(Int.Max) $:(Int32.Max) $:(Int16.Max) $:(Int8.Max)"
+say "$((-5).abs())"
+say "$:(Int.random()) $:(Int32.random())"
 
 // Methods:
 n := 5.0

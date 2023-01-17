@@ -154,9 +154,26 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
                             intval->units, n, units);
         }
 
-        if ((((uint64_t)i) >> (uint64_t)(intval->precision-1)) > 1) {
-            compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision,
-                        (((uint64_t)i) >> (uint64_t)intval->precision));
+        switch (intval->precision) {
+        case 32:
+            if (i < INT32_MIN)
+                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+            else if (i > INT32_MAX)
+                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+            break;
+        case 16:
+            if (i < INT16_MIN)
+                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+            else if (i > INT16_MAX)
+                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+            break;
+        case 8:
+            if (i < INT8_MIN)
+                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+            else if (i > INT8_MAX)
+                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+            break;
+        default: break;
         }
 
         return gcc_rvalue_from_long(env->ctx, gcc_t, i);

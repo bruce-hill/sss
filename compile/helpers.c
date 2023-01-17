@@ -442,7 +442,14 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
         const char *fmt;
         switch (t->tag) {
-        case Int32Type: case Int16Type: case Int8Type: fmt = "%d"; break;
+        case IntType: fmt = "%ld"; break;
+        case Int32Type: fmt = "%d"; break;
+        case Int16Type: case Int8Type: {
+            // I'm not sure why, but printf() gets confused if you pass smaller ints to a "%d" format
+            obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
+            fmt = "%d";
+            break;
+        }
         case NumType: fmt = "%g"; break;
         case Num32Type: {
             // I'm not sure why, but printf() gets confused if you pass a 'float' here instead of a 'double'
@@ -450,7 +457,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             fmt = "%g";
             break;
         }
-        default: fmt = "%ld"; break;
+        default: errx(1, "Unreachable");
         }
         istr_t units = type_units(t);
         if (units == intern_str("%")) {
