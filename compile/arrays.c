@@ -75,21 +75,24 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *func = gcc_block_func(*block);
 
-    gcc_lvalue_t *array_var = gcc_local(func, NULL, gcc_t, fresh("array"));
+    gcc_loc_t *loc = ast_loc(env, ast);
+    gcc_lvalue_t *array_var = gcc_local(func, loc, gcc_t, fresh("array"));
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
     bl_type_t *item_t = Match(t, ArrayType)->item_type;
     gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
     gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * length(array->items)));
-    gcc_rvalue_t *initial_items = gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), bl_type_to_gcc(env, Type(PointerType, .pointed=item_t)));
-    gcc_assign(*block, NULL, array_var, gcc_struct_constructor(
-            env->ctx, NULL, gcc_t, 2,
+    gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
+    gcc_rvalue_t *initial_items = length(array->items) == 0 ? 
+        gcc_null(env->ctx, gcc_item_ptr_t) : gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
+    gcc_assign(*block, loc, array_var, gcc_struct_constructor(
+            env->ctx, loc, gcc_t, 2,
             (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 2)}, // stride = 1
             (gcc_rvalue_t*[]){initial_items, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
 
     env_t env2 = *env;
     env2.comprehension_callback = (void*)add_array_item;
-    array_insert_info_t info = {t, gcc_lvalue_address(array_var, NULL)};
+    array_insert_info_t info = {t, gcc_lvalue_address(array_var, loc)};
     env2.comprehension_userdata = &info;
     env = &env2;
 
@@ -107,11 +110,11 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
             add_array_item(env, block, *item_ast, &info);
 
             if (*block)
-                gcc_jump(*block, NULL, item_done);
+                gcc_jump(*block, loc, item_done);
             *block = item_done;
         }
         if (*block)
-            gcc_jump(*block, NULL, array_done);
+            gcc_jump(*block, loc, array_done);
         *block = array_done;
     }
     return gcc_rval(array_var);
