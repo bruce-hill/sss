@@ -27,5 +27,21 @@ def s:String => $HTML
 
     return bitcast "\x1b[0;35m$s\x1b[m" : $HTML
 
-text := "I <3 escaping"
-say "$($HTML[<pre>$text</pre>])"
+def strings:[String] => $HTML
+    return bitcast [
+        c for c in "<ol>\n",
+        for str in strings
+            c for c in $HTML[<li>$str</li>]
+        between
+            "\n"[1]
+        ,
+        c for c in "\n</ol>",
+    ] : $HTML
+
+my_strings := ["item one", "I <3 escaping", "all done"]
+html := $HTML[
+    <body>
+    $my_strings
+    </body>
+]
+say "$html"
