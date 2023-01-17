@@ -426,14 +426,18 @@ PARSER(parse_tuple_type) {
     if (!match(&pos, "{")) return NULL;
     NEW_LIST(istr_t, member_names);
     NEW_LIST(ast_t*, member_types);
-    for (;;) {
+    for (int i = 1; ; i++) {
         whitespace(&pos);
         const char *field_start = pos;
         istr_t field_name = get_id(&pos);
-        if (!field_name) parser_err(ctx, field_start, pos, "I expected a field name for this tuple");
         whitespace(&pos);
-        if (!match(&pos, ":")) parser_err(ctx, field_start, pos, "I expected field:type for this tuple field");
-        whitespace(&pos);
+        if (match(&pos, ":")) {
+            whitespace(&pos);
+            field_name = intern_str(field_name);
+        } else {
+            field_name = intern_strf("_%d", i);
+            pos = field_start;
+        }
         ast_t *t = expect_ast(ctx, field_start, &pos, parse_type, "I couldn't parse the type for this field");
         APPEND(member_names, field_name);
         APPEND(member_types, t);
@@ -633,6 +637,7 @@ PARSER(parse_struct) {
         if ((field_name=get_id(&pos))) {
             whitespace(&pos);
             if (!match(&pos, "=")) goto no_field_name;
+            field_name = intern_str(field_name);
             whitespace(&pos);
         } else {
           no_field_name: field_name = NULL;
@@ -642,7 +647,7 @@ PARSER(parse_struct) {
         if (!field_name && !type)
             field_name = intern_strf("_%d", i);
         if (!value) break;
-        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=intern_str(field_name), .value=value));
+        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=field_name, .value=value));
         whitespace(&pos);
         match(&pos, ",");
     }
