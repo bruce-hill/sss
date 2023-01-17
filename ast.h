@@ -131,6 +131,7 @@ struct ast_s {
             List(ast_t*) arg_defaults;
             ast_t *ret_type;
             ast_t *body;
+            bool is_exported;
         } FunctionDef;
         struct {
             List(istr_t) arg_names;

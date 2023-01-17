@@ -194,7 +194,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
         bl_type_t *t = get_type(env, def);
-        gcc_func_t *func = get_function_def(env, def, fresh(fndef->name), false);
+        gcc_func_t *func = get_function_def(env, def, fndef->is_exported ? fndef->name : fresh(fndef->name), fndef->is_exported);
         gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
         hashmap_set(env->bindings, fndef->name,
                     new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));

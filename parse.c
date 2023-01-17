@@ -1595,6 +1595,10 @@ ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char 
 
 PARSER(parse_def) {
     const char *start = pos;
+    bool is_exported = false;
+    if (match_word(&pos, "export"))
+        is_exported = true;
+
     if (!match_word(&pos, "def")) return NULL;
     spaces(&pos);
     istr_t name = get_id(&pos);
@@ -1644,7 +1648,7 @@ PARSER(parse_def) {
                                  "This function needs a body block");
         return NewAST(ctx, start, pos, FunctionDef,
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body);
+                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         return parse_rest_of_struct_def(ctx, start, &pos, name);
     } else if (match_word(&pos, "oneof")) { // Enum def Foo oneof {...}
