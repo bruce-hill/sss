@@ -1301,7 +1301,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         if (!promote(env, lhs_t, &lhs_val, rhs_t)
             && !promote(env, rhs_t, &rhs_val, lhs_t))
-            compile_err(env, ast, "The left hand side of this assignment has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
+            compile_err(env, ast, "The left hand side of this modulus has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
@@ -1317,6 +1317,33 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
+    }
+    case Power: {
+        ast_t *base = Match(ast, Power)->lhs, *exponent = Match(ast, Power)->rhs;
+        bl_type_t *t = get_type(env, ast);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        bl_type_t *base_t = get_type(env, base);
+        bl_type_t *rhs_t = get_type(env, exponent);
+        gcc_rvalue_t *base_val = compile_expr(env, block, base);
+        gcc_rvalue_t *exponent_val = compile_expr(env, block, exponent);
+        if (!promote(env, base_t, &base_val, rhs_t)
+            && !promote(env, rhs_t, &exponent_val, base_t))
+            compile_err(env, ast, "The base of this operation has type %s, but the exponent has type %s and I can't figure out how to combine them.",
+                  type_to_string(base_t), type_to_string(rhs_t));
+
+        gcc_type_t *double_t = gcc_type(env->ctx, DOUBLE);
+        if (t->tag != NumType) {
+            base_val = gcc_cast(env->ctx, loc, base_val, double_t);
+            exponent_val = gcc_cast(env->ctx, loc, exponent_val, double_t);
+        }
+        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, double_t,
+                                        "pow", 2, (gcc_param_t*[]){
+                                        gcc_new_param(env->ctx, NULL, double_t, "base"),
+                                        gcc_new_param(env->ctx, NULL, double_t, "exponent")}, 0);
+        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, func, base_val, exponent_val);
+        if (t->tag != NumType)
+            ret = gcc_cast(env->ctx, loc, ret, gcc_t);
+        return ret;
     }
     case If: {
         bl_type_t *if_t = get_type(env, ast);
