@@ -105,6 +105,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             bl_type_t *member_t = parse_type_ast(env, ith(tuple->member_types, i));
             APPEND(member_types, member_t);
         }
+        // TODO: support default values for tuples?
         bl_type_t *t = Type(StructType, .name=NULL, .field_names=member_names, .field_types=member_types);
         bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
         if (memoized) {

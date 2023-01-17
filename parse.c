@@ -1582,19 +1582,26 @@ PARSER(parse_opt_indented_block) {
 PARSER(parse_struct_field_def) {
     const char *start = pos;
     NEW_LIST(istr_t, names);
+    NEW_LIST(ast_t*, defaults);
     for (;;) {
         spaces(&pos);
         istr_t name = get_id(&pos);
         if (!name) break;
         APPEND(names, name);
         spaces(&pos);
+        if (match(&pos, "=")) {
+            ast_t *def = expect_ast(ctx, pos-1, &pos, parse_term, "I expected a value after this '='");
+            APPEND(defaults, def);
+        } else {
+            APPEND(defaults, NULL);
+        }
         if (!match(&pos, ",")) break;
     }
     if (LIST_LEN(names) == 0) return NULL;
     spaces(&pos);
     if (!match(&pos, ":")) return NULL;
     ast_t *type = expect_ast(ctx, pos-1, &pos, parse_type, "I expected a type here");
-    return NewAST(ctx->file, start, pos, StructFieldDef, .names=names, .type=type);
+    return NewAST(ctx->file, start, pos, StructFieldDef, .names=names, .defaults=defaults, .type=type);
 }
 
 ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {

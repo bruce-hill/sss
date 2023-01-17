@@ -62,6 +62,7 @@ struct bl_type_s {
             istr_t name;
             List(istr_t) field_names;
             List(bl_type_t*) field_types;
+            List(ast_t*) field_defaults;
             istr_t units;
         } StructType;
         struct {
@@ -94,5 +95,6 @@ istr_t type_units(bl_type_t *t);
 bl_type_t *with_units(bl_type_t *t, istr_t units);
 bool is_comparable(bl_type_t *t);
 bool has_heap_memory(bl_type_t *t);
+bool can_promote(bl_type_t *actual, bl_type_t *needed);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

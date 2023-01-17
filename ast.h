@@ -228,6 +228,7 @@ struct ast_s {
         } StructDef;
         struct {
             List(istr_t) names;
+            List(ast_t*) defaults;
             ast_t *type;
         } StructFieldDef;
         struct {

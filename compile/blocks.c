@@ -32,10 +32,11 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         istr_t name = struct_def->name;
         NEW_LIST(istr_t, field_names);
         NEW_LIST(bl_type_t*, field_types);
+        NEW_LIST(ast_t*, field_defaults);
         // Placeholder type, will be populated later:
         if (hashmap_get(env->bindings, name))
             compile_err(env, def, "Something called %s is already defined.", name);
-        bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types);
+        bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types, .field_defaults=field_defaults);
         gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
         lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
 
@@ -136,6 +137,14 @@ static void populate_def_members(env_t *env, ast_t *def)
                 foreach(field_def->names, fname, __) {
                     APPEND(struct_type->field_names, *fname);
                     APPEND(struct_type->field_types, ft);
+                }
+                foreach(field_def->defaults, def, __) {
+                    bl_type_t *def_t = *def ? get_type(env, *def) : NULL;
+                    if (*def && !can_promote(def_t, ft))
+                        compile_err(env, *def, "This default value has type %s instead of %s",
+                                    type_to_string(get_type(env, *def)), type_to_string(ft));
+
+                    APPEND(struct_type->field_defaults, *def);
                 }
             } else {
                 populate_def_members(&inner_env, *member);

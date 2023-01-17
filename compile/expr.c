@@ -604,7 +604,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *ast;
             gcc_rvalue_t *value;
             gcc_field_t *field;
-        } entries[num_values];
+        } entries[num_fields];
 
         for (size_t i = 0; i < num_values; i++) {
             auto member = Match(ith(struct_->members, i), StructField);
@@ -659,9 +659,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
           found_index: continue;
         }
 
+        // Populate default struct field values (or nil for optional types)
         for (size_t field_index = 0; field_index < num_fields; field_index++) {
             bl_type_t *ft = ith(struct_type->field_types, field_index);
-            if (ft->tag == PointerType && Match(ft, PointerType)->is_optional) continue;
+            ast_t *def = struct_type->field_defaults ? ith(struct_type->field_defaults, field_index) : NULL;
+            if (def != NULL) {
+                entries[num_values].field = unused_fields[field_index];
+                entries[num_values].field_num = field_index;
+                entries[num_values].ast = def;
+                gcc_rvalue_t *def_val = compile_expr(env, block, def);
+                if (!promote(env, get_type(env, def), &def_val, ft))
+                    compile_err(env, def, "I couldn't make this default value work as a %s",
+                                type_to_string(ft));
+                entries[num_values].value = def_val;
+                unused_fields[field_index] = NULL;
+                ++num_values;
+                continue;
+            }
+
+            if (ft->tag == PointerType && Match(ft, PointerType)->is_optional)
+                continue;
+
             if (unused_fields[field_index])
                 compile_err(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
                       type_to_string(t),

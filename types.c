@@ -244,4 +244,42 @@ bool has_heap_memory(bl_type_t *t)
     }
 }
 
+bool can_promote(bl_type_t *actual, bl_type_t *needed)
+{
+    // No promotion necessary:
+    if (actual == needed)
+        return true;
+
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed))
+        return type_units(actual) == type_units(needed);
+
+    // Numeric promotion:
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed))
+        return type_units(actual) == type_units(needed);
+
+    // Optional promotion:
+    if (needed->tag == PointerType && actual->tag == PointerType) {
+        auto needed_ptr = Match(needed, PointerType);
+        auto actual_ptr = Match(actual, PointerType);
+        return needed_ptr->pointed == actual_ptr->pointed && needed_ptr->is_optional;
+    }
+
+    // Function promotion:
+    if (needed->tag == FunctionType && actual->tag == FunctionType) {
+        auto needed_fn = Match(needed, FunctionType);
+        auto actual_fn = Match(actual, FunctionType);
+        if (LIST_LEN(needed_fn->arg_types) != LIST_LEN(actual_fn->arg_types) || needed_fn->ret != actual_fn->ret)
+            return false;
+        for (int64_t i = 0, len = LIST_LEN(needed_fn->arg_types); i < len; i++) {
+            if (LIST_ITEM(actual_fn->arg_types, i) != LIST_ITEM(needed_fn->arg_types, i))
+                return false;
+        }
+        return true;
+    }
+
+    // TODO: Struct promotion?
+
+    return false;
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
