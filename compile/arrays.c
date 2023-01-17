@@ -249,7 +249,8 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_lvalue_t *written_var = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("written"));
     gcc_assign(*block, NULL, written_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
 
-    bool is_string = (Match(t, ArrayType)->item_type == Type(CharType));
+    bl_type_t *item_type = Match(t, ArrayType)->item_type;
+    bool is_string = (item_type == Type(CharType));
     if (!is_string)
         ADD_WRITE(*block, WRITE_LITERAL("["));
 
@@ -267,7 +268,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_block_t *end = gcc_new_block(func, fresh("done"));
 
     // item_ptr = array.items
-    gcc_type_t *gcc_item_t = bl_type_to_gcc(env, Match(t, ArrayType)->item_type);
+    gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_type);
     gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
     gcc_assign(*block, NULL, item_ptr, items);
 
@@ -280,9 +281,9 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // item = *item_ptr
     gcc_rvalue_t *item = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
     // item_str = tocord(item)
-    gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
+    gcc_func_t *item_print = get_print_func(env, item_type);
     assert(item_print);
-    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print, item, file, rec));
+    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print, quote_string(env, item_type, item), file, rec));
     
     // i += 1
     assert(i);

@@ -377,6 +377,22 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
     *block = NULL;
 }
 
+gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val)
+{
+    if (t->tag != ArrayType || Match(t, ArrayType)->item_type->tag != CharType)
+        return val;
+
+    istr_t dsl = Match(t, ArrayType)->dsl;
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, t), "str"),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "dsl"),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, BOOL), "use_color")
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, t),
+                                    "bl_string_quoted", 3, params, 0);
+    return gcc_callx(env->ctx, NULL, func, val, gcc_str(env->ctx, dsl ? dsl : ""), gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
+}
+
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 {
     // Hash map for tracking recursion: {ptr => index, "__max_index" => max_index}
@@ -506,7 +522,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                         gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(intern_strf("%s{", tag_name)));
                     gcc_rvalue_t *suffix_len = gcc_callx(
                         env->ctx, NULL, tag_print,
-                        gcc_rvalue_access_field(data, NULL, union_field),
+                        quote_string(env, tag_data_type, gcc_rvalue_access_field(data, NULL, union_field)),
                         f,
                         gcc_param_as_rvalue(params[2]));
                     gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, suffix_len);
@@ -604,7 +620,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         assert(print_fn);
         gcc_rvalue_t *printed = gcc_callx(
             env->ctx, NULL, print_fn,
-            gcc_rval(gcc_rvalue_dereference(obj, NULL)),
+            quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
             gcc_param_as_rvalue(params[1]),
             rec);
 
@@ -640,9 +656,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
             written = ADD_INT(written,
                               gcc_callx(env->ctx, NULL, print_fn, 
-                                        gcc_rvalue_access_field(obj, NULL, field),
+                                        quote_string(env, member_t, gcc_rvalue_access_field(obj, NULL, field)),
                                         gcc_param_as_rvalue(params[1]),
-                                        gcc_param_as_rvalue(params[2]) // TODO: fix infinite recursion
+                                        gcc_param_as_rvalue(params[2])
                               ));
         }
 

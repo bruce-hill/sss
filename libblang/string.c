@@ -207,11 +207,12 @@ string_t bl_string_replace(string_t text, string_t pat, string_t replacement, in
     return (string_t){.data=str, .length=size, .stride=1};
 }
 
-string_t bl_string_quoted(string_t text, bool colorize) {
+string_t bl_string_quoted(string_t text, const char *dsl, bool colorize) {
     char *buf;
     size_t size;
     FILE *mem = open_memstream(&buf, &size);
     if (colorize) fputs("\x1b[35m", mem);
+    if (dsl && dsl[0]) fprintf(mem, "$%s", dsl);
     const char *escape_color = colorize ? "\x1b[1;34m" : "";
     const char *reset_color = colorize ? "\x1b[0;35m" : "";
     fputc('"', mem);
