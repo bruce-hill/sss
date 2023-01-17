@@ -103,8 +103,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
 
-    printf("\n\x1b[1;4mWelcome to the Blang v%s interactive console!\x1b[m\n", BLANG_VERSION);
-    printf("       press 'enter' twice to run a command\n\n");
+    printf("\n    \x1b[1;4mWelcome to the Blang v%s interactive console!\x1b[m\n", BLANG_VERSION);
+    printf("          press 'enter' twice to run a command\n");
+    printf("     \x1b[2mnote: variables do not persist across commands\x1b[m\n\n\n");
 
     // Read lines until we get a blank line
     for (;;) {
@@ -135,7 +136,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         free(buf); } while (0) \
 
         if (buf_size == 0 || strcmp(buf, "quit\n") == 0 || strcmp(buf, "exit\n") == 0) {
-            printf("\x1b[A\x1b[K\x1b[1mGoodbye!\x1b[m\n");
+            printf("\x1b[A\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
             CLEANUP();
             break;
         }
@@ -186,7 +187,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
-        fprintf(stdout, "\x1b[A\x1b[K\x1b[0;1m");
+        fprintf(stdout, "\x1b[A\x1b[G\x1b[K\x1b[0;1m");
         fflush(stdout);
         run_line();
         fputs("\x1b[m", stdout);
