@@ -251,10 +251,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             for (int64_t i = 0, len = length(fn->arg_types); i < len; i++) {
                 gcc_type_t *arg_t = bl_type_to_gcc(env, ith(fn->arg_types, i));
                 istr_t arg_name = fn->arg_names ? ith(fn->arg_names, i) : fresh("arg");
-                APPEND(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
+                APPEND(params, gcc_new_param(env->ctx, loc, arg_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
-                env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
+                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
             hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -833,8 +833,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case HeapAllocate: {
         ast_t *value = Match(ast, HeapAllocate)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
-        bl_type_t *nonnil_t = get_type(env, value);
-        return move_to_heap(env, block, nonnil_t, rval);
+        bl_type_t *t = get_type(env, value);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
+        gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+        gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
+        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
+        gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
+        return gcc_rval(tmp);
     }
     case Dereference: {
         (void)get_type(env, ast); // Check this is a pointer type
@@ -1127,7 +1134,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (is_integral(t))
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
-            return gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
+            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
         else
             compile_err(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }

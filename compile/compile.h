@@ -55,8 +55,6 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
 void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
 // Convert an AST into an lvalue
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast);
-// Move a value to the heap
-gcc_rvalue_t *move_to_heap(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *val);
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 
