@@ -715,7 +715,7 @@ PARSER(parse_if) {
 }
 
 PARSER(parse_when) {
-    // when <expr> is [<var>:]<tag> <body> *(is ...) else <body>
+    // when <expr> is [<var>:]<tag>[*(,<tag>)] <body> *(is ...) else <body>
     const char *start = pos;
     if (!match_word(&pos, "when"))
         return NULL;
@@ -732,14 +732,22 @@ PARSER(parse_when) {
         ast_t *tag;
         spaces(&pos);
         if (var && match(&pos, ":")) {
-            tag = optional_ast(ctx, &pos, parse_type);
+            tag = optional_ast(ctx, &pos, parse_var);
         } else {
             tag = var;
             var = NULL;
         }
+        List(ast_t*) tags = LIST(ast_t*, tag);
+        for (spaces(&pos); match(&pos, ","); spaces(&pos)) {
+            tag = optional_ast(ctx, &pos, parse_var);
+            if (!tag) break;
+            APPEND(tags, tag);
+        }
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when'"); 
-        ast_case_t case_ = {.var=var, .tag=tag, .body=body};
-        list_append((list_t*)cases, sizeof(ast_case_t), &case_);
+        for (int64_t i = 0, len = LIST_LEN(tags); i < len; i++) {
+            ast_case_t case_ = {.var=var, .tag=LIST_ITEM(tags, i), .body=body};
+            list_append((list_t*)cases, sizeof(ast_case_t), &case_);
+        }
     }
 
     ast_t *else_ = NULL;
