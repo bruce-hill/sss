@@ -670,7 +670,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     }
 #undef ADD_INT
     case ArrayType: {
-        compile_array_print_func(env, &block, obj, f, t);
+        compile_array_print_func(env, &block, obj, rec, f, t);
         break;
     }
     case FunctionType: {

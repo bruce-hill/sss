@@ -229,7 +229,7 @@ void compile_array_iteration(
     *block = loop_end;
 }
 
-void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, bl_type_t *t)
+void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
 
@@ -275,10 +275,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // item_str = tocord(item)
     gcc_func_t *item_print = get_print_func(env, Match(t, ArrayType)->item_type);
     assert(item_print);
-    ADD_WRITE(add_next_item,
-              gcc_callx(env->ctx, NULL, item_print,
-                        item, file,
-                        gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print, item, file, rec));
     
     // i += 1
     assert(i);

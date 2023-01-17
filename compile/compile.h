@@ -96,7 +96,7 @@ void math_update(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== arrays.c ==============================
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
-void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, bl_type_t *t);
+void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
