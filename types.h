@@ -93,5 +93,6 @@ int numtype_priority(bl_type_t *t);
 istr_t type_units(bl_type_t *t);
 bl_type_t *with_units(bl_type_t *t, istr_t units);
 bool is_comparable(bl_type_t *t);
+bool has_heap_memory(bl_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
