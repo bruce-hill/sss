@@ -452,14 +452,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             
+            // Hack: instead of hashmap_t rec = {0}; print(obj, &rec), I'm using char[sizeof(hashmap_t)] = {0}
+            // and passing that instead. Basically, it's just a zeroed out stack value of the appropriate size
+            // which saves a call to hashmap_new() and an allocation.
+            gcc_type_t *hashmap_gcc_t = gcc_array_type(env->ctx, loc, gcc_type(env->ctx, CHAR), sizeof(hashmap_t));
+            gcc_lvalue_t *cycle_checker = gcc_local(func, loc, hashmap_gcc_t, fresh("rec"));
+            gcc_assign(*block, loc, cycle_checker, gcc_array_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL));
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_func_t *hash_new_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, void_star, "hashmap_new", 0, NULL, 0);
 
             gcc_eval(*block, chunk_loc,
                      gcc_callx(env->ctx, chunk_loc, print_fn, 
                                compile_expr(env, block, interp_value),
                                file,
-                               gcc_callx(env->ctx, NULL, hash_new_func)));
+                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star)));
 
         }
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
