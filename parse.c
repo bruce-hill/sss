@@ -27,15 +27,16 @@ static int op_tightness[NUM_AST_TAGS] = {
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3,
     [Modulus]=4,
-    [Greater]=5, [GreaterEqual]=5, [Less]=5, [LessEqual]=5,
-    [Equal]=6, [NotEqual]=6,
-    [And]=7, [Or]=7, [Xor]=7,
+    [Cast]=5,
+    [Greater]=6, [GreaterEqual]=6, [Less]=6, [LessEqual]=6,
+    [Equal]=7, [NotEqual]=7,
+    [And]=8, [Or]=8, [Xor]=8,
 };
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","else","do","deftype",
-    "def","cast","bitcast","between","as","and", NULL,
+    "def","bitcast","between","as","and", NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -1158,22 +1159,11 @@ PARSER(parse_var) {
     return NewAST(ctx->file, start, pos, Var, .name=name);
 }
 
-PARSER(parse_cast) {
-    const char *start = pos;
-    if (!match_word(&pos, "cast")) return NULL;
-    ast_t *expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
-    spaces(&pos);
-    if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this cast");
-    ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this cast");
-    return NewAST(ctx->file, start, pos, Cast, .value=expr, .type=t);
-}
-
 PARSER(parse_bitcast) {
     const char *start = pos;
     if (!match_word(&pos, "bitcast")) return NULL;
-    ast_t *expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression here");
-    spaces(&pos);
-    if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this bitcast");
+    ast_t *expr = expect_ast(ctx, start, &pos, parse_term, "I expected an expression here");
+    if (!match_word(&pos, "as")) parser_err(ctx, start, pos, "I expected a 'as' and type for this bitcast");
     ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this bitcast");
     return NewAST(ctx->file, start, pos, Bitcast, .value=expr, .type=t);
 }
@@ -1188,7 +1178,6 @@ PARSER(parse_term) {
         || (term=parse_skip(ctx, pos))
         || (term=parse_stop(ctx, pos))
         || (term=parse_return(ctx, pos))
-        || (term=parse_cast(ctx, pos))
         || (term=parse_bitcast(ctx, pos))
         || (term=parse_num(ctx, pos))
         || (term=parse_int(ctx, pos))
@@ -1342,6 +1331,8 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 tag = Xor; break;
             } else if (match_word(&pos, "mod")) {
                 tag = Modulus; break;
+            } else if (match_word(&pos, "as")) {
+                tag = Cast; break;
             } else {
                 goto no_more_binops;
             }
@@ -1351,7 +1342,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         assert(op_tightness[tag]);
 
         spaces(&pos);
-        ast_t *rhs = parse_term(ctx, pos);
+        ast_t *rhs = tag == Cast ? parse_type(ctx, pos) : parse_term(ctx, pos);
         if (!rhs) goto no_more_binops;
         pos = rhs->span.end;
         APPEND(terms, rhs);
