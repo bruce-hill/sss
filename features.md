@@ -191,19 +191,19 @@ self-document which domain-specific language the string uses, as well as
 providing multiple different string delimiters to make it easy to avoid
 [leaning toothpick
 syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome). DSL
-strings are prefixed by `%` and an identifier, followed by a pair of
-delimiters, like `%Foo"quotes"`, `%Foo[brackets]`, `%Foo/slashes/`,
-`%Foo;semicolons;`, `%Foo{braces}`, and so on. Additionally, `>` and `:` can be
+strings are prefixed by `$` and an identifier, followed by a pair of
+delimiters, like `$Foo"quotes"`, `$Foo[brackets]`, `$Foo/slashes/`,
+`$Foo;semicolons;`, `$Foo{braces}`, and so on. Additionally, `>` and `:` can be
 used to indicate the string continues till the end of the line. Different
 domain-specific languages have different values that need to be escaped, so
 it's important to have options for how to most conveniently represent whatever
 you need to.
 
 ```
-pat := %Regex/[0-9]+|['"]+/
-json := %JSON!{"key"=[1,2,3]}!
-blang := %Blang`foo := %DSL[...]`
-shell := %Shell> ls $HOME
+pat := $Regex/[0-9]+|['"]+/
+json := $JSON!{"key"=[1,2,3]}!
+blang := $Blang`foo := $DSL[...]`
+shell := $Shell> ls $HOME
 ```
 
 Blang's multi-line strings use indentation to delimit string boundaries, and
@@ -212,13 +212,13 @@ DSL strings can have the same format. Strings end where indented regions end
 avoid ambiguity:
 
 ```
-json := %JSON:
+json := $JSON:
     {
         "key"="value",
         "foo"=99
     }
 
-html := %HTML:
+html := $HTML:
     <ul>
         <li>...</li>
     </ul>
@@ -252,12 +252,12 @@ def escape(str:String):SQL
     return ("'" + (str|replace("'", "''")) + "'"):SQL
 
 symbol:String = get_requested_symbol()
-query := %SQL"SELECT * FROM stocks WHERE symbol = $symbol"
+query := $SQL"SELECT * FROM stocks WHERE symbol = $symbol"
 sql_execute(query)
 ```
 
 DSL strings offer three important benefits: firstly, DSL strings are an easy way
-to write code within code. The `%Name` prefix clearly documents what type of string you're dealing
+to write code within code. The `$Name` prefix clearly documents what type of string you're dealing
 with, and there is support for multiple different delimiters, whichever is most
 convenient for your domain. Nobody wants to sort through code with [leaning
 toothpick syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome),
@@ -283,7 +283,7 @@ the easy and automatic thing to do.
 
 ```python
 malicious:String = "xxx'; drop table users; --"
-query := %SQL"SELECT * FROM users WHERE name = $malicious"
+query := $SQL"SELECT * FROM users WHERE name = $malicious"
 say "$query"
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
 ```
@@ -297,15 +297,15 @@ def escape(str:String):Shell
     return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
 def escape(strings:[String]):Shell
-    ret := %Shell""
+    ret := $Shell""
     for str in strings
-        ret += %Shell"$str"
-    between ret += %Shell" "
+        ret += $Shell"$str"
+    between ret += $Shell" "
     return ret
 
 files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
 dest := "/tmp"
-cmd := %Shell> cp @files @dest
+cmd := $Shell> cp @files @dest
 say "$cmd"
 // prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
 ```
