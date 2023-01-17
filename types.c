@@ -146,6 +146,7 @@ istr_t type_units(bl_type_t *t)
     case NumType: return Match(t, NumType)->units;
     case Num32Type: return Match(t, Num32Type)->units;
     case StructType: return Match(t, StructType)->units;
+    case PointerType: return type_units(Match(t, PointerType)->pointed);
     default: return NULL;
     }
 }
@@ -162,6 +163,9 @@ bl_type_t *with_units(bl_type_t *t, istr_t units)
     case StructType: {
         auto s = Match(t, StructType);
         return Type(StructType, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
+    }
+    case PointerType: {
+        return Type(PointerType, .pointed=with_units(Match(t, PointerType)->pointed, units));
     }
     default: return t;
     }

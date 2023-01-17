@@ -441,6 +441,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // Okay safe again
 
         bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+
+        // Dereference:
+        while (t1->tag == PointerType)
+            t1 = Match(t1, PointerType)->pointed;
+        while (t2->tag == PointerType)
+            t2 = Match(t2, PointerType)->pointed;
+
         istr_t u1 = type_units(t1), u2 = type_units(t2);
 
         if (u1 != u2)
@@ -448,7 +455,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
         if (t1 == t2) {
             return t1;
-        } if (is_numeric(t1) && is_numeric(t2)) {
+        } else if (is_numeric(t1) && is_numeric(t2)) {
             bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
             return with_units(t, u1);
         } else if (is_numeric(t1) && t2->tag == StructType) {
@@ -464,6 +471,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         ast_t *lhs = ast->tag == Divide ? Match(ast, Divide)->lhs : Match(ast, Multiply)->lhs,
               *rhs = ast->tag == Divide ? Match(ast, Divide)->rhs : Match(ast, Multiply)->rhs;
         bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
+
+        // Dereference:
+        while (t1->tag == PointerType)
+            t1 = Match(t1, PointerType)->pointed;
+        while (t2->tag == PointerType)
+            t2 = Match(t2, PointerType)->pointed;
+
         istr_t u1 = type_units(t1), u2 = type_units(t2);
         istr_t u = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
 
@@ -484,8 +498,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Power: {
         ast_t *lhs = Match(ast, Power)->lhs, *rhs = Match(ast, Power)->rhs;
         bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
 
+        // Dereference:
+        while (t1->tag == PointerType)
+            t1 = Match(t1, PointerType)->pointed;
+        while (t2->tag == PointerType)
+            t2 = Match(t2, PointerType)->pointed;
+
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
         if (u1 && strlen(u1) > 0)
             compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
         else if (u2 && strlen(u2) > 0)
@@ -507,8 +527,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Modulus: {
         ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
         bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
 
+        // Dereference:
+        while (t1->tag == PointerType)
+            t1 = Match(t1, PointerType)->pointed;
+        while (t2->tag == PointerType)
+            t2 = Match(t2, PointerType)->pointed;
+
+        istr_t u1 = type_units(t1), u2 = type_units(t2);
         if (u2 && strlen(u2) > 0)
             compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
 

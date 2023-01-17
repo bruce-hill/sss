@@ -17,6 +17,22 @@ static gcc_rvalue_t *math_binop_rec(
 {
     gcc_loc_t *loc = ast_loc(env, ast);
 
+    // Automatically dereference non-nil pointers:
+    if (lhs_t->tag == PointerType) {
+        auto ptr = Match(lhs_t, PointerType);
+        if (ptr->is_optional)
+            compile_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+        return math_binop_rec(env, block, ast, ptr->pointed, gcc_rval(gcc_rvalue_dereference(lhs, ast_loc(env, ast))), op, rhs_t, rhs);
+    }
+
+    // Automatically dereference non-nil pointers:
+    if (rhs_t->tag == PointerType) {
+        auto ptr = Match(rhs_t, PointerType);
+        if (ptr->is_optional)
+            compile_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+        return math_binop_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
+    }
+
     bl_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (lhs_t != rhs_t) compile_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
@@ -102,6 +118,22 @@ static void math_update_rec(
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, lhs_t);
     gcc_loc_t *loc = ast_loc(env, ast);
+
+    // Automatically dereference non-nil pointers:
+    if (lhs_t->tag == PointerType) {
+        auto ptr = Match(lhs_t, PointerType);
+        if (ptr->is_optional)
+            compile_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+        return math_update_rec(env, block, ast, ptr->pointed, gcc_rvalue_dereference(gcc_rval(lhs), ast_loc(env, ast)), op, rhs_t, rhs);
+    }
+
+    // Automatically dereference non-nil pointers:
+    if (rhs_t->tag == PointerType) {
+        auto ptr = Match(rhs_t, PointerType);
+        if (ptr->is_optional)
+            compile_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+        return math_update_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
+    }
 
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
         compile_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
