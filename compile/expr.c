@@ -378,14 +378,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
     }
     case StringJoin: {
-        auto chunks = Match(ast, StringJoin)->children;
+        auto string_join = Match(ast, StringJoin);
+        auto chunks = string_join->children;
         foreach (chunks, chunk, _) {
             bl_type_t *t = get_type(env, *chunk);
             if (t->tag == VoidType)
                 compile_err(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+        bl_type_t *string_t = Type(ArrayType, .item_type=Type(CharType), .dsl=string_join->dsl);
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, string_t);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
         gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
@@ -428,12 +430,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_eval(*block, chunk_loc, gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, buf), file));
                 fclose(f);
             }
-            bl_type_t *t = get_type(env, *chunk);
+            ast_t *interp_value = interp->value;
+            if (string_join->dsl) {
+                interp_value = NewAST(env->file, interp_value->span.start, interp_value->span.end, Cast,
+                                      .value=interp_value, .type=NewAST(env->file, interp_value->span.start, interp_value->span.start,
+                                                                        TypeDSL, .name=string_join->dsl));
+            }
+            bl_type_t *t = get_type(env, interp_value);
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             gcc_eval(*block, chunk_loc,
                      gcc_callx(env->ctx, chunk_loc, print_fn, 
-                               compile_expr(env, block, *chunk),
+                               compile_expr(env, block, interp_value),
                                file,
                                gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
 
@@ -469,6 +477,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                  .base=Match(unit_def->base, Num)->units,
                                  .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
                                  .next=env->derived_units);
+        return NULL;
+    }
+    case ConvertDef: {
+        auto convert = Match(ast, ConvertDef);
+        bl_type_t *src_t = parse_type_ast(env, convert->source_type);
+        bl_type_t *target_t = parse_type_ast(env, convert->target_type);
+
+        ast_t *def = NewAST(
+            env->file, ast->span.start, ast->span.end,
+            FunctionDef,
+            .arg_names=LIST(istr_t, convert->var),
+            .arg_types=LIST(ast_t*, convert->source_type),
+            .ret_type=convert->target_type,
+            .body=convert->body);
+        gcc_func_t *func = get_function_def(env, def, intern_str("convert"), false);
+        compile_function(env, func, def);
+        env->conversions = new(conversions_t, .src=src_t, .dest=target_t, .func=func, .next=env->conversions);
         return NULL;
     }
     case StructDef: {
@@ -1041,8 +1066,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Cast: {
         auto cast = Match(ast, Cast);
         gcc_rvalue_t *val = compile_expr(env, block, cast->value);
-        bl_type_t *t = get_type(env, ast);
-        return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, t));
+        bl_type_t *src_t = get_type(env, cast->value);
+        bl_type_t *cast_t = get_type(env, ast);
+
+        for (auto convert = env->conversions; convert; convert = convert->next) {
+            if (convert->src == src_t && convert->dest == cast_t) {
+                return gcc_callx(env->ctx, loc, convert->func, val);
+            }
+        }
+        if (!((is_numeric(src_t) && is_numeric(cast_t))
+              || (is_numeric(src_t) && cast_t->tag == BoolType)
+              || (is_numeric(cast_t) && src_t->tag == BoolType)))
+            compile_err(env, ast, "Casting is only supported between numeric/boolean types. You may need to use 'bitcast' instead.");
+        return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, cast_t));
     }
     case Bitcast: {
         auto bitcast = Match(ast, Bitcast);

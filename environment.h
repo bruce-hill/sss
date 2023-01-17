@@ -35,6 +35,12 @@ typedef struct {
     bool is_global:1, is_constant:1;
 } binding_t;
 
+typedef struct conversions_s {
+    struct conversions_s *next;
+    bl_type_t *src, *dest;
+    gcc_func_t *func;
+} conversions_t;
+
 typedef struct env_s {
     gcc_ctx_t *ctx;
     bl_file_t *file;
@@ -49,6 +55,7 @@ typedef struct env_s {
     bl_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;
+    conversions_t *conversions;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     bool debug;

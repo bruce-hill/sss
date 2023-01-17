@@ -402,7 +402,7 @@ PARSER(parse_int) {
 
     if (match(&pos, "%")) {
         double d = (double)i / 100.;
-        return NewAST(ctx, start, pos, Num, .n=d, .precision=64, .units=intern_str("%"));
+        return NewAST(ctx->file, start, pos, Num, .n=d, .precision=64, .units=intern_str("%"));
     }
 
     match(&pos, "_");
@@ -414,7 +414,7 @@ PARSER(parse_int) {
     // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
     istr_t units = match_units(&pos);
-    return NewAST(ctx, start, pos, Int, .i=i, .precision=precision, .units=units);
+    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units);
 }
 
 STUB_PARSER(parse_table_type)
@@ -440,7 +440,7 @@ PARSER(parse_tuple_type) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tuple type");
-    return NewAST(ctx, start, pos, TypeTuple, .member_names=member_names, .member_types=member_types);
+    return NewAST(ctx->file, start, pos, TypeTuple, .member_names=member_names, .member_types=member_types);
 }
 
 PARSER(parse_func_type) {
@@ -458,7 +458,7 @@ PARSER(parse_func_type) {
     spaces(&pos);
     if (!match(&pos, "=>")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, parse_type);
-    return NewAST(ctx, start, pos, TypeFunction, .arg_types=arg_types, .ret_type=ret);
+    return NewAST(ctx->file, start, pos, TypeFunction, .arg_types=arg_types, .ret_type=ret);
 }
 
 PARSER(parse_array_type) {
@@ -467,7 +467,7 @@ PARSER(parse_array_type) {
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse an array item type after this point");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array type");
-    return NewAST(ctx, start, pos, TypeArray, .item_type=type);
+    return NewAST(ctx->file, start, pos, TypeArray, .item_type=type);
 }
 
 PARSER(parse_pointer_type) {
@@ -475,7 +475,7 @@ PARSER(parse_pointer_type) {
     if (!match(&pos, "@")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
-    return NewAST(ctx, start, pos, TypePointer, .pointed=type);
+    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type);
 }
 
 PARSER(parse_optional_type) {
@@ -483,16 +483,24 @@ PARSER(parse_optional_type) {
     if (!match(&pos, "?")) return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
-    return NewAST(ctx, start, pos, TypeOptional, .type=type);
+    return NewAST(ctx->file, start, pos, TypeOptional, .type=type);
 }
 
 PARSER(parse_type_name) {
     const char *start = pos;
     istr_t id = get_id(&pos);
     if (!id) return NULL;
-    ast_t *ast = NewAST(ctx, start, pos, Var, .name=id);
+    ast_t *ast = NewAST(ctx->file, start, pos, Var, .name=id);
     ast_t *fielded = parse_field_suffix(ctx, ast);
     return fielded ? fielded : ast;
+}
+
+PARSER(parse_dsl_type) {
+    const char *start = pos;
+    if (!match(&pos, "$")) return NULL;
+    istr_t id = get_id(&pos);
+    if (!id) return NULL;
+    return NewAST(ctx->file, start, pos, TypeDSL, .name=id);
 }
 
 static istr_t get_units(const char **pos) {
@@ -507,9 +515,10 @@ static istr_t get_units(const char **pos) {
 PARSER(parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
-    bool success = (
-        (type=parse_optional_type(ctx, pos))
+    bool success = (false
+        || (type=parse_optional_type(ctx, pos))
         || (type=parse_pointer_type(ctx, pos))
+        || (type=parse_dsl_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_tuple_type(ctx, pos))
@@ -534,7 +543,7 @@ PARSER(parse_type) {
     if (match(&pos, "<")) {
         istr_t units = get_units(&pos);
         expect_closing(ctx, &pos, ">", "I expected a closing '>' for these units");
-        type = NewAST(ctx, type->span.start, pos, TypeMeasure, .type=type, .units=units);
+        type = NewAST(ctx->file, type->span.start, pos, TypeMeasure, .type=type, .units=units);
     }
     return type;
 }
@@ -576,7 +585,7 @@ PARSER(parse_num) {
         units = match_units(&pos);
     }
 
-    return NewAST(ctx, start, pos, Num, .n=d, .precision=precision, .units=units);
+    return NewAST(ctx->file, start, pos, Num, .n=d, .precision=precision, .units=units);
 }
 
 PARSER(parse_array) {
@@ -606,7 +615,7 @@ PARSER(parse_array) {
     if (!item_type && LIST_LEN(items) == 0)
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 
-    return NewAST(ctx, start, pos, Array, .type=item_type, .items=items);
+    return NewAST(ctx->file, start, pos, Array, .type=item_type, .items=items);
 }
 
 PARSER(parse_struct) {
@@ -629,14 +638,14 @@ PARSER(parse_struct) {
         }
         ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
         if (!value) break;
-        APPEND(members, NewAST(ctx, field_start, pos, StructField, .name=field_name, .value=value));
+        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=field_name, .value=value));
         whitespace(&pos);
         match(&pos, ",");
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
     istr_t units = match_units(&pos);
-    return NewAST(ctx, start, pos, Struct, .type=type, .members=members, .units=units);
+    return NewAST(ctx->file, start, pos, Struct, .type=type, .members=members, .units=units);
 }
 
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
@@ -646,7 +655,7 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!match(&pos, ".")) return NULL;
     istr_t field = get_id(&pos);
     if (!field) return NULL;
-    return NewAST(ctx, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
+    return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
 PARSER(parse_range) {
@@ -662,7 +671,7 @@ PARSER(parse_range) {
         last = step;
         step = NULL;
     }
-    return NewAST(ctx, start, pos, Range, .first=first, .step=step, .last=last);
+    return NewAST(ctx->file, start, pos, Range, .first=first, .step=step, .last=last);
 }
 
 ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
@@ -673,7 +682,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
-    return NewAST(ctx, start, pos, Index, .indexed=lhs, .index=index);
+    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index);
 }
 
 PARSER(parse_if) {
@@ -688,7 +697,7 @@ PARSER(parse_if) {
     if (!cond)
         cond = expect_ast(ctx, start, &pos, parse_expr,
                           "I expected to find a condition for this 'if'");
-    if (is_unless) cond = NewAST(ctx, cond->span.start, cond->span.end, Not, .value=cond);
+    if (is_unless) cond = NewAST(ctx->file, cond->span.start, cond->span.end, Not, .value=cond);
 
     match_word(&pos, "then");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if'"); 
@@ -700,7 +709,7 @@ PARSER(parse_if) {
         pos = else_start;
         else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
     }
-    return NewAST(ctx, start, pos, If, .condition=cond, .body=body, .else_body=else_);
+    return NewAST(ctx->file, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
 PARSER(parse_when) {
@@ -738,7 +747,7 @@ PARSER(parse_when) {
         pos = else_start;
         else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
     }
-    return NewAST(ctx, start, pos, When, .subject=subj, .cases=cases, .default_body=else_);
+    return NewAST(ctx->file, start, pos, When, .subject=subj, .cases=cases, .default_body=else_);
 }
 
 PARSER(parse_do) {
@@ -746,7 +755,7 @@ PARSER(parse_do) {
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
-    return NewAST(ctx, start, pos, Do, .blocks=LIST(ast_t*, body));
+    return NewAST(ctx->file, start, pos, Do, .blocks=LIST(ast_t*, body));
 }
 
 
@@ -773,7 +782,7 @@ PARSER(parse_for) {
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     }
-    return NewAST(ctx, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body, .between=between);
+    return NewAST(ctx->file, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body, .between=between);
 }
 
 ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
@@ -789,7 +798,7 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
     // TODO: filter
-    return NewAST(ctx, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body);
+    return NewAST(ctx->file, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body);
 }
 
 PARSER(parse_repeat) {
@@ -804,7 +813,7 @@ PARSER(parse_repeat) {
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     }
-    return NewAST(ctx, start, pos, Repeat, .body=body, .between=between);
+    return NewAST(ctx->file, start, pos, Repeat, .body=body, .between=between);
 }
 
 PARSER(parse_while) {
@@ -820,7 +829,7 @@ PARSER(parse_while) {
     const char *between_start = NULL;
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between"))
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
-    return NewAST(ctx, start, pos, While, .condition=condition, .body=body, .between=between);
+    return NewAST(ctx->file, start, pos, While, .condition=condition, .body=body, .between=between);
 }
 
 ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
@@ -829,7 +838,7 @@ ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
     const char *pos = body->span.end;
     if (!match_word(&pos, "while")) return NULL;
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
-    return NewAST(ctx, start, pos, While, .condition=cond, .body=body);
+    return NewAST(ctx->file, start, pos, While, .condition=cond, .body=body);
 }
 
 ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
@@ -844,7 +853,7 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find a condition for this 'if'");
 
-    if (is_unless) cond = NewAST(ctx, cond->span.start, cond->span.end, Not, .value=cond);
+    if (is_unless) cond = NewAST(ctx->file, cond->span.start, cond->span.end, Not, .value=cond);
 
     ast_t *else_ = NULL;
     const char *else_start = pos;
@@ -855,7 +864,7 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     if (else_) pos = else_->span.end;
     else if (require_else) return NULL;
 
-    return NewAST(ctx, start, pos, If, .condition=cond, .body=body, .else_body=else_);
+    return NewAST(ctx->file, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
 ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix) {
@@ -882,9 +891,9 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 PARSER(parse_bool) {
     const char *start = pos;
     if (match_word(&pos, "yes"))
-        return NewAST(ctx, start, pos, Bool, .b=true);
+        return NewAST(ctx->file, start, pos, Bool, .b=true);
     else if (match_word(&pos, "no"))
-        return NewAST(ctx, start, pos, Bool, .b=false);
+        return NewAST(ctx->file, start, pos, Bool, .b=false);
     else
         return NULL;
 }
@@ -895,7 +904,7 @@ PARSER(parse_char) {
     char c = *pos;
     if (!c) return NULL;
     ++pos;
-    return NewAST(ctx, start, pos, Char, .c=c);
+    return NewAST(ctx->file, start, pos, Char, .c=c);
 }
 
 PARSER(parse_interpolation) {
@@ -907,7 +916,7 @@ PARSER(parse_interpolation) {
         match_group(&pos, '(');
         parser_err(ctx, start, pos, "This interpolation didn't parse");
     }
-    return NewAST(ctx, start, pos, Interp, .value=value, .labelled=labelled);
+    return NewAST(ctx->file, start, pos, Interp, .value=value, .labelled=labelled);
 }
 
 PARSER(parse_string) {
@@ -945,7 +954,7 @@ PARSER(parse_string) {
             auto line = LIST_ITEM(ctx->file->lines, i-1);
             pos = ctx->file->text + line.offset;
             if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
-                ast_t *ast = NewAST(ctx, pos, pos, StringLiteral, .str="\n");
+                ast_t *ast = NewAST(ctx->file, pos, pos, StringLiteral, .str="\n");
                 APPEND(chunks, ast);
                 continue;
             }
@@ -967,7 +976,7 @@ PARSER(parse_string) {
                 if (pos[len] == '\n') ++len;
 
                 if (len > 0) {
-                    ast_t *chunk = NewAST(ctx, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
+                    ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
                     APPEND(chunks, chunk);
                 }
 
@@ -983,7 +992,7 @@ PARSER(parse_string) {
                 case '\\': { // escape
                     const char *start = pos;
                     istr_t unescaped = unescape(&pos);
-                    ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=unescaped);
+                    ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                     APPEND(chunks, chunk);
                     ++pos;
                     break;
@@ -999,7 +1008,7 @@ PARSER(parse_string) {
             if (last_chunk->tag == StringLiteral) {
                 auto str = Match(last_chunk, StringLiteral);
                 istr_t trimmed = intern_strn(str->str, strlen(str->str)-1);
-                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
+                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx->file, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
             }
         }
     } else {
@@ -1009,7 +1018,7 @@ PARSER(parse_string) {
         while (depth > 0 && *pos) {
             size_t len = strcspn(pos, special);
             if (len > 0) {
-                ast_t *chunk = NewAST(ctx, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
+                ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
                 APPEND(chunks, chunk);
                 pos += len;
             }
@@ -1024,7 +1033,7 @@ PARSER(parse_string) {
             case '\\': { // escape
                 const char *start = pos;
                 istr_t unescaped = unescape(&pos);
-                ast_t *chunk = NewAST(ctx, start, pos, StringLiteral, .str=unescaped);
+                ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                 APPEND(chunks, chunk);
                 break;
             }
@@ -1042,7 +1051,7 @@ PARSER(parse_string) {
                 } else if (*pos == open) {
                     ++depth;
                 }
-                ast_t *chunk = NewAST(ctx, pos, pos+1, StringLiteral, .str=intern_strn(pos, 1));
+                ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=intern_strn(pos, 1));
                 ++pos;
                 APPEND(chunks, chunk);
                 break;
@@ -1051,7 +1060,7 @@ PARSER(parse_string) {
         }
     }
   string_finished:;
-    return NewAST(ctx, string_start, pos, StringJoin, .children=chunks, .dsl=dsl);
+    return NewAST(ctx->file, string_start, pos, StringJoin, .children=chunks, .dsl=dsl);
 }
 
 PARSER(parse_skip) {
@@ -1063,7 +1072,7 @@ PARSER(parse_skip) {
     else if (match_word(&pos, "while")) target = intern_str("while");
     else if (match_word(&pos, "repeat")) target = intern_str("repeat");
     else target = get_id(&pos);
-    return NewAST(ctx, start, pos, Skip, .target=target);
+    return NewAST(ctx->file, start, pos, Skip, .target=target);
 }
 
 PARSER(parse_stop) {
@@ -1075,7 +1084,7 @@ PARSER(parse_stop) {
     else if (match_word(&pos, "while")) target = intern_str("while");
     else if (match_word(&pos, "repeat")) target = intern_str("repeat");
     else target = get_id(&pos);
-    return NewAST(ctx, start, pos, Stop, .target=target);
+    return NewAST(ctx->file, start, pos, Stop, .target=target);
 }
 
 PARSER(parse_return) {
@@ -1083,7 +1092,7 @@ PARSER(parse_return) {
     if (!match_word(&pos, "return")) return NULL;
     spaces(&pos);
     ast_t *value = optional_ast(ctx, &pos, parse_expr);
-    return NewAST(ctx, start, pos, Return, .value=value);
+    return NewAST(ctx->file, start, pos, Return, .value=value);
 }
 
 PARSER(parse_lambda) {
@@ -1124,7 +1133,7 @@ PARSER(parse_lambda) {
   thunk:
     ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block);
 
-    return NewAST(ctx, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
+    return NewAST(ctx->file, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
 }
 
 PARSER(parse_nil) {
@@ -1132,21 +1141,21 @@ PARSER(parse_nil) {
     if (!match(&pos, "!")) return NULL;
     ast_t *type = parse_type(ctx, pos);
     if (!type) return NULL;
-    return NewAST(ctx, start, type->span.end, Nil, .type=type);
+    return NewAST(ctx->file, start, type->span.end, Nil, .type=type);
 }
 
 PARSER(parse_fail) {
     const char *start = pos;
     if (!match_word(&pos, "fail")) return NULL;
     ast_t *msg = parse_term(ctx, pos);
-    return NewAST(ctx, start, msg ? msg->span.end : pos, Fail, .message=msg);
+    return NewAST(ctx->file, start, msg ? msg->span.end : pos, Fail, .message=msg);
 }
 
 PARSER(parse_var) {
     const char *start = pos;
     istr_t name = get_id(&pos);
     if (!name) return NULL;
-    return NewAST(ctx, start, pos, Var, .name=name);
+    return NewAST(ctx->file, start, pos, Var, .name=name);
 }
 
 PARSER(parse_cast) {
@@ -1156,7 +1165,7 @@ PARSER(parse_cast) {
     spaces(&pos);
     if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this cast");
     ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this cast");
-    return NewAST(ctx, start, pos, Cast, .value=expr, .type=t);
+    return NewAST(ctx->file, start, pos, Cast, .value=expr, .type=t);
 }
 
 PARSER(parse_bitcast) {
@@ -1166,7 +1175,7 @@ PARSER(parse_bitcast) {
     spaces(&pos);
     if (!match(&pos, ":")) parser_err(ctx, start, pos, "I expected a ':' and type for this bitcast");
     ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this bitcast");
-    return NewAST(ctx, start, pos, Bitcast, .value=expr, .type=t);
+    return NewAST(ctx->file, start, pos, Bitcast, .value=expr, .type=t);
 }
 
 PARSER(parse_term) {
@@ -1224,7 +1233,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     if (match(&pos, "(")) {
         spaces(&pos);
         if (match(&pos, ")"))
-            return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=LIST(ast_t*));
+            return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=LIST(ast_t*));
         pos = fn->span.end;
     }
 
@@ -1260,7 +1269,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
                 spaces(&pos);
                 ast_t *arg = parse_expr(ctx, pos);
                 if (!arg) parser_err(ctx, arg_start, pos, "I couldn't parse this keyword argument value");
-                ast_t *kwarg = NewAST(ctx, arg_start, arg->span.end, KeywordArg,
+                ast_t *kwarg = NewAST(ctx->file, arg_start, arg->span.end, KeywordArg,
                                       .name=name, .arg=arg);
                 APPEND(args, kwarg);
                 pos = kwarg->span.end;
@@ -1290,7 +1299,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     if (LIST_LEN(args) < 1)
         return NULL;
 
-    return NewAST(ctx, start, pos, FunctionCall, .fn=fn, .args=args);
+    return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=args);
 }
 
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
@@ -1399,7 +1408,7 @@ PARSER(parse_declaration) {
     ast_t *val = parse_extended_expr(ctx, pos);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
     pos = val->span.end;
-    return NewAST(ctx, start, pos, Declare, .var=var, .value=val);
+    return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val);
 }
 
 PARSER(parse_update) {
@@ -1417,12 +1426,12 @@ PARSER(parse_update) {
     else return NULL;
     ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
     switch (tag) {
-    case AddUpdate: return NewAST(ctx, start, pos, AddUpdate, .lhs=lhs, .rhs=rhs);
-    case SubtractUpdate: return NewAST(ctx, start, pos, SubtractUpdate, .lhs=lhs, .rhs=rhs);
-    case MultiplyUpdate: return NewAST(ctx, start, pos, MultiplyUpdate, .lhs=lhs, .rhs=rhs);
-    case DivideUpdate: return NewAST(ctx, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
-    case AndUpdate: return NewAST(ctx, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
-    case OrUpdate: return NewAST(ctx, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
+    case AddUpdate: return NewAST(ctx->file, start, pos, AddUpdate, .lhs=lhs, .rhs=rhs);
+    case SubtractUpdate: return NewAST(ctx->file, start, pos, SubtractUpdate, .lhs=lhs, .rhs=rhs);
+    case MultiplyUpdate: return NewAST(ctx->file, start, pos, MultiplyUpdate, .lhs=lhs, .rhs=rhs);
+    case DivideUpdate: return NewAST(ctx->file, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
+    case AndUpdate: return NewAST(ctx->file, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
+    case OrUpdate: return NewAST(ctx->file, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
     default: return NULL;
     }
 }
@@ -1460,7 +1469,7 @@ PARSER(parse_assignment) {
         }
     }
 
-    return NewAST(ctx, start, pos, Assign, .targets=targets, .values=values);
+    return NewAST(ctx->file, start, pos, Assign, .targets=targets, .values=values);
 }
 
 PARSER(parse_statement) {
@@ -1545,7 +1554,7 @@ PARSER(parse_block) {
             break;
         }
     }
-    return NewAST(ctx, start, pos, Block, .statements=statements);
+    return NewAST(ctx->file, start, pos, Block, .statements=statements);
 }
 
 PARSER(parse_indented_block) {
@@ -1571,7 +1580,7 @@ PARSER(parse_struct_field_def) {
     spaces(&pos);
     if (!match(&pos, ":")) return NULL;
     ast_t *type = expect_ast(ctx, pos-1, &pos, parse_type, "I expected a type here");
-    return NewAST(ctx, start, pos, StructFieldDef, .names=names, .type=type);
+    return NewAST(ctx->file, start, pos, StructFieldDef, .names=names, .type=type);
 }
 
 ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {
@@ -1592,7 +1601,7 @@ ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char 
     }
     whitespace(pos);
     expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
-    return NewAST(ctx, start, *pos, StructDef, .name=name, .members=members);
+    return NewAST(ctx->file, start, *pos, StructDef, .name=name, .members=members);
 }
 
 PARSER(parse_def) {
@@ -1648,7 +1657,7 @@ PARSER(parse_def) {
         }
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
                                  "This function needs a body block");
-        return NewAST(ctx, start, pos, FunctionDef,
+        return NewAST(ctx->file, start, pos, FunctionDef,
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
                       .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
@@ -1689,7 +1698,13 @@ PARSER(parse_def) {
             ++next_value;
         }
         expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
-        return NewAST(ctx, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+        return NewAST(ctx->file, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+    } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
+        ast_t *source_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion source type here");
+        expect_str(ctx, start, &pos, "=>", "I expected a '=>' for a conversion definition");
+        ast_t *target_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion target type here");
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
+        return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
     } else if (isdigit(*pos)) { // derived unit def
       derived_unit:;
         ast_t *derived;
@@ -1698,7 +1713,7 @@ PARSER(parse_def) {
             parser_err(ctx, start, pos, "Invalid derived unit definition");
 
         if (derived->tag == Int)
-            derived = NewAST(ctx, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
+            derived = NewAST(ctx->file, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
 
         if (derived->tag != Num || Match(derived, Num)->units == NULL)
             parser_err(ctx, derived->span.start, derived->span.end, "Derived units must have units");
@@ -1713,11 +1728,11 @@ PARSER(parse_def) {
             parser_err(ctx, start, pos, "Invalid derived unit definition");
 
         if (base->tag == Int)
-            base = NewAST(ctx, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
+            base = NewAST(ctx->file, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
 
         if (base->tag != Num || Match(base, Num)->units == NULL)
             parser_err(ctx, base->span.start, base->span.end, "Derived units must have units");
-        return NewAST(ctx, start, pos, UnitDef, .derived=derived, .base=base);
+        return NewAST(ctx->file, start, pos, UnitDef, .derived=derived, .base=base);
     }
     return NULL;
 }
@@ -1739,7 +1754,7 @@ PARSER(parse_extern) {
     } else {
         parser_err(ctx, start, pos, "I couldn't get a type for this extern");
     }
-    return NewAST(ctx, start, pos, Extern, .name=name, .bl_name=bl_name, .type=type);
+    return NewAST(ctx->file, start, pos, Extern, .name=name, .bl_name=bl_name, .type=type);
 }
 
 PARSER(parse_inline_block) {
@@ -1754,7 +1769,7 @@ PARSER(parse_inline_block) {
         spaces(&pos);
         if (!match(&pos, ";")) break;
     }
-    return NewAST(ctx, start, pos, Block, .statements=statements);
+    return NewAST(ctx->file, start, pos, Block, .statements=statements);
 }
 
 ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {

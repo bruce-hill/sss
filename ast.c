@@ -130,6 +130,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(TypePointer, F(pointed))
         T(TypeOptional, F(type))
         T(TypeMeasure, F(type), F(units))
+        T(TypeDSL, F(name))
         T(Cast, F(value), F(type))
         T(Bitcast, F(value), F(type))
         T(Struct, F(type), F(members))
@@ -141,6 +142,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))
         T(UnitDef, F(derived), F(base))
+        T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
 #undef BINOP
 #undef UNOP
 #undef F

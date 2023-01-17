@@ -70,7 +70,6 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     case Num32Type: return sizeof(float);
     case FunctionType:
     case PointerType: return sizeof(void*);
-    case DSLType: case TypeType: return sizeof(char*);
     case StructType: {
         ssize_t size = 0;
         ssize_t max_align = 0;

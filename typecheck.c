@@ -114,6 +114,12 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         }
         return t;
     }
+
+    case TypeDSL: {
+        auto dsl = Match(ast, TypeDSL);
+        return Type(ArrayType, .item_type=Type(CharType), .dsl=dsl->name);
+    }
+
     default: compile_err(env, ast, "This is not a Type value");
     }
 }
@@ -188,7 +194,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Interp: {
         return get_type(env, Match(ast, Interp)->value);
     }
-    case StringJoin: case StringLiteral: {
+    case StringJoin: {
+        return Type(ArrayType, .item_type=Type(CharType), .dsl=Match(ast, StringJoin)->dsl);
+    }
+    case StringLiteral: {
         return Type(ArrayType, .item_type=Type(CharType));
     }
     case Var: {
@@ -605,7 +614,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
-    case StructDef: case EnumDef: case UnitDef: {
+    case StructDef: case EnumDef: case UnitDef: case ConvertDef: {
         return Type(VoidType);
     }
 

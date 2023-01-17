@@ -17,8 +17,6 @@ struct bl_type_s {
         BoolType, CharType,
         IntType, Int32Type, Int16Type, Int8Type,
         NumType, Num32Type,
-        DSLType,
-        NamedType,
         TypeType,
         RangeType,
         ArrayType,
@@ -39,11 +37,9 @@ struct bl_type_s {
             istr_t units;
         } IntType, Int32Type, Int16Type, Int8Type, NumType, Num32Type;
         struct {
-            istr_t name;
-        } DSLType, NamedType;
-        struct {
         } TypeType, RangeType;
         struct {
+            istr_t dsl;
             bl_type_t *item_type;
         } ArrayType;
         struct {

@@ -8,7 +8,7 @@
 #include "span.h"
 #include "util.h"
 
-#define NewAST(ctx, _start, _end, ast_tag, ...) (new(ast_t, .span.file=(ctx)->file, .span.start=_start, .span.end=_end,\
+#define NewAST(_file, _start, _end, ast_tag, ...) (new(ast_t, .span.file=_file, .span.start=_start, .span.end=_end,\
                                                      .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 
@@ -37,12 +37,12 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeTuple,
     TypeFunction, TypePointer, TypeOptional,
-    TypeMeasure,
+    TypeMeasure, TypeDSL,
     Cast, Bitcast,
     Struct, StructDef, StructFieldDef, StructField,
     EnumDef, EnumField,
     Index, FieldAccess,
-    UnitDef,
+    UnitDef, ConvertDef,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -208,6 +208,9 @@ struct ast_s {
             istr_t units;
         } TypeMeasure;
         struct {
+            istr_t name;
+        } TypeDSL;
+        struct {
             ast_t *value, *type;
         } Cast, Bitcast;
         struct {
@@ -247,6 +250,10 @@ struct ast_s {
         struct {
             ast_t *derived, *base;
         } UnitDef;
+        struct {
+            istr_t var;
+            ast_t *source_type, *target_type, *body;
+        } ConvertDef;
     } __data;
 };
 

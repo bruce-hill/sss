@@ -17,16 +17,15 @@ static CORD type_to_cord(bl_type_t *t) {
         case CharType: return "Char";
         case NumType: return Match(t, NumType)->units ? intern_strf("Num<%s>", Match(t, NumType)->units) : "Num";
         case Num32Type: return Match(t, Num32Type)->units ? intern_strf("Num32<%s>", Match(t, Num32Type)->units) : "Num32";
-        case NamedType: {
-            auto named = Match(t, NamedType);
-            return named->name;
-        }
         case TypeType: return "Type";
         case RangeType: return "Range";
         case ArrayType: {
             auto list = Match(t, ArrayType);
-            if (list->item_type == Type(CharType))
+            if (list->item_type == Type(CharType)) {
+                if (list->dsl)
+                    return CORD_cat("$", list->dsl);
                 return "String";
+            }
             return CORD_cat("[", CORD_cat(type_to_cord(list->item_type), "]"));
         }
         case TableType: {

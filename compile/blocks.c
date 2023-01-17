@@ -249,6 +249,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             tmp.comprehension_callback = NULL;
             compile_statement(&tmp, block, *stmt);
             env->derived_units = tmp.derived_units;
+            env->conversions = tmp.conversions;
         }
     }
     return NULL;
