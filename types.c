@@ -131,6 +131,8 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     if (type_is_a(a, b)) return b;
     if (a->tag == AbortType) return non_optional(b);
     if (b->tag == AbortType) return non_optional(a);
+    if (a->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(Match(a, GeneratorType)->generated, b));
+    if (b->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(a, Match(b, GeneratorType)->generated));
     if (is_numeric(a) && is_numeric(b))
         return numtype_priority(a) >= numtype_priority(b) ? a : b;
     return NULL;
