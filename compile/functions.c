@@ -62,8 +62,9 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global
         append(params, param);
     }
 
+    bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
     return gcc_new_func(
-        env->ctx, ast_loc(env, def), is_global ? GCC_FUNCTION_EXPORTED : GCC_FUNCTION_INTERNAL,
+        env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : (is_global ? GCC_FUNCTION_EXPORTED : GCC_FUNCTION_INTERNAL),
         bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
 }
 

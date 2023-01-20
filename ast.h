@@ -132,6 +132,7 @@ struct ast_s {
             ast_t *ret_type;
             ast_t *body;
             bool is_exported;
+            bool is_inline;
         } FunctionDef;
         struct {
             List(istr_t) arg_names;

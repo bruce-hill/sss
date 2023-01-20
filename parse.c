@@ -35,7 +35,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","using","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","if","for","fail","extern","export","enum","else","do","deftype",
+    "pass","or","not","no","mod","macro","is","inline","if","for","fail","extern","export","enum","else","do","deftype",
     "def","bitcast","between","as","and", NULL,
 };
 
@@ -1642,6 +1642,11 @@ PARSER(parse_def) {
         is_exported = true;
 
     if (!match_word(&pos, "def")) return NULL;
+
+    bool is_inline = match_word(&pos, "inline");
+    if (is_exported && is_inline)
+        parser_err(ctx, start, pos, "Functions can't be both 'inline' and exported");
+
     spaces(&pos);
     istr_t name = get_id(&pos);
     if (!name) {
@@ -1690,7 +1695,8 @@ PARSER(parse_def) {
                                  "This function needs a body block");
         return NewAST(ctx->file, start, pos, FunctionDef,
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported);
+                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported,
+                      .is_inline=is_inline);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         return parse_rest_of_struct_def(ctx, start, &pos, name);
     } else if (match_word(&pos, "oneof")) { // Enum def Foo oneof {...}
