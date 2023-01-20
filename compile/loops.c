@@ -122,12 +122,12 @@ void compile_linked_iteration(
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
 
     // iter = obj
-    gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
+    gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("_iter"));
     gcc_assign(*block, NULL, iter_var, obj_val);
 
     // index = 1
     gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
-    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("index"));
+    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("_index"));
     gcc_assign(*block, NULL, index_var, one64);
 
     // goto (iter == NULL) ? end : body
@@ -139,11 +139,16 @@ void compile_linked_iteration(
     // body:
     gcc_block_t *loop_body_end = loop_body;
 
+    // Shadow loop variables so they can be mutated without breaking the loop's functionality
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64_t, fresh("index")),
+                 *iter_shadow = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
+    gcc_assign(loop_body, NULL, index_shadow, gcc_rval(index_var));
+    gcc_assign(loop_body, NULL, iter_shadow, gcc_rval(iter_var));
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_rval(index_var),
+        .key_lval = index_shadow,
         .value_type = Type(PointerType, .pointed=Match(iter_t, PointerType)->pointed, .is_optional=false),
-        .value_rval = gcc_rval(iter_var),
+        .value_lval = iter_shadow,
     };
 
     // body block
@@ -155,8 +160,7 @@ void compile_linked_iteration(
 
     // next:
     // index++, iter = iter->next
-    if (index_var)
-        gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+    gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
 
     gcc_struct_t *iter_struct = gcc_type_if_struct(bl_type_to_gcc(env, Match(iter_t, PointerType)->pointed));
     assert(iter_struct);

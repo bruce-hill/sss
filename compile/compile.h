@@ -29,7 +29,7 @@
 
 typedef struct {
     bl_type_t *key_type, *value_type;
-    gcc_rvalue_t *key_rval, *value_rval;
+    gcc_lvalue_t *key_lval, *value_lval;
 } iterator_info_t;
 typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t *info, void *userdata);
 

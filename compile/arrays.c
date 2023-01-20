@@ -197,16 +197,17 @@ void compile_array_iteration(
 
     // body:
     gcc_block_t *loop_body_end = loop_body;
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
+    gcc_assign(loop_body_end, NULL, index_shadow, gcc_rval(index_var));
     // item = *item_ptr
-    if (item_var)
-        gcc_assign(loop_body_end, NULL, item_var,
-                   gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
+    gcc_assign(loop_body_end, NULL, item_var,
+               gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
 
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_rval(index_var),
+        .key_lval = index_shadow,
         .value_type = item_t,
-        .value_rval = gcc_rval(item_var),
+        .value_lval = item_var,
     };
 
     // body block
@@ -217,7 +218,6 @@ void compile_array_iteration(
         gcc_jump(loop_body_end, NULL, loop_next);
 
     // next: index++, item_ptr = &item_ptr[stride]
-    assert(index_var);
     gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_assign(loop_next, NULL, item_ptr,
                gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));

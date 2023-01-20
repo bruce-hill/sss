@@ -70,7 +70,7 @@ void compile_range_iteration(
     // iter = range.first
     gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
     assert(range_struct);
-    gcc_lvalue_t *iter = gcc_local(func, NULL, i64_t, fresh("iter"));
+    gcc_lvalue_t *iter = gcc_local(func, NULL, i64_t, fresh("_iter"));
     gcc_assign(*block, NULL, iter,
                gcc_rvalue_access_field(range_val, NULL, gcc_get_field(range_struct, 0)));
 
@@ -93,7 +93,7 @@ void compile_range_iteration(
 
     // index = 1
     gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
-    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("index"));
+    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("_index"));
     gcc_assign(*block, NULL, index_var, one64);
 
     // goto ((last - iter)*sign < 0) ? body : end
@@ -110,11 +110,16 @@ void compile_range_iteration(
     // body:
     gcc_block_t *loop_body_end = loop_body;
 
+    // Shadow loop variables so they can be mutated without breaking the loop's functionality
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64_t, fresh("index")),
+                 *iter_shadow = gcc_local(func, NULL, i64_t, fresh("iter"));
+    gcc_assign(loop_body, NULL, index_shadow, gcc_rval(index_var));
+    gcc_assign(loop_body, NULL, iter_shadow, gcc_rval(iter));
     iterator_info_t info = {
         .key_type = Type(IntType),
-        .key_rval = gcc_rval(index_var),
+        .key_lval = index_shadow,
         .value_type = Type(IntType),
-        .value_rval = gcc_rval(iter),
+        .value_lval = iter_shadow,
     };
 
     // body block
