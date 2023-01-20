@@ -400,6 +400,9 @@ PARSER(parse_int) {
         pos += span;
     }
 
+    if (match(&pos, "e") || match(&pos, "f")) // floating point literal
+        return NULL;
+
     if (negative) i *= -1;
 
     if (match(&pos, "%")) {
@@ -564,7 +567,7 @@ PARSER(parse_num) {
         return NULL;
     else if (pos[len] == '.')
         len += 1 + strspn(pos + len + 1, "0123456789");
-    else
+    else if (pos[len] != 'e' && pos[len] != 'f' && pos[len] != '%')
         return NULL;
     if (pos[len] == 'e')
         len += 1 + strspn(pos + len + 1, "-0123456789_");
