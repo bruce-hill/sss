@@ -90,6 +90,14 @@ void compile_linked_iteration(
 {
     // for (auto iter = obj; iter; iter = iter->next)
     auto for_loop = Match(ast, For);
+
+    bool deref_key = for_loop->key && for_loop->key->tag == Dereference;
+    if (deref_key)
+        compile_err(env, for_loop->key, "I don't support dereferenced loop indexes for structs");
+    bool deref_value = for_loop->value && for_loop->value->tag == Dereference;
+    if (deref_value)
+        compile_err(env, for_loop->value, "I don't support dereferenced loop values for structs");
+
     ast_t *obj = for_loop->iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, fresh("body")),

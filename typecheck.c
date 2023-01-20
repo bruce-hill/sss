@@ -753,36 +753,47 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto for_loop = Match(ast, For);
         bl_type_t *iter_t = get_type(env, for_loop->iter);
         if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
-        hashmap_t *loop_bindings = hashmap_new();
-        loop_bindings->fallback = env->bindings;
+        bl_type_t *key_type, *value_type;
         switch (iter_t->tag) {
         case ArrayType: {
             auto list_t = Match(iter_t, ArrayType);
-            if (for_loop->key)
-                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
-            if (for_loop->value)
-                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=list_t->item_type));
+            key_type = Type(IntType), value_type = list_t->item_type;
             break;
         }
         case RangeType: {
-            if (for_loop->key)
-                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
-            if (for_loop->value)
-                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=Type(IntType)));
+            key_type = value_type = Type(IntType);
             break;
         }
         case StructType: {
             // TODO: check for .next field
-            if (for_loop->key)
-                hashmap_set(loop_bindings, Match(for_loop->key, Var)->name, new(binding_t, .type=Type(IntType)));
-            if (for_loop->value)
-                hashmap_set(loop_bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=Type(PointerType, .pointed=iter_t, .is_optional=false)));
+            key_type = Type(IntType);
+            value_type = Type(PointerType, .pointed=iter_t, .is_optional=false);
             break;
         }
         default:
             compile_err(env, for_loop->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
             break;
         }
+
+        hashmap_t *loop_bindings = hashmap_new();
+        loop_bindings->fallback = env->bindings;
+        if (for_loop->key) {
+            ast_t *key = for_loop->key;
+            if (key->tag == Dereference) {
+                key = Match(key, Dereference)->value;
+                key_type = Type(PointerType, .pointed=key_type, .is_optional=false);
+            }
+            hashmap_set(loop_bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
+        }
+        if (for_loop->value) {
+            ast_t *value = for_loop->value;
+            if (value->tag == Dereference) {
+                value = Match(value, Dereference)->value;
+                value_type = Type(PointerType, .pointed=value_type, .is_optional=false);
+            }
+            hashmap_set(loop_bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
+        }
+        
         env_t loop_env = *env;
         loop_env.bindings = loop_bindings;
         bl_type_t *t = get_type(&loop_env, for_loop->body);

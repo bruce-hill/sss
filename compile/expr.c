@@ -19,16 +19,20 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
+static istr_t loop_var_name(ast_t *ast) {
+    return ast->tag == Var ? Match(ast, Var)->name : Match(Match(ast, Dereference)->value, Var)->name;
+}
+
 static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
 {
     auto for_loop = Match((ast_t*)data, For);
     if (for_loop->key)
-        hashmap_set(env->bindings, Match(for_loop->key, Var)->name,
+        hashmap_set(env->bindings, loop_var_name(for_loop->key),
                     new(binding_t, .rval=gcc_rval(info->key_lval), .lval=info->key_lval, .type=info->key_type));
 
 
     if (for_loop->value)
-        hashmap_set(env->bindings, Match(for_loop->value, Var)->name,
+        hashmap_set(env->bindings, loop_var_name(for_loop->value),
                     new(binding_t, .rval=gcc_rval(info->value_lval), .lval=info->value_lval, .type=info->value_type));
 
     if (for_loop->body) {

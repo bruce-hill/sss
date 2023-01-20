@@ -36,6 +36,14 @@ void compile_range_iteration(
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
 {
     auto for_loop = Match(ast, For);
+
+    bool deref_key = for_loop->key && for_loop->key->tag == Dereference;
+    if (deref_key)
+        compile_err(env, for_loop->key, "I don't support dereferenced loop indexes for ranges");
+    bool deref_value = for_loop->value && for_loop->value->tag == Dereference;
+    if (deref_value)
+        compile_err(env, for_loop->value, "I don't support dereferenced loop values for ranges");
+
     ast_t *range = for_loop->iter;
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *loop_body = gcc_new_block(func, fresh("range_body")),

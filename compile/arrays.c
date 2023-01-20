@@ -120,6 +120,10 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_rval(array_var);
 }
 
+static istr_t loop_var_name(ast_t *ast) {
+    return ast->tag == Var ? Match(ast, Var)->name : Match(Match(ast, Dereference)->value, Var)->name;
+}
+
 void compile_array_iteration(
     env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
@@ -134,15 +138,20 @@ void compile_array_iteration(
                 *loop_next = gcc_new_block(func, fresh("loop_next")),
                 *loop_end = gcc_new_block(func, fresh("loop_end"));
 
+    bool deref_key = for_loop->key && for_loop->key->tag == Dereference;
+    if (deref_key)
+        compile_err(env, for_loop->key, "I don't support dereferenced loop indexes for arrays");
+    bool deref_value = for_loop->value && for_loop->value->tag == Dereference;
+
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
     loop_env.bindings->fallback = env->bindings;
     NEW_LIST(istr_t, label_names);
     append(label_names, intern_str("for"));
     if (for_loop->key)
-        append(label_names, Match(for_loop->key, Var)->name);
+        append(label_names, loop_var_name(for_loop->key));
     if (for_loop->value)
-        append(label_names, Match(for_loop->value, Var)->name);
+        append(label_names, loop_var_name(for_loop->value));
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
@@ -169,12 +178,14 @@ void compile_array_iteration(
     }
     *block = NULL;
     bl_type_t *item_t = Match(array_t, ArrayType)->item_type;
+    if (deref_value)
+        item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
 
     // item_ptr = array->items
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_array_t);
     assert(array_struct);
-    gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+    gcc_lvalue_t *item_ptr = gcc_local(func, NULL, deref_value ? gcc_item_t : gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
     gcc_assign(loop_preamble, NULL, item_ptr,
                gcc_rvalue_access_field(array, NULL, gcc_get_field(array_struct, 0)));
     // len = array->len
@@ -199,9 +210,10 @@ void compile_array_iteration(
     gcc_block_t *loop_body_end = loop_body;
     gcc_lvalue_t *index_shadow = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
     gcc_assign(loop_body_end, NULL, index_shadow, gcc_rval(index_var));
-    // item = *item_ptr
-    gcc_assign(loop_body_end, NULL, item_var,
-               gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
+    // item = *item_ptr (or item = item_ptr)
+    gcc_rvalue_t *item_rval = deref_value ? gcc_rval(item_ptr)
+        : gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
+    gcc_assign(loop_body_end, NULL, item_var, item_rval);
 
     iterator_info_t info = {
         .key_type = Type(IntType),
@@ -225,8 +237,7 @@ void compile_array_iteration(
     // goto is_done ? end : between
     gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
     // between:
-    gcc_assign(loop_between, NULL, item_var,
-               gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL)));
+    gcc_assign(loop_between, NULL, item_var, item_rval);
     if (between_compiler)
         between_compiler(env, &loop_between, &info, data);
 
