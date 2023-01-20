@@ -463,7 +463,7 @@ PARSER(parse_func_type) {
         spaces(&pos);
         if (!match(&pos, ",")) break;
     }
-    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function call");
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function type");
     spaces(&pos);
     if (!match(&pos, "=>")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, parse_type);
