@@ -278,7 +278,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         int64_t len = length(targets);
         NEW_LIST(gcc_lvalue_t*, lvals);
         foreach (targets, lhs, _) {
-            append(lvals, get_lvalue(env, block, *lhs));
+            append(lvals, get_lvalue(env, block, *lhs, false));
         }
         gcc_func_t *func = gcc_block_func(*block);
         NEW_LIST(gcc_rvalue_t*, rvals);
@@ -1084,7 +1084,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         bl_type_t *index_t = get_type(env, indexing->index);
         if (is_integral(index_t)) {
-            return gcc_rval(get_lvalue(env, block, ast));
+            return gcc_rval(get_lvalue(env, block, ast, true));
         } else if (index_t->tag == RangeType) {
             // Slicing (currently not implemented as an Lvalue)
             gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);

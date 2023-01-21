@@ -58,7 +58,7 @@ void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_typ
 // A ternary expression (a ? b : c)
 gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val);
 // Convert an AST into an lvalue
-gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices);
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 

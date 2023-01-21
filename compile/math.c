@@ -154,10 +154,12 @@ static void math_update_rec(
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
         gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
+        gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
 
         gcc_type_t *rhs_gcc_t = bl_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
         gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
+        gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
 
         gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_rvalue_t *len = ternary(block,
@@ -176,10 +178,11 @@ static void math_update_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
+#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), stride))
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
-        gcc_lvalue_t *lhs_item = gcc_array_access(env->ctx, NULL, lhs_item_ptr, gcc_rval(offset));
+        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, lhs_stride32);
         gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, 0));
-        gcc_rvalue_t *rhs_item = gcc_rval(gcc_array_access(env->ctx, NULL, rhs_item_ptr, gcc_rval(offset)));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride32));
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item,
                         op, Match(rhs_t, ArrayType)->item_type, rhs_item);
@@ -193,6 +196,7 @@ static void math_update_rec(
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
         gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
 
         gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_func_t *func = gcc_block_func(*block);
@@ -209,7 +213,8 @@ static void math_update_rec(
 
         *block = loop_body;
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
-        gcc_lvalue_t *lhs_item = gcc_array_access(env->ctx, NULL, lhs_item_ptr, gcc_rval(offset));
+        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, stride);
+#undef ITEM
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, rhs_t, rhs);
         gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
@@ -260,7 +265,7 @@ void math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     ast_t *lhs = ast->__data.AddUpdate.lhs, *rhs = ast->__data.AddUpdate.rhs;
     // End unsafe
 
-    gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs);
+    gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs, true);
     gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
     gcc_binary_op_e op;

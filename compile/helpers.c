@@ -894,7 +894,7 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
     return gcc_rval(result);
 }
 
-gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
+gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices)
 {
     (void)block;
     switch (ast->tag) {
@@ -916,8 +916,16 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded);
         bl_type_t *fielded_t = get_type(env, access->fielded);
+        if (fielded_t->tag == ArrayType) {
+            if (!allow_slices)
+                compile_err(env, ast, "I can't assign to array slices");
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
+            gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
+            return slice;
+        }
+        gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded, true);
       keep_going:
         switch (fielded_t->tag) { 
         case PointerType: {
@@ -956,10 +964,16 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
         bl_type_t *index_t = get_type(env, indexing->index);
-        if (index_t->tag == RangeType)
-            compile_err(env, ast, "I don't yet support assigning to array slices, but it may come soon!");
-        else if (!is_integral(index_t))
+        if (index_t->tag == RangeType) {
+            if (!allow_slices)
+                compile_err(env, ast, "I can't assign to array slices");
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
+            gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
+            return slice;
+        } else if (!is_integral(index_t)) {
             compile_err(env, indexing->index, "I only support indexing arrays by integers, not %s", type_to_string(index_t));
+        }
         
         gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
