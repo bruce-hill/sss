@@ -694,7 +694,8 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
-    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index);
+    bool unchecked = match(&pos,"!");
+    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
 }
 
 PARSER(parse_if) {

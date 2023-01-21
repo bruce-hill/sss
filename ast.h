@@ -248,6 +248,7 @@ struct ast_s {
         } EnumField;
         struct {
             ast_t *indexed, *index;
+            bool unchecked;
         } Index;
         struct {
             ast_t *fielded;
