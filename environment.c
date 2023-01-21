@@ -235,15 +235,6 @@ static void define_int_methods(env_t *env)
 
         load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
         load_method(env, ns, "random", "random", i64);
-        bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
-        load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",i64,0), ARG("digits",i64,0));
-        load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",i64,0),
-                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
-                    ARG("uppercase",Type(BoolType),FakeAST(Bool, .b=true)),
-                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
-        load_method(env, ns, "bl_string_octal", "octal", str_t, ARG("i",i64,0),
-                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
-                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
 
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
@@ -275,6 +266,21 @@ static void define_int_methods(env_t *env)
         gcc_type_t *gcc_i8 = bl_type_to_gcc(env, i8);
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
+    }
+
+    // Stringifying methods
+    bl_type_t *types[] = {Type(Int8Type), Type(Int16Type), Type(Int32Type), Type(IntType)};
+    bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    for (size_t i = 0; i < sizeof(types)/sizeof(types[0]); i++) {
+        hashmap_t *ns = get_namespace(env, types[i]);
+        load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",Type(IntType),0));
+        load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",types[i],0),
+                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("uppercase",Type(BoolType),FakeAST(Bool, .b=true)),
+                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
+        load_method(env, ns, "bl_string_octal", "octal", str_t, ARG("i",types[i],0),
+                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
     }
 }
 
