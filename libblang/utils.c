@@ -144,7 +144,7 @@ int range_print(range_t range, FILE *f, void *stack) {
     else if (range.stride != 1)
         printed += fprintf(f, "..+%ld", range.stride);
 
-    if (range.last != INT64_MIN)
+    if (range.last != INT64_MAX)
         printed += fprintf(f, "..%ld", range.last);
     else
         printed += fprintf(f, "..");
@@ -159,7 +159,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         return (string_t){array.data, 0, 1};
     } else if (range.stride < 0) {
         if (range.first == INT64_MIN) range.first = array.length;
-        if (range.last == INT64_MIN) range.last = 1;
+        if (range.last == INT64_MAX) range.last = 1;
         if (range.first > array.length) {
             // printf("Range starting after array\n");
             range.first = (array.length % (-array.stride)) + (range.first % (-array.stride));
@@ -170,7 +170,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         }
     } else {
         if (range.first == INT64_MIN) range.first = 1;
-        if (range.last == INT64_MIN) range.last = array.length;
+        if (range.last == INT64_MAX) range.last = array.length;
         if (range.first < 1) {
             // printf("Range starting before array\n");
             range.first = range.first % array.stride;

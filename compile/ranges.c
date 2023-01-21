@@ -26,7 +26,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_rvalue_t *values[] = {
         range->first ? compile_expr(env, block, range->first) : gcc_int64(env->ctx, INT64_MIN),
         range->step ? compile_expr(env, block, range->step) : gcc_int64(env->ctx, 1),
-        range->last ? compile_expr(env, block, range->last) : gcc_int64(env->ctx, INT64_MIN),
+        range->last ? compile_expr(env, block, range->last) : gcc_int64(env->ctx, INT64_MAX),
     };
     return gcc_struct_constructor(env->ctx, NULL, range_t, 3, NULL, values);
 }
