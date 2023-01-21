@@ -1091,11 +1091,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             gcc_type_t *array_gcc_t = bl_type_to_gcc(env, indexed_t);
             if (indexing->index->tag == Range) {
-                gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
-                gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
                 auto range = Match(indexing->index, Range);
-#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
                 if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
+                    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+                    gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
+#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
                     gcc_func_t *func = gcc_block_func(*block);
                     gcc_rvalue_t *old_items = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 0));
                     gcc_rvalue_t *offset;
@@ -1136,8 +1136,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     }
 
                     return gcc_rval(slice);
-                }
 #undef SUB
+                }
             }
 
             // If we're not in the optimized case, fall back to the C function:
