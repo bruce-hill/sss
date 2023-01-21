@@ -251,6 +251,7 @@ string_t bl_string_number_format(double d, int64_t precision) {
     snprintf(str, len+1, "%.*f", (int)precision, d);
     return (string_t){.data=str, .length=len, .stride=1};
 }
+string_t bl_string_number_format32(float f, int64_t precision) { return bl_string_number_format((double)f, precision); }
 
 string_t bl_string_scientific_notation(double d, int64_t precision) {
     int len = snprintf(NULL, 0, "%.*e", (int)precision, d);
@@ -258,6 +259,7 @@ string_t bl_string_scientific_notation(double d, int64_t precision) {
     snprintf(str, len+1, "%.*e", (int)precision, d);
     return (string_t){.data=str, .length=len, .stride=1};
 }
+string_t bl_string_scientific_notation32(float f, int64_t precision) { return bl_string_scientific_notation((double)f, precision); }
 
 string_t bl_string_int_format(int64_t i, int64_t digits) {
     int len = snprintf(NULL, 0, "%0*ld", (int)digits, i);

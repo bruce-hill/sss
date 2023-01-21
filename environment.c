@@ -207,6 +207,11 @@ static void define_num_types(env_t *env)
     load_method(env, ns64, "bl_string_scientific_notation", "scientific", str_t,
                 ARG("num",num64_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
 
+    load_method(env, ns32, "bl_string_number_format32", "format", str_t,
+                ARG("num",num32_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+    load_method(env, ns32, "bl_string_scientific_notation32", "scientific", str_t,
+                ARG("num",num32_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+
     { // Num NaN and Infinity:
         gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num64_type);
         hashmap_t *ns = get_namespace(env, num64_type);
