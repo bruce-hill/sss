@@ -188,14 +188,6 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
     if (len > array.length/range.stride) len = array.length/range.stride;
     if (len < 0) len = -len;
 
-    // printf("\n");
-    // printf("First = %ld\n", range.first);
-    // printf("Array stride = %d range stride = %ld\n", array.stride, range.stride);
-    // printf("Len = %ld\n", len);
-    // printf("Item size = %ld\n", item_size);
-    // printf("Offset %ld\n", item_size*(range.first-1));
-    // printf("Data before: %p after: %p\n", (void*)array.data, (void*)(array.data + item_size*(range.first-1)));
-
     return (string_t){
         (char*)array.data + item_size*(range.first-1),
         (int32_t)len,

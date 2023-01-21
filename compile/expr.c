@@ -1087,11 +1087,63 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_rval(get_lvalue(env, block, ast));
         } else if (index_t->tag == RangeType) {
             // Slicing (currently not implemented as an Lvalue)
+            gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
+
+            gcc_type_t *array_gcc_t = bl_type_to_gcc(env, indexed_t);
+            if (indexing->index->tag == Range) {
+                gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+                gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
+                auto range = Match(indexing->index, Range);
+#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
+                if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
+                    gcc_func_t *func = gcc_block_func(*block);
+                    gcc_rvalue_t *old_items = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 0));
+                    gcc_rvalue_t *offset;
+                    if (range->first)
+                        offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
+                    else
+                        offset = gcc_zero(env->ctx, i32_t);
+                    gcc_rvalue_t *items = gcc_lvalue_address(gcc_array_access(env->ctx, loc, old_items, offset), loc);
+                    gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, fresh("slice"));
+                    // assign slice.items and slice.stride
+                    gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 0)), items);
+                    gcc_rvalue_t *old_stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
+                    gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 2)),
+                               old_stride);
+
+                    // len = MIN(array_len, range.last)-first
+                    gcc_rvalue_t *array_len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
+                    if (range->last) {
+                        gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
+                                    *range_shorter = gcc_new_block(func, "range_shorter"),
+                                    *len_assigned = gcc_new_block(func, "len_assigned");
+                        gcc_rvalue_t *range_len = gcc_cast(env->ctx, loc, compile_expr(env, block, range->last), i32_t);
+
+                        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, array_len, range_len), array_shorter, range_shorter);
+                        
+                        gcc_assign(array_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                                   SUB(array_len, offset));
+                        gcc_jump(array_shorter, loc, len_assigned);
+
+                        gcc_assign(range_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                                   SUB(range_len, offset));
+                        gcc_jump(range_shorter, loc, len_assigned);
+
+                        *block = len_assigned;
+                    } else {
+                        gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                                   SUB(array_len, offset));
+                    }
+
+                    return gcc_rval(slice);
+                }
+#undef SUB
+            }
+
+            // If we're not in the optimized case, fall back to the C function:
             gcc_rvalue_t *index = compile_expr(env, block, indexing->index);
             gcc_type_t *str_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
             gcc_func_t *slice_fn = hashmap_gets(env->global_funcs, "range_slice");
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
-            gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
             return gcc_bitcast(
                 env->ctx, loc,
                 gcc_callx(
@@ -1099,7 +1151,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_bitcast(env->ctx, loc, obj, str_gcc_t),
                     index,
                     gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(indexed_t, ArrayType)->item_type))),
-                gcc_t);
+                array_gcc_t);
         } else {
             compile_err(env, indexing->index, "I only support indexing arrays by integers, not %s", type_to_string(index_t));
         }

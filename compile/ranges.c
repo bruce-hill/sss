@@ -139,8 +139,7 @@ void compile_range_iteration(
 
     // next:
     // index++, iter+=step
-    if (index_var)
-        gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+    gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
     gcc_update(loop_next, NULL, iter, GCC_BINOP_PLUS, gcc_rval(step));
 
     // goto is_done ? end : between
