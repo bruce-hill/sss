@@ -55,6 +55,8 @@ gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rval
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
 // Coerce two numbers into the larger representation
 void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
+// A ternary expression (a ? b : c)
+gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val);
 // Convert an AST into an lvalue
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast);
 // Apply optional/numeric promotion when possible

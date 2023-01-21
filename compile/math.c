@@ -141,7 +141,81 @@ static void math_update_rec(
         compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
 
-    if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
+    if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
+        // Use the minimum common length:
+        // [1,2,3] += [10,20] ==> [11,22,3]
+        // [1,2,3] += [10,20,30,40] ==> [11,22,33]
+
+        // Pseudocode:
+        // len = MIN(lhs->len, rhs->len)
+        // for (i = 0; i < len; i++)
+        //     update(&lhs->data[i], &rhs->data[i]);
+
+        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
+
+        gcc_type_t *rhs_gcc_t = bl_type_to_gcc(env, rhs_t);
+        gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
+        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
+
+        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+        gcc_rvalue_t *len = ternary(block,
+                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
+                                    i32, lhs_len32, rhs_len32);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+
+        gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
+                           loop_body, loop_end);
+
+        *block = loop_body;
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
+        gcc_lvalue_t *lhs_item = gcc_array_access(env->ctx, NULL, lhs_item_ptr, gcc_rval(offset));
+        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, 0));
+        gcc_rvalue_t *rhs_item = gcc_rval(gcc_array_access(env->ctx, NULL, rhs_item_ptr, gcc_rval(offset)));
+
+        math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item,
+                        op, Match(rhs_t, ArrayType)->item_type, rhs_item);
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+        *block = loop_end;
+    } else if (lhs_t->tag == ArrayType) {
+        // Pseudocode:
+        // for (i = 0; i < lhs->len; i++)
+        //     update(&lhs->data[i], rhs)
+        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
+
+        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+
+        gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
+                           loop_body, loop_end);
+
+        *block = loop_body;
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
+        gcc_lvalue_t *lhs_item = gcc_array_access(env->ctx, NULL, lhs_item_ptr, gcc_rval(offset));
+
+        math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, rhs_t, rhs);
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+        *block = loop_end;
+    } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (with_units(lhs_t, NULL) != with_units(rhs_t, NULL))
             compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
@@ -175,7 +249,7 @@ static void math_update_rec(
                         type_to_string(rhs_t), type_to_string(lhs_t));
         return gcc_update(*block, loc, lhs, op, rhs);
     } else {
-        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+        compile_err(env, ast, "I don't know how to do math update operations between %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
 }

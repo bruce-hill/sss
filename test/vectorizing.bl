@@ -1,0 +1,12 @@
+def Vec{x,y:Num}
+
+// Vectorized updates:
+vecs := [Vec{1,2}, Vec{3,4}, Vec{5,6}]
+
+vecs *= 2
+say "$vecs"
+
+vecs += [Vec{10,20}]
+say "$vecs"
+vecs += [Vec{100,100}, Vec{200,200}, Vec{300,300}, Vec{400,400}]
+say "$vecs"

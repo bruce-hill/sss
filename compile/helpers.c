@@ -873,6 +873,27 @@ void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_typ
     }
 }
 
+gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *is_true = gcc_new_block(func, fresh("is_true")),
+                *is_false = gcc_new_block(func, fresh("is_false")),
+                *got_value = gcc_new_block(func, fresh("got_value"));
+
+    gcc_lvalue_t *result = gcc_local(func, NULL, gcc_t, fresh("result"));
+    gcc_jump_condition(*block, NULL, condition, is_true, is_false);
+    *block = NULL;
+
+    gcc_assign(is_true, NULL, result, true_val);
+    gcc_jump(is_true, NULL, got_value);
+
+    gcc_assign(is_false, NULL, result, false_val);
+    gcc_jump(is_false, NULL, got_value);
+
+    *block = got_value;
+    return gcc_rval(result);
+}
+
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     (void)block;
