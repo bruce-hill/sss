@@ -58,3 +58,8 @@ n := 5.0
 say "$:(n.sqrt())"
 say "$:(Num32.atan2(x=1.f32, y=2.f32))"
 say "$:(n.max(10.))"
+
+n := 123.4567
+say "$:n $:(n.format(precision=12)) $:(n.scientific())"
+x := 12345
+say "$:x $:(x.format(12)) $:(x.hex()) $:(x.octal())"

@@ -15,6 +15,49 @@
 #include "compile/compile.h"
 #include "compile/libgccjit_abbrev.h"
 
+#define load_global_func(env, t_ret, name, ...) _load_global_func(env, t_ret, name, \
+                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
+                 (gcc_param_t*[]){__VA_ARGS__}, 0)
+#define load_global_var_func(env, t_ret, name, ...) _load_global_func(env, t_ret, name, \
+                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
+                 (gcc_param_t*[]){__VA_ARGS__}, 1)
+
+static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
+    hashmap_set(env->global_funcs, intern_str(name),
+                gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
+}
+
+typedef struct {
+    const char *name;
+    bl_type_t *t;
+    ast_t *default_val;
+} bl_arg_t;
+#define ARG(...) ((bl_arg_t){__VA_ARGS__})
+
+static inline void _load_method(
+    env_t *env, hashmap_t *ns, const char *extern_name, const char *method_name, bl_type_t *ret_t, int nargs, bl_arg_t args[nargs]
+) {
+    gcc_param_t *params[nargs];
+    NEW_LIST(istr_t, arg_name_list);
+    NEW_LIST(bl_type_t*, arg_type_list);
+    NEW_LIST(ast_t*, arg_default_list);
+    for (int i = 0; i < nargs; i++) {
+        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, args[i].t), args[i].name);
+        APPEND(arg_name_list, intern_str(args[i].name));
+        APPEND(arg_type_list, args[i].t);
+        APPEND(arg_default_list, args[i].default_val);
+    }
+    
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, ret_t),
+                                    extern_name, nargs, params, 0);
+    bl_type_t *fn_type = Type(FunctionType, .arg_types=arg_type_list, .arg_names=arg_name_list, .arg_defaults=arg_default_list, .ret=ret_t);
+    hashmap_set(ns, intern_str(method_name), new(binding_t, .is_global=true, .type=fn_type, .func=func));
+}
+
+#define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
+                 sizeof((bl_arg_t[]){__VA_ARGS__})/sizeof(bl_arg_t),\
+                 (bl_arg_t[]){__VA_ARGS__})
+
 // Load a bunch of global (external) functions
 static void load_global_functions(env_t *env)
 {
@@ -28,51 +71,30 @@ static void load_global_functions(env_t *env)
                *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
                *t_range = bl_type_to_gcc(env, Type(RangeType)),
                *t_bl_str = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-    hashmap_t *funcs = env->global_funcs;
 
 #define PARAM(type, name) gcc_new_param(ctx, NULL, type, name)
-#define LOAD_FUNC(t_ret, name, variadic, ...) hashmap_set(funcs, intern_str(name), \
-    gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, \
-                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
-                 (gcc_param_t*[]){__VA_ARGS__}, variadic))
-    LOAD_FUNC(t_void_ptr, "GC_malloc", 0, PARAM(t_size, "size"));
-    LOAD_FUNC(t_void_ptr, "GC_malloc_atomic", 0, PARAM(t_size, "size"));
-    LOAD_FUNC(t_void_ptr, "GC_realloc", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
-    LOAD_FUNC(t_void_ptr, "memcpy", 0, PARAM(t_void_ptr, "dest"), PARAM(t_void_ptr, "src"), PARAM(t_size, "size"));
-    LOAD_FUNC(t_file, "open_memstream", 0, PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
-    LOAD_FUNC(t_void, "free", 0, PARAM(t_void_ptr, "ptr"));
-    LOAD_FUNC(t_int, "fwrite", 0, PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
-    LOAD_FUNC(t_int, "fputs", 0, PARAM(t_str, "str"), PARAM(t_file, "file"));
-    LOAD_FUNC(t_int, "fputc", 0, PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
-    LOAD_FUNC(t_int, "fprintf", 1, PARAM(t_file, "file"), PARAM(t_str, "format"));
-    LOAD_FUNC(t_int, "fflush", 0, PARAM(t_file, "file"));
-    LOAD_FUNC(t_int, "fclose", 0, PARAM(t_file, "file"));
-    LOAD_FUNC(t_str, "intern_str", 0, PARAM(t_str, "str"));
-    LOAD_FUNC(t_str, "intern_strn", 0, PARAM(t_str, "str"), PARAM(t_size, "length"));
-    LOAD_FUNC(t_str, "intern_strf", 1, PARAM(t_str, "fmt"));
-    LOAD_FUNC(t_size, "intern_len", 0, PARAM(t_str, "str"));
-    LOAD_FUNC(t_void, "fail", 1, PARAM(t_str, "message"));
-    LOAD_FUNC(t_double, "sane_fmod", 1, PARAM(t_double, "num"), PARAM(t_double, "modulus"));
-    LOAD_FUNC(t_int, "range_print", 1, PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
+    load_global_func(env, t_void_ptr, "GC_malloc", PARAM(t_size, "size"));
+    load_global_func(env, t_void_ptr, "GC_malloc_atomic", PARAM(t_size, "size"));
+    load_global_func(env, t_void_ptr, "GC_realloc", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
+    load_global_func(env, t_void_ptr, "memcpy", PARAM(t_void_ptr, "dest"), PARAM(t_void_ptr, "src"), PARAM(t_size, "size"));
+    load_global_func(env, t_file, "open_memstream", PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
+    load_global_func(env, t_void, "free", PARAM(t_void_ptr, "ptr"));
+    load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
+    load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
+    load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
+    load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
+    load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
+    load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
+    load_global_func(env, t_str, "intern_str", PARAM(t_str, "str"));
+    load_global_func(env, t_str, "intern_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
+    load_global_var_func(env, t_str, "intern_strf", PARAM(t_str, "fmt"));
+    load_global_func(env, t_size, "intern_len", PARAM(t_str, "str"));
+    load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
+    load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
+    load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
     hashmap_set(env->print_funcs, Type(RangeType), hashmap_get(env->global_funcs, intern_str("range_print")));
-    LOAD_FUNC(t_bl_str, "range_slice", 0, PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
-#undef LOAD_FUNC
+    load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
 #undef PARAM
-}
-
-static void extern_method(env_t *env, const char *extern_name, bl_type_t *t, const char *method_name, bl_type_t *fn_type, int is_vararg)
-{
-    auto fn = Match(fn_type, FunctionType);
-    gcc_param_t *params[LIST_LEN(fn->arg_types)];
-    for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
-        istr_t arg_name = fn->arg_names ? LIST_ITEM(fn->arg_names, i) : fresh("arg");
-        bl_type_t *arg_type = LIST_ITEM(fn->arg_types, i);
-        params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, arg_type), arg_name);
-    }
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, fn->ret),
-                                    extern_name, LIST_LEN(fn->arg_types), params, is_vararg);
-    hashmap_t *ns = get_namespace(env, t);
-    hashmap_set(ns, intern_str(method_name), new(binding_t, .is_global=true, .type=fn_type, .func=func));
 }
 
 static bl_type_t *define_string_type(env_t *env)
@@ -83,52 +105,36 @@ static bl_type_t *define_string_type(env_t *env)
     hashmap_set(env->bindings, intern_str("String"), binding);
     hashmap_set(env->bindings, str_type, binding);
 
-    extern_method(env, "bl_string_uppercased", str_type, "uppercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
-    extern_method(env, "bl_string_lowercased", str_type, "lowercased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
-    extern_method(env, "bl_string_capitalized", str_type, "capitalized",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
-    extern_method(env, "bl_string_titlecased", str_type, "titlecased",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type), .arg_names=LIST(istr_t, intern_str("str")), .ret=str_type), 0);
-    extern_method(env, "bl_string_quoted", str_type, "quoted",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, Type(PointerType, .pointed=Type(CharType), .is_optional=true), Type(BoolType)),
-                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("dsl"), intern_str("colorize")),
-                       .arg_defaults=LIST(ast_t*, NULL, FakeAST(Nil, .type=FakeAST(Var, .name=intern_str("Char"))), FakeAST(Bool, .b=false)),
-                       .ret=str_type), 0);
-    extern_method(env, "bl_string_starts_with", str_type, "starts_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type),
-                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("prefix")), 
-                       .ret=Type(BoolType)), 0);
-    extern_method(env, "bl_string_ends_with", str_type, "ends_with",
-                  Type(FunctionType, .arg_types=LIST(bl_type_t*, str_type, str_type),
-                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("suffix")), 
-                       .ret=Type(BoolType)), 0);
-    extern_method(env, "bl_string_trimmed", str_type, "trimmed",
-                  Type(FunctionType,
-                       .arg_types=LIST(bl_type_t*, str_type, str_type, Type(BoolType), Type(BoolType)),
-                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("chars"), intern_str("trim_left"), intern_str("trim_right")),
-                       .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=intern_str(" \t\r\n")))),
-                                          FakeAST(Bool, .b=true), FakeAST(Bool, .b=true)),
-                       .ret=str_type), 0);
-    extern_method(env, "bl_string_replace", str_type, "replace",
-                  Type(FunctionType,
-                       .arg_types=LIST(bl_type_t*, str_type, str_type, str_type, Type(IntType)),
-                       .arg_names=LIST(istr_t, intern_str("str"), intern_str("pattern"), intern_str("replacement"), intern_str("limit")),
-                       .arg_defaults=LIST(ast_t*, NULL, NULL, NULL, FakeAST(Int, .i=-1, .precision=64)),
-                       .ret=str_type), 0);
+    hashmap_t *ns = get_namespace(env, str_type);
+    load_method(env, ns, "bl_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
+    load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
+    load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
+    load_method(env, ns, "bl_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
+    load_method(env, ns, "bl_string_quoted", "quoted", str_type,
+                ARG("str",str_type,0),
+                ARG("dsl", Type(PointerType, .pointed=Type(CharType), .is_optional=true), FakeAST(Nil, .type=FakeAST(Var, .name=intern_str("Char")))),
+                ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
+    load_method(env, ns, "bl_string_starts_with", "starts_with", str_type, ARG("str",str_type,0), ARG("prefix",str_type,0));
+    load_method(env, ns, "bl_string_ends_with", "ends_with", str_type, ARG("str",str_type,0), ARG("suffix",str_type,0));
+    load_method(env, ns, "bl_string_trimmed", "trimmed", str_type,
+                ARG("str",str_type,0),
+                ARG("chars",str_type,FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=intern_str(" \t\r\n"))))),
+                ARG("trim_left",Type(BoolType),FakeAST(Bool,.b=true)),
+                ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
+    load_method(env, ns, "bl_string_replace", "replace", str_type,
+                ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",Type(IntType),FakeAST(Int,.i=-1,.precision=64)));
 
     return str_type;
 }
 
 static void define_num_types(env_t *env)
 {
-    bl_type_t *num_type = Type(NumType);
+    bl_type_t *num64_type = Type(NumType);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
-        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num_type);
+        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num64_type);
         hashmap_set(env->bindings, intern_str("Num"), binding);
-        hashmap_set(env->bindings, num_type, binding);
+        hashmap_set(env->bindings, num64_type, binding);
     }
 
     bl_type_t *num32_type = Type(Num32Type);
@@ -139,26 +145,27 @@ static void define_num_types(env_t *env)
         hashmap_set(env->bindings, num32_type, binding);
     }
 
-    const char *unary_methods[][2] = {
-        {"acos"},{"asin"},{"atan"},{"cos"},{"sin"},{"tan"},{"cosh"},{"sinh"},
-        {"tanh"},{"acosh"},{"asinh"},{"atanh"},{"exp"},{"log"},{"log10"},
-        {"exp10"},{"expm1"}, {"log1p"}, {"logb"}, {"exp2"}, {"log2"},
-        {"sqrt"}, {"cbrt"}, {"ceil"}, {"fabs", "abs"}, {"floor"},
-        {"significand"}, {"j0"}, {"j1"}, {"y0"}, {"y1"}, {"erf"}, {"erfc"},
-        {"tgamma"}, {"rint"}, {"nextdown","next_lowest"}, {"nextup","next_highest"}, {"round"}, {"trunc","truncate"},
+    hashmap_t *ns64 = get_namespace(env, num64_type);
+    hashmap_t *ns32 = get_namespace(env, num32_type);
+
+    struct { const char *c_name, *bl_name; } unary_methods[] = {
+        {"acos",0},{"asin",0},{"atan",0},{"cos",0},{"sin",0},{"tan",0},{"cosh",0},{"sinh",0},
+        {"tanh",0},{"acosh",0},{"asinh",0},{"atanh",0},{"exp",0},{"log",0},{"log10",0},
+        {"exp10",0},{"expm1",0}, {"log1p",0}, {"logb",0}, {"exp2",0}, {"log2",0},
+        {"sqrt",0}, {"cbrt",0}, {"ceil",0}, {"fabs", "abs"}, {"floor",0},
+        {"significand",0}, {"j0",0}, {"j1",0}, {"y0",0}, {"y1",0}, {"erf",0}, {"erfc",0},
+        {"tgamma",0}, {"rint",0}, {"nextdown","next_lowest"}, {"nextup","next_highest"}, {"round",0}, {"trunc","truncate"},
         {"roundeven","round_even"},
     };
     for (size_t i = 0; i < sizeof(unary_methods)/sizeof(unary_methods[0]); i++) {
-        const char *c_name = unary_methods[i][0];
-        const char *alias = unary_methods[i][1];
+        const char *c_name = unary_methods[i].c_name;
+        const char *alias = unary_methods[i].bl_name;
         if (!alias) alias = c_name;
-        extern_method(env, c_name, num_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=num_type), 0);
-        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=num32_type), 0);
+        load_method(env, ns64, c_name, alias, num64_type, ARG("num",num64_type,0));
+        load_method(env, ns32, intern_strf("%sf", c_name), alias, num32_type, ARG("num",num32_type,0));
     }
 
-    const char *binary_methods[][4] = {
+    struct { const char *c_name, *bl_name, *arg1, *arg2; } binary_methods[] = {
         {"atan2",NULL,"y","x"}, {"pow",NULL,"base","exponent"},
         {"hypot",NULL,"x","y"}, {"fmod","modulo","num","modulus"}, {"copysign","copy_sign","num","with_sign"},
         {"nextafter","next_toward","num","toward"}, {"remainder",NULL,"num","divisor"},
@@ -167,15 +174,13 @@ static void define_num_types(env_t *env)
         {"fdim","distance","x","y"},
     };
     for (size_t i = 0; i < sizeof(binary_methods)/sizeof(binary_methods[0]); i++) {
-        const char *c_name = binary_methods[i][0];
-        const char *alias = binary_methods[i][1];
+        const char *c_name = binary_methods[i].c_name;
+        const char *alias = binary_methods[i].bl_name;
         if (!alias) alias = c_name;
-        istr_t arg1 = intern_str(binary_methods[i][2]);
-        istr_t arg2 = intern_str(binary_methods[i][3]);
-        extern_method(env, c_name, num_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type, num_type), .arg_names=LIST(istr_t, arg1, arg2), .ret=num_type), 0);
-        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type, num32_type), .arg_names=LIST(istr_t, arg1, arg2), .ret=num32_type), 0);
+        const char *arg1 = binary_methods[i].arg1;
+        const char *arg2 = binary_methods[i].arg2;
+        load_method(env, ns64, c_name, alias, num64_type, ARG(arg1,num64_type,0), ARG(arg2,num64_type,0));
+        load_method(env, ns32, intern_strf("%sf", c_name), alias, num32_type, ARG(arg1,num32_type,0), ARG(arg2,num32_type,0));
     }
 
     const char *bool_methods[][2] = {
@@ -185,10 +190,8 @@ static void define_num_types(env_t *env)
         const char *c_name = bool_methods[i][0];
         const char *alias = bool_methods[i][1];
         if (!alias) alias = c_name;
-        extern_method(env, c_name, num_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
-        extern_method(env, intern_strf("%sf", c_name), num32_type, alias,
-                      Type(FunctionType, .arg_types=LIST(bl_type_t*, num32_type), .arg_names=LIST(istr_t, intern_str("num")), .ret=Type(BoolType)), 0);
+        load_method(env, ns64, c_name, alias, Type(BoolType), ARG("num",num64_type,0));
+        load_method(env, ns32, intern_strf("%sf", c_name), alias, Type(BoolType), ARG("num",num32_type,0));
     }
 
     struct {const char *name; double val;} constants[] = {
@@ -198,11 +201,17 @@ static void define_num_types(env_t *env)
         {"NaN", nan("")}, {"Infinity", 1./0.},
     };
 
+    bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    load_method(env, ns64, "bl_string_number_format", "format", str_t,
+                ARG("num",num64_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+    load_method(env, ns64, "bl_string_scientific_notation", "scientific", str_t,
+                ARG("num",num64_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+
     { // Num NaN and Infinity:
-        gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num_type);
-        hashmap_t *ns = get_namespace(env, num_type);
+        gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num64_type);
+        hashmap_t *ns = get_namespace(env, num64_type);
         for (size_t i = 0; i < sizeof(constants)/sizeof(constants[0]); i++)
-            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .is_global=true, .type=num_type,
+            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .is_global=true, .type=num64_type,
                                                                .rval=gcc_rvalue_from_double(env->ctx, gcc_num_t, constants[i].val)));
     }
 
@@ -224,18 +233,17 @@ static void define_int_methods(env_t *env)
         hashmap_t *ns = get_namespace(env, i64);
         gcc_type_t *gcc_i64 = bl_type_to_gcc(env, i64);
 
-        gcc_func_t *abs_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i64,
-                                            "labs", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_i64, "i")}, 0);
-        hashmap_set(
-            ns, intern_str("abs"),
-            new(binding_t, .is_global=true, .func=abs_func,
-                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, i64), .arg_names=LIST(istr_t, intern_str("i")), .ret=i64)));
-
-        gcc_func_t *rand_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i64, "random", 0, NULL, 0);
-        hashmap_set(
-            ns, intern_str("random"),
-            new(binding_t, .is_global=true, .func=rand_func,
-                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .arg_names=LIST(istr_t), .ret=i64)));
+        load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
+        load_method(env, ns, "random", "random", i64);
+        bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+        load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",i64,0), ARG("digits",i64,0));
+        load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",i64,0),
+                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("uppercase",Type(BoolType),FakeAST(Bool, .b=true)),
+                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
+        load_method(env, ns, "bl_string_octal", "octal", str_t, ARG("i",i64,0),
+                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
 
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
@@ -246,18 +254,8 @@ static void define_int_methods(env_t *env)
         hashmap_t *ns = get_namespace(env, i32);
         gcc_type_t *gcc_i32 = bl_type_to_gcc(env, i32);
 
-        gcc_func_t *abs_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i32,
-                                            "labs", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_i32, "i")}, 0);
-        hashmap_set(
-            ns, intern_str("abs"),
-            new(binding_t, .is_global=true, .func=abs_func,
-                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, i32), .arg_names=LIST(istr_t, intern_str("i")), .ret=i32)));
-
-        gcc_func_t *rand_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_i32, "rand", 0, NULL, 0);
-        hashmap_set(
-            ns, intern_str("random"),
-            new(binding_t, .is_global=true, .func=rand_func,
-                .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .arg_names=LIST(istr_t), .ret=i32)));
+        load_method(env, ns, "abs", "abs", i32, ARG("i",i32,0));
+        load_method(env, ns, "rand", "random", i32);
 
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .is_global=true, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
@@ -382,4 +380,5 @@ binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name)
 {
     return hashmap_get(get_namespace(env, t), intern_str(name));
 }
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -245,4 +245,41 @@ string_t bl_string_quoted(string_t text, const char *dsl, bool colorize) {
     return (string_t){.data=str, .length=size, .stride=1};
 }
 
+string_t bl_string_number_format(double d, int64_t precision) {
+    int len = snprintf(NULL, 0, "%.*f", (int)precision, d);
+    char *str = GC_MALLOC_ATOMIC(len + 1);
+    snprintf(str, len+1, "%.*f", (int)precision, d);
+    return (string_t){.data=str, .length=len, .stride=1};
+}
+
+string_t bl_string_scientific_notation(double d, int64_t precision) {
+    int len = snprintf(NULL, 0, "%.*e", (int)precision, d);
+    char *str = GC_MALLOC_ATOMIC(len + 1);
+    snprintf(str, len+1, "%.*e", (int)precision, d);
+    return (string_t){.data=str, .length=len, .stride=1};
+}
+
+string_t bl_string_int_format(int64_t i, int64_t digits) {
+    int len = snprintf(NULL, 0, "%0*ld", (int)digits, i);
+    char *str = GC_MALLOC_ATOMIC(len + 1);
+    snprintf(str, len+1, "%0*ld", (int)digits, i);
+    return (string_t){.data=str, .length=len, .stride=1};
+}
+
+string_t bl_string_hex(int64_t i, int64_t digits, bool uppercase, bool prefix) {
+    const char *fmt = uppercase ? (prefix ? "0x%0.*lX" : "%0.*lX") : (prefix ? "0x%0.*lx" : "%0.*lx");
+    int len = snprintf(NULL, 0, fmt, (int)digits, (uint64_t)i);
+    char *str = GC_MALLOC_ATOMIC(len + 1);
+    snprintf(str, len+1, fmt, (int)digits, (uint64_t)i);
+    return (string_t){.data=str, .length=len, .stride=1};
+}
+
+string_t bl_string_octal(int64_t i, int64_t digits, bool prefix) {
+    const char *fmt = prefix ? "0o%0.*lo" : "%0.*lo";
+    int len = snprintf(NULL, 0, fmt, (int)digits, (uint64_t)i);
+    char *str = GC_MALLOC_ATOMIC(len + 1);
+    snprintf(str, len+1, fmt, (int)digits, (uint64_t)i);
+    return (string_t){.data=str, .length=len, .stride=1};
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
