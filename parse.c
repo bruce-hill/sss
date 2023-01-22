@@ -1739,7 +1739,7 @@ PARSER(parse_def) {
         return NewAST(ctx->file, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
     } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
         ast_t *source_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion source type here");
-        expect_str(ctx, start, &pos, "=>", "I expected a '=>' for a conversion definition");
+        expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");
         ast_t *target_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion target type here");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
         return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
