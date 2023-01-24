@@ -66,8 +66,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case BoolType: return sizeof(bool);
-    case NumType: return sizeof(double);
-    case Num32Type: return sizeof(float);
+    case NumType: return Match(bl_t, NumType)->bits / 8;
     case FunctionType:
     case PointerType: return sizeof(void*);
     case StructType: {
@@ -138,14 +137,19 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     if (gcc_t) return gcc_t;
 
     switch (t->tag) {
-    case IntType: gcc_t = gcc_type(env->ctx, INT64); break;
-    case Int32Type: gcc_t = gcc_type(env->ctx, INT32); break;
-    case Int16Type: gcc_t = gcc_type(env->ctx, INT16); break;
-    case Int8Type: gcc_t = gcc_type(env->ctx, INT8); break;
+    case IntType: {
+        switch (Match(t, IntType)->bits) {
+        case 64: gcc_t = gcc_type(env->ctx, INT64); break;
+        case 32: gcc_t = gcc_type(env->ctx, INT32); break;
+        case 16: gcc_t = gcc_type(env->ctx, INT16); break;
+        case 8: gcc_t = gcc_type(env->ctx, INT8); break;
+        default: compile_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
+        }
+        break;
+    }
     case CharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
-    case NumType: gcc_t = gcc_type(env->ctx, DOUBLE); break;
-    case Num32Type: gcc_t = gcc_type(env->ctx, FLOAT); break;
+    case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
     case PointerType: {
         gcc_t = bl_type_to_gcc(env, Match(t, PointerType)->pointed);
@@ -411,25 +415,27 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, f));
         break;
     }
-    case IntType: case Int32Type: case Int16Type: case Int8Type: case NumType: case Num32Type: {
+    case IntType: case NumType: {
         const char *fmt;
-        switch (t->tag) {
-        case IntType: fmt = "%ld"; break;
-        case Int32Type: fmt = "%d_i32"; break;
-        case Int16Type: case Int8Type: {
+        if (t->tag == IntType && Match(t, IntType)->bits == 64) {
+            fmt = "%ld";
+        } else if (t->tag == IntType && Match(t, IntType)->bits == 32) {
+            fmt = "%d_i32";
+        } else if (t->tag == IntType && Match(t, IntType)->bits == 16) {
             // I'm not sure why, but printf() gets confused if you pass smaller ints to a "%d" format
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
-            fmt = t->tag == Int16Type ? "%d_i16" : "%d_i8";
-            break;
-        }
-        case NumType: fmt = "%g"; break;
-        case Num32Type: {
+            fmt = "%d_i16";
+        } else if (t->tag == IntType && Match(t, IntType)->bits == 8) {
+            obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
+            fmt = "%d_i8";
+        } else if (t->tag == NumType && Match(t, NumType)->bits == 64) {
+            fmt = "%g";
+        } else if (t->tag == NumType && Match(t, NumType)->bits == 32) {
             // I'm not sure why, but printf() gets confused if you pass a 'float' here instead of a 'double'
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, DOUBLE));
             fmt = "%g_f32";
-            break;
-        }
-        default: errx(1, "Unreachable");
+        } else {
+            errx(1, "Unreachable");
         }
         istr_t units = type_units(t);
         if (units == intern_str("%")) {
@@ -765,7 +771,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_rvalue_t *rhs_tag = gcc_rvalue_access_field(rhs, NULL, tag_field);
 
         if (length(cases) == 0) {
-            gcc_return(block, NULL, compare_values(env, Type(IntType), lhs_tag, rhs_tag));
+            gcc_return(block, NULL, compare_values(env, INT_TYPE, lhs_tag, rhs_tag));
             break;
         }
 
@@ -775,7 +781,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
                            tags_equal, tags_differ);
 
         // tags_differ:
-        gcc_return(tags_differ, NULL, compare_values(env, Type(IntType), lhs_tag, rhs_tag));
+        gcc_return(tags_differ, NULL, compare_values(env, INT_TYPE, lhs_tag, rhs_tag));
 
         // tags_equal:
         gcc_switch(tags_equal, NULL, lhs_tag, tags_differ, length(cases), cases[0]);

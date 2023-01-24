@@ -15,8 +15,7 @@ struct bl_type_s {
         UnknownType,
         AbortType, VoidType,
         BoolType, CharType,
-        IntType, Int32Type, Int16Type, Int8Type,
-        NumType, Num32Type,
+        IntType, NumType,
         TypeType,
         RangeType,
         ArrayType,
@@ -35,7 +34,12 @@ struct bl_type_s {
         } UnknownType, AbortType, VoidType, BoolType, CharType;
         struct {
             istr_t units;
-        } IntType, Int32Type, Int16Type, Int8Type, NumType, Num32Type;
+            uint16_t bits;
+        } IntType;
+        struct {
+            istr_t units;
+            uint16_t bits;
+        } NumType;
         struct {
         } TypeType, RangeType;
         struct {
@@ -84,6 +88,8 @@ struct bl_type_s {
 };
 
 #define Type(typetag, ...) ((bl_type_t*)intern_bytes(&(bl_type_t){.tag=typetag, .__data.typetag={__VA_ARGS__}}, sizeof(bl_type_t)))
+#define INT_TYPE Type(IntType, .bits=64)
+#define NUM_TYPE Type(NumType, .bits=64)
 
 istr_t type_to_string(bl_type_t *t);
 bool type_is_a(bl_type_t *t, bl_type_t *req);

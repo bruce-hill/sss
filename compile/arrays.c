@@ -216,7 +216,7 @@ void compile_array_iteration(
     gcc_assign(loop_body_end, NULL, item_var, item_rval);
 
     iterator_info_t info = {
-        .key_type = Type(IntType),
+        .key_type = INT_TYPE,
         .key_lval = index_shadow,
         .value_type = item_t,
         .value_lval = item_var,

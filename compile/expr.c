@@ -1382,15 +1382,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
+            if (Match(t, NumType)->bits != 64) {
+                return gcc_cast(
+                    env->ctx, loc,
+                    gcc_callx(env->ctx, loc, sane_fmod_func,
+                              gcc_cast(env->ctx, loc, lhs_val, gcc_type(env->ctx, DOUBLE)),
+                              gcc_cast(env->ctx, loc, rhs_val, gcc_type(env->ctx, DOUBLE))),
+                    gcc_type(env->ctx, FLOAT));
+            }
             return gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
-        } else if (t->tag == Num32Type) {
-            gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
-            return gcc_cast(
-                env->ctx, loc,
-                gcc_callx(env->ctx, loc, sane_fmod_func,
-                          gcc_cast(env->ctx, loc, lhs_val, gcc_type(env->ctx, DOUBLE)),
-                          gcc_cast(env->ctx, loc, rhs_val, gcc_type(env->ctx, DOUBLE))),
-                gcc_type(env->ctx, FLOAT));
         } else {
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }

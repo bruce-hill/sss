@@ -141,10 +141,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (i->precision) {
-        case 64: return Type(IntType, .units=units);
-        case 32: return Type(Int32Type, .units=units);
-        case 16: return Type(Int16Type, .units=units);
-        case 8: return Type(Int8Type, .units=units);
+        case 64: return Type(IntType, .units=units, .bits=64);
+        case 32: return Type(IntType, .units=units, .bits=32);
+        case 16: return Type(IntType, .units=units, .bits=16);
+        case 8: return Type(IntType, .units=units, .bits=8);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -155,8 +155,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (n->precision) {
-        case 64: return Type(NumType, .units=units);
-        case 32: return Type(Num32Type, .units=units);
+        case 64: return Type(NumType, .units=units, .bits=64);
+        case 32: return Type(NumType, .units=units, .bits=32);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -164,7 +164,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(TypeType);
     }
     case SizeOf: {
-        return Type(IntType);
+        return INT_TYPE;
     }
     case HeapAllocate: {
         bl_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
@@ -211,7 +211,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
     }
     case Len: {
-        return Type(IntType);
+        return INT_TYPE;
     }
     case Array: {
         auto list = Match(ast, Array);
@@ -310,7 +310,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *index_t = get_type(env, indexing->index);
             switch (index_t->tag) {
             case RangeType: return indexed_t;
-            case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
+            case IntType: case CharType:
                 return Match(indexed_t, ArrayType)->item_type;
             default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
@@ -757,16 +757,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         switch (iter_t->tag) {
         case ArrayType: {
             auto list_t = Match(iter_t, ArrayType);
-            key_type = Type(IntType), value_type = list_t->item_type;
+            key_type = INT_TYPE, value_type = list_t->item_type;
             break;
         }
         case RangeType: {
-            key_type = value_type = Type(IntType);
+            key_type = value_type = INT_TYPE;
             break;
         }
         case StructType: {
             // TODO: check for .next field
-            key_type = Type(IntType);
+            key_type = INT_TYPE;
             value_type = Type(PointerType, .pointed=iter_t, .is_optional=false);
             break;
         }

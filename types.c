@@ -10,13 +10,21 @@ static CORD type_to_cord(bl_type_t *t) {
         case AbortType: return "Abort";
         case VoidType: return "Void";
         case BoolType: return "Bool";
-        case IntType: return Match(t, IntType)->units ? intern_strf("Int<%s>", Match(t, IntType)->units) : "Int";
-        case Int32Type: return Match(t, Int32Type)->units ? intern_strf("Int32<%s>", Match(t, Int32Type)->units) : "Int32";
-        case Int16Type: return Match(t, Int16Type)->units ? intern_strf("Int16<%s>", Match(t, Int16Type)->units) : "Int16";
-        case Int8Type: return Match(t, Int8Type)->units ? intern_strf("Int8<%s>", Match(t, Int8Type)->units) : "Int8";
+        case IntType: {
+            auto int_ = Match(t, IntType);
+            if (int_->bits == 64)
+                return int_->units ? intern_strf("Int<%s>", int_->units) : "Int";
+            else
+                return int_->units ? intern_strf("Int%d<%s>", int_->bits, int_->units) : intern_strf("Int%d", int_->bits);
+        }
         case CharType: return "Char";
-        case NumType: return Match(t, NumType)->units ? intern_strf("Num<%s>", Match(t, NumType)->units) : "Num";
-        case Num32Type: return Match(t, Num32Type)->units ? intern_strf("Num32<%s>", Match(t, Num32Type)->units) : "Num32";
+        case NumType: {
+            auto num = Match(t, NumType);
+            if (num->bits == 64)
+                return num->units ? intern_strf("Num<%s>", num->units) : "Num";
+            else
+                return num->units ? intern_strf("Num32<%s>", num->units) : "Num32";
+        }
         case TypeType: return "Type";
         case RangeType: return "Range";
         case ArrayType: {
@@ -142,11 +150,7 @@ istr_t type_units(bl_type_t *t)
 {
     switch (t->tag) {
     case IntType: return Match(t, IntType)->units;
-    case Int32Type: return Match(t, Int32Type)->units;
-    case Int16Type: return Match(t, Int16Type)->units;
-    case Int8Type: return Match(t, Int8Type)->units;
     case NumType: return Match(t, NumType)->units;
-    case Num32Type: return Match(t, Num32Type)->units;
     case StructType: return Match(t, StructType)->units;
     case PointerType: return type_units(Match(t, PointerType)->pointed);
     default: return NULL;
@@ -156,12 +160,8 @@ istr_t type_units(bl_type_t *t)
 bl_type_t *with_units(bl_type_t *t, istr_t units)
 {
     switch (t->tag) {
-    case IntType: return Type(IntType, .units=units);
-    case Int32Type: return Type(Int32Type, .units=units);
-    case Int16Type: return Type(Int16Type, .units=units);
-    case Int8Type: return Type(Int8Type, .units=units);
-    case NumType: return Type(NumType, .units=units);
-    case Num32Type: return Type(Num32Type, .units=units);
+    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits);
+    case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
         return Type(StructType, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
@@ -176,7 +176,7 @@ bl_type_t *with_units(bl_type_t *t, istr_t units)
 bool is_integral(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case Int32Type: case Int16Type: case Int8Type: case CharType:
+    case IntType: case CharType:
         return true;
     default:
         return false;
@@ -186,8 +186,7 @@ bool is_integral(bl_type_t *t)
 bool is_numeric(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case Int32Type: case Int16Type: case Int8Type:
-    case NumType: case Num32Type:
+    case IntType: case NumType:
         return true;
     case CharType: return false;
     default:
@@ -198,12 +197,18 @@ bool is_numeric(bl_type_t *t)
 int numtype_priority(bl_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: case CharType: case Int8Type: return 1;
-    case Int16Type: return 2;
-    case Int32Type: return 3;
-    case IntType: return 4;
-    case Num32Type: return 5;
-    case NumType: return 6;
+    case BoolType: return 1;
+    case CharType: return 2;
+    case IntType:
+        switch (Match(t, IntType)->bits) {
+        case 8: return 3;
+        case 16: return 4;
+        case 32: return 5;
+        case 64: return 6;
+        default: return 0;
+        }
+    case NumType:
+        return Match(t, NumType)->bits == 32 ? 7 : 8;
     default: return 0;
     }
 }

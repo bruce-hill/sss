@@ -122,14 +122,14 @@ static bl_type_t *define_string_type(env_t *env)
                 ARG("trim_left",Type(BoolType),FakeAST(Bool,.b=true)),
                 ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
     load_method(env, ns, "bl_string_replace", "replace", str_type,
-                ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",Type(IntType),FakeAST(Int,.i=-1,.precision=64)));
+                ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
 
     return str_type;
 }
 
 static void define_num_types(env_t *env)
 {
-    bl_type_t *num64_type = Type(NumType);
+    bl_type_t *num64_type = Type(NumType, .bits=64);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
         binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num64_type);
@@ -137,7 +137,7 @@ static void define_num_types(env_t *env)
         hashmap_set(env->bindings, num64_type, binding);
     }
 
-    bl_type_t *num32_type = Type(Num32Type);
+    bl_type_t *num32_type = Type(NumType, .bits=32);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
         binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num32_type);
@@ -203,14 +203,14 @@ static void define_num_types(env_t *env)
 
     bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     load_method(env, ns64, "bl_string_number_format", "format", str_t,
-                ARG("num",num64_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+                ARG("num",num64_type,0), ARG("precision",INT_TYPE,FakeAST(Int,.i=6,.precision=64)));
     load_method(env, ns64, "bl_string_scientific_notation", "scientific", str_t,
-                ARG("num",num64_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+                ARG("num",num64_type,0), ARG("precision",INT_TYPE,FakeAST(Int,.i=6,.precision=64)));
 
     load_method(env, ns32, "bl_string_number_format32", "format", str_t,
-                ARG("num",num32_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+                ARG("num",num32_type,0), ARG("precision",INT_TYPE,FakeAST(Int,.i=6,.precision=64)));
     load_method(env, ns32, "bl_string_scientific_notation32", "scientific", str_t,
-                ARG("num",num32_type,0), ARG("precision",Type(IntType),FakeAST(Int,.i=6,.precision=64)));
+                ARG("num",num32_type,0), ARG("precision",INT_TYPE,FakeAST(Int,.i=6,.precision=64)));
 
     { // Num NaN and Infinity:
         gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num64_type);
@@ -231,10 +231,10 @@ static void define_num_types(env_t *env)
     // oddballs: ldexp jn yn llogb lrint lround fma
 }
 
-static void define_int_methods(env_t *env)
+static void define_int_types(env_t *env)
 {
     { // Int64 methods
-        bl_type_t *i64 = Type(IntType);
+        bl_type_t *i64 = Type(IntType, .bits=64);
         hashmap_t *ns = get_namespace(env, i64);
         gcc_type_t *gcc_i64 = bl_type_to_gcc(env, i64);
 
@@ -246,7 +246,7 @@ static void define_int_methods(env_t *env)
     }
 
     { // Int32 methods
-        bl_type_t *i32 = Type(Int32Type);
+        bl_type_t *i32 = Type(IntType, .bits=32);
         hashmap_t *ns = get_namespace(env, i32);
         gcc_type_t *gcc_i32 = bl_type_to_gcc(env, i32);
 
@@ -258,7 +258,7 @@ static void define_int_methods(env_t *env)
     }
 
     { // Int16 methods
-        bl_type_t *i16 = Type(Int16Type);
+        bl_type_t *i16 = Type(IntType, .bits=16);
         hashmap_t *ns = get_namespace(env, i16);
         gcc_type_t *gcc_i16 = bl_type_to_gcc(env, i16);
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
@@ -266,7 +266,7 @@ static void define_int_methods(env_t *env)
     }
 
     { // Int8 methods
-        bl_type_t *i8 = Type(Int8Type);
+        bl_type_t *i8 = Type(IntType, .bits=8);
         hashmap_t *ns = get_namespace(env, i8);
         gcc_type_t *gcc_i8 = bl_type_to_gcc(env, i8);
         hashmap_set(ns, intern_str("Min"), new(binding_t, .is_global=true, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
@@ -274,17 +274,21 @@ static void define_int_methods(env_t *env)
     }
 
     // Stringifying methods
-    bl_type_t *types[] = {Type(Int8Type), Type(Int16Type), Type(Int32Type), Type(IntType)};
+    bl_type_t *types[] = {Type(IntType, .bits=8), Type(IntType, .bits=16), Type(IntType, .bits=32), Type(IntType, .bits=64)};
     bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     for (size_t i = 0; i < sizeof(types)/sizeof(types[0]); i++) {
+        uint16_t bits = Match(types[i], IntType)->bits;
+        istr_t name = bits == 64 ? intern_str("Int") : intern_strf("Int%d", Match(types[i], IntType)->bits);
+        hashmap_set(env->bindings, name,
+                    new(binding_t, .is_global=true, .rval=gcc_str(env->ctx, name), .type=Type(TypeType), .type_value=types[i]));
         hashmap_t *ns = get_namespace(env, types[i]);
-        load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",Type(IntType),0));
+        load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",INT_TYPE,0));
         load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",types[i],0),
-                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
                     ARG("uppercase",Type(BoolType),FakeAST(Bool, .b=true)),
                     ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
         load_method(env, ns, "bl_string_octal", "octal", str_t, ARG("i",types[i],0),
-                    ARG("digits",Type(IntType),FakeAST(Int, .i=1, .precision=64)),
+                    ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
                     ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
     }
 }
@@ -326,11 +330,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
 #define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_str(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
-    DEFTYPE(Int); DEFTYPE(Int32); DEFTYPE(Int16); DEFTYPE(Int8); DEFTYPE(Char);
-    // DEFTYPE(Num);
-    // DEFTYPE(Num32);
+    DEFTYPE(Char);
 #undef DEFTYPE
-    define_int_methods(env);
+    define_int_types(env);
 
     return env;
 }

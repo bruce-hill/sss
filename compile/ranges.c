@@ -124,9 +124,9 @@ void compile_range_iteration(
     gcc_assign(loop_body, NULL, index_shadow, gcc_rval(index_var));
     gcc_assign(loop_body, NULL, iter_shadow, gcc_rval(iter));
     iterator_info_t info = {
-        .key_type = Type(IntType),
+        .key_type = INT_TYPE,
         .key_lval = index_shadow,
-        .value_type = Type(IntType),
+        .value_type = INT_TYPE,
         .value_lval = iter_shadow,
     };
 
