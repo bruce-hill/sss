@@ -678,8 +678,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *t;
         if (b->enum_type)
             t = b->enum_type;
-        else if (b->type_value)
-            t = b->type_value;
+        else if (b->type->tag == TypeType)
+            t = Match(b->type, TypeType)->type;
         else
             compile_err(env, ast, "There isn't any kind of struct like this");
 

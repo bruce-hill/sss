@@ -42,7 +42,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 
         hashmap_t *namespace = hashmap_new();
         namespace->fallback = env->bindings;
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .type_value=t, .is_global=true, .rval=gcc_rval(lval));
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=gcc_rval(lval));
         hashmap_set(env->bindings, name, b);
         hashmap_set(env->type_namespaces, t, namespace);
 
@@ -68,13 +68,13 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         type_ns->fallback = env->bindings;
 
         // Populate union fields
-        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .type_value=t, .is_global=true, .rval=rval);
+        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=rval);
         hashmap_set(env->bindings, tu_name, binding);
         hashmap_set(env->type_namespaces, t, type_ns);
 
         hashmap_t *tag_namespace = get_namespace(env, tag_t);
         tag_namespace->fallback = type_ns;
-        binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t), .type_value=tag_t, .is_global=true,
+        binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t), .is_global=true,
                                      .rval=gcc_str(env->ctx, intern_strf("%s.__Tag", tu_name)));
         hashmap_set(type_ns, intern_str("__Tag"), tag_binding);
         hashmap_set(env->type_namespaces, tag_t, tag_namespace);
@@ -101,7 +101,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 
                 // Bind the struct type:
                 binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .is_global=true, .enum_type=t, .tag_rval=tag_val,
-                                   .type_value=field_t, .rval=gcc_str(env->ctx, intern_strf("%s.%s", tu_name, tag_name)));
+                                   .rval=gcc_str(env->ctx, intern_strf("%s.%s", tu_name, tag_name)));
                 hashmap_set(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:
                 // hashmap_set(env->bindings, tag_name, b);

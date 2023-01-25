@@ -238,7 +238,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
         // }
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
-        if (clobbered && clobbered->type_value)
+        if (clobbered && clobbered->type->tag == TypeType)
             compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         hashmap_set(env->bindings, name,
@@ -526,7 +526,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case StructDef: {
         auto struct_def = Match(ast, StructDef);
-        bl_type_t *struct_t = get_binding(env, struct_def->name)->type_value;
+        bl_type_t *struct_t = Match(get_binding(env, struct_def->name)->type, TypeType)->type;
         hashmap_t *namespace = get_namespace(env, struct_t);
         hashmap_t *globals = global_bindings(env->bindings);
         namespace->fallback = globals;
@@ -565,9 +565,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding;
         if (struct_->type) {
             binding = get_ast_binding(env, struct_->type);
-            t = binding->type_value;
-            if (!t)
+            if (!binding || binding->type->tag != TypeType)
                 compile_err(env, struct_->type, "This isn't a struct type that I recognize");
+            t = Match(binding->type, TypeType)->type;
         } else {
             binding = NULL;
             t = get_type(env, ast);
@@ -1058,9 +1058,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case TypeType: {
-            binding_t *type_binding = get_ast_binding(env, access->fielded);
-            bl_type_t *t = type_binding->type_value;
-            assert(t);
+            bl_type_t *t = Match(fielded_t, TypeType)->type;
             binding_t *val_binding = get_from_namespace(env, t, access->field);
             if (val_binding)
                 return val_binding->rval;
@@ -1510,8 +1508,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, subject_t);
 
         binding_t *tags_binding = get_from_namespace(env, subject_t, "__Tag");
-        assert(tags_binding && tags_binding->type_value);
-        bl_type_t *tag_t = tags_binding->type_value;
+        assert(tags_binding);
+        bl_type_t *tag_t = Match(tags_binding->type, TypeType)->type;
 
         bl_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);

@@ -310,7 +310,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         istr_t name = Match(decl->var, Var)->name;
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, fresh(name));
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
-        if (clobbered && clobbered->type_value)
+        if (clobbered && clobbered->type->tag == TypeType)
             compile_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         hashmap_set(env->bindings, name,
