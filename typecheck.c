@@ -675,12 +675,17 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (!b)
             compile_err(env, struct_->type, "I can't figure out this type");
 
-        bl_type_t *t;
-        if (b->enum_type)
-            t = b->enum_type;
-        else if (b->type->tag == TypeType)
+        bl_type_t *t = NULL;
+        if (struct_->type && struct_->type->tag == FieldAccess) {
+            bl_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
+            if (fielded_t->tag == TypeType && Match(fielded_t, TypeType)->type->tag == TaggedUnionType)
+                t = Match(fielded_t, TypeType)->type;
+        }
+
+        if (t == NULL && b->type->tag == TypeType)
             t = Match(b->type, TypeType)->type;
-        else
+
+        if (t == NULL)
             compile_err(env, ast, "There isn't any kind of struct like this");
 
         return struct_->units ? with_units(t, struct_->units) : t;

@@ -100,7 +100,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
                 APPEND(union_field_types, field_t);
 
                 // Bind the struct type:
-                binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .is_global=true, .enum_type=t, .tag_rval=tag_val,
+                binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .is_global=true, .tag_rval=tag_val,
                                    .rval=gcc_str(env->ctx, intern_strf("%s.%s", tu_name, tag_name)));
                 hashmap_set(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:

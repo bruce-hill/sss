@@ -81,12 +81,12 @@ static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info
     }
 }
 
-gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *enum_type, bl_type_t *field_type, gcc_rvalue_t *rval, gcc_rvalue_t *tag_rval)
+gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *tagged_union_t, bl_type_t *field_type, gcc_rvalue_t *rval, gcc_rvalue_t *tag_rval)
 {
-    gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, enum_type);
+    gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, tagged_union_t);
     gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
 
-    auto tagged = Match(enum_type, TaggedUnionType);
+    auto tagged = Match(tagged_union_t, TaggedUnionType);
     bl_type_t *union_type = tagged->data;
     auto union_ = Match(union_type, UnionType);
 
@@ -575,6 +575,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         size_t num_values = length(struct_->members);
 
+        bl_type_t *tagged_union_t = NULL;
+        if (struct_->type && struct_->type->tag == FieldAccess) {
+            bl_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
+            if (fielded_t->tag == TypeType && Match(fielded_t, TypeType)->type->tag == TaggedUnionType)
+                tagged_union_t = Match(fielded_t, TypeType)->type;
+        }
+
         if (t->tag != StructType) {
             // For tagged enums, you can initialize with curly brace syntax (`Foo.Text{"hi"}`)
             // when it's just a value and not a struct
@@ -585,8 +592,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *rval = compile_expr(env, block, value);
             if (!promote(env, get_type(env, value), &rval, t))
                 compile_err(env, value, "I couldn't promote this value to %s, which is what this struct needs", type_to_string(t));
-            if (binding && binding->enum_type)
-                rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
+            if (tagged_union_t)
+                rval = add_tag_to_value(env, tagged_union_t, t, rval, binding->tag_rval);
             return rval;
         }
 
@@ -713,8 +720,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
 
-        if (binding && binding->enum_type)
-            rval = add_tag_to_value(env, binding->enum_type, t, rval, binding->tag_rval);
+        if (tagged_union_t)
+            rval = add_tag_to_value(env, tagged_union_t, t, rval, binding->tag_rval);
 
         return rval;
     }

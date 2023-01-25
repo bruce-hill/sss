@@ -26,10 +26,7 @@ typedef struct {
     gcc_jit_lvalue *lval;
     bl_type_t *type;
     union {
-        struct {
-            bl_type_t *enum_type;
-            gcc_jit_rvalue *tag_rval;
-        };
+        gcc_jit_rvalue *tag_rval;
         gcc_jit_function *func;
     };
     bool is_global:1, is_constant:1;
