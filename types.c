@@ -222,14 +222,15 @@ bool is_comparable(bl_type_t *t)
     switch (t->tag) {
     case ArrayType: return is_comparable(Match(t, ArrayType)->item_type);
     case PointerType: case FunctionType: return false;
-    case StructType: {
-        auto struct_ = Match(t, StructType);
-        for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
-            if (is_comparable(LIST_ITEM(struct_->field_types, i)))
+    case StructType: case UnionType: {
+        auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
+        for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {
+            if (!is_comparable(LIST_ITEM(subtypes, i)))
                 return false;
         }
         return true;
     }
+    case TaggedUnionType: return is_comparable(Match(t, TaggedUnionType)->data);
     default: return true;
     }
 }
