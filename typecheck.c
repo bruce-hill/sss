@@ -37,7 +37,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         binding_t *b = hashmap_get(env->bindings, Match(ast, Var)->name);
         if (!b || b->type->tag != TypeType)
             compile_err(env, ast, "I don't know any type with this name.");
-        return b->type_value;
+        return Match(b->type, TypeType)->type;
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -45,7 +45,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         binding_t *b = get_from_namespace(env, fielded_t, access->field);
         if (!b || b->type->tag != TypeType)
             compile_err(env, ast, "I don't know any type with this name.");
-        return b->type_value;
+        return Match(b->type, TypeType)->type;
     }
 
     case TypeArray: {
@@ -161,7 +161,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
     }
     case TypeOf: {
-        return Type(TypeType);
+        return Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value));
     }
     case SizeOf: {
         return INT_TYPE;
@@ -267,9 +267,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         case TypeType: {
             binding_t *type_binding = get_ast_binding(env, access->fielded);
-            if (!type_binding || type_binding->type->tag != TypeType || !type_binding->type_value)
+            if (!type_binding || type_binding->type->tag != TypeType)
                 compile_err(env, access->fielded, "Something went wrong with looking up this type");
-            binding_t *binding = get_from_namespace(env, type_binding->type_value, access->field);
+            binding_t *binding = get_from_namespace(env, Match(type_binding->type, TypeType)->type, access->field);
             if (binding)
                 return binding->type;
             else
@@ -367,7 +367,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return parse_type_ast(env, Match(ast, Bitcast)->type);
     }
     case TypeArray: case TypePointer: case TypeFunction: {
-        return Type(TypeType);
+        return Type(TypeType, .type=parse_type_ast(env, ast));
     }
     case Negative: {
         bl_type_t *t = get_type(env, Match(ast, Negative)->value);
@@ -644,7 +644,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
-    case StructDef: case EnumDef: case UnitDef: case ConvertDef: {
+    case StructDef: case TaggedUnionDef: case UnitDef: case ConvertDef: {
         return Type(VoidType);
     }
 

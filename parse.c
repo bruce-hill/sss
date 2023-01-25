@@ -1700,7 +1700,7 @@ PARSER(parse_def) {
                       .is_inline=is_inline);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         return parse_rest_of_struct_def(ctx, start, &pos, name);
-    } else if (match_word(&pos, "oneof")) { // Enum def Foo oneof {...}
+    } else if (match_word(&pos, "oneof")) { // tagged union: def Foo oneof {...}
         expect_str(ctx, start, &pos, "{", "I expected a '{' after 'oneof'");
 
         NEW_LIST(istr_t, tag_names);
@@ -1736,7 +1736,7 @@ PARSER(parse_def) {
             ++next_value;
         }
         expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
-        return NewAST(ctx->file, start, pos, EnumDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+        return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
     } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
         ast_t *source_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion source type here");
         expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");

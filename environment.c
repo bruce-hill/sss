@@ -101,7 +101,7 @@ static bl_type_t *define_string_type(env_t *env)
 {
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
     gcc_rvalue_t *rval = gcc_str(env->ctx, "String");
-    binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=str_type);
+    binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType, .type=str_type), .type_value=str_type);
     hashmap_set(env->bindings, intern_str("String"), binding);
     hashmap_set(env->bindings, str_type, binding);
 
@@ -132,7 +132,7 @@ static void define_num_types(env_t *env)
     bl_type_t *num64_type = Type(NumType, .bits=64);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
-        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num64_type);
+        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType, .type=num64_type), .type_value=num64_type);
         hashmap_set(env->bindings, intern_str("Num"), binding);
         hashmap_set(env->bindings, num64_type, binding);
     }
@@ -140,7 +140,7 @@ static void define_num_types(env_t *env)
     bl_type_t *num32_type = Type(NumType, .bits=32);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
-        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType), .type_value=num32_type);
+        binding_t *binding = new(binding_t, .is_global=true, .rval=rval, .type=Type(TypeType, .type=num32_type), .type_value=num32_type);
         hashmap_set(env->bindings, intern_str("Num32"), binding);
         hashmap_set(env->bindings, num32_type, binding);
     }
@@ -280,7 +280,7 @@ static void define_int_types(env_t *env)
         uint16_t bits = Match(types[i], IntType)->bits;
         istr_t name = bits == 64 ? intern_str("Int") : intern_strf("Int%d", Match(types[i], IntType)->bits);
         hashmap_set(env->bindings, name,
-                    new(binding_t, .is_global=true, .rval=gcc_str(env->ctx, name), .type=Type(TypeType), .type_value=types[i]));
+                    new(binding_t, .is_global=true, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=types[i]), .type_value=types[i]));
         hashmap_t *ns = get_namespace(env, types[i]);
         load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",INT_TYPE,0));
         load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",types[i],0),
@@ -327,7 +327,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
     hashmap_set(env->bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type, .is_global=true));
     define_num_types(env);
-#define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_str(ctx, #t), .type=Type(TypeType), .type_value=Type(t##Type)));
+#define DEFTYPE(t) hashmap_set(env->bindings, intern_str(#t), new(binding_t, .is_global=true, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type)), .type_value=Type(t##Type)));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Char);

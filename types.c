@@ -25,7 +25,11 @@ static CORD type_to_cord(bl_type_t *t) {
             else
                 return num->units ? intern_strf("Num32<%s>", num->units) : "Num32";
         }
-        case TypeType: return "Type";
+        case TypeType: {
+            CORD ret;
+            CORD_sprintf(&ret, "Type(%r)", type_to_cord(Match(t, TypeType)->type));
+            return ret;
+        }
         case RangeType: return "Range";
         case ArrayType: {
             auto list = Match(t, ArrayType);

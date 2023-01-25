@@ -495,7 +495,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Array: {
         return compile_array(env, block, ast);
     }
-    case EnumDef: {
+    case TaggedUnionDef: {
         return NULL;
     }
     case UnitDef: {
@@ -741,7 +741,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             case TypeType: {
                 if (access->fielded->tag != Var)
                     compile_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
-                bl_type_t *fielded_type = parse_type_ast(env, access->fielded);
+                bl_type_t *fielded_type = Match(value_type, TypeType)->type;
                 binding_t *binding = get_from_namespace(env, fielded_type, access->field);
                 if (!binding)
                     compile_err(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_to_string(fielded_type));
@@ -890,16 +890,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case PointerType: {
             auto ptr = Match(t, PointerType);
-            if (ptr->pointed == Type(CharType))
-                goto string_len;
-            else
+            if (ptr->pointed == Type(CharType)) {
+                // String length
+                gcc_func_t *len_func = hashmap_gets(env->global_funcs, "strlen");
+                gcc_rvalue_t *len = gcc_callx(env->ctx, ast_loc(env, ast), len_func, obj);
+                return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
+            } else {
                 goto unknown_len;
+            }
         }
         case TypeType: {
-          string_len:;
-            gcc_func_t *len_func = hashmap_gets(env->global_funcs, "intern_len");
-            gcc_rvalue_t *len = gcc_callx(env->ctx, ast_loc(env, ast), len_func, obj);
-            return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
+            size_t len = strlen(type_to_string(Match(t, TypeType)->type));
+            return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), len);
         }
         case RangeType: {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);

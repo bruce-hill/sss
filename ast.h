@@ -40,7 +40,7 @@ typedef enum {
     TypeMeasure, TypeDSL,
     Cast, Bitcast,
     Struct, StructDef, StructFieldDef, StructField,
-    EnumDef, EnumField,
+    TaggedUnionDef, TaggedUnionField,
     Index, FieldAccess,
     UnitDef, ConvertDef,
 } ast_tag_e;
@@ -241,11 +241,11 @@ struct ast_s {
             List(istr_t) tag_names;
             List(int64_t) tag_values;
             List(ast_t *) tag_types;
-        } EnumDef;
+        } TaggedUnionDef;
         struct {
             istr_t name;
             ast_t *value;
-        } EnumField;
+        } TaggedUnionField;
         struct {
             ast_t *indexed, *index;
             bool unchecked;

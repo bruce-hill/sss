@@ -41,7 +41,9 @@ struct bl_type_s {
             uint16_t bits;
         } NumType;
         struct {
-        } TypeType, RangeType;
+            bl_type_t *type;
+        } TypeType;
+        struct {} RangeType;
         struct {
             istr_t dsl;
             bl_type_t *item_type;
