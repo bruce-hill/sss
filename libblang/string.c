@@ -129,6 +129,14 @@ string_t flatten(string_t str)
     return (string_t){.data=buf, .length=str.length, .stride=1};
 }
 
+const char *c_string(string_t str)
+{
+    char *buf = GC_MALLOC_ATOMIC(str.length + 1);
+    for (int32_t i = 0; i < str.length; i++)
+        buf[i] = str.data[i*str.stride];
+    return buf;
+}
+
 int32_t bl_string_find(string_t str, string_t pat)
 {
     if (str.length < pat.length) return 0;

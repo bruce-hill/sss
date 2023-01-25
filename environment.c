@@ -123,6 +123,7 @@ static bl_type_t *define_string_type(env_t *env)
                 ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
     load_method(env, ns, "bl_string_replace", "replace", str_type,
                 ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
+    load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CharType), .is_optional=false), ARG("str",str_type,0));
 
     return str_type;
 }
