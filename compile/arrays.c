@@ -128,7 +128,6 @@ void compile_array_iteration(
     env_t *env, gcc_block_t **block, ast_t *ast,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data)
 {
-    assert(ast->tag == For);
     auto for_loop = Match(ast, For);
     ast_t *array_ast = for_loop->iter;
     gcc_func_t *func = gcc_block_func(*block);
