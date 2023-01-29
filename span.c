@@ -24,13 +24,13 @@ static int fputc_column(FILE *out, char c, char print_char, int *column)
     return printed;
 }
 
-int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lines)
+int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lines, bool use_color)
 {
     if (!span.file) return 0;
     const char *lineno_fmt, *normal_color, *empty_marker;
     bool print_carets = false;
     int printed = 0;
-    if (isatty(fileno(out))) {
+    if (use_color) {
         lineno_fmt = "\x1b[0;2m%*lu\x1b(0\x78\x1b(B\x1b[m ";
         normal_color = "\x1b[m";
         empty_marker = "\x1b(0\x61\x1b(B";

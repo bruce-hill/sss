@@ -89,7 +89,7 @@ static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, co
     fputs("\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};
-    fprint_span(stderr, span, "\x1b[31;1;7m", 2);
+    fprint_span(stderr, span, "\x1b[31;1;7m", 2, isatty(STDERR_FILENO));
     fputs("\n", stderr);
 
     if (ctx->on_err)

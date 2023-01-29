@@ -347,7 +347,7 @@ void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
     va_end(args);
     fputs("\x1b[m\n\n", stderr);
     if (ast)
-        fprint_span(stderr, ast->span, "\x1b[31;1m", 2);
+        fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO));
 
     if (env->on_err)
         longjmp(*env->on_err, 1);
