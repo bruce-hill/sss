@@ -157,12 +157,12 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
                 CLEANUP();
                 continue;
             } else if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
-                if (Match(t, ArrayType)->dsl)
-                    ast = WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)));
-
                 // Quote the string:
-                ast = WrapAST(FunctionCall, .fn=WrapAST(FieldAccess, .fielded=ast, .field=intern_str("quoted")),
-                              .args=LIST(ast_t*, FakeAST(Bool, .b=true)));
+                auto str = Match(t, ArrayType);
+                if (str->dsl)
+                    ast = WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)));
+                List(ast_t*) args = LIST(ast_t*, WrapAST(KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(Bool, .b=true)));
+                ast = WrapAST(FunctionCall, .fn=WrapAST(FieldAccess, .fielded=ast, .field=intern_str("quoted")), .args=args);
             }
             ast_t *prefix = WrapAST(StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
             ast_t *type_info = WrapAST(StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
@@ -171,6 +171,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             // Call say(str):
             ast = WrapAST(Block, .statements=LIST(ast_t*, WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")), .args=LIST(ast_t*, ast))));
         }
+
+        if (verbose)
+            fprintf(stderr, "Result: %s\n", ast_to_str(ast));
 
         const char *repl_name = fresh("repl");
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
