@@ -17,6 +17,106 @@
 #include "../types.h"
 #include "../util.h"
 
+void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t iter_blocks,
+                     gcc_lvalue_t **index_var, bl_type_t **item_type, gcc_lvalue_t **item_var)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *first_block = iter_blocks.first ? *iter_blocks.first : *iter_blocks.body;
+    gcc_block_t *empty_block = iter_blocks.empty ? *iter_blocks.empty : *iter_blocks.end;
+    gcc_block_t *between_dest = iter_blocks.between ? *iter_blocks.between : *iter_blocks.body;
+
+    bl_type_t *iter_t = get_type(env, iter);
+    gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
+    gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
+    while (iter_t->tag == PointerType) {
+        auto ptr = Match(iter_t, PointerType);
+        if (ptr->is_optional) {
+            gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
+            gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
+            gcc_jump_condition(*block, NULL, is_nil, empty_block, continued);
+            *block = continued;
+        }
+
+        iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
+        iter_t = Match(iter_t, PointerType)->pointed;
+        gcc_iter_t = bl_type_to_gcc(env, iter_t);
+    }
+
+    // Index tracking is always the same:
+    gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+    *index_var = gcc_local(func, NULL, i64, fresh("i"));
+    gcc_assign(*block, NULL, *index_var, gcc_one(env->ctx, i64));
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64, fresh("i"));
+    gcc_assign(*iter_blocks.body, NULL, index_shadow, gcc_rval(*index_var));
+    if (iter_blocks.first)
+        gcc_assign(*iter_blocks.first, NULL, index_shadow, gcc_rval(*index_var));
+    gcc_update(*iter_blocks.next, NULL, *index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
+
+    switch (iter_t->tag) {
+    case ArrayType: {
+        // item_ptr = array->items
+        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
+        bl_type_t *item_t = Match(iter_t, ArrayType)->item_type;
+        gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+        gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+        gcc_assign(*block, NULL, item_ptr,
+                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 0)));
+
+        // len = array->len
+        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), fresh("len"));
+        gcc_assign(*block, NULL, len,
+                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 1)));
+
+        *item_type = item_t;
+        *item_var = gcc_local(func, NULL, gcc_item_t, fresh("item"));
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 2));
+
+        // goto (index > len) ? end : body
+        gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(*index_var),
+                                               gcc_cast(env->ctx, NULL, gcc_rval(len), gcc_type(env->ctx, INT64)));
+        gcc_jump_condition(*block, NULL, is_done, empty_block, first_block);
+        *block = NULL;
+
+        // Now populate top of loop body (with variable bindings)
+        // item = *item_ptr (or item = item_ptr)
+        gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
+        gcc_assign(*iter_blocks.body, NULL, *item_var, item_rval);
+        if (iter_blocks.first)
+            gcc_assign(*iter_blocks.first, NULL, *item_var, item_rval);
+
+        // Now populate .next block
+        gcc_assign(*iter_blocks.next, NULL, item_ptr,
+                   gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
+
+        // goto is_done ? end : between
+        gcc_jump_condition(*iter_blocks.next, NULL, is_done, *iter_blocks.end, between_dest);
+
+        // between:
+        if (iter_blocks.between)
+            gcc_assign(*iter_blocks.between, NULL, *item_var, item_rval);
+
+        break;
+    }
+    default: compile_err(env, iter, "Iteration not supported yet");
+    }
+    *block = *iter_blocks.body;
+}
+
+void finalize_iteration(env_t *env, gcc_block_t **block, iter_blocks_t iter_blocks)
+{
+    (void)env;
+    assert(iter_blocks.body);
+    assert(iter_blocks.next);
+    gcc_jump(*iter_blocks.body, NULL, *iter_blocks.next);
+    if (iter_blocks.first && *iter_blocks.first)
+        gcc_jump(*iter_blocks.first, NULL, *iter_blocks.next);
+    if (iter_blocks.between && *iter_blocks.between)
+        gcc_jump(*iter_blocks.between, NULL, *iter_blocks.body);
+    if (iter_blocks.empty && *iter_blocks.empty)
+        gcc_jump(*iter_blocks.empty, NULL, *iter_blocks.end);
+    *block = *iter_blocks.end;
+}
+
 void compile_loop_iteration(
     env_t *env, gcc_block_t **block, const char *loop_name, ast_t *condition,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)

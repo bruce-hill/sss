@@ -43,6 +43,7 @@ typedef enum {
     TaggedUnionDef, TaggedUnionField,
     Index, FieldAccess,
     UnitDef, ConvertDef,
+    Reduction,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -261,6 +262,11 @@ struct ast_s {
             istr_t var;
             ast_t *source_type, *target_type, *body;
         } ConvertDef;
+        struct {
+            ast_t *iter;
+            istr_t method;
+            ast_t *expr, *fallback;
+        } Reduction;
     } __data;
 };
 

@@ -112,7 +112,7 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
     return math_binop_rec(env, block, ast, get_type(env, lhs), lhs_val, op, get_type(env, rhs), rhs_val);
 }
 
-static void math_update_rec(
+void math_update_rec(
     env_t *env, gcc_block_t **block, ast_t *ast, bl_type_t *lhs_t, gcc_lvalue_t *lhs,
     gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs)
 {

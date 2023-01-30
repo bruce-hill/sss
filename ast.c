@@ -144,6 +144,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(FieldAccess, F(fielded), F(field))
         T(UnitDef, F(derived), F(base))
         T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
+        T(Reduction, F(iter), F(method), F(expr), F(fallback))
 #undef BINOP
 #undef UNOP
 #undef F

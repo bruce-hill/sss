@@ -1644,6 +1644,88 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
         return NULL;
     }
+    case Reduction: {
+        auto reduce = Match(ast, Reduction);
+        gcc_rvalue_t *iter = compile_expr(env, block, reduce->iter); 
+
+        bl_type_t *iter_t = get_type(env, reduce->iter);
+        while (iter_t->tag == PointerType) {
+            iter = gcc_rval(gcc_rvalue_dereference(iter, NULL));
+            iter_t = Match(iter_t, PointerType)->pointed;
+        }
+
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *loop_empty = gcc_new_block(func, fresh("loop_empty")),
+                    *loop_first = gcc_new_block(func, fresh("loop_first")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_next = gcc_new_block(func, fresh("loop_next")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        iter_blocks_t blocks = {
+            .first = &loop_first,
+            .body = &loop_body,
+            .empty = &loop_empty,
+            .next = &loop_next,
+            .end = &loop_end,
+        };
+
+        gcc_lvalue_t *key_val, *value_val;
+        bl_type_t *item_type;
+        setup_iteration(env, reduce->iter, block, blocks, &key_val, &item_type, &value_val);
+
+        gcc_rvalue_t *iter_rval_first, *iter_rval_body;
+        if (reduce->expr) {
+            env_t body_env = *env;
+            body_env.bindings = hashmap_new();
+            body_env.bindings->fallback = env->bindings;
+            hashmap_set(body_env.bindings, intern_str("_"), new(binding_t, .rval=gcc_rval(value_val), .lval=value_val, .type=item_type));
+            item_type = get_type(&body_env, reduce->expr);
+            iter_rval_first = compile_expr(&body_env, blocks.first, reduce->expr);
+            iter_rval_body = compile_expr(&body_env, blocks.body, reduce->expr);
+        } else {
+            iter_rval_first = gcc_rval(value_val);
+            iter_rval_body = gcc_rval(value_val);
+        }
+
+        bl_type_t *result_type = get_type(env, ast);
+        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, result_type), fresh("sum"));
+
+        if (reduce->method == intern_str("sum")) {
+            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
+            math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_PLUS, item_type, iter_rval_body);
+        } else if (reduce->method == intern_str("product")) {
+            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
+            math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_MULT, item_type, iter_rval_body);
+        } else if (reduce->method == intern_str("max")) {
+            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
+            gcc_block_t *new_max = gcc_new_block(func, fresh("new_max")),
+                        *end = gcc_new_block(func, fresh("end"));
+            gcc_rvalue_t *new_is_gt = compare_values(env, item_type, iter_rval_body, gcc_rval(result));
+            new_is_gt = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, new_is_gt, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, end);
+            gcc_assign(new_max, NULL, result, iter_rval_body);
+            gcc_jump(new_max, NULL, end);
+
+            *blocks.body = end;
+        } else {
+            compile_err(env, ast, "I don't know the reduction method '%s'", reduce->method);
+        }
+
+        if (reduce->fallback) {
+            bl_type_t *fallback_t = get_type(env, reduce->fallback);
+            if (!type_is_a(fallback_t, result_type))
+                compile_err(env, reduce->fallback, "This fallback option is a %s, but you need a %s", 
+                            type_to_string(fallback_t), type_to_string(result_type));
+            gcc_assign(*blocks.empty, NULL, result, compile_expr(env, blocks.empty, reduce->fallback));
+        } else {
+            ast_t *lit = FakeAST(StringLiteral, .str=intern_str("This reduction took place on something with no elements and no fallback"));
+            ast_t *msg = FakeAST(StringJoin, .children=LIST(ast_t*, lit));
+            compile_expr(env, blocks.empty, NewAST(ast->span.file, ast->span.start, ast->span.end, Fail, .message=msg));
+        }
+        finalize_iteration(env, block, blocks);
+
+        return gcc_rval(result);
+    }
     case Fail: {
         ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
