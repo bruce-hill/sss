@@ -1654,9 +1654,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             iter_t = Match(iter_t, PointerType)->pointed;
         }
 
+        bool has_first_block;
+        if (reduce->method == intern_str("any") || reduce->method == intern_str("all")) {
+            has_first_block = false;
+        } else {
+            has_first_block = true;
+        }
+
         gcc_func_t *func = gcc_block_func(*block);
         gcc_block_t *loop_empty = gcc_new_block(func, fresh("loop_empty")),
-                    *loop_first = gcc_new_block(func, fresh("loop_first")),
+                    *loop_first = has_first_block ? gcc_new_block(func, fresh("loop_first")) : NULL,
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_next = gcc_new_block(func, fresh("loop_next")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
@@ -1673,6 +1680,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *item_type;
         setup_iteration(env, reduce->iter, block, blocks, &key_val, &item_type, &value_val);
 
+        bl_type_t *result_type = get_type(env, ast);
+        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, result_type), fresh("sum"));
+
         gcc_rvalue_t *iter_rval_first, *iter_rval_body;
         if (reduce->expr) {
             env_t body_env = *env;
@@ -1680,33 +1690,55 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             body_env.bindings->fallback = env->bindings;
             hashmap_set(body_env.bindings, intern_str("_"), new(binding_t, .rval=gcc_rval(value_val), .lval=value_val, .type=item_type));
             item_type = get_type(&body_env, reduce->expr);
-            iter_rval_first = compile_expr(&body_env, blocks.first, reduce->expr);
+            if (*blocks.first)
+                iter_rval_first = compile_expr(&body_env, blocks.first, reduce->expr);
             iter_rval_body = compile_expr(&body_env, blocks.body, reduce->expr);
         } else {
-            iter_rval_first = gcc_rval(value_val);
+            if (loop_first)
+                iter_rval_first = gcc_rval(value_val);
             iter_rval_body = gcc_rval(value_val);
         }
 
-        bl_type_t *result_type = get_type(env, ast);
-        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, result_type), fresh("sum"));
+        if (reduce->method == intern_str("any") || reduce->method == intern_str("all")) {
+            if (item_type->tag != BoolType)
+                compile_err(env, ast, "I expected the members of this reduction to be boolean values, not %s",
+                            type_to_string(item_type));
+        }
 
         if (reduce->method == intern_str("sum")) {
+            assert(*blocks.first);
             gcc_assign(*blocks.first, NULL, result, iter_rval_first);
             math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_PLUS, item_type, iter_rval_body);
         } else if (reduce->method == intern_str("product")) {
+            assert(*blocks.first);
             gcc_assign(*blocks.first, NULL, result, iter_rval_first);
             math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_MULT, item_type, iter_rval_body);
+        } else if (reduce->method == intern_str("any")) {
+            gcc_block_t *result_true = gcc_new_block(func, fresh("result_true")),
+                        *nvm = gcc_new_block(func, fresh("end"));
+            gcc_jump_condition(*blocks.body, NULL, iter_rval_body, result_true, nvm);
+            gcc_assign(result_true, NULL, result, gcc_one(env->ctx, gcc_type(env->ctx, BOOL)));
+            gcc_jump(result_true, NULL, *blocks.end);
+            *blocks.body = nvm;
+        } else if (reduce->method == intern_str("all")) {
+            gcc_block_t *result_false = gcc_new_block(func, fresh("result_false")),
+                        *nvm = gcc_new_block(func, fresh("end"));
+            gcc_jump_condition(*blocks.body, NULL, iter_rval_body, nvm, result_false);
+            gcc_assign(result_false, NULL, result, gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
+            gcc_jump(result_false, NULL, *blocks.end);
+            *blocks.body = nvm;
         } else if (reduce->method == intern_str("max")) {
+            assert(*blocks.first);
             gcc_assign(*blocks.first, NULL, result, iter_rval_first);
             gcc_block_t *new_max = gcc_new_block(func, fresh("new_max")),
-                        *end = gcc_new_block(func, fresh("end"));
+                        *nvm = gcc_new_block(func, fresh("end"));
             gcc_rvalue_t *new_is_gt = compare_values(env, item_type, iter_rval_body, gcc_rval(result));
             new_is_gt = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, new_is_gt, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
-            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, end);
+            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, nvm);
             gcc_assign(new_max, NULL, result, iter_rval_body);
-            gcc_jump(new_max, NULL, end);
+            gcc_jump(new_max, NULL, nvm);
 
-            *blocks.body = end;
+            *blocks.body = nvm;
         } else {
             compile_err(env, ast, "I don't know the reduction method '%s'", reduce->method);
         }
@@ -1717,6 +1749,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compile_err(env, reduce->fallback, "This fallback option is a %s, but you need a %s", 
                             type_to_string(fallback_t), type_to_string(result_type));
             gcc_assign(*blocks.empty, NULL, result, compile_expr(env, blocks.empty, reduce->fallback));
+        } else if (reduce->method == intern_str("any")) {
+            gcc_assign(*blocks.empty, NULL, result, gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
+        } else if (reduce->method == intern_str("all")) {
+            gcc_assign(*blocks.empty, NULL, result, gcc_one(env->ctx, gcc_type(env->ctx, BOOL)));
+        } else if (reduce->method == intern_str("sum") && is_numeric(result_type)) {
+            gcc_assign(*blocks.empty, NULL, result, gcc_zero(env->ctx, bl_type_to_gcc(env, result_type)));
+        } else if (reduce->method == intern_str("product") && is_numeric(result_type)) {
+            gcc_assign(*blocks.empty, NULL, result, gcc_one(env->ctx, bl_type_to_gcc(env, result_type)));
         } else {
             ast_t *lit = FakeAST(StringLiteral, .str=intern_str("This reduction took place on something with no elements and no fallback"));
             ast_t *msg = FakeAST(StringJoin, .children=LIST(ast_t*, lit));

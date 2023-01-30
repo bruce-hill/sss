@@ -21,9 +21,9 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
                      gcc_lvalue_t **index_var, bl_type_t **item_type, gcc_lvalue_t **item_var)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *first_block = iter_blocks.first ? *iter_blocks.first : *iter_blocks.body;
-    gcc_block_t *empty_block = iter_blocks.empty ? *iter_blocks.empty : *iter_blocks.end;
-    gcc_block_t *between_dest = iter_blocks.between ? *iter_blocks.between : *iter_blocks.body;
+    gcc_block_t *first_block = iter_blocks.first && *iter_blocks.first ? *iter_blocks.first : *iter_blocks.body;
+    gcc_block_t *empty_block = iter_blocks.empty && *iter_blocks.empty ? *iter_blocks.empty : *iter_blocks.end;
+    gcc_block_t *between_dest = iter_blocks.between && *iter_blocks.between ? *iter_blocks.between : *iter_blocks.body;
 
     bl_type_t *iter_t = get_type(env, iter);
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
@@ -48,7 +48,7 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
     gcc_assign(*block, NULL, *index_var, gcc_one(env->ctx, i64));
     gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64, fresh("i"));
     gcc_assign(*iter_blocks.body, NULL, index_shadow, gcc_rval(*index_var));
-    if (iter_blocks.first)
+    if (iter_blocks.first && *iter_blocks.first)
         gcc_assign(*iter_blocks.first, NULL, index_shadow, gcc_rval(*index_var));
     gcc_update(*iter_blocks.next, NULL, *index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
 
@@ -81,7 +81,7 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         // item = *item_ptr (or item = item_ptr)
         gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
         gcc_assign(*iter_blocks.body, NULL, *item_var, item_rval);
-        if (iter_blocks.first)
+        if (iter_blocks.first && *iter_blocks.first)
             gcc_assign(*iter_blocks.first, NULL, *item_var, item_rval);
 
         // Now populate .next block
