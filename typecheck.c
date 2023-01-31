@@ -821,7 +821,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             break;
         }
 
-        if (reduce->expr) {
+        if (reduce->expr && !(reduce->method == intern_str("argmax") || reduce->method == intern_str("argmin"))) {
             env_t expr_env = *env;
             expr_env.bindings = hashmap_new();
             expr_env.bindings->fallback = env->bindings;

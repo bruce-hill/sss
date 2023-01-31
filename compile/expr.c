@@ -1739,6 +1739,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(new_max, NULL, nvm);
 
             *blocks.body = nvm;
+        } else if (reduce->method == intern_str("argmax")) {
+            assert(*blocks.first);
+            gcc_assign(*blocks.first, NULL, result, gcc_rval(value_val));
+            gcc_block_t *new_max = gcc_new_block(func, fresh("new_max")),
+                        *nvm = gcc_new_block(func, fresh("end"));
+            gcc_rvalue_t *new_is_gt = compare_values(env, item_type, iter_rval_body, gcc_rval(result));
+            new_is_gt = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, new_is_gt, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, nvm);
+            gcc_assign(new_max, NULL, result, gcc_rval(value_val));
+            gcc_jump(new_max, NULL, nvm);
+
+            *blocks.body = nvm;
         } else {
             compile_err(env, ast, "I don't know the reduction method '%s'", reduce->method);
         }
