@@ -86,16 +86,11 @@ typedef struct {
 void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t *iter_blocks,
                      gcc_lvalue_t **index_var, bl_type_t **item_type, gcc_lvalue_t **item_var);
 void finalize_iteration(env_t *env, gcc_block_t **block, iter_blocks_t *iter_blocks);
-void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast,
-                       loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_while_iteration(
     env_t *env, gcc_block_t **block, ast_t *condition,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 void compile_array_iteration(
     env_t *env, gcc_block_t **block, ast_t *array,
-    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
-void compile_range_iteration(
-    env_t *env, gcc_block_t **block, ast_t *range,
     loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
 
 // ============================== math.c ================================
@@ -111,5 +106,6 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_rvalue_t *range_len(env_t *env, gcc_type_t *gcc_t, gcc_rvalue_t *range);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

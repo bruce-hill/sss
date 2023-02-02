@@ -107,20 +107,8 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         gcc_assign(*block, NULL, x,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 0)));
 
-        gcc_rvalue_t *first = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 0)),
-                     *step = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 1)),
-                     *last = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 2));
-#define BINOP(a,op,b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_ ## op, i64, a, b)
-#define UNOP(op,a) gcc_unary_op(env->ctx, NULL, GCC_UNOP_ ## op, i64, a)
-        // (last - first)//step + 1
-        gcc_rvalue_t *len = BINOP(BINOP(BINOP(last, MINUS, first), DIVIDE, step), PLUS, gcc_one(env->ctx, i64));
-        // If less than zero, set to zero (without a conditional branch)
-        // len = len & ~(len >> 63)
-        len = BINOP(len, BITWISE_AND, UNOP(BITWISE_NEGATE, BINOP(len, RSHIFT, gcc_int64(env->ctx, 63))));
-#undef BINOP
-#undef UNOP
-
         // goto (index > len) ? end : body
+        gcc_rvalue_t *len = range_len(env, gcc_iter_t, iter_rval);
         gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var), len);
         gcc_jump_condition(*block, NULL, is_done, iter_blocks->empty ? iter_blocks->empty : iter_blocks->end,
                            iter_blocks->first ? iter_blocks->first : iter_blocks->body);
@@ -134,6 +122,7 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
             gcc_assign(iter_blocks->first, NULL, *item_shadow, gcc_rval(x));
 
         // next: x+=step
+        gcc_rvalue_t *step = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 1));
         gcc_update(iter_blocks->next, NULL, x, GCC_BINOP_PLUS, step);
 
         // goto is_done ? end : between
@@ -144,6 +133,18 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         if (iter_blocks->between)
             gcc_assign(iter_blocks->between, NULL, *item_shadow, gcc_rval(x));
 
+        break;
+    }
+    case StructType: {
+        auto struct_ = Match(iter_t, StructType);
+        for (int64_t i = 0, len = length(struct_->field_names); i < len; i++) {
+            if (ith(struct_->field_names, i) == intern_str("next")
+                && ith(struct_->field_types, i) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
+                // Bingo: found a obj->next : @?Obj
+                // compile_linked_iteration(env, block, ast, body_compiler, between_compiler, userdata, i);
+                return;
+            }
+        }
         break;
     }
     default: compile_err(env, iter, "Iteration not supported yet");
@@ -344,48 +345,4 @@ void compile_linked_iteration(
     *block = loop_end;
 }
 
-void compile_iteration(env_t *env, gcc_block_t **block, ast_t *ast, loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata)
-{
-    switch (ast->tag) {
-    case For: {
-        auto for_loop = Match(ast, For);
-        bl_type_t *iter_t = get_type(env, for_loop->iter);
-        if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
-        switch (iter_t->tag) {
-        case ArrayType: {
-            compile_array_iteration(env, block, ast, body_compiler, between_compiler, userdata);
-            return;
-        }
-        case RangeType: {
-            compile_range_iteration(env, block, ast, body_compiler, between_compiler, userdata);
-            return;
-        }
-        case StructType: {
-            auto struct_ = Match(iter_t, StructType);
-            for (int64_t i = 0, len = length(struct_->field_names); i < len; i++) {
-                if (ith(struct_->field_names, i) == intern_str("next")
-                    && ith(struct_->field_types, i) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
-                    // Bingo: found a obj->next : @?Obj
-                    compile_linked_iteration(env, block, ast, body_compiler, between_compiler, userdata, i);
-                    return;
-                }
-            }
-            break;
-        }
-        default: break;
-        }
-        compile_err(env, for_loop->iter, "I don't know how to iterate over a %s value like this.", type_to_string(iter_t));
-    }
-    case Repeat: {
-        compile_loop_iteration(env, block, "repeat", NULL, body_compiler, between_compiler, userdata);
-        return;
-    }
-    case While: {
-        auto loop = Match(ast, While);
-        compile_loop_iteration(env, block, "while", loop->condition, body_compiler, between_compiler, userdata);
-        return;
-    }
-    default: compile_err(env, ast, "This is not an interation");
-    }
-}
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
