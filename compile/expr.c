@@ -19,68 +19,6 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
-static istr_t loop_var_name(ast_t *ast) {
-    return ast->tag == Var ? Match(ast, Var)->name : Match(Match(ast, Dereference)->value, Var)->name;
-}
-
-static void compile_for_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
-{
-    auto for_loop = Match((ast_t*)data, For);
-    if (for_loop->key)
-        hashmap_set(env->bindings, loop_var_name(for_loop->key),
-                    new(binding_t, .rval=gcc_rval(info->key_lval), .lval=info->key_lval, .type=info->key_type));
-
-
-    if (for_loop->value)
-        hashmap_set(env->bindings, loop_var_name(for_loop->value),
-                    new(binding_t, .rval=gcc_rval(info->value_lval), .lval=info->value_lval, .type=info->value_type));
-
-    if (for_loop->body) {
-        if (get_type(env, for_loop->body)->tag != GeneratorType && env->comprehension_callback)
-            env->comprehension_callback(env, block, for_loop->body, env->comprehension_userdata);
-        else
-            compile_block_statement(env, block, for_loop->body);
-    }
-}
-
-static void compile_for_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
-{
-    (void)info;
-    auto for_loop = Match((ast_t*)data, For);
-    if (for_loop->between) {
-        if (get_type(env, for_loop->between)->tag != GeneratorType && env->comprehension_callback)
-            env->comprehension_callback(env, block, for_loop->between, env->comprehension_userdata);
-        else
-            compile_block_statement(env, block, for_loop->between);
-    }
-}
-
-static void compile_while_body(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
-{
-    (void)info;
-    ast_t *ast = (ast_t*)data;
-    ast_t *body = ast->tag == While ? Match(ast, While)->body : Match(ast, Repeat)->body;
-    if (body) {
-        if (get_type(env, body)->tag != GeneratorType && env->comprehension_callback)
-            env->comprehension_callback(env, block, body, env->comprehension_userdata);
-        else
-            compile_block_statement(env, block, body);
-    }
-}
-
-static void compile_while_between(env_t *env, gcc_block_t **block, iterator_info_t *info, void *data)
-{
-    (void)info;
-    ast_t *ast = (ast_t*)data;
-    ast_t *between = ast->tag == While ? Match(ast, While)->between : Match(ast, Repeat)->between;
-    if (between) {
-        if (get_type(env, between)->tag != GeneratorType && env->comprehension_callback)
-            env->comprehension_callback(env, block, between, env->comprehension_userdata);
-        else
-            compile_block_statement(env, block, between);
-    }
-}
-
 gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *tagged_union_t, bl_type_t *field_type, gcc_rvalue_t *rval, gcc_rvalue_t *tag_rval)
 {
     gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, tagged_union_t);
@@ -921,14 +859,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 #define BINOP(a,op,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_ ## op, i64_t, a, b)
 #define UNOP(op,a) gcc_unary_op(env->ctx, loc, GCC_UNOP_ ## op, i64_t, a)
             // (last - first)//step + 1
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *len_var = gcc_local(func, loc, i64_t, fresh("len"));
-            gcc_assign(*block, loc, len_var, BINOP(BINOP(BINOP(last, MINUS, first), DIVIDE, step), PLUS, gcc_one(env->ctx, i64_t)));
+            gcc_rvalue_t *len = BINOP(BINOP(BINOP(last, MINUS, first), DIVIDE, step), PLUS, gcc_one(env->ctx, i64_t));
             // If less than zero, set to zero (without a conditional branch)
             // len = len & ~(len >> 63)
-            gcc_rvalue_t *len = gcc_rval(len_var);
             return BINOP(len, BITWISE_AND, UNOP(BITWISE_NEGATE, BINOP(len, RSHIFT, gcc_int64(env->ctx, 63))));
 #undef BINOP
+#undef UNOP
         }
         default: {
           unknown_len:
@@ -1602,181 +1538,45 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_range(env, block, ast);
     }
     case For: {
-        compile_iteration(env, block, ast, compile_for_body, compile_for_between, (void*)ast);
-        return NULL;
-    }
-    case While: case Repeat: {
-        compile_iteration(env, block, ast, compile_while_body, compile_while_between, (void*)ast);
-        return NULL;
-    }
-    case Skip: case Stop: {
-        gcc_block_t *jump_dest = NULL;
-        istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
-        if (target) {
-            for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
-                foreach (lbl->names, name, _) {
-                    if (*name == target) {
-                        if (ast->tag == Skip) {
-                            jump_dest = lbl->skip_label;
-                            lbl->skip_reachable = true;
-                        } else {
-                            jump_dest = lbl->stop_label;
-                            lbl->stop_reachable = true;
-                        }
-                        goto found_label;
-                    }
-                }
-            }
-          found_label:;
-        } else {
-            if (env->loop_label) {
-                if (ast->tag == Skip) {
-                    jump_dest = env->loop_label->skip_label;
-                    env->loop_label->skip_reachable = true;
-                } else {
-                    jump_dest = env->loop_label->stop_label;
-                    env->loop_label->stop_reachable = true;
-                }
-            }
-        }
-        if (!jump_dest) compile_err(env, ast, "I'm not sure what %s is referring to", target);
-        gcc_jump(*block, loc, jump_dest);
-        *block = NULL;
-        return NULL;
-    }
-    case Reduction: {
-        auto reduce = Match(ast, Reduction);
-        gcc_rvalue_t *iter = compile_expr(env, block, reduce->iter); 
-
-        bl_type_t *iter_t = get_type(env, reduce->iter);
-        while (iter_t->tag == PointerType) {
-            iter = gcc_rval(gcc_rvalue_dereference(iter, NULL));
-            iter_t = Match(iter_t, PointerType)->pointed;
-        }
-
-        bool has_first_block;
-        if (reduce->method == intern_str("any") || reduce->method == intern_str("all")) {
-            has_first_block = false;
-        } else {
-            has_first_block = true;
-        }
+        auto for_ = Match(ast, For);
 
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *loop_empty = gcc_new_block(func, fresh("loop_empty")),
-                    *loop_first = has_first_block ? gcc_new_block(func, fresh("loop_first")) : NULL,
-                    *loop_body = gcc_new_block(func, fresh("loop_body")),
-                    *loop_next = gcc_new_block(func, fresh("loop_next")),
-                    *loop_end = gcc_new_block(func, fresh("loop_end"));
-
         iter_blocks_t blocks = {
-            .first = &loop_first,
-            .body = &loop_body,
-            .empty = &loop_empty,
-            .next = &loop_next,
-            .end = &loop_end,
+            .first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
+            .body = for_->body ? gcc_new_block(func, fresh("for_body")) : NULL,
+            .between = for_->between ? gcc_new_block(func, fresh("for_between")) : NULL,
+            .empty = for_->empty ? gcc_new_block(func, fresh("for_empty")) : NULL,
+            .end = gcc_new_block(func, fresh("for_end")),
         };
 
         gcc_lvalue_t *key_val, *value_val;
         bl_type_t *item_type;
-        setup_iteration(env, reduce->iter, block, blocks, &key_val, &item_type, &value_val);
+        setup_iteration(env, for_->iter, block, &blocks, &key_val, &item_type, &value_val);
 
-        bl_type_t *result_type = get_type(env, ast);
-        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, result_type), fresh("sum"));
+        env_t loop_env = *env;
+        loop_env.bindings = hashmap_new();
+        loop_env.bindings->fallback = env->bindings;
+#define loop_var_name(ast) ((ast)->tag == Var ? Match((ast), Var)->name : Match(Match((ast), Dereference)->value, Var)->name)
+        if (for_->key)
+            hashmap_set(loop_env.bindings, loop_var_name(for_->key),
+                        new(binding_t, .rval=gcc_rval(key_val), .lval=key_val, .type=INT_TYPE));
+        if (for_->value)
+            hashmap_set(loop_env.bindings, loop_var_name(for_->value),
+                        new(binding_t, .rval=gcc_rval(value_val), .lval=value_val, .type=item_type));
+#undef loop_var_name
 
-        gcc_rvalue_t *iter_rval_first, *iter_rval_body;
-        if (reduce->expr) {
-            env_t body_env = *env;
-            body_env.bindings = hashmap_new();
-            body_env.bindings->fallback = env->bindings;
-            hashmap_set(body_env.bindings, intern_str("_"), new(binding_t, .rval=gcc_rval(value_val), .lval=value_val, .type=item_type));
-            item_type = get_type(&body_env, reduce->expr);
-            if (*blocks.first)
-                iter_rval_first = compile_expr(&body_env, blocks.first, reduce->expr);
-            iter_rval_body = compile_expr(&body_env, blocks.body, reduce->expr);
-        } else {
-            if (loop_first)
-                iter_rval_first = gcc_rval(value_val);
-            iter_rval_body = gcc_rval(value_val);
-        }
+        if (for_->first)
+            compile_block_statement(&loop_env, &blocks.first, for_->first);
+        if (for_->body)
+            compile_block_statement(&loop_env, &blocks.body, for_->body);
+        if (for_->between)
+            compile_block_statement(&loop_env, &blocks.between, for_->between);
+        if (for_->empty)
+            compile_block_statement(&loop_env, &blocks.empty, for_->empty);
 
-        if (reduce->method == intern_str("any") || reduce->method == intern_str("all")) {
-            if (item_type->tag != BoolType)
-                compile_err(env, ast, "I expected the members of this reduction to be boolean values, not %s",
-                            type_to_string(item_type));
-        }
+        finalize_iteration(&loop_env, block, &blocks);
 
-        if (reduce->method == intern_str("sum")) {
-            assert(*blocks.first);
-            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
-            math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_PLUS, item_type, iter_rval_body);
-        } else if (reduce->method == intern_str("product")) {
-            assert(*blocks.first);
-            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
-            math_update_rec(env, blocks.body, ast, item_type, result, GCC_BINOP_MULT, item_type, iter_rval_body);
-        } else if (reduce->method == intern_str("any")) {
-            gcc_block_t *result_true = gcc_new_block(func, fresh("result_true")),
-                        *nvm = gcc_new_block(func, fresh("end"));
-            gcc_jump_condition(*blocks.body, NULL, iter_rval_body, result_true, nvm);
-            gcc_assign(result_true, NULL, result, gcc_one(env->ctx, gcc_type(env->ctx, BOOL)));
-            gcc_jump(result_true, NULL, *blocks.end);
-            *blocks.body = nvm;
-        } else if (reduce->method == intern_str("all")) {
-            gcc_block_t *result_false = gcc_new_block(func, fresh("result_false")),
-                        *nvm = gcc_new_block(func, fresh("end"));
-            gcc_jump_condition(*blocks.body, NULL, iter_rval_body, nvm, result_false);
-            gcc_assign(result_false, NULL, result, gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
-            gcc_jump(result_false, NULL, *blocks.end);
-            *blocks.body = nvm;
-        } else if (reduce->method == intern_str("max")) {
-            assert(*blocks.first);
-            gcc_assign(*blocks.first, NULL, result, iter_rval_first);
-            gcc_block_t *new_max = gcc_new_block(func, fresh("new_max")),
-                        *nvm = gcc_new_block(func, fresh("end"));
-            gcc_rvalue_t *new_is_gt = compare_values(env, item_type, iter_rval_body, gcc_rval(result));
-            new_is_gt = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, new_is_gt, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
-            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, nvm);
-            gcc_assign(new_max, NULL, result, iter_rval_body);
-            gcc_jump(new_max, NULL, nvm);
-
-            *blocks.body = nvm;
-        } else if (reduce->method == intern_str("argmax")) {
-            assert(*blocks.first);
-            gcc_assign(*blocks.first, NULL, result, gcc_rval(value_val));
-            gcc_block_t *new_max = gcc_new_block(func, fresh("new_max")),
-                        *nvm = gcc_new_block(func, fresh("end"));
-            gcc_rvalue_t *new_is_gt = compare_values(env, item_type, iter_rval_body, gcc_rval(result));
-            new_is_gt = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, new_is_gt, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
-            gcc_jump_condition(*blocks.body, NULL, new_is_gt, new_max, nvm);
-            gcc_assign(new_max, NULL, result, gcc_rval(value_val));
-            gcc_jump(new_max, NULL, nvm);
-
-            *blocks.body = nvm;
-        } else {
-            compile_err(env, ast, "I don't know the reduction method '%s'", reduce->method);
-        }
-
-        if (reduce->fallback) {
-            bl_type_t *fallback_t = get_type(env, reduce->fallback);
-            if (!type_is_a(fallback_t, result_type))
-                compile_err(env, reduce->fallback, "This fallback option is a %s, but you need a %s", 
-                            type_to_string(fallback_t), type_to_string(result_type));
-            gcc_assign(*blocks.empty, NULL, result, compile_expr(env, blocks.empty, reduce->fallback));
-        } else if (reduce->method == intern_str("any")) {
-            gcc_assign(*blocks.empty, NULL, result, gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
-        } else if (reduce->method == intern_str("all")) {
-            gcc_assign(*blocks.empty, NULL, result, gcc_one(env->ctx, gcc_type(env->ctx, BOOL)));
-        } else if (reduce->method == intern_str("sum") && is_numeric(result_type)) {
-            gcc_assign(*blocks.empty, NULL, result, gcc_zero(env->ctx, bl_type_to_gcc(env, result_type)));
-        } else if (reduce->method == intern_str("product") && is_numeric(result_type)) {
-            gcc_assign(*blocks.empty, NULL, result, gcc_one(env->ctx, bl_type_to_gcc(env, result_type)));
-        } else {
-            ast_t *lit = FakeAST(StringLiteral, .str=intern_str("This reduction took place on something with no elements and no fallback"));
-            ast_t *msg = FakeAST(StringJoin, .children=LIST(ast_t*, lit));
-            compile_expr(env, blocks.empty, NewAST(ast->span.file, ast->span.start, ast->span.end, Fail, .message=msg));
-        }
-        finalize_iteration(env, block, blocks);
-
-        return gcc_rval(result);
+        return NULL;
     }
     case Fail: {
         ast_t *message = Match(ast, Fail)->message;

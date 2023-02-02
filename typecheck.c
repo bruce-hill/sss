@@ -804,42 +804,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *t = get_type(&loop_env, for_loop->body);
         return Type(GeneratorType, .generated=t);
     }
-    case Reduction: {
-        auto reduce = Match(ast, Reduction);
-        bl_type_t *iter_t = get_type(env, reduce->iter);
-        bl_type_t *item_t;
-
-        switch (iter_t->tag) {
-        case ArrayType: {
-            item_t = Match(iter_t, ArrayType)->item_type;
-            break;
-        }
-        case RangeType: item_t = INT_TYPE; break;
-        case StructType: item_t = iter_t; break;
-        default:
-            compile_err(env, reduce->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
-            break;
-        }
-
-        if (reduce->expr && !(reduce->method == intern_str("argmax") || reduce->method == intern_str("argmin"))) {
-            env_t expr_env = *env;
-            expr_env.bindings = hashmap_new();
-            expr_env.bindings->fallback = env->bindings;
-            hashmap_set(expr_env.bindings, intern_str("_"), new(binding_t, .type=item_t));
-            item_t = get_type(&expr_env, reduce->expr);
-        }
-
-        if (reduce->method == intern_str("any") || reduce->method == intern_str("all")) {
-            return Type(BoolType);
-        } else if (reduce->method == intern_str("product")) {
-            if (type_units(item_t))
-                compile_err(env, reduce->iter, "This collection has units attached to it, which can't be multiplied together");
-            return item_t;
-        } else {
-            return item_t;
-        }
-    }
-
     default: break;
     }
     compile_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));

@@ -57,7 +57,12 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
     return ret;
 }
 
-const char *label_str(const char *name, const char *str) { return intern_strf("%s=\x1b[35m\"%s\"\x1b[m", name, str); }
+const char *label_str(const char *name, const char *str) {
+    if (str)
+        return intern_strf("%s=\x1b[35m\"%s\"\x1b[m", name, str);
+    else
+        return intern_strf("%s=\x1b[35m(NULL)\x1b[m", name);
+}
 const char *label_int(const char *name, int64_t i) { return intern_strf("%s=\x1b[35m%ld\x1b[m", name, i); }
 const char *label_double(const char *name, double d) { return intern_strf("%s=\x1b[35m%g\x1b[m", name, d); }
 const char *label_bool(const char *name, bool b) { return intern_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
@@ -115,7 +120,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Do, F(blocks))
         T(Using, F(vars), F(body))
         T(If, F(condition), F(body), F(else_body))
-        T(For, F(key), F(value), F(iter), F(body), F(between))
+        T(For, F(key), F(value), F(first), F(iter), F(body), F(between), F(empty))
         T(While, F(condition), F(body), F(between))
         T(Repeat, F(body), F(between))
         T(When, F(subject), "...", F(default_body)) // TODO print cases
@@ -144,7 +149,6 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(FieldAccess, F(fielded), F(field))
         T(UnitDef, F(derived), F(base))
         T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
-        T(Reduction, F(iter), F(method), F(expr), F(fallback))
 #undef BINOP
 #undef UNOP
 #undef F

@@ -75,7 +75,6 @@ static PARSER(parse_var);
 static PARSER(parse_def);
 static PARSER(parse_extern);
 static PARSER(parse_declaration);
-static PARSER(parse_reduction);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -817,16 +816,30 @@ PARSER(parse_for) {
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
 
-    match_word(&pos, "do"); // Optional
+    ast_t *first = NULL, *empty = NULL;
+    if (match_word(&pos, "first")) {
+        first = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'");
+        whitespace(&pos);
+    }
+
+    if (bl_get_indent(ctx->file, pos) == starting_indent)
+        match_word(&pos, first ? "then" : "do"); // optional
 
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'"); 
     whitespace(&pos);
     ast_t *between = NULL;
-    const char *between_start = NULL;
+    const char *between_start = pos;
     if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
+        whitespace(&pos);
     }
-    return NewAST(ctx->file, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body, .between=between);
+
+    const char *else_start = pos;
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
+        empty = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+    }
+    return NewAST(ctx->file, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter,
+                  .first=first, .body=body, .between=between, .empty=empty);
 }
 
 ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
@@ -842,23 +855,6 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
     return NewAST(ctx->file, start, pos, For, .key=value ? key : NULL, .value=value ? value : key, .iter=iter, .body=body);
-}
-
-PARSER(parse_reduction) {
-    const char *start = pos;
-    if (!match(&pos, "|")) return NULL;
-    istr_t method = get_word(&pos);
-    if (!method) return NULL;
-    expect_closing(ctx, &pos, "|", "I expected a '|' to close this reduction");
-    ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression to reduce");
-    ast_t *expr = NULL;
-    if (match_word(&pos, "in")) {
-        expr = iter;
-        iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression to reduce");
-    }
-    ast_t *fallback = match_word(&pos, "else") ?
-        expect_ast(ctx, start, &pos, parse_expr, "I expected a fallback expression after this 'else'") : NULL;
-    return NewAST(ctx->file, start, pos, Reduction, .iter=iter, .method=method, .expr=expr, .fallback=fallback);
 }
 
 PARSER(parse_repeat) {
@@ -1343,7 +1339,6 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = optional_ast(ctx, &pos, parse_range);
     if (!term) term = optional_ast(ctx, &pos, parse_term);
-    if (!term) term = optional_ast(ctx, &pos, parse_reduction);
     if (!term) return NULL;
 
     NEW_LIST(ast_t*, terms);
