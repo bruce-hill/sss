@@ -17,6 +17,13 @@
 #include "../types.h"
 #include "../util.h"
 
+static istr_t loop_var_name(ast_t *var)
+{
+    if (var->tag == Dereference)
+        return loop_var_name(Match(var, Dereference)->value);
+    return Match(var, Var)->name;
+}
+
 void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto for_ = Match(ast, For);
@@ -67,6 +74,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         item_t = Match(iter_t, ArrayType)->item_type;
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+        if (for_->value && for_->value->tag == Dereference) {
+            item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
+            gcc_item_t = gcc_get_ptr_type(gcc_item_t);
+        }
         gcc_assign(*block, NULL, item_ptr,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 0)));
 
@@ -87,7 +98,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Now populate top of loop body (with variable bindings)
         // item = *item_ptr (or item = item_ptr)
-        gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
+        gcc_rvalue_t *item_rval = for_->value && for_->value->tag == Dereference ?
+            gcc_rval(item_ptr) : gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
         gcc_assign(for_body, NULL, item_shadow, item_rval);
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
@@ -107,6 +119,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case RangeType: {
+        if (for_->value && for_->value->tag == Dereference)
+            compile_err(env, for_->value, "Range values can't be dereferenced because they don't reside in memory anywhere");
         // x = range.first
         gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
         assert(range_struct);
@@ -174,6 +188,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
+        if (for_->value && for_->value->tag == Dereference) {
+            item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
+            gcc_item_t = gcc_get_ptr_type(gcc_item_t);
+        }
         item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
         gcc_assign(for_body, NULL, item_shadow, gcc_rval(iter_var));
         if (for_first)
@@ -206,25 +224,22 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     loop_env.bindings->fallback = env->bindings;
 
     auto label_names = LIST(istr_t, intern_str("for"));
-    if (for_->key)
-        append(label_names, Match(for_->key, Var)->name);
-    if (for_->value)
-        append(label_names, Match(for_->value, Var)->name);
+    if (for_->key) {
+        append(label_names, loop_var_name(for_->key));
+        hashmap_set(loop_env.bindings, loop_var_name(for_->key),
+                    new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
+    }
+    if (for_->value) {
+        append(label_names, loop_var_name(for_->value));
+        hashmap_set(loop_env.bindings, loop_var_name(for_->value),
+                    new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
+    }
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
         .skip_label = for_next,
         .stop_label = for_end,
     };
-
-#define loop_var_name(ast) ((ast)->tag == Var ? Match((ast), Var)->name : Match(Match((ast), Dereference)->value, Var)->name)
-    if (for_->key)
-        hashmap_set(loop_env.bindings, loop_var_name(for_->key),
-                    new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
-    if (for_->value)
-        hashmap_set(loop_env.bindings, loop_var_name(for_->value),
-                    new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
-#undef loop_var_name
 
     if (for_->first) {
         *block = for_first;
