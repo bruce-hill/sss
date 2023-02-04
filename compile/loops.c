@@ -41,8 +41,13 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     bl_type_t *iter_t = get_type(env, iter);
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
     gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
+    gcc_rvalue_t *original_pointer = NULL;
     while (iter_t->tag == PointerType) {
         auto ptr = Match(iter_t, PointerType);
+
+        if (ptr->pointed->tag == StructType && for_->value && for_->value->tag == Dereference)
+            original_pointer = iter_rval;
+
         if (ptr->is_optional) {
             gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
             gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
@@ -171,31 +176,40 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
       found_next_field:
 
-        item_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
-        gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+        bl_type_t *iter_var_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
+        if (for_->value && for_->value->tag == Dereference) {
+            item_t = iter_var_t;
+            if (!original_pointer)
+                compile_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%s instead)",
+                            type_to_string(iter_t));
+        } else {
+            item_t = iter_t;
+        }
+        gcc_type_t *gcc_iter_var_t = bl_type_to_gcc(env, iter_var_t);
 
         // iter = obj
-        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_iter_t, fresh("_tmp"));
-        gcc_assign(*block, NULL, tmp, iter_rval);
-        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_item_t, fresh("_iter"));
-        gcc_assign(*block, NULL, iter_var, gcc_lvalue_address(tmp, NULL));
+        gcc_lvalue_t *tmp = NULL;
+        if (!original_pointer) {
+            tmp = gcc_local(func, NULL, gcc_iter_t, fresh("_tmp"));
+            gcc_assign(*block, NULL, tmp, iter_rval);
+        }
+        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_var_t, fresh("_iter"));
+        gcc_assign(*block, NULL, iter_var, original_pointer ? original_pointer : gcc_lvalue_address(tmp, NULL));
 
         // goto (iter == NULL) ? end : body
         gcc_rvalue_t *is_done = gcc_comparison(
-            env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(iter_var), gcc_null(env->ctx, gcc_item_t));
+            env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(iter_var), gcc_null(env->ctx, gcc_iter_var_t));
         gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
                            for_first ? for_first : for_body);
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
-        if (for_->value && for_->value->tag == Dereference) {
-            item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
-            gcc_item_t = gcc_get_ptr_type(gcc_item_t);
-        }
-        item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
-        gcc_assign(for_body, NULL, item_shadow, gcc_rval(iter_var));
+        item_shadow = gcc_local(func, NULL, bl_type_to_gcc(env, item_t), fresh("item"));
+        gcc_rvalue_t *to_assign = item_t == iter_var_t ? gcc_rval(iter_var)
+            : gcc_rval(gcc_rvalue_dereference(gcc_rval(iter_var), NULL));
+        gcc_assign(for_body, NULL, item_shadow, to_assign);
         if (for_first)
-            gcc_assign(for_first, NULL, item_shadow, gcc_rval(iter_var));
+            gcc_assign(for_first, NULL, item_shadow, to_assign);
 
         // next:
         // iter = iter->next
