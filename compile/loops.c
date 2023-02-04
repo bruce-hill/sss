@@ -17,11 +17,20 @@
 #include "../types.h"
 #include "../util.h"
 
-void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t *iter_blocks,
-                     gcc_lvalue_t **index_shadow, bl_type_t **item_type, gcc_lvalue_t **item_shadow)
+void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    gcc_func_t *func = gcc_block_func(*block);
+    auto for_ = Match(ast, For);
 
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *for_first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
+                *for_body = for_->body ? gcc_new_block(func, fresh("for_body")) : NULL,
+                *for_between = for_->between ? gcc_new_block(func, fresh("for_between")) : NULL,
+                *for_empty = for_->empty ? gcc_new_block(func, fresh("for_empty")) : NULL,
+                *for_next = gcc_new_block(func, fresh("for_next")),
+                *for_end = gcc_new_block(func, fresh("for_end"));
+
+    gcc_comment(*block, NULL, "For Loop");
+    ast_t *iter = for_->iter;
     bl_type_t *iter_t = get_type(env, iter);
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
     gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
@@ -30,7 +39,7 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         if (ptr->is_optional) {
             gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
             gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
-            gcc_jump_condition(*block, NULL, is_nil, iter_blocks->empty ? iter_blocks->empty : iter_blocks->end, continued);
+            gcc_jump_condition(*block, NULL, is_nil, for_empty ? for_empty : for_end, continued);
             *block = continued;
         }
 
@@ -39,24 +48,23 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         gcc_iter_t = bl_type_to_gcc(env, iter_t);
     }
 
-    if (!iter_blocks->next)
-        iter_blocks->next = gcc_new_block(func, fresh("for_next"));
-
     // Index tracking is always the same:
     gcc_type_t *i64 = gcc_type(env->ctx, INT64);
     gcc_lvalue_t *index_var = gcc_local(func, NULL, i64, fresh("i"));
     gcc_assign(*block, NULL, index_var, gcc_one(env->ctx, i64));
-    *index_shadow = gcc_local(func, NULL, i64, fresh("i"));
-    gcc_assign(iter_blocks->body, NULL, *index_shadow, gcc_rval(index_var));
-    if (iter_blocks->first)
-        gcc_assign(iter_blocks->first, NULL, *index_shadow, gcc_rval(index_var));
-    gcc_update(iter_blocks->next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64, fresh("i"));
+    gcc_assign(for_body, NULL, index_shadow, gcc_rval(index_var));
+    if (for_first)
+        gcc_assign(for_first, NULL, index_shadow, gcc_rval(index_var));
+    gcc_update(for_next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
 
+    gcc_lvalue_t *item_shadow;
+    bl_type_t *item_t;
     switch (iter_t->tag) {
     case ArrayType: {
         // item_ptr = array->items
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
-        bl_type_t *item_t = Match(iter_t, ArrayType)->item_type;
+        item_t = Match(iter_t, ArrayType)->item_type;
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
         gcc_assign(*block, NULL, item_ptr,
@@ -67,35 +75,34 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         gcc_assign(*block, NULL, len,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 1)));
 
-        *item_type = item_t;
-        *item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
+        item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
         gcc_rvalue_t *stride = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 2));
 
         // goto (index > len) ? end : body
         gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var),
                                                gcc_cast(env->ctx, NULL, gcc_rval(len), gcc_type(env->ctx, INT64)));
-        gcc_jump_condition(*block, NULL, is_done, iter_blocks->empty ? iter_blocks->empty : iter_blocks->end,
-                           iter_blocks->first ? iter_blocks->first : iter_blocks->body);
+        gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
+                           for_first ? for_first : for_body);
         *block = NULL;
 
         // Now populate top of loop body (with variable bindings)
         // item = *item_ptr (or item = item_ptr)
         gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
-        gcc_assign(iter_blocks->body, NULL, *item_shadow, item_rval);
-        if (iter_blocks->first)
-            gcc_assign(iter_blocks->first, NULL, *item_shadow, item_rval);
+        gcc_assign(for_body, NULL, item_shadow, item_rval);
+        if (for_first)
+            gcc_assign(for_first, NULL, item_shadow, item_rval);
 
         // Now populate .next block
-        gcc_assign(iter_blocks->next, NULL, item_ptr,
+        gcc_assign(for_next, NULL, item_ptr,
                    gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
 
         // goto is_done ? end : between
-        gcc_jump_condition(iter_blocks->next, NULL, is_done, iter_blocks->end,
-                           iter_blocks->between ? iter_blocks->between : iter_blocks->body);
+        gcc_jump_condition(for_next, NULL, is_done, for_end,
+                           for_between ? for_between : for_body);
 
         // between:
-        if (iter_blocks->between)
-            gcc_assign(iter_blocks->between, NULL, *item_shadow, item_rval);
+        if (for_between)
+            gcc_assign(for_between, NULL, item_shadow, item_rval);
 
         break;
     }
@@ -110,171 +117,214 @@ void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t
         // goto (index > len) ? end : body
         gcc_rvalue_t *len = range_len(env, gcc_iter_t, iter_rval);
         gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var), len);
-        gcc_jump_condition(*block, NULL, is_done, iter_blocks->empty ? iter_blocks->empty : iter_blocks->end,
-                           iter_blocks->first ? iter_blocks->first : iter_blocks->body);
+        gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
+                           for_first ? for_first : for_body);
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
-        *item_type = Type(IntType, .bits=64);
-        *item_shadow = gcc_local(func, NULL, i64, fresh("x"));
-        gcc_assign(iter_blocks->body, NULL, *item_shadow, gcc_rval(x));
-        if (iter_blocks->first)
-            gcc_assign(iter_blocks->first, NULL, *item_shadow, gcc_rval(x));
+        item_t = Type(IntType, .bits=64);
+        item_shadow = gcc_local(func, NULL, i64, fresh("x"));
+        gcc_assign(for_body, NULL, item_shadow, gcc_rval(x));
+        if (for_first)
+            gcc_assign(for_first, NULL, item_shadow, gcc_rval(x));
 
         // next: x+=step
         gcc_rvalue_t *step = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 1));
-        gcc_update(iter_blocks->next, NULL, x, GCC_BINOP_PLUS, step);
+        gcc_update(for_next, NULL, x, GCC_BINOP_PLUS, step);
 
         // goto is_done ? end : between
-        gcc_jump_condition(iter_blocks->next, NULL, is_done, iter_blocks->end,
-                           iter_blocks->between ? iter_blocks->between : iter_blocks->body);
+        gcc_jump_condition(for_next, NULL, is_done, for_end,
+                           for_between ? for_between : for_body);
 
         // between:
-        if (iter_blocks->between)
-            gcc_assign(iter_blocks->between, NULL, *item_shadow, gcc_rval(x));
+        if (for_between)
+            gcc_assign(for_between, NULL, item_shadow, gcc_rval(x));
 
         break;
     }
     case StructType: {
         auto struct_ = Match(iter_t, StructType);
-        for (int64_t i = 0, len = length(struct_->field_names); i < len; i++) {
-            if (ith(struct_->field_names, i) == intern_str("next")
-                && ith(struct_->field_types, i) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
+        int64_t field_index;
+        for (field_index = 0; field_index < length(struct_->field_names); field_index++) {
+            if (ith(struct_->field_names, field_index) == intern_str("next")
+                && ith(struct_->field_types, field_index) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
                 // Bingo: found a obj->next : @?Obj
-                // compile_linked_iteration(env, block, ast, body_compiler, between_compiler, userdata, i);
-                return;
+                goto found_next_field;
             }
         }
+
+        compile_err(env, iter, "This value doesn't have an optional .next pointer field, so it can't be used for iteration.");
+
+      found_next_field:
+
+        item_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
+        gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+
+        // iter = obj
+        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_iter_t, fresh("_tmp"));
+        gcc_assign(*block, NULL, tmp, iter_rval);
+        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_item_t, fresh("_iter"));
+        gcc_assign(*block, NULL, iter_var, gcc_lvalue_address(tmp, NULL));
+
+        // goto (iter == NULL) ? end : body
+        gcc_rvalue_t *is_done = gcc_comparison(
+            env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(iter_var), gcc_null(env->ctx, gcc_item_t));
+        gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
+                           for_first ? for_first : for_body);
+        *block = NULL;
+
+        // Shadow loop variables so they can be mutated without breaking the loop's functionality
+        item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
+        gcc_assign(for_body, NULL, item_shadow, gcc_rval(iter_var));
+        if (for_first)
+            gcc_assign(for_first, NULL, item_shadow, gcc_rval(iter_var));
+
+        // next:
+        // iter = iter->next
+        gcc_struct_t *iter_struct = gcc_type_if_struct(gcc_iter_t);
+        assert(iter_struct);
+        gcc_assign(for_next, NULL, iter_var,
+                   gcc_rval(
+                       gcc_rvalue_dereference_field(
+                           gcc_rval(iter_var), NULL, gcc_get_field(iter_struct, field_index))));
+
+        // goto is_done ? end : between
+        gcc_jump_condition(for_next, NULL, is_done, for_end,
+                           for_between ? for_between : for_body);
+
+        // between:
+        if (for_between)
+            gcc_assign(for_between, NULL, item_shadow, gcc_rval(iter_var));
+
         break;
     }
     default: compile_err(env, iter, "Iteration not supported yet");
     }
-    *block = iter_blocks->body;
-}
-
-void finalize_iteration(env_t *env, gcc_block_t **block, iter_blocks_t *iter_blocks)
-{
-    (void)env;
-    assert(iter_blocks->body);
-    assert(iter_blocks->next);
-    gcc_jump(iter_blocks->body, NULL, iter_blocks->next);
-    if (iter_blocks->first)
-        gcc_jump(iter_blocks->first, NULL, iter_blocks->next);
-    if (iter_blocks->between)
-        gcc_jump(iter_blocks->between, NULL, iter_blocks->body);
-    if (iter_blocks->empty)
-        gcc_jump(iter_blocks->empty, NULL, iter_blocks->end);
-    iter_blocks->body = NULL;
-    iter_blocks->first = NULL;
-    iter_blocks->between = NULL;
-    iter_blocks->empty = NULL;
-    iter_blocks->next = NULL;
-    assert(iter_blocks->end);
-    *block = iter_blocks->end;
-}
-
-// For objects that have a .next pointer:
-void compile_linked_iteration(
-    env_t *env, gcc_block_t **block, ast_t *ast,
-    loop_handler_t body_compiler, loop_handler_t between_compiler, void *userdata, int64_t field_index)
-{
-    // for (auto iter = obj; iter; iter = iter->next)
-    auto for_loop = Match(ast, For);
-
-    bool deref_key = for_loop->key && for_loop->key->tag == Dereference;
-    if (deref_key)
-        compile_err(env, for_loop->key, "I don't support dereferenced loop indexes for structs");
-    bool deref_value = for_loop->value && for_loop->value->tag == Dereference;
-    if (deref_value)
-        compile_err(env, for_loop->value, "I don't support dereferenced loop values for structs");
-
-    ast_t *obj = for_loop->iter;
-    gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *loop_body = gcc_new_block(func, fresh("body")),
-                *loop_between = between_compiler ? gcc_new_block(func, fresh("between")) : NULL,
-                *loop_next = gcc_new_block(func, fresh("next")),
-                *loop_end = gcc_new_block(func, fresh("end"));
 
     env_t loop_env = *env;
     loop_env.bindings = hashmap_new();
     loop_env.bindings->fallback = env->bindings;
-    NEW_LIST(istr_t, label_names);
-    append(label_names, intern_str("for"));
-    if (for_loop->key)
-        append(label_names, Match(for_loop->key, Var)->name);
-    if (for_loop->value)
-        append(label_names, Match(for_loop->value, Var)->name);
+
+    auto label_names = LIST(istr_t, intern_str("for"));
+    if (for_->key)
+        append(label_names, Match(for_->key, Var)->name);
+    if (for_->value)
+        append(label_names, Match(for_->value, Var)->name);
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
-        .skip_label = loop_next,
-        .stop_label = loop_end,
-    };
-    env = &loop_env;
-
-    // Preamble:
-    bl_type_t *iter_t = get_type(env, obj);
-    assert(iter_t->tag == PointerType && Match(iter_t, PointerType)->pointed->tag == StructType);
-    gcc_rvalue_t *obj_val = compile_expr(env, block, obj);
-    gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
-    gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
-
-    // iter = obj
-    gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("_iter"));
-    gcc_assign(*block, NULL, iter_var, obj_val);
-
-    // index = 1
-    gcc_rvalue_t *one64 = gcc_one(env->ctx, gcc_type(env->ctx, INT64));
-    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64_t, fresh("_index"));
-    gcc_assign(*block, NULL, index_var, one64);
-
-    // goto (iter == NULL) ? end : body
-    gcc_rvalue_t *is_done = gcc_comparison(
-        env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(iter_var), gcc_null(env->ctx, gcc_iter_t));
-    gcc_jump_condition(*block, NULL, is_done, loop_end, loop_body);
-    *block = NULL;
-
-    // body:
-    gcc_block_t *loop_body_end = loop_body;
-
-    // Shadow loop variables so they can be mutated without breaking the loop's functionality
-    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64_t, fresh("index")),
-                 *iter_shadow = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
-    gcc_assign(loop_body, NULL, index_shadow, gcc_rval(index_var));
-    gcc_assign(loop_body, NULL, iter_shadow, gcc_rval(iter_var));
-    iterator_info_t info = {
-        .key_type = INT_TYPE,
-        .key_lval = index_shadow,
-        .value_type = Type(PointerType, .pointed=Match(iter_t, PointerType)->pointed, .is_optional=false),
-        .value_lval = iter_shadow,
+        .skip_label = for_next,
+        .stop_label = for_end,
     };
 
-    // body block
-    if (body_compiler)
-        body_compiler(env, &loop_body_end, &info, userdata);
+#define loop_var_name(ast) ((ast)->tag == Var ? Match((ast), Var)->name : Match(Match((ast), Dereference)->value, Var)->name)
+    if (for_->key)
+        hashmap_set(loop_env.bindings, loop_var_name(for_->key),
+                    new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
+    if (for_->value)
+        hashmap_set(loop_env.bindings, loop_var_name(for_->value),
+                    new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
+#undef loop_var_name
 
-    if (loop_body_end)
-        gcc_jump(loop_body_end, NULL, loop_next);
+    if (for_->first) {
+        *block = for_first;
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, for_->first, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, for_->first);
 
-    // next:
-    // index++, iter = iter->next
-    gcc_update(loop_next, NULL, index_var, GCC_BINOP_PLUS, one64);
+        if (*block)
+            gcc_jump(*block, NULL, for_next);
+    }
 
-    gcc_struct_t *iter_struct = gcc_type_if_struct(bl_type_to_gcc(env, Match(iter_t, PointerType)->pointed));
-    assert(iter_struct);
-    gcc_assign(loop_next, NULL, iter_var,
-               gcc_rval(
-                   gcc_rvalue_dereference_field(
-                       gcc_rval(iter_var), NULL, gcc_get_field(iter_struct, field_index))));
+    if (for_->body) {
+        *block = for_body;
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, for_->body, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, for_->body);
 
-    // goto is_done ? end : between
-    gcc_jump_condition(loop_next, NULL, is_done, loop_end, loop_between);
-    // between:
-    if (between_compiler)
-        between_compiler(env, &loop_between, &info, userdata);
+        if (*block)
+            gcc_jump(*block, NULL, for_next);
+    }
 
-    if (loop_between)
-        gcc_jump(loop_between, NULL, loop_body); // goto body
+    if (for_->between) {
+        *block = for_between;
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, for_->between, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, for_->between);
+
+        if (*block)
+            gcc_jump(*block, NULL, for_body);
+    }
+
+    if (for_->empty) {
+        *block = for_empty;
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, for_->empty, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, for_->empty);
+
+        if (*block)
+            gcc_jump(*block, NULL, for_end);
+    }
+
+    *block = for_end;
+}
+
+void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t *condition, ast_t *body, ast_t *between)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+
+    gcc_comment(*block, NULL, "While Loop");
+    gcc_block_t *loop_top = gcc_new_block(func, fresh("loop_top"));
+    gcc_jump(*block, NULL, loop_top);
+    *block = loop_top;
+
+    gcc_block_t *loop_body = gcc_new_block(func, fresh("loop_body"));
+    gcc_block_t *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+    env_t loop_env = *env;
+    loop_env.loop_label = &(loop_label_t){
+        .enclosing = env->loop_label,
+            .names = LIST(istr_t, loop_name),
+            .skip_label = loop_top,
+            .stop_label = loop_end,
+    };
+
+
+    if (condition) {
+        check_truthiness(env, block, condition, loop_body, loop_end);
+    } else {
+        // GCC isn't happy if `loop_end` is unreachable
+        // gcc_jump(*block, NULL, loop_body);
+        gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
+        assert(*block);
+        gcc_jump_condition(*block, NULL, yes, loop_body, loop_end);
+    }
+
+    *block = loop_body;
+    if (body)
+        compile_block_statement(&loop_env, block, body);
+
+    if (between) {
+        gcc_block_t *between_block = gcc_new_block(func, fresh("loop_between"));
+        if (condition) {
+            check_truthiness(env, block, condition, between_block, loop_end);
+        } else {
+            // GCC isn't happy if `loop_end` is unreachable
+            gcc_jump(*block, NULL, between_block);
+            // gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
+            // assert(*block);
+            // gcc_jump_condition(*block, NULL, yes, between_block, loop_end);
+        }
+        *block = between_block;
+        compile_block_statement(&loop_env, block, between);
+        gcc_jump(*block, NULL, loop_body);
+    } else {
+        gcc_jump(*block, NULL, loop_top);
+    }
 
     *block = loop_end;
 }

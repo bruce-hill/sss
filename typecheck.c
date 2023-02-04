@@ -757,7 +757,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case For: {
         auto for_loop = Match(ast, For);
         bl_type_t *iter_t = get_type(env, for_loop->iter);
-        if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
+        while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
         bl_type_t *key_type, *value_type;
         switch (iter_t->tag) {
         case ArrayType: {

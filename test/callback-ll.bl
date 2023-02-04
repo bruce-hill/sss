@@ -10,18 +10,15 @@ def NumberValue {
 
     def set(self:@NumberValue, value:Num)
         self._value = value
-        callbacks := self._callbacks
-        repeat
-            cb := callbacks or stop
+        for cb in self._callbacks
             fn := cb.fn
             fn(value)
-            callbacks = cb.next
 
     def get(self:@NumberValue):Num
         return self._value
 
     def on_changed(self:@NumberValue, callback:((Num)=>Void)):((Num)=>Void)
-        self._callbacks = ?@CallbackList{callback, next=self._callbacks}
+        self._callbacks = @CallbackList{callback, next=self._callbacks}
         return callback
 }
 

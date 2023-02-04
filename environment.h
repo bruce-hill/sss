@@ -18,7 +18,6 @@ typedef struct loop_label_s {
     struct loop_label_s *enclosing;
     gcc_block_t *skip_label, *stop_label;
     List(istr_t) names;
-    unsigned int skip_reachable, stop_reachable;
 } loop_label_t;
 
 typedef struct {

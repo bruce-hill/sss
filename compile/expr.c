@@ -1523,45 +1523,49 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Range: {
         return compile_range(env, block, ast);
     }
+    case Repeat: {
+        auto loop = Match(ast, Repeat);
+        compile_while_loop(env, block, intern_str("repeat"), NULL, loop->body, loop->between);
+        return NULL;
+    }
+    case While: {
+        auto loop = Match(ast, While);
+        compile_while_loop(env, block, intern_str("while"), loop->condition, loop->body, loop->between);
+        return NULL;
+    }
     case For: {
-        auto for_ = Match(ast, For);
-
-        gcc_func_t *func = gcc_block_func(*block);
-        iter_blocks_t blocks = {
-            .first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
-            .body = for_->body ? gcc_new_block(func, fresh("for_body")) : NULL,
-            .between = for_->between ? gcc_new_block(func, fresh("for_between")) : NULL,
-            .empty = for_->empty ? gcc_new_block(func, fresh("for_empty")) : NULL,
-            .end = gcc_new_block(func, fresh("for_end")),
-        };
-
-        gcc_lvalue_t *key_val, *value_val;
-        bl_type_t *item_type;
-        setup_iteration(env, for_->iter, block, &blocks, &key_val, &item_type, &value_val);
-
-        env_t loop_env = *env;
-        loop_env.bindings = hashmap_new();
-        loop_env.bindings->fallback = env->bindings;
-#define loop_var_name(ast) ((ast)->tag == Var ? Match((ast), Var)->name : Match(Match((ast), Dereference)->value, Var)->name)
-        if (for_->key)
-            hashmap_set(loop_env.bindings, loop_var_name(for_->key),
-                        new(binding_t, .rval=gcc_rval(key_val), .lval=key_val, .type=INT_TYPE));
-        if (for_->value)
-            hashmap_set(loop_env.bindings, loop_var_name(for_->value),
-                        new(binding_t, .rval=gcc_rval(value_val), .lval=value_val, .type=item_type));
-#undef loop_var_name
-
-        if (for_->first)
-            compile_block_statement(&loop_env, &blocks.first, for_->first);
-        if (for_->body)
-            compile_block_statement(&loop_env, &blocks.body, for_->body);
-        if (for_->between)
-            compile_block_statement(&loop_env, &blocks.between, for_->between);
-        if (for_->empty)
-            compile_block_statement(&loop_env, &blocks.empty, for_->empty);
-
-        finalize_iteration(&loop_env, block, &blocks);
-
+        compile_for_loop(env, block, ast);
+        return NULL;
+    }
+    case Skip: case Stop: {
+        gcc_block_t *jump_dest = NULL;
+        istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
+        if (target) {
+            for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
+                foreach (lbl->names, name, _) {
+                    if (*name == target) {
+                        if (ast->tag == Skip) {
+                            jump_dest = lbl->skip_label;
+                        } else {
+                            jump_dest = lbl->stop_label;
+                        }
+                        goto found_label;
+                    }
+                }
+            }
+          found_label:;
+        } else {
+            if (env->loop_label) {
+                if (ast->tag == Skip) {
+                    jump_dest = env->loop_label->skip_label;
+                } else {
+                    jump_dest = env->loop_label->stop_label;
+                }
+            }
+        }
+        if (!jump_dest) compile_err(env, ast, "I'm not sure what %s is referring to", target);
+        gcc_jump(*block, loc, jump_dest);
+        *block = NULL;
         return NULL;
     }
     case Fail: {

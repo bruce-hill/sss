@@ -80,18 +80,8 @@ gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== loops.c ================================
-typedef struct {
-    gcc_block_t *first, *body, *between, *next, *end, *empty;
-} iter_blocks_t;
-void setup_iteration(env_t *env, ast_t *iter, gcc_block_t **block, iter_blocks_t *iter_blocks,
-                     gcc_lvalue_t **index_var, bl_type_t **item_type, gcc_lvalue_t **item_var);
-void finalize_iteration(env_t *env, gcc_block_t **block, iter_blocks_t *iter_blocks);
-void compile_while_iteration(
-    env_t *env, gcc_block_t **block, ast_t *condition,
-    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
-void compile_array_iteration(
-    env_t *env, gcc_block_t **block, ast_t *array,
-    loop_handler_t body_compiler, loop_handler_t between_compiler, void *data);
+void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast);
+void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t *condition, ast_t *body, ast_t *between);
 
 // ============================== math.c ================================
 gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast);
