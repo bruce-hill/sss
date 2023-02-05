@@ -1668,7 +1668,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         // Print test and its output:
-        istr_t src = intern_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(expr->span.end - expr->span.start), expr->span.start);
+        istr_t src = intern_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
         ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, StringAST(expr, src)));
         compile_statement(env, block, say_src);
 
