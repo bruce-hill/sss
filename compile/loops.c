@@ -30,7 +30,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *for_first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
-                *for_body = for_->body ? gcc_new_block(func, fresh("for_body")) : NULL,
+                *for_body = gcc_new_block(func, fresh("for_body")),
                 *for_between = for_->between ? gcc_new_block(func, fresh("for_between")) : NULL,
                 *for_empty = for_->empty ? gcc_new_block(func, fresh("for_empty")) : NULL,
                 *for_next = gcc_new_block(func, fresh("for_next")),
@@ -266,16 +266,15 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, NULL, for_next);
     }
 
+    *block = for_body;
     if (for_->body) {
-        *block = for_body;
         if (loop_env.comprehension_callback)
             loop_env.comprehension_callback(&loop_env, block, for_->body, loop_env.comprehension_userdata);
         else
             compile_block_statement(&loop_env, block, for_->body);
-
-        if (*block)
-            gcc_jump(*block, NULL, for_next);
     }
+    if (*block)
+        gcc_jump(*block, NULL, for_next);
 
     if (for_->between) {
         *block = for_between;

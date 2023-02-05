@@ -125,6 +125,27 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
 }
 
+static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
+{
+    bl_type_t *iter_t = get_type(env, iter);
+    while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
+    switch (iter_t->tag) {
+    case ArrayType: {
+        auto list_t = Match(iter_t, ArrayType);
+        return list_t->item_type;
+    }
+    case RangeType: {
+        return INT_TYPE;
+    }
+    case StructType: {
+        return Type(PointerType, .pointed=iter_t, .is_optional=false);
+    }
+    default:
+        compile_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
+        break;
+    }
+}
+
 bl_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -756,29 +777,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case For: {
         auto for_loop = Match(ast, For);
-        bl_type_t *iter_t = get_type(env, for_loop->iter);
-        while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
-        bl_type_t *key_type, *value_type;
-        switch (iter_t->tag) {
-        case ArrayType: {
-            auto list_t = Match(iter_t, ArrayType);
-            key_type = INT_TYPE, value_type = list_t->item_type;
-            break;
-        }
-        case RangeType: {
-            key_type = value_type = INT_TYPE;
-            break;
-        }
-        case StructType: {
-            // TODO: check for .next field
-            key_type = INT_TYPE;
-            value_type = Type(PointerType, .pointed=iter_t, .is_optional=false);
-            break;
-        }
-        default:
-            compile_err(env, for_loop->iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
-            break;
-        }
+        bl_type_t *key_type = INT_TYPE,
+                  *value_type = get_iter_type(env, for_loop->iter);
 
         hashmap_t *loop_bindings = hashmap_new();
         loop_bindings->fallback = env->bindings;
@@ -801,8 +801,27 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         
         env_t loop_env = *env;
         loop_env.bindings = loop_bindings;
-        bl_type_t *t = get_type(&loop_env, for_loop->body);
-        return Type(GeneratorType, .generated=t);
+        if (for_loop->first)
+            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->first));
+        else if (for_loop->body)
+            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->body));
+        else if (for_loop->between)
+            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->between));
+        else if (for_loop->empty)
+            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->empty));
+        else
+            compile_err(env, ast, "I can't figure out the type of this 'for' loop");
+    }
+    case Reduction: {
+        env_t reduce_env = *env;
+        reduce_env.bindings = hashmap_new();
+        reduce_env.bindings->fallback = env->bindings;
+        env = &reduce_env;
+
+        bl_type_t *item_type = get_iter_type(env, Match(ast, Reduction)->iter);
+        hashmap_set(env->bindings, intern_str("x"), new(binding_t, .type=item_type));
+        hashmap_set(env->bindings, intern_str("y"), new(binding_t, .type=item_type));
+        return get_type(env, Match(ast, Reduction)->combination);
     }
     default: break;
     }

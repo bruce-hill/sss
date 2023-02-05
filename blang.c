@@ -148,7 +148,6 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             continue;
         }
 
-#define WrapAST(...) NewAST(f, ast->span.start, ast->span.end, __VA_ARGS__)
         ast_t *ast = parse_file(f, &on_err);
         if (!is_discardable(env, ast)) {
             bl_type_t *t = get_type(env, ast);
@@ -160,16 +159,16 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
                 // Quote the string:
                 auto str = Match(t, ArrayType);
                 if (str->dsl)
-                    ast = WrapAST(StringJoin, .children=LIST(ast_t*, WrapAST(Interp, .value=ast)));
-                List(ast_t*) args = LIST(ast_t*, WrapAST(KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(Bool, .b=true)));
-                ast = WrapAST(FunctionCall, .fn=WrapAST(FieldAccess, .fielded=ast, .field=intern_str("quoted")), .args=args);
+                    ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=ast)));
+                List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(ast, Bool, .b=true)));
+                ast = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=ast, .field=intern_str("quoted")), .args=args);
             }
-            ast_t *prefix = WrapAST(StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
-            ast_t *type_info = WrapAST(StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
+            ast_t *prefix = WrapAST(ast, StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
+            ast_t *type_info = WrapAST(ast, StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
             // Stringify and add type info:
-            ast = WrapAST(StringJoin, .children=LIST(ast_t*, prefix, WrapAST(Interp, .value=ast), type_info));
+            ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=ast), type_info));
             // Call say(str):
-            ast = WrapAST(Block, .statements=LIST(ast_t*, WrapAST(FunctionCall, .fn=WrapAST(Var, .name=intern_str("say")), .args=LIST(ast_t*, ast))));
+            ast = WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, ast))));
         }
 
         if (verbose)

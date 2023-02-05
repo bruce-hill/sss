@@ -686,6 +686,28 @@ PARSER(parse_range) {
     return NewAST(ctx->file, start, pos, Range, .first=first, .step=step, .last=last);
 }
 
+PARSER(parse_reduction) {
+    const char *start = pos;
+    if (!match(&pos, "|")) return NULL;
+    ast_t *iter = optional_ast(ctx, &pos, parse_extended_expr);
+    if (!iter) return NULL;
+    spaces(&pos);
+    if (!match(&pos, ","))
+        parser_err(ctx, pos, pos, "I expected a comma and another expression for this Reduction");
+    ast_t *combination = expect_ast(ctx, start, &pos, parse_extended_expr,
+                                    "I expected to find an expression here for how to merge two values");
+
+    ast_t *fallback = NULL;
+    spaces(&pos);
+    if (match(&pos, ",")) {
+        spaces(&pos);
+        fallback = optional_ast(ctx, &pos, parse_extended_expr);
+    }
+
+    expect_closing(ctx, &pos, "|", "I wasn't able to parse the rest of this reduction");
+    return NewAST(ctx->file, start, pos, Reduction, .iter=iter, .combination=combination, .fallback=fallback);
+}
+
 ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
     const char *start = lhs->span.start;
@@ -1339,6 +1361,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = optional_ast(ctx, &pos, parse_range);
     if (!term) term = optional_ast(ctx, &pos, parse_term);
+    if (!term) term = optional_ast(ctx, &pos, parse_reduction);
     if (!term) return NULL;
 
     NEW_LIST(ast_t*, terms);

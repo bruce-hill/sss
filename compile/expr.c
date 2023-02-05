@@ -1568,6 +1568,42 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
         return NULL;
     }
+    case Reduction: {
+        auto reduction = Match(ast, Reduction);
+        bl_type_t *t = get_type(env, ast);
+        istr_t name = fresh("reduction");
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *ret = gcc_local(func, loc, bl_type_to_gcc(env, t), name);
+
+        env_t reduce_env = *env;
+        reduce_env.bindings = hashmap_new();
+        reduce_env.bindings->fallback = env->bindings;
+        env = &reduce_env;
+
+        hashmap_set(env->bindings, intern_str("x"), new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        ast_t *prev_var = WrapAST(ast, Var, .name=intern_str("x"));
+        ast_t *iter_var = WrapAST(ast, Var, .name=intern_str("y"));
+        ast_t *first_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, iter_var));
+        ast_t *between_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->combination));
+        ast_t *empty_block = NULL;
+        if (reduction->fallback) {
+            bl_type_t *empty_type = get_type(env, reduction->fallback);
+            if (empty_type == t) {
+                empty_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->fallback));
+            } else if (empty_type->tag == AbortType) {
+                empty_block = reduction->fallback;
+            } else {
+                compile_err(env, reduction->fallback, "This fallback value has type %s, but I need a %s",
+                            type_to_string(empty_type), type_to_string(t));
+            }
+        } else {
+            empty_block = WrapAST(reduction->iter, Fail, .message=StringAST(reduction->iter, "This collection was empty"));
+        }
+        ast_t *for_ast = WrapAST(ast, For, .value=iter_var, .iter=reduction->iter, .first=first_block, .between=between_block, .empty=empty_block);
+        compile_statement(env, block, for_ast);
+
+        return gcc_rval(ret);
+    }
     case Fail: {
         ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
