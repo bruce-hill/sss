@@ -75,6 +75,7 @@ static PARSER(parse_var);
 static PARSER(parse_def);
 static PARSER(parse_extern);
 static PARSER(parse_declaration);
+static PARSER(parse_doctest);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -1535,7 +1536,8 @@ PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
         || (stmt=parse_extern(ctx, pos))
-        || (stmt=parse_def(ctx, pos)))
+        || (stmt=parse_def(ctx, pos))
+        || (stmt=parse_doctest(ctx, pos)))
         return stmt;
 
     if (!(false 
@@ -1829,6 +1831,25 @@ PARSER(parse_extern) {
         parser_err(ctx, start, pos, "I couldn't get a type for this extern");
     }
     return NewAST(ctx->file, start, pos, Extern, .name=name, .bl_name=bl_name, .type=type);
+}
+
+PARSER(parse_doctest) {
+    const char *start = pos;
+    if (!match(&pos, ">>>")) return NULL;
+    spaces(&pos);
+    ast_t *expr = expect_ast(ctx, start, &pos, parse_extended_expr, "I couldn't parse the expression for this doctest");
+    whitespace(&pos);
+    istr_t output = NULL;
+    if (match(&pos, "===")) {
+        spaces(&pos);
+        const char *output_start = pos,
+                   *output_end = strchrnul(pos, '\n');
+        if (output_end <= output_start)
+            parser_err(ctx, output_start, output_end, "You're missing expected output here");
+        output = intern_strn(output_start, (size_t)(output_end - output_start));
+        pos = output_end;
+    }
+    return NewAST(ctx->file, start, pos, DocTest, .expr=expr, .output=output);
 }
 
 PARSER(parse_inline_block) {

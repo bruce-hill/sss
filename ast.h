@@ -11,7 +11,7 @@
 #define NewAST(_file, _start, _end, ast_tag, ...) (new(ast_t, .span.file=_file, .span.start=_start, .span.end=_end,\
                                                      .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
-#define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=ast->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
+#define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define StringAST(ast, _str) WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, StringLiteral, .str=intern_str(_str))))
 
 typedef enum {
@@ -46,6 +46,7 @@ typedef enum {
     Index, FieldAccess,
     UnitDef, ConvertDef,
     Reduction,
+    DocTest,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -267,6 +268,10 @@ struct ast_s {
         struct {
             ast_t *iter, *combination, *fallback;
         } Reduction;
+        struct {
+            ast_t *expr;
+            istr_t output;
+        } DocTest;
     } __data;
 };
 
