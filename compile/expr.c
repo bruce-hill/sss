@@ -693,7 +693,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
-                binding_t *binding = get_from_namespace(env, value_type, access->field);
+                binding_t *binding = get_from_namespace(env, self_t, access->field);
+                if (!binding)
+                    binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)
                     compile_err(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 if (binding->type->tag != FunctionType)

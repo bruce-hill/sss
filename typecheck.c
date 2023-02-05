@@ -315,7 +315,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         default: {
           class_lookup:;
-            binding_t *binding = get_from_namespace(env, value_t, access->field);
+            binding_t *binding = get_from_namespace(env, fielded_t, access->field);
+            if (!binding)
+                binding = get_from_namespace(env, value_t, access->field);
             if (binding)
                 return binding->type;
             else
