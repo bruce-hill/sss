@@ -357,9 +357,31 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
-        int64_t len = LIST_LEN(block->statements);
-        assert(len > 0);
-        ast_t *last = LIST_ITEM(block->statements, len-1);
+        env_t block_env = *env;
+        block_env.bindings = hashmap_new();
+        block_env.bindings->fallback = env->bindings;
+        env = &block_env;
+        for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
+            ast_t *stmt = LIST_ITEM(block->statements, i);
+            switch (stmt->tag) {
+            case Declare: {
+                auto decl = Match(stmt, Declare);
+                bl_type_t *t = get_type(env, decl->value);
+                hashmap_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
+                break;
+            }
+            case FunctionDef: {
+                bl_type_t *t = get_type(env, stmt);
+                auto fndef = Match(stmt, FunctionDef);
+                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .is_global=true));
+                break;
+            }
+            case StructDef: case TaggedUnionDef: default:
+                // TODO: bind structs/tagged unions in block typechecking
+                break;
+            }
+        }
+        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
         return get_type(env, last);
     }
     case Do: {
