@@ -376,7 +376,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .is_global=true));
                 break;
             }
-            case StructDef: case TaggedUnionDef: default:
+            case StructDef: case TaggedUnionDef:
+                compile_err(env, stmt, "I don't currently support defining types inside blocks that are used as expressions");
+                break;
+            default:
                 // TODO: bind structs/tagged unions in block typechecking
                 break;
             }
