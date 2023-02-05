@@ -134,7 +134,17 @@ const char *c_string(string_t str)
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
     for (int32_t i = 0; i < str.length; i++)
         buf[i] = str.data[i*str.stride];
+    buf[str.length] = '\0';
     return buf;
+}
+
+string_t from_c_string(const char *str)
+{
+    size_t len = str ? strlen(str) : 0;
+    if (len == 0) return (string_t){.length=0, .stride=0};
+    char *buf = GC_MALLOC_ATOMIC(len + 1);
+    memcpy(buf, str, len+1);
+    return (string_t){.data=buf, .length=len, .stride=1};
 }
 
 int32_t bl_string_find(string_t str, string_t pat)

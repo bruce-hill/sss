@@ -16,6 +16,8 @@ bool bl_string_ends_with(string_t s, string_t suffix);
 string_t bl_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool trim_right);
 string_t bl_string_slice(string_t s, range_t *r);
 string_t flatten(string_t str);
+string_t from_c_string(const char *str);
+const char *c_string(string_t str);
 int32_t bl_string_find(string_t str, string_t pat);
 string_t bl_string_replace(string_t text, string_t pat, string_t replacement, int64_t limit);
 string_t bl_string_quoted(string_t text, const char *dsl, bool colorize);
