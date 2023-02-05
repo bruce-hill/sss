@@ -629,13 +629,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 continue;
             }
 
-            if (ft->tag == PointerType && Match(ft, PointerType)->is_optional)
-                continue;
-
-            if (unused_fields[field_index])
+            if (!can_leave_uninitialized(ft) && unused_fields[field_index]) {
                 compile_err(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
                       type_to_string(t),
                       ith(struct_type->field_names, field_index), type_to_string(ft));
+            }
         }
 
         // GCC is dumb and requires sorting the fields:

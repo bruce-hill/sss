@@ -294,4 +294,38 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     return false;
 }
 
+bool can_leave_uninitialized(bl_type_t *t)
+{
+    switch (t->tag) {
+    case PointerType: return Match(t, PointerType)->is_optional;
+    case ArrayType: case IntType: case NumType: case CharType: case BoolType: case RangeType:
+        return true;
+    case StructType: {
+        auto struct_ = Match(t, StructType);
+        for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++)
+            if (!can_leave_uninitialized(LIST_ITEM(struct_->field_types, i)))
+                return false;
+        return true;
+    }
+    case TaggedUnionType: {
+        auto tu = Match(t, TaggedUnionType);
+        auto tag = Match(tu->tag_type, TagType);
+        auto union_ = Match(tu->data, UnionType);
+        for (int64_t i = 0; i < LIST_LEN(tag->values); i++) {
+            if (LIST_ITEM(tag->values, i) != 0)
+                continue;
+
+            istr_t name = LIST_ITEM(tag->names, i);
+            for (int64_t j = 0; j < LIST_LEN(union_->field_names); j++) {
+                if (LIST_ITEM(union_->field_names, j) == name)
+                    return can_leave_uninitialized(LIST_ITEM(union_->field_types, j));
+            }
+            return true;
+        }
+        return false;
+    }
+    default: return false;
+    }
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
