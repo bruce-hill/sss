@@ -28,7 +28,7 @@ typedef struct {
         gcc_jit_rvalue *tag_rval;
         gcc_jit_function *func;
     };
-    bool is_global:1, is_constant:1;
+    bool is_constant:1;
 } binding_t;
 
 typedef struct conversions_s {
@@ -44,6 +44,7 @@ typedef struct env_s {
     hashmap_t *print_funcs; // type -> func
     hashmap_t *cmp_funcs; // type -> func
     hashmap_t *bindings; // name -> binding_t
+    hashmap_t *global_bindings; // name -> binding_t
     hashmap_t *gcc_types; // name -> bl_type
     hashmap_t *global_funcs; // name -> func
     hashmap_t *type_namespaces; // bl_type -> name -> binding_t
@@ -61,8 +62,11 @@ __attribute__((noreturn, format(printf,3,4)))
 void compile_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug);
+env_t *fresh_scope(env_t *env);
+env_t *global_scope(env_t *env);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
+env_t *get_type_env(env_t *env, bl_type_t *t);
 hashmap_t *get_namespace(env_t *env, bl_type_t *t);
 binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name);
 

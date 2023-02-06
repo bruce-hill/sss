@@ -233,22 +233,20 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     default: compile_err(env, iter, "Iteration not supported yet");
     }
 
-    env_t loop_env = *env;
-    loop_env.bindings = hashmap_new();
-    loop_env.bindings->fallback = env->bindings;
+    env_t *loop_env = fresh_scope(env);
 
     auto label_names = LIST(istr_t, intern_str("for"));
     if (for_->key) {
         append(label_names, loop_var_name(for_->key));
-        hashmap_set(loop_env.bindings, loop_var_name(for_->key),
+        hashmap_set(loop_env->bindings, loop_var_name(for_->key),
                     new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {
         append(label_names, loop_var_name(for_->value));
-        hashmap_set(loop_env.bindings, loop_var_name(for_->value),
+        hashmap_set(loop_env->bindings, loop_var_name(for_->value),
                     new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
     }
-    loop_env.loop_label = &(loop_label_t){
+    loop_env->loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
         .names = label_names,
         .skip_label = for_next,
@@ -257,10 +255,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (for_->first) {
         *block = for_first;
-        if (loop_env.comprehension_callback)
-            loop_env.comprehension_callback(&loop_env, block, for_->first, loop_env.comprehension_userdata);
+        if (loop_env->comprehension_callback)
+            loop_env->comprehension_callback(loop_env, block, for_->first, loop_env->comprehension_userdata);
         else
-            compile_block_statement(&loop_env, block, for_->first);
+            compile_block_statement(loop_env, block, for_->first);
 
         if (*block)
             gcc_jump(*block, NULL, for_next);
@@ -268,20 +266,20 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     *block = for_body;
     if (for_->body) {
-        if (loop_env.comprehension_callback)
-            loop_env.comprehension_callback(&loop_env, block, for_->body, loop_env.comprehension_userdata);
+        if (loop_env->comprehension_callback)
+            loop_env->comprehension_callback(loop_env, block, for_->body, loop_env->comprehension_userdata);
         else
-            compile_block_statement(&loop_env, block, for_->body);
+            compile_block_statement(loop_env, block, for_->body);
     }
     if (*block)
         gcc_jump(*block, NULL, for_next);
 
     if (for_->between) {
         *block = for_between;
-        if (loop_env.comprehension_callback)
-            loop_env.comprehension_callback(&loop_env, block, for_->between, loop_env.comprehension_userdata);
+        if (loop_env->comprehension_callback)
+            loop_env->comprehension_callback(loop_env, block, for_->between, loop_env->comprehension_userdata);
         else
-            compile_block_statement(&loop_env, block, for_->between);
+            compile_block_statement(loop_env, block, for_->between);
 
         if (*block)
             gcc_jump(*block, NULL, for_body);
@@ -289,10 +287,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (for_->empty) {
         *block = for_empty;
-        if (loop_env.comprehension_callback)
-            loop_env.comprehension_callback(&loop_env, block, for_->empty, loop_env.comprehension_userdata);
+        if (loop_env->comprehension_callback)
+            loop_env->comprehension_callback(loop_env, block, for_->empty, loop_env->comprehension_userdata);
         else
-            compile_block_statement(&loop_env, block, for_->empty);
+            compile_block_statement(loop_env, block, for_->empty);
 
         if (*block)
             gcc_jump(*block, NULL, for_end);

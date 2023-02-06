@@ -35,7 +35,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","using","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","if","for","fail","extern","export","enum","else","do","deftype",
+    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","export","enum","else","do","deftype",
     "def","bitcast","between","as","and", NULL,
 };
 
@@ -1458,6 +1458,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
 PARSER(parse_declaration) {
     const char *start = pos;
+    bool is_global = !!match_word(&pos, "global");
     ast_t *var = parse_var(ctx, pos);
     if (!var) return NULL;
     pos = var->span.end;
@@ -1468,7 +1469,7 @@ PARSER(parse_declaration) {
     ast_t *val = parse_extended_expr(ctx, pos);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
     pos = val->span.end;
-    return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val);
+    return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val, .is_global=is_global);
 }
 
 PARSER(parse_update) {

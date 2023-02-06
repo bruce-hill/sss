@@ -40,16 +40,13 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
         lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
 
-        hashmap_t *namespace = hashmap_new();
-        namespace->fallback = env->bindings;
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=gcc_rval(lval));
-        hashmap_set(env->bindings, name, b);
-        hashmap_set(env->type_namespaces, t, namespace);
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .rval=gcc_rval(lval));
+        hashmap_set(env->global_bindings, name, b);
+        env_t *struct_env = fresh_scope(env);
+        hashmap_set(env->type_namespaces, t, struct_env->bindings);
 
-        env_t struct_env = *env;
-        struct_env.bindings = namespace;
         foreach (struct_def->members, member, _) {
-            predeclare_def_types(&struct_env, *member);
+            predeclare_def_types(struct_env, *member);
         }
         return t;
     } else if (def->tag == TaggedUnionDef) {
@@ -68,13 +65,13 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         type_ns->fallback = env->bindings;
 
         // Populate union fields
-        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .is_global=true, .rval=rval);
-        hashmap_set(env->bindings, tu_name, binding);
+        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval);
+        hashmap_set(env->global_bindings, tu_name, binding);
         hashmap_set(env->type_namespaces, t, type_ns);
 
         hashmap_t *tag_namespace = get_namespace(env, tag_t);
         tag_namespace->fallback = type_ns;
-        binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t), .is_global=true,
+        binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t),
                                      .rval=gcc_str(env->ctx, intern_strf("%s.__Tag", tu_name)));
         hashmap_set(type_ns, intern_str("__Tag"), tag_binding);
         hashmap_set(env->type_namespaces, tag_t, tag_namespace);
@@ -88,7 +85,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
             istr_t tag_name = ith(tu_def->tag_names, i);
             gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(tu_def->tag_values, i));
             // Bind the tag:
-            hashmap_set(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .is_global=true, .rval=tag_val));
+            hashmap_set(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .rval=tag_val));
 
             ast_t *field_type_ast = ith(tu_def->tag_types, i);
             if (field_type_ast) {
@@ -100,7 +97,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
                 APPEND(union_field_types, field_t);
 
                 // Bind the struct type:
-                binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .is_global=true, .tag_rval=tag_val,
+                binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .tag_rval=tag_val,
                                    .rval=gcc_str(env->ctx, intern_strf("%s.%s", tu_name, tag_name)));
                 hashmap_set(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:
@@ -190,7 +187,7 @@ static void populate_def_members(env_t *env, ast_t *def)
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
             gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(tu_def->tag_values, i));
             gcc_rvalue_t *singleton = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, &tag_field, &tag_val);
-            binding_t *singleton_binding = new(binding_t, .type=t, .rval=singleton, .is_global=true);
+            binding_t *singleton_binding = new(binding_t, .type=t, .rval=singleton);
             istr_t tag_name = ith(tu_def->tag_names, i);
             hashmap_set(inner_env.bindings, tag_name, singleton_binding);
             // hashmap_set(env->bindings, tag_name, singleton_binding);
@@ -205,8 +202,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         bl_type_t *t = get_type(env, def);
         gcc_func_t *func = get_function_def(env, def, fndef->is_exported ? fndef->name : fresh(fndef->name), fndef->is_exported);
         gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-        hashmap_set(env->bindings, fndef->name,
-                    new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+        hashmap_set(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
     } else if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
         binding_t *b = hashmap_get(env->bindings, struct_def->name);
@@ -221,8 +217,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
                 bl_type_t *t = get_type(env, *member);
                 gcc_func_t *func = get_function_def(env, *member, intern_strf("%s__%s", struct_def->name, fndef->name), true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                hashmap_set(env->bindings, fndef->name,
-                            new(binding_t, .type=t, .is_global=true, .func=func, .rval=fn_ptr));
+                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
             } else {
                 predeclare_def_funcs(env, *member);
             }

@@ -278,20 +278,6 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
     return true;
 }
 
-hashmap_t *global_bindings(hashmap_t *bindings)
-{
-    hashmap_t *globals = hashmap_new();
-    for (hashmap_t *h = bindings; h; h = h->fallback) {
-        for (istr_t key = NULL; (key = hashmap_next(h, key)); ) {
-            binding_t *val = hashmap_get_raw(h, key);
-            assert(val);
-            if (val->is_global)
-                hashmap_set(globals, key, val);
-        }
-    }
-    return globals;
-}
-
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
 {
     if (obj->tag == Declare) {

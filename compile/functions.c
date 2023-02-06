@@ -21,10 +21,9 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 {
     auto t = Match(get_type(env, def), FunctionType);
 
-    env_t body_env = *env;
-    body_env.return_type = t->ret;
     // Use a set of bindings that don't include any closures
-    body_env.bindings = global_bindings(env->bindings);
+    env = global_scope(env);
+    env->return_type = t->ret;
 
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
     auto arg_types = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_types : Match(def, Lambda)->arg_types;
@@ -37,11 +36,11 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
-        hashmap_set(body_env.bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
+        hashmap_set(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
     gcc_block_t *block = gcc_new_block(func, fresh("func"));
-    compile_statement(&body_env, &block, body);
+    compile_statement(env, &block, body);
     if (block) {
         if (t->ret->tag != VoidType)
             compile_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",

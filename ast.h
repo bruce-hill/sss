@@ -105,6 +105,7 @@ struct ast_s {
         } Interp;
         struct {
             ast_t *var, *value;
+            bool is_global;
         } Declare;
         struct {
             List(ast_t*) targets;

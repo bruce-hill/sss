@@ -15,19 +15,9 @@
 
 static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
 {
-    if (condition && condition->tag == Declare) {
-        hashmap_t *body_bindings = hashmap_new();
-        body_bindings->fallback = env->bindings;
-        bl_type_t *t = get_type(env, condition);
-        assert(t);
-        binding_t b = {.type=t};
-        auto decl = Match(condition, Declare);
-        istr_t name = Match(decl->var, Var)->name;
-        hashmap_set(body_bindings, name, &b);
-        return get_type(env, body);
-    } else {
-        return get_type(env, body);
-    }
+    if (condition && condition->tag == Declare)
+        compile_err(env, condition, "Declare is not supported in conditions for now");
+    return get_type(env, body);
 }
 
 bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
@@ -359,10 +349,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
-        env_t block_env = *env;
-        block_env.bindings = hashmap_new();
-        block_env.bindings->fallback = env->bindings;
-        env = &block_env;
+        env = fresh_scope(env);
         for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
             ast_t *stmt = LIST_ITEM(block->statements, i);
             switch (stmt->tag) {
@@ -375,7 +362,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             case FunctionDef: {
                 bl_type_t *t = get_type(env, stmt);
                 auto fndef = Match(stmt, FunctionDef);
-                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .is_global=true));
+                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t));
                 break;
             }
             case StructDef: case TaggedUnionDef:
@@ -641,22 +628,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
 
         // Include only global bindings:
-        hashmap_t *body_bindings = hashmap_new();
-        for (hashmap_t *h = env->bindings; h; h = h->fallback) {
-            for (istr_t key = NULL; (key = hashmap_next(h, key)); ) {
-                binding_t *val = hashmap_get_raw(h, key);
-                assert(val);
-                if (val->is_global)
-                    hashmap_set(body_bindings, key, val);
-            }
-        }
-
+        env_t *lambda_env = global_scope(env);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
-            hashmap_set(body_bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
+            hashmap_set(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
-        env_t lambda_env = *env;
-        lambda_env.bindings = body_bindings;
-        bl_type_t *ret = get_type(&lambda_env, lambda->body);
+        bl_type_t *ret = get_type(lambda_env, lambda->body);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 
@@ -801,15 +777,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *key_type = INT_TYPE,
                   *value_type = get_iter_type(env, for_loop->iter);
 
-        hashmap_t *loop_bindings = hashmap_new();
-        loop_bindings->fallback = env->bindings;
+        env_t *loop_env = fresh_scope(env);
         if (for_loop->key) {
             ast_t *key = for_loop->key;
             if (key->tag == Dereference) {
                 key = Match(key, Dereference)->value;
                 key_type = Type(PointerType, .pointed=key_type, .is_optional=false);
             }
-            hashmap_set(loop_bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
+            hashmap_set(loop_env->bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
         }
         if (for_loop->value) {
             ast_t *value = for_loop->value;
@@ -817,28 +792,22 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 value = Match(value, Dereference)->value;
                 value_type = Type(PointerType, .pointed=value_type, .is_optional=false);
             }
-            hashmap_set(loop_bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
+            hashmap_set(loop_env->bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
         }
         
-        env_t loop_env = *env;
-        loop_env.bindings = loop_bindings;
         if (for_loop->first)
-            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->first));
+            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->first));
         else if (for_loop->body)
-            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->body));
+            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->body));
         else if (for_loop->between)
-            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->between));
+            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->between));
         else if (for_loop->empty)
-            return Type(GeneratorType, .generated=get_type(&loop_env, for_loop->empty));
+            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->empty));
         else
             compile_err(env, ast, "I can't figure out the type of this 'for' loop");
     }
     case Reduction: {
-        env_t reduce_env = *env;
-        reduce_env.bindings = hashmap_new();
-        reduce_env.bindings->fallback = env->bindings;
-        env = &reduce_env;
-
+        env = fresh_scope(env);
         bl_type_t *item_type = get_iter_type(env, Match(ast, Reduction)->iter);
         hashmap_set(env->bindings, intern_str("x"), new(binding_t, .type=item_type));
         hashmap_set(env->bindings, intern_str("y"), new(binding_t, .type=item_type));

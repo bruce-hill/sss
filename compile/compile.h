@@ -41,8 +41,6 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t);
 ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t);
 // Convert a blang type to the GCC JIT representation
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t);
-// Get a map that contains only the global bindings
-hashmap_t *global_bindings(hashmap_t *bindings);
 // Check whether a value is truthy or not
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
 // If a value is a string type, quote it:

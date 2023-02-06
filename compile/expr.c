@@ -168,18 +168,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
-        // if (decl->is_global) {
-        //     lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, fresh(decl->name));
-        // } else {
-        gcc_func_t *func = gcc_block_func(*block);
         istr_t name = Match(decl->var, Var)->name;
-        lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
-        // }
+        if (decl->is_global) {
+            lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, name);
+        } else {
+            gcc_func_t *func = gcc_block_func(*block);
+            lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
+        }
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type->tag == TypeType)
             compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        hashmap_set(env->bindings, name,
+        else if (clobbered && decl->is_global)
+            compile_err(env, ast, "This name is already being used for a global");
+        hashmap_set(decl->is_global ? env->global_bindings : env->bindings, name,
                     new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
@@ -200,11 +202,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             gcc_func_t *func = gcc_new_func(
                 env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
-            hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t, .is_global=true));
+            hashmap_set(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_rvalue_t *glob = gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
-            hashmap_set(env->bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t, .is_global=true));
+            hashmap_set(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t));
         }
         return NULL;
     }
@@ -255,22 +257,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Using: {
         auto using = Match(ast, Using);
-        env_t env2 = *env;
-        env2.bindings = global_bindings(env->bindings);
+        env_t *env2 = global_scope(env);
         for (int64_t i = 0, len = length(using->vars); i < len; i++) {
             ast_t *var = ith(using->vars, i);
             binding_t *b = hashmap_get(env->bindings, Match(var, Var)->name);
             if (!b) compile_err(env, var, "This variable is not defined");
-            hashmap_set(env2.bindings, Match(var, Var)->name, b);
+            hashmap_set(env2->bindings, Match(var, Var)->name, b);
         }
-        return compile_expr(&env2, block, using->body);
+        return compile_expr(env2, block, using->body);
     }
     case Block: {
         // Create scope:
-        env_t block_env = *env;
-        block_env.bindings = hashmap_new();
-        block_env.bindings->fallback = env->bindings;
-        return compile_block_expr(&block_env, block, ast);
+        return compile_block_expr(fresh_scope(env), block, ast);
     }
     case FunctionDef: {
         auto fn = Match(ast, FunctionDef);
@@ -465,13 +463,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case StructDef: {
         auto struct_def = Match(ast, StructDef);
         bl_type_t *struct_t = Match(get_binding(env, struct_def->name)->type, TypeType)->type;
-        hashmap_t *namespace = get_namespace(env, struct_t);
-        hashmap_t *globals = global_bindings(env->bindings);
-        namespace->fallback = globals;
 
-        env_t struct_env = *env;
-        struct_env.bindings = namespace;
-        env = &struct_env;
+        env = get_type_env(env, struct_t);
 
         foreach (struct_def->members, member, _) {
             if ((*member)->tag == FunctionDef) {
@@ -489,7 +482,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 istr_t global_name = intern_strf("%s__%s", struct_def->name, name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
                 hashmap_set(env->bindings, name,
-                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .is_global=true));
+                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             }
@@ -1365,21 +1358,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
         gcc_block_t *if_falsey = gcc_new_block(func, fresh("else"));
 
-        env_t branch_env = *env;
-        branch_env.bindings = hashmap_new();
-        branch_env.bindings->fallback = env->bindings;
-        check_truthiness(&branch_env, block, condition, if_truthy, if_falsey);
+        env_t *branch_env = fresh_scope(env);
+        check_truthiness(branch_env, block, condition, if_truthy, if_falsey);
         *block = NULL;
 
         if (if_t->tag == GeneratorType && env->comprehension_callback) {
             if (!env->comprehension_callback)
                 compile_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
-            env->comprehension_callback(&branch_env, &if_truthy, body, env->comprehension_userdata);
+            env->comprehension_callback(branch_env, &if_truthy, body, env->comprehension_userdata);
             assert(end_if);
             if (if_truthy)
                 gcc_jump(if_truthy, loc, end_if);
         } else {
-            gcc_rvalue_t *branch_val = compile_expr(&branch_env, &if_truthy, body);
+            gcc_rvalue_t *branch_val = compile_expr(branch_env, &if_truthy, body);
             if (if_truthy) {
                 if (branch_val) {
                     if (has_value) {
@@ -1451,10 +1442,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (when->cases, case_, _) {
             istr_t tag_name = Match(case_->tag, Var)->name;
             gcc_loc_t *case_loc = ast_loc(env, case_->tag);
-            env_t case_env = *env;
+            env_t *case_env = env;
             if (case_->var) {
-                case_env.bindings = hashmap_new();
-                case_env.bindings->fallback = env->bindings;
+                case_env = fresh_scope(env);
 
                 gcc_rvalue_t *case_rval = NULL;
                 bl_type_t *case_t = NULL;
@@ -1470,7 +1460,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compile_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
 
                 binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
-                hashmap_set(case_env.bindings, Match(case_->var, Var)->name, case_binding);
+                hashmap_set(case_env->bindings, Match(case_->var, Var)->name, case_binding);
             }
 
             gcc_block_t *case_block = gcc_new_block(func, fresh(intern_strf("case_%s", tag_name)));
@@ -1478,7 +1468,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_case_t *gcc_case = gcc_new_case(env->ctx, tag_rval, tag_rval, case_block);
             APPEND(gcc_cases, gcc_case);
 
-            gcc_rvalue_t *branch_val = compile_expr(&case_env, &case_block, case_->body);
+            gcc_rvalue_t *branch_val = compile_expr(case_env, &case_block, case_->body);
             if (branch_val) {
                 if (has_value) {
                     bl_type_t *actual = get_type(env, case_->body);
@@ -1575,10 +1565,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *ret = gcc_local(func, loc, bl_type_to_gcc(env, t), name);
 
-        env_t reduce_env = *env;
-        reduce_env.bindings = hashmap_new();
-        reduce_env.bindings->fallback = env->bindings;
-        env = &reduce_env;
+        env = fresh_scope(env);
 
         hashmap_set(env->bindings, intern_str("x"), new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
         ast_t *prev_var = WrapAST(ast, Var, .name=intern_str("x"));
