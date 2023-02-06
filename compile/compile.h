@@ -76,6 +76,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
+ast_t *globalize_decls(ast_t *block_ast);
 
 // ============================== loops.c ================================
 void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast);

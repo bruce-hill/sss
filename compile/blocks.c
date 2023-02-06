@@ -271,4 +271,17 @@ void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast)
     if (rval && *block) gcc_eval(*block, NULL, rval);
 }
 
+ast_t *globalize_decls(ast_t *block_ast)
+{
+    auto block = Match(block_ast, Block);
+    NEW_LIST(ast_t*, stmts);
+    for (int64_t i = 0; i < LIST_LEN(block->statements); i++) {
+        ast_t *stmt = LIST_ITEM(block->statements, i);
+        if (stmt->tag == Declare)
+            stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_global=true);
+        APPEND(stmts, stmt);
+    }
+    return WrapAST(block_ast, Block, .statements=stmts);
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

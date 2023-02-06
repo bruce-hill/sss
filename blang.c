@@ -23,6 +23,7 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
     ast_t *ast = parse_file(f, NULL);
+    ast = globalize_decls(ast);
 
     if (verbose)
         fprintf(stderr, "Result: %s\n", ast_to_str(ast));
@@ -78,6 +79,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
     ast_t *ast = parse_file(f, on_err);
+    ast = globalize_decls(ast);
 
     if (verbose)
         fprintf(stderr, "Result: %s\n", ast_to_str(ast));
@@ -149,6 +151,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         }
 
         ast_t *ast = parse_file(f, &on_err);
+        ast = globalize_decls(ast);
         if (!is_discardable(env, ast)) {
             bl_type_t *t = get_type(env, ast);
             if (t->tag == GeneratorType) {
