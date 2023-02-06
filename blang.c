@@ -23,7 +23,6 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
     ast_t *ast = parse_file(f, NULL);
-    ast = globalize_decls(ast);
 
     if (verbose)
         fprintf(stderr, "Result: %s\n", ast_to_str(ast));
@@ -79,7 +78,6 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, 
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
     ast_t *ast = parse_file(f, on_err);
-    ast = globalize_decls(ast);
 
     if (verbose)
         fprintf(stderr, "Result: %s\n", ast_to_str(ast));
@@ -130,9 +128,11 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         if (line) free(line);
 
         fflush(buf_file);
+        gcc_block_t *block = NULL;
 
         gcc_jit_result *result = NULL;
 #define CLEANUP() do { \
+        if (block) gcc_return_void(block, NULL); \
         if (result) gcc_jit_result_release(result); \
         fclose(buf_file); \
         free(buf); } while (0) \
@@ -179,15 +179,22 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         const char *repl_name = fresh("repl");
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
-        gcc_block_t *block = gcc_new_block(repl_func, fresh("repl_body"));
+        block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        compile_statement(env, &block, ast);
-        if (block)
+        hashmap_t *old_globals = hashmap_new();
+        for (const void *key = NULL; (key = hashmap_next(env->global_bindings, key)); )
+            hashmap_set(old_globals, key, hashmap_get(env->global_bindings, key));
+
+        env_t *fresh_env = fresh_scope(env);
+        compile_statement(fresh_env, &block, ast);
+        if (block) {
             gcc_return_void(block, NULL);
+            block = NULL;
+        }
 
         result = gcc_compile(ctx);
         if (result == NULL)
-            compile_err(env, NULL, "Compilation failed");
+            compile_err(fresh_env, NULL, "Compilation failed");
 
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
@@ -197,6 +204,25 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         run_line();
         fputs("\x1b[m", stdout);
         fflush(stdout);
+
+        // Copy out the global variables to GC memory
+        for (const void *key = NULL; (key = hashmap_next(env->global_bindings, key)); ) {
+            if (hashmap_get(old_globals, key))
+                continue;
+
+            binding_t *b = hashmap_get(env->global_bindings, key);
+            if (b->type->tag == FunctionType)
+                continue;
+
+            void *global = gcc_jit_result_get_global(result, (char*)key);
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, b->type);
+            char *copy = GC_MALLOC(gcc_sizeof(env, b->type));
+            memcpy(copy, (char*)global, gcc_sizeof(env, b->type));
+            gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(env->ctx, gcc_get_ptr_type(gcc_t), copy);
+            b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
+            b->rval = gcc_rval(b->lval);
+            hashmap_set(old_globals, key, hashmap_get(env->global_bindings, key));
+        }
 
         CLEANUP();
 #undef CLEANUP
