@@ -1628,7 +1628,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case DocTest: {
         auto test = Match(ast, DocTest);
         ast_t *expr = test->expr;
+
+        // Print test:
+        istr_t src = intern_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+        ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, StringAST(expr, src)));
+        compile_statement(env, block, say_src);
+
         bl_type_t *t = get_type(env, expr);
+        if (t->tag == VoidType) {
+            if (test->output)
+                compile_err(env, ast, "There shouldn't be any output for a Void expression like this");
+
+            compile_statement(env, block, expr);
+            return NULL;
+        }
         if (t == Type(ArrayType, .item_type=Type(CharType))) {
             if (Match(t, ArrayType)->dsl)
                 expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
@@ -1641,6 +1654,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // Stringify and add type info:
         ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=expr), type_info));
         ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
+
+        // Call say(str):
+        ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, result_str));
+        compile_statement(env, block, say_result);
 
         if (test->output) {
             ast_t *expected = StringAST(ast, test->output);
@@ -1656,14 +1673,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         }
 
-        // Print test and its output:
-        istr_t src = intern_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-        ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, StringAST(expr, src)));
-        compile_statement(env, block, say_src);
-
-        // Call say(str):
-        ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, result_str));
-        compile_statement(env, block, say_result);
         return NULL;
     }
     default: break;

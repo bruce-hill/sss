@@ -1838,7 +1838,7 @@ PARSER(parse_doctest) {
     const char *start = pos;
     if (!match(&pos, ">>>")) return NULL;
     spaces(&pos);
-    ast_t *expr = expect_ast(ctx, start, &pos, parse_extended_expr, "I couldn't parse the expression for this doctest");
+    ast_t *expr = expect_ast(ctx, start, &pos, parse_statement, "I couldn't parse the expression for this doctest");
     whitespace(&pos);
     istr_t output = NULL;
     if (match(&pos, "===")) {
