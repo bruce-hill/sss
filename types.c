@@ -262,11 +262,8 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     if (actual == needed)
         return true;
 
-    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) == numtype_priority(needed))
-        return type_units(actual) == type_units(needed);
-
     // Numeric promotion:
-    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) < numtype_priority(needed))
+    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) <= numtype_priority(needed))
         return type_units(actual) == type_units(needed);
 
     // Optional promotion:

@@ -71,7 +71,8 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         istr_t raw_units = type_units(raw);
         if (raw_units)
             compile_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
-        return with_units(raw, measure->units);
+        istr_t units = unit_derive(measure->units, NULL, env->derived_units);
+        return with_units(raw, units);
     }
 
     case TypeFunction: {

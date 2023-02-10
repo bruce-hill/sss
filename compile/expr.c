@@ -435,12 +435,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case UnitDef: {
-        auto unit_def = Match(ast, UnitDef);
-        env->derived_units = new(derived_units_t, 
-                                 .derived=Match(unit_def->derived, Num)->units,
-                                 .base=Match(unit_def->base, Num)->units,
-                                 .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
-                                 .next=env->derived_units);
         return NULL;
     }
     case ConvertDef: {
@@ -733,7 +727,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (arg_vals[arg_index])
                 compile_err(env, *arg, "This argument was already passed in earlier to this function call");
             gcc_rvalue_t *val = compile_expr(env, block, kwarg->arg);
-                bl_type_t *actual = get_type(env, *arg);
+            bl_type_t *actual = get_type(env, *arg);
             bl_type_t *expected = ith(fn_t->arg_types, arg_index);
             if (!promote(env, actual, &val, expected))
                 compile_err(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
