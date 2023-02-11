@@ -1002,7 +1002,8 @@ PARSER(parse_interpolation) {
     const char *start = pos;
     ++pos; // ignore the initial character, typically a '$', but might be other stuff like '@' in different contexts
     bool labelled = match(&pos, ":");
-    ast_t *value = optional_ast(ctx, &pos, parse_term);
+    ast_t *value = optional_ast(ctx, &pos, parse_parens);
+    if (!value) value = optional_ast(ctx, &pos, parse_term);
     if (!value) {
         match_group(&pos, '(');
         parser_err(ctx, start, pos, "This interpolation didn't parse");
