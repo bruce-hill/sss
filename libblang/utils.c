@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -185,7 +186,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
     int64_t len = (range.last - range.first) / range.stride + 1;
     // If less than zero, set to zero (without a conditional branch)
     len = len & ~(len >> 63);
-    if (len > array.length/range.stride) len = array.length/range.stride;
+    if (len > array.length/labs(range.stride) + 1) len = array.length/labs(range.stride) + 1;
     if (len < 0) len = -len;
 
     return (string_t){
