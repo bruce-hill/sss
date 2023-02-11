@@ -572,19 +572,25 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_eval(block, NULL, gcc_callx(
                 env->ctx, NULL, hash_set_func, rec, gcc_cast(env->ctx, NULL, obj, void_star), gcc_rval(index)));
 
-        // Prepend "@"
-        gcc_rvalue_t *at = WRITE_LITERAL("@");
+        if (pointed_type->tag == VoidType) {
+            gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
+            gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, "@Void<0x%X>"), obj));
+            // gcc_return(noncycle_block, NULL, WRITE_LITERAL("@Void"));
+        } else {
+            // Prepend "@"
+            gcc_rvalue_t *at = WRITE_LITERAL("@");
 
-        gcc_func_t *print_fn = get_print_func(env, pointed_type);
-        assert(print_fn);
-        gcc_rvalue_t *printed = gcc_callx(
-            env->ctx, NULL, print_fn,
-            quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
-            gcc_param_as_rvalue(params[1]),
-            rec);
+            gcc_func_t *print_fn = get_print_func(env, pointed_type);
+            assert(print_fn);
+            gcc_rvalue_t *printed = gcc_callx(
+                env->ctx, NULL, print_fn,
+                quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
+                gcc_param_as_rvalue(params[1]),
+                rec);
+            gcc_return(noncycle_block, NULL,
+                       gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
+        }
 
-        gcc_return(noncycle_block, NULL,
-                   gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
         break;
     }
     case StructType: {
