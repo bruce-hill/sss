@@ -508,7 +508,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case VoidType: {
-        gcc_return(block, NULL, WRITE_LITERAL("Void"));
+        errx(1, "Can't define print functions with 'void' as an argument");
         break;
     }
     case RangeType: {
