@@ -1308,7 +1308,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             return gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
         } else {
-            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+            gcc_rvalue_t *result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
+            // Ensure modulus result is positive (i.e. (-1 mod 10) == 9)
+            result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_PLUS, bl_type_to_gcc(env, t), result, rhs_val);
+            result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), result, rhs_val);
+            return result;
         }
     }
     case Power: {
