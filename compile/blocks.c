@@ -105,6 +105,14 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
             }
         }
         return t;
+    } else if (def->tag == UnitDef) {
+        auto unit_def = Match(def, UnitDef);
+        env->derived_units = new(derived_units_t, 
+                                 .derived=Match(unit_def->derived, Num)->units,
+                                 .base=Match(unit_def->base, Num)->units,
+                                 .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
+                                 .next=env->derived_units);
+        return NULL;
     } else {
         return NULL;
     }
@@ -229,17 +237,6 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
     auto statements = ast->tag == Block ? Match(ast, Block)->statements : LIST(ast_t*, ast);
-
-    // First thing is unit definitions (since they may be used in function arg types)
-    foreach (statements, stmt, _) {
-        if ((*stmt)->tag != UnitDef) continue;
-        auto unit_def = Match(*stmt, UnitDef);
-        env->derived_units = new(derived_units_t, 
-                                 .derived=Match(unit_def->derived, Num)->units,
-                                 .base=Match(unit_def->base, Num)->units,
-                                 .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
-                                 .next=env->derived_units);
-    }
 
     // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
     foreach (statements, stmt, _) {

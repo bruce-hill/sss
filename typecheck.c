@@ -483,6 +483,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t2 = Match(t2, PointerType)->pointed;
 
         istr_t u1 = type_units(t1), u2 = type_units(t2);
+        u1 = unit_derive(u1, NULL, env->derived_units);
+        u2 = unit_derive(u2, NULL, env->derived_units);
 
         if (u1 != u2)
             compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
@@ -513,6 +515,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t2 = Match(t2, PointerType)->pointed;
 
         istr_t u1 = type_units(t1), u2 = type_units(t2);
+        u1 = unit_derive(u1, NULL, env->derived_units);
+        u2 = unit_derive(u2, NULL, env->derived_units);
         istr_t u = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
 
         if (t1 == t2) {
@@ -540,6 +544,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t2 = Match(t2, PointerType)->pointed;
 
         istr_t u1 = type_units(t1), u2 = type_units(t2);
+        u1 = unit_derive(u1, NULL, env->derived_units);
+        u2 = unit_derive(u2, NULL, env->derived_units);
         if (u1 && strlen(u1) > 0)
             compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
         else if (u2 && strlen(u2) > 0)
@@ -569,6 +575,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t2 = Match(t2, PointerType)->pointed;
 
         istr_t u1 = type_units(t1), u2 = type_units(t2);
+        u1 = unit_derive(u1, NULL, env->derived_units);
+        u2 = unit_derive(u2, NULL, env->derived_units);
         if (u2 && strlen(u2) > 0)
             compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
 
