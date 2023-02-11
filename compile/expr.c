@@ -1643,7 +1643,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t == Type(ArrayType, .item_type=Type(CharType))) {
             if (Match(t, ArrayType)->dsl)
                 expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(ast, Bool, .b=true)));
+            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(ast, Bool, .b=false)));
             expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field=intern_str("quoted")), .args=args);
         }
 
