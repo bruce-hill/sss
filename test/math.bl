@@ -1,34 +1,63 @@
-a := 3_000 // Underscores can separate chunks
-b := 2
-x := 3.5
-// y := 2e3 // Scientific notation
-y := 2_000
-say "Literals: $(123) $(123_456) $(-123) $(0xFF) $(-0xFF) $(0o777) $(-0o777) $(0b111) $(-0b111)"
-say "Addition: $a+$b=$(a+b) $x+$y=$(x+y)"
-say "Subtraction: $a-$b=$(a-b) $x-$y=$(x-y)"
-say "Multiplication: $a*$b=$(a*b) $x*$y=$(x*y)"
-say "Division: $a/$b=$(a/b) $x/$y=$(x/y)"
-say "Modulus: $a mod $b=$(a mod b) $x mod 1=$(x mod 1.)"
-say "Negative num modulus: -$a mod $b=$(-a mod b) -$x mod 1=$(-x mod 1.)"
-say "Negative modulus: $a mod -$b=$(a mod -b) $x mod -1=$(x mod -1.)"
-// say "Exponentiation: $a^$b=$(a^b) $x^2.5=$(x^2.5)"
+say "Numeric literals:"
+>>> 1_000
+=== 1000
+>>> 0xFF
+=== 255
+>>> 0o777
+=== 511
+>>> -0o7
+=== -7
+>>> 0b111
+=== 7
+>>> 2.5
+=== 2.5
+>>> 2e3
+=== 2000
+>>> 5_i32
+=== 5_i32
+>>> 1f32
+=== 1_f32
 
-long := 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
-fail unless long == -167
-say "Long chain: $long"
+say "Numeric math operations:"
+>>> 1+2
+=== 3
+>>> 10-1
+=== 9
+>>> 10/2
+=== 5
+>>> 1/2
+=== 0
+>>> 1.0/2
+=== 0.5
+>>> 10 mod 3
+=== 1
+>>> 4.0 mod 3.5
+=== 0.5
+>>> -1 mod 10
+=== 9
+>>> -1 mod 4.5
+=== 3.5
+>>> 10.0^2
+=== 100
+>>> 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
+=== -167
 
-f := 23.5
-say "$f casts to int: $(f as Int)"
-fail unless f as Int == 23
-say "$f reinterpreted as int: $(bitcast f as Int)"
+say "Coercion"
+>>> 10 + 0.5
+=== 10.5
+>>> 3 * 0.5
+=== 1.5
+>>> 1i32 + 1i16
+=== 2_i32
 
-i := 123
-say "$i casts to float: $(i as Num)"
-fail unless i as Num == 123.0
-say "$i reinterpreted as float: $(bitcast i as Num)"
 
-fail unless 23.5 as Int8 == 23i8
-fail "23 as Num32 = $(23 as Num32)" unless 23 as Num32 == 23.0f32
+say "Casting:"
+>>> 23.5 as Int
+=== 23
+>>> bitcast 23.5 as Int
+>>> 23 as Num
+=== 23
+>>> bitcast 23 as Num
 
 def fast_inverse_sqrt(number:Num):Num
     x2 := number * 0.5
@@ -41,25 +70,53 @@ def fast_inverse_sqrt(number:Num):Num
     y *= (1.5 - (x2 * y * y)) // 3rd iteration, this can be removed
     return y
 
-test := 16.
-say "fast_inverse_sqrt($test) = $(fast_inverse_sqrt test)"
-result := fast_inverse_sqrt(16.)
-fail "got $result instead of 0.25" unless "$result" == "0.25"
+>>> fast_inverse_sqrt(16.)
+=== 0.25
 
-say "$:(Num.NaN) $:(Num.Infinity)"
-say "$:(Num32.NaN) $:(Num32.Infinity)"
-say "$:(Int.Min) $:(Int32.Min) $:(Int16.Min) $:(Int8.Min)"
-say "$:(Int.Max) $:(Int32.Max) $:(Int16.Max) $:(Int8.Max)"
-say "$((-5).abs())"
-say "$:(Int.random()) $:(Int32.random())"
+say "Constants:"
+>>> [Num.NaN, Num.Infinity, Num.Pi, Num.Tau]
+=== [nan, inf, 3.14159, 6.28319]
+>>> [Num32.NaN, Num32.Infinity, Num32.Pi, Num32.Tau]
+=== [nan_f32, inf_f32, 3.14159_f32, 6.28319_f32]
 
-// Methods:
-n := 5.0
-say "$:(n.sqrt())"
-say "$:(Num32.atan2(x=1.f32, y=2.f32))"
-say "$:(n.max(10.))"
+>>> [Int.Min, Int.Max]
+=== [-9223372036854775808, 9223372036854775807]
+>>> [Int32.Min, Int32.Max]
+=== [-2147483648_i32, 2147483647_i32]
+>>> [Int16.Min, Int16.Max]
+=== [-32768_i16, 32767_i16]
+>>> [Int8.Min, Int8.Max]
+=== [-128_i8, 127_i8]
 
-n := 123.4567
-say "$:n $:(n.format(precision=12)) $:(n.scientific())"
-x := 12345
-say "$:x $:(x.format(12)) $:(x.hex()) $:(x.octal())"
+say "Methods:"
+>>> (-5).abs()
+=== 5
+>>> Int.random()
+>>> (5.0).sqrt()
+=== 2.23607
+>>> Num32.atan2(x=1.f32, y=2.f32)
+=== 1.10715_f32
+>>> (5.0).max(10.)
+=== 10
+
+>>> n := 123.4567
+>>> n.format(precision=12)
+=== "123.456700000000"
+>>> n.scientific()
+=== "1.234567e+02"
+>>> x := 12345
+>>> x.format(12)
+=== "000000012345"
+>>> x.hex()
+>>> "0x3039"
+>>> x.octal()
+=== "0o30071"
+
+>>> [1,2,3] + [10,20]
+=== [11, 22]
+>>> [10, 20] - [1, 2, 3]
+=== [9, 18]
+>>> [1,2,3] * 2
+=== [2, 4, 6]
+>>> 2*[1,2,3]
+=== [2, 4, 6]
