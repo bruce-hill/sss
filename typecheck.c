@@ -137,6 +137,54 @@ static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
     }
 }
 
+bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag, bl_type_t *rhs_t)
+{
+    // Dereference:
+    while (lhs_t->tag == PointerType)
+        lhs_t = Match(lhs_t, PointerType)->pointed;
+    while (rhs_t->tag == PointerType)
+        rhs_t = Match(rhs_t, PointerType)->pointed;
+
+    istr_t u1 = type_units(lhs_t), u2 = type_units(rhs_t);
+    u1 = unit_derive(u1, NULL, env->derived_units);
+    u2 = unit_derive(u2, NULL, env->derived_units);
+
+    istr_t units;
+    if (tag == Add || tag == Subtract) {
+        if (u1 != u2)
+            compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
+        units = u1;
+    } else if (tag == Divide || tag == Multiply) {
+        units = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
+    } else if (tag == Power) {
+        if (u1 && strlen(u1) > 0)
+            compile_err(env, ast, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
+        else if (u2 && strlen(u2) > 0)
+            compile_err(env, ast, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
+        units = NULL;
+    } else if (tag == Modulus) {
+        if (u2 && strlen(u2) > 0)
+            compile_err(env, ast, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
+        units = u1;
+    } else {
+        compile_err(env, ast, "Unsupported math operation");
+    }
+
+    if (lhs_t == rhs_t) {
+        return with_units(lhs_t, units);
+    } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
+        bl_type_t *t = numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        return with_units(t, units);
+    } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
+        return with_units(rhs_t, units);
+    } else if (is_numeric(rhs_t) && (lhs_t->tag == StructType || lhs_t->tag == ArrayType)) {
+        return with_units(lhs_t, units);
+    } else {
+        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+                    type_to_string(lhs_t), type_to_string(rhs_t));
+    }
+}
+
 bl_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -469,129 +517,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
         return Type(VoidType);
     }
-    case Add: case Subtract: {
+    case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
         ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
         // Okay safe again
 
-        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-
-        // Dereference:
-        while (t1->tag == PointerType)
-            t1 = Match(t1, PointerType)->pointed;
-        while (t2->tag == PointerType)
-            t2 = Match(t2, PointerType)->pointed;
-
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
-        u1 = unit_derive(u1, NULL, env->derived_units);
-        u2 = unit_derive(u2, NULL, env->derived_units);
-
-        if (u1 != u2)
-            compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
-
-        if (t1 == t2) {
-            return t1;
-        } else if (is_numeric(t1) && is_numeric(t2)) {
-            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
-            return with_units(t, u1);
-        } else if (is_numeric(t1) && t2->tag == StructType) {
-            return with_units(t2, u1);
-        } else if (is_numeric(t2) && t1->tag == StructType) {
-            return with_units(t1, u1);
-        } else {
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(t1), type_to_string(t2));
-        }
-    }
-    case Divide: case Multiply: {
-        ast_t *lhs = ast->tag == Divide ? Match(ast, Divide)->lhs : Match(ast, Multiply)->lhs,
-              *rhs = ast->tag == Divide ? Match(ast, Divide)->rhs : Match(ast, Multiply)->rhs;
-        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-
-        // Dereference:
-        while (t1->tag == PointerType)
-            t1 = Match(t1, PointerType)->pointed;
-        while (t2->tag == PointerType)
-            t2 = Match(t2, PointerType)->pointed;
-
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
-        u1 = unit_derive(u1, NULL, env->derived_units);
-        u2 = unit_derive(u2, NULL, env->derived_units);
-        istr_t u = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
-
-        if (t1 == t2) {
-            return with_units(t1, u);
-        } else if (is_numeric(t1) && is_numeric(t2)) {
-            bl_type_t *t = numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
-            return with_units(t, u);
-        } else if (is_numeric(t1) && t2->tag == StructType) {
-            return with_units(t2, u);
-        } else if (is_numeric(t2) && t1->tag == StructType) {
-            return with_units(t1, u);
-        } else {
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(t1), type_to_string(t2));
-        }
-    }
-    case Power: {
-        ast_t *lhs = Match(ast, Power)->lhs, *rhs = Match(ast, Power)->rhs;
-        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-
-        // Dereference:
-        while (t1->tag == PointerType)
-            t1 = Match(t1, PointerType)->pointed;
-        while (t2->tag == PointerType)
-            t2 = Match(t2, PointerType)->pointed;
-
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
-        u1 = unit_derive(u1, NULL, env->derived_units);
-        u2 = unit_derive(u2, NULL, env->derived_units);
-        if (u1 && strlen(u1) > 0)
-            compile_err(env, lhs, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1 ? u1 : "");
-        else if (u2 && strlen(u2) > 0)
-            compile_err(env, rhs, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2 ? u2 : "");
-
-        if (t1 == t2) {
-            return t1;
-        } else if (is_numeric(t1) && is_numeric(t2)) {
-            return numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2;
-        } else if (is_numeric(t1) && t2->tag == StructType) {
-            return t2;
-        } else if (is_numeric(t2) && t1->tag == StructType) {
-            return t1;
-        } else {
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(t1), type_to_string(t2));
-        }
-    }
-    case Modulus: {
-        ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
-        bl_type_t *t1 = get_type(env, lhs), *t2 = get_type(env, rhs);
-
-        // Dereference:
-        while (t1->tag == PointerType)
-            t1 = Match(t1, PointerType)->pointed;
-        while (t2->tag == PointerType)
-            t2 = Match(t2, PointerType)->pointed;
-
-        istr_t u1 = type_units(t1), u2 = type_units(t2);
-        u1 = unit_derive(u1, NULL, env->derived_units);
-        u2 = unit_derive(u2, NULL, env->derived_units);
-        if (u2 && strlen(u2) > 0)
-            compile_err(env, rhs, "This modulus value has units attached (<%s>), which doesn't make sense", u2 ? u2 : "");
-
-        if (t1 == t2) {
-            return t1;
-        } else if (is_numeric(t1) && is_numeric(t2)) {
-            return with_units(numtype_priority(t1) >= numtype_priority(t2) ? t1 : t2, u1);
-        } else if (is_numeric(t1) && t2->tag == StructType) {
-            return with_units(t2, u1);
-        } else if (is_numeric(t2) && t1->tag == StructType) {
-            return with_units(t1, u1);
-        } else {
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(t1), type_to_string(t2));
-        }
+        bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
+        return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: {
         return Type(BoolType);

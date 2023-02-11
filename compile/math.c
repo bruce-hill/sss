@@ -32,6 +32,150 @@ static gcc_rvalue_t *math_binop_rec(
             compile_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_binop_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
     }
+    gcc_func_t *func = gcc_block_func(*block);
+
+    if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
+        // Use the minimum common length:
+        // [1,2,3] += [10,20] ==> [11,22]
+        // [1,2,3] += [10,20,30,40] ==> [11,22,33]
+
+        // Pseudocode:
+        // len = MIN(lhs->len, rhs->len)
+        // result = alloc(len)
+        // for (i = 0; i < len; i++)
+        //     result->data[i] = lhs->data[i] {OP} &rhs->data[i]
+
+        bl_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+        gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
+        gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
+        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, fresh("result"));
+
+        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 1));
+        gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 2));
+
+        gcc_type_t *rhs_gcc_t = bl_type_to_gcc(env, rhs_t);
+        gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
+        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
+        gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
+
+        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+        gcc_rvalue_t *len = ternary(block,
+                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
+                                    i32, lhs_len32, rhs_len32);
+
+        bl_type_t *item_t = Match(result_t, ArrayType)->item_type;
+        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
+        gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
+        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
+        gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
+        gcc_assign(*block, loc, result, gcc_struct_constructor(
+                env->ctx, loc, result_gcc_t, 3,
+                (gcc_field_t*[]){gcc_get_field(result_array_struct, 0), gcc_get_field(result_array_struct, 1), gcc_get_field(result_array_struct, 2)},
+                (gcc_rvalue_t*[]){initial_items, len, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
+
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+
+        gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
+                           loop_body, loop_end);
+
+        *block = loop_body;
+#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), stride))
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(lhs_array_struct, 0));
+        gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_item_ptr, lhs_stride32));
+        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, 0));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride32));
+
+        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, 0));
+        gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
+
+        gcc_rvalue_t *item = math_binop_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, 
+                                            Match(rhs_t, ArrayType)->item_type, rhs_item);
+        gcc_assign(*block, NULL, result_item, item);
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+        *block = loop_end;
+        return gcc_rval(result);
+    } else if (lhs_t->tag == ArrayType || rhs_t->tag == ArrayType) {
+        // Pseudocode:
+        // result = alloc(arr->len)
+        // for (i = 0; i < arr->len; i++)
+        //     result->data[i] = arr->data[i] {OP} scalar
+
+        gcc_rvalue_t *array, *scalar;
+        bl_type_t *array_t, *scalar_t;
+        bool scalar_left = (lhs_t->tag != ArrayType);
+        if (scalar_left) {
+            array = rhs, scalar = lhs;
+            array_t = rhs_t, scalar_t = lhs_t;
+        } else {
+            array = lhs, scalar = rhs;
+            array_t = lhs_t, scalar_t = rhs_t;
+        }
+        bl_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
+        gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
+        gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
+        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, fresh("result"));
+
+        gcc_type_t *array_gcc_t = bl_type_to_gcc(env, array_t);
+        gcc_struct_t *array_struct = gcc_type_if_struct(array_gcc_t);
+        gcc_rvalue_t *len = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 2));
+
+        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+        gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
+                    *loop_body = gcc_new_block(func, fresh("loop_body")),
+                    *loop_end = gcc_new_block(func, fresh("loop_end"));
+
+        bl_type_t *item_t = Match(result_t, ArrayType)->item_type;
+        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
+        gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
+        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
+        gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
+        gcc_assign(*block, loc, result, gcc_struct_constructor(
+                env->ctx, loc, result_gcc_t, 3,
+                (gcc_field_t*[]){gcc_get_field(result_array_struct, 0), gcc_get_field(result_array_struct, 1), gcc_get_field(result_array_struct, 2)},
+                (gcc_rvalue_t*[]){initial_items, len, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
+
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+
+        gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
+                           loop_body, loop_end);
+
+        *block = loop_body;
+        gcc_rvalue_t *array_item_ptr = gcc_rvalue_access_field(array, NULL, gcc_get_field(array_struct, 0));
+        gcc_rvalue_t *array_item = gcc_rval(ITEM(array_item_ptr, stride));
+
+        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, 0));
+        gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
+
+        bl_type_t *array_item_t = Match(array_t, ArrayType)->item_type;
+        gcc_rvalue_t *item;
+        if (scalar_left) 
+            item = math_binop_rec(env, block, ast, scalar_t, scalar, op, array_item_t, array_item);
+        else
+            item = math_binop_rec(env, block, ast, array_item_t, array_item, op, scalar_t, scalar);
+
+        gcc_assign(*block, NULL, result_item, item);
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_jump(*block, NULL, loop_condition);
+        *block = loop_end;
+        return gcc_rval(result);
+    }
+#undef ITEM
 
     bl_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
