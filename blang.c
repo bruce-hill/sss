@@ -234,6 +234,14 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
 int main(int argc, char *argv[])
 {
+
+#ifdef __OpenBSD__
+    unveil("/include", "r");
+    unveil("/lib", "r");
+    unveil("/usr/lib", "r");
+    unveil(getcwd(), "r");
+#endif
+
     GC_INIT();
     hashmap_set_allocator(GC_malloc, NULL);
     bool verbose = false;
@@ -275,8 +283,15 @@ int main(int argc, char *argv[])
             continue;
         }
 
+#ifdef __OpenBSD__
+        unveil(argv[i]);
+        if (pledge("stdio rpath wpath cpath tmppath", NULL))
+            err(1, "could not pledge");
+#endif
+
         bl_file_t *f = bl_load_file(argv[i]);
         if (!f) errx(1, "Couldn't open file: %s", argv[i]);
+
         if (run_program)
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
         else
