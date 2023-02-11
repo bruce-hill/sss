@@ -4,7 +4,7 @@ def abs(x:Int):Int
     else
         return x
 
-x := -5
-say "Abs($x) = $(abs x)"
-x = 15
-say "Abs($x) = $(abs x)"
+>>> abs(-5)
+=== 5
+>>> abs(15)
+=== 15
