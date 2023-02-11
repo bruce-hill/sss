@@ -1326,7 +1326,12 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
             switch (*pos) {
             case '.':
             case '<': case '>': case '=': case ':': case '!':
-            case '+': case '-': case '*': case '/': case '^': return NULL;
+            case '+': case '*': case '/': case '^': return NULL;
+            case '-': {
+                if (pos[-1] == ' ' && pos[1] != ' ')
+                    break;
+                else return NULL;
+            }
             case 'a': if (match_word(&pos, "and")) return NULL; else break;
             case 'o': if (match_word(&pos, "or")) return NULL; else break;
             case 'x': if (match_word(&pos, "xor")) return NULL; else break;
