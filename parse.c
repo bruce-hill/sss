@@ -1386,7 +1386,12 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         ast_tag_e tag = Unknown;
         switch (*pos) {
         case '+': ++pos; tag = Add; break;
-        case '-': ++pos; tag = Subtract; break;
+        case '-': ++pos; {
+            if (pos[0] != ' ' && pos[-2] == ' ') // looks like `fn -5`
+                goto no_more_binops;
+            tag = Subtract;
+            break;
+        }
         case '*': ++pos; tag = Multiply; break;
         case '/': ++pos; tag = Divide; break;
         case '^': ++pos; tag = Power; break;
