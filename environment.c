@@ -130,6 +130,8 @@ static bl_type_t *define_string_type(env_t *env)
     hashmap_t *ns2 = get_namespace(env, c_str);
     assert(ns2 == get_namespace(env, c_str));
     load_method(env, ns2, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
+    hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CharType), .is_optional=false));
+    load_method(env, ns3, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
     return str_type;
 }
 
