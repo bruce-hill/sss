@@ -56,6 +56,7 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
+static PARSER(parse_indented_block);
 static PARSER(parse_if);
 static PARSER(parse_for);
 static PARSER(parse_while);
@@ -735,8 +736,19 @@ PARSER(parse_if) {
                           "I expected to find a condition for this 'if'");
     if (is_unless) cond = NewAST(ctx->file, cond->span.start, cond->span.end, Not, .value=cond);
 
-    match_word(&pos, "then");
-    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if'"); 
+    ast_t *body;
+    if (match_word(&pos, "then"))
+        body = optional_ast(ctx, &pos, parse_opt_indented_block);
+    else
+        body = optional_ast(ctx, &pos, parse_indented_block); 
+
+    if (!body) {
+        spaces(&pos);
+        if (*pos == '\n')
+            parser_err(ctx, start, pos, "I expected a body for this 'if'");
+        else
+            parser_err(ctx, pos, strchrnul(pos, '\n'), "I couldn't parse the rest of this 'if' condition");
+    }
 
     ast_t *else_ = NULL;
     const char *else_start = pos;
