@@ -756,14 +756,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             arg_vals[pos] = val;
         }
 
+        env_t *default_arg_env = global_scope(env);
+        if (fn_t->arg_names) {
+            for (int64_t i = 0; i < num_args; i++) {
+                if (arg_vals[i])
+                    hashmap_set(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
+            }
+        }
+
         // Optional values get passed as nil or default values are used:
         for (int64_t len = num_args; pos < len; pos++) {
             if (arg_vals[pos]) continue;
             if (fn_t->arg_defaults) {
                 ast_t *default_val = ith(fn_t->arg_defaults, pos);
                 if (default_val) {
-                    // TODO: maybe manually restrict the bindings in `env`
-                    arg_vals[pos] = compile_expr(env, block, default_val);
+                    arg_vals[pos] = compile_expr(default_arg_env, block, default_val);
                     continue;
                 }
             }
