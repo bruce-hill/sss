@@ -266,23 +266,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             .skip_label = do_else,
         };
         gcc_rvalue_t *do_rval = compile_block_expr(do_env, block, do_->body);
-        if (do_rval && *block) {
-            if (result)
+        if (*block) {
+            if (do_rval && result)
                 gcc_assign(*block, loc, result, do_rval);
-            else
+            else if (do_rval)
                 gcc_eval(*block, loc, do_rval);
             gcc_jump(*block, loc, do_end);
+            *block = NULL;
         }
 
         do_env->loop_label->skip_label = NULL;
         *block = do_else;
         gcc_rvalue_t *else_rval = compile_block_expr(do_env, block, do_->else_body);
-        if (else_rval && *block) {
-            if (result)
+        if (*block) {
+            if (do_rval && result)
                 gcc_assign(*block, loc, result, else_rval);
-            else
+            else if (else_rval)
                 gcc_eval(*block, loc, else_rval);
             gcc_jump(*block, loc, do_end);
+            *block = NULL;
         }
         *block = do_end;
         return result ? gcc_rval(result) : NULL;
