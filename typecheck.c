@@ -427,7 +427,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Do: {
         auto do_ = Match(ast, Do);
-        return get_type(env, LIST_ITEM(do_->blocks, 0));
+        bl_type_t *t = get_type(env, do_->body);
+        if (do_->else_body) {
+            bl_type_t *t2 = get_type(env, do_->else_body);
+            if (type_is_a(t, t2))
+                t = t2;
+            else if (!type_is_a(t2, t))
+                compile_err(env, do_->else_body, "This 'else' block has a different type (%s) from the preceding 'do' block (%s)",
+                            type_to_string(t2), type_to_string(t));
+        }
+        return t;
     }
     case Using: {
         return get_type(env, Match(ast, Using)->body);

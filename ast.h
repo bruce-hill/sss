@@ -156,7 +156,7 @@ struct ast_s {
             List(ast_t*) statements;
         } Block;
         struct {
-            List(ast_t*) blocks;
+            ast_t *body, *else_body;
         } Do;
         struct {
             List(ast_t*) vars;

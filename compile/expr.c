@@ -249,11 +249,43 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return ith(rvals, length(rvals)-1);
     }
     case Do: {
-        auto blocks = Match(ast, Do)->blocks;
-        // TODO: support do/else?
-        if (length(blocks) > 1)
-            compile_err(env, ith(blocks, 1), "`do` statments with else clauses are not currently supported");
-        return compile_expr(env, block, ith(blocks, 0));
+        auto do_ = Match(ast, Do);
+        if (!do_->else_body)
+            return compile_expr(env, block, do_->body);
+
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),
+                    *do_end = gcc_new_block(func, fresh("do_end"));
+
+        bl_type_t *t = get_type(env, ast);
+        gcc_lvalue_t *result = t->tag != VoidType ? gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("do_result")) : NULL;
+        env_t *do_env = fresh_scope(env);
+        do_env->loop_label = &(loop_label_t){
+            .enclosing = env->loop_label,
+            .names = LIST(istr_t, intern_str("do")),
+            .skip_label = do_else,
+        };
+        gcc_rvalue_t *do_rval = compile_block_expr(do_env, block, do_->body);
+        if (do_rval && *block) {
+            if (result)
+                gcc_assign(*block, loc, result, do_rval);
+            else
+                gcc_eval(*block, loc, do_rval);
+            gcc_jump(*block, loc, do_end);
+        }
+
+        do_env->loop_label->skip_label = NULL;
+        *block = do_else;
+        gcc_rvalue_t *else_rval = compile_block_expr(do_env, block, do_->else_body);
+        if (else_rval && *block) {
+            if (result)
+                gcc_assign(*block, loc, result, else_rval);
+            else
+                gcc_eval(*block, loc, else_rval);
+            gcc_jump(*block, loc, do_end);
+        }
+        *block = do_end;
+        return result ? gcc_rval(result) : NULL;
     }
     case Using: {
         auto using = Match(ast, Using);
@@ -1548,26 +1580,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
                 foreach (lbl->names, name, _) {
                     if (*name == target) {
-                        if (ast->tag == Skip) {
+                        if (ast->tag == Skip)
                             jump_dest = lbl->skip_label;
-                        } else {
+                        else
                             jump_dest = lbl->stop_label;
-                        }
-                        goto found_label;
+                        if (jump_dest)
+                            goto found_label;
                     }
                 }
             }
           found_label:;
-        } else {
-            if (env->loop_label) {
-                if (ast->tag == Skip) {
-                    jump_dest = env->loop_label->skip_label;
-                } else {
-                    jump_dest = env->loop_label->stop_label;
-                }
-            }
+        } else if (env->loop_label) {
+            if (ast->tag == Skip)
+                jump_dest = env->loop_label->skip_label;
+            else
+                jump_dest = env->loop_label->stop_label;
         }
-        if (!jump_dest) compile_err(env, ast, "I'm not sure what %s is referring to", target);
+        if (!jump_dest)
+            compile_err(env, ast, "I'm not sure what %s is referring to",
+                        target ? target : (ast->tag == Skip ? "this 'skip'" : "this 'stop'"));
         gcc_jump(*block, loc, jump_dest);
         *block = NULL;
         return NULL;

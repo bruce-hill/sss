@@ -807,11 +807,19 @@ PARSER(parse_when) {
 }
 
 PARSER(parse_do) {
-    // do [<indent>] body
+    // do [<indent>] body [else else-body]
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
-    return NewAST(ctx->file, start, pos, Do, .blocks=LIST(ast_t*, body));
+    const char *else_start = pos;
+    whitespace(&pos);
+    ast_t *else_body = NULL;
+    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else"))
+        else_body = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+    else
+        pos = else_start;
+    return NewAST(ctx->file, start, pos, Do, .body=body, .else_body=else_body);
 }
 
 PARSER(parse_using) {
