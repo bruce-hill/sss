@@ -156,6 +156,7 @@ struct ast_s {
             List(ast_t*) statements;
         } Block;
         struct {
+            istr_t label;
             ast_t *body, *else_body;
         } Do;
         struct {

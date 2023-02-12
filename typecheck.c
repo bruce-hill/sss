@@ -429,12 +429,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto do_ = Match(ast, Do);
         bl_type_t *t = get_type(env, do_->body);
         if (do_->else_body) {
-            bl_type_t *t2 = get_type(env, do_->else_body);
-            if (type_is_a(t, t2))
-                t = t2;
-            else if (!type_is_a(t2, t))
-                compile_err(env, do_->else_body, "This 'else' block has a different type (%s) from the preceding 'do' block (%s)",
-                            type_to_string(t2), type_to_string(t));
+            bl_type_t *else_t = get_type(env, do_->else_body);
+            bl_type_t *t2 = type_or_type(t, else_t);
+            if (!t2)
+                compile_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
+                            type_to_string(t), type_to_string(else_t));
+            t = t2;
+        } else if (t->tag != VoidType) {
+            t = Type(GeneratorType, .generated=t);
         }
         return t;
     }
@@ -671,18 +673,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
 
     case If: {
-        bl_type_t *t = NULL;
         auto if_ = Match(ast, If);
         ast_t *cond = if_->condition;
         ast_t *body = if_->body;
-        bl_type_t *clause_t = get_clause_type(env, cond, body);
-        bl_type_t *t2 = type_or_type(t, clause_t);
-        if (!t2)
-            compile_err(env, body,
-                        "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
-                        type_to_string(t), type_to_string(clause_t));
-        t = t2;
-
+        bl_type_t *t = get_clause_type(env, cond, body);
         if (if_->else_body) {
             bl_type_t *else_type = get_type(env, if_->else_body);
             bl_type_t *t2 = type_or_type(t, else_type);
@@ -691,9 +685,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
             t = t2;
-        } else {
-            if (t->tag == VoidType)
-                return t;
+        } else if (t->tag != VoidType) {
             t = Type(GeneratorType, .generated=t);
         }
         return t;

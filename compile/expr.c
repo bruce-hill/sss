@@ -250,21 +250,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Do: {
         auto do_ = Match(ast, Do);
-        if (!do_->else_body)
-            return compile_expr(env, block, do_->body);
-
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),
-                    *do_end = gcc_new_block(func, fresh("do_end"));
-
         bl_type_t *t = get_type(env, ast);
         gcc_lvalue_t *result = t->tag != VoidType ? gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("do_result")) : NULL;
+
         env_t *do_env = fresh_scope(env);
-        do_env->loop_label = &(loop_label_t){
-            .enclosing = env->loop_label,
-            .names = LIST(istr_t, intern_str("do")),
-            .skip_label = do_else,
-        };
+        gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),
+                    *do_end = gcc_new_block(func, fresh("do_end"));
+        if (do_->else_body || t->tag == VoidType) {
+            auto labels = LIST(istr_t, intern_str("do"));
+            if (do_->label) APPEND(labels, do_->label);
+            do_env->loop_label = &(loop_label_t){
+                .enclosing = env->loop_label,
+                .names = labels,
+                .skip_label = do_else,
+            };
+        }
+
         gcc_rvalue_t *do_rval = compile_block_expr(do_env, block, do_->body);
         if (*block) {
             if (do_rval && result)
@@ -272,19 +274,22 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             else if (do_rval)
                 gcc_eval(*block, loc, do_rval);
             gcc_jump(*block, loc, do_end);
-            *block = NULL;
         }
 
-        do_env->loop_label->skip_label = NULL;
-        *block = do_else;
-        gcc_rvalue_t *else_rval = compile_block_expr(do_env, block, do_->else_body);
-        if (*block) {
-            if (do_rval && result)
-                gcc_assign(*block, loc, result, else_rval);
-            else if (else_rval)
-                gcc_eval(*block, loc, else_rval);
-            gcc_jump(*block, loc, do_end);
-            *block = NULL;
+        if (do_->else_body) {
+            do_env->loop_label->skip_label = NULL;
+            *block = do_else;
+            gcc_rvalue_t *else_rval = compile_block_expr(do_env, block, do_->else_body);
+            if (*block) {
+                if (do_rval && result)
+                    gcc_assign(*block, loc, result, else_rval);
+                else if (else_rval)
+                    gcc_eval(*block, loc, else_rval);
+                gcc_jump(*block, loc, do_end);
+                *block = NULL;
+            }
+        } else {
+            gcc_jump(do_else, loc, do_end);
         }
         *block = do_end;
         return result ? gcc_rval(result) : NULL;

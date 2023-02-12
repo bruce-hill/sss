@@ -807,10 +807,11 @@ PARSER(parse_when) {
 }
 
 PARSER(parse_do) {
-    // do [<indent>] body [else else-body]
+    // do [label] [<indent>] body [else else-body]
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
+    istr_t label = get_id(&pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
     const char *else_start = pos;
     whitespace(&pos);
@@ -819,7 +820,7 @@ PARSER(parse_do) {
         else_body = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
     else
         pos = else_start;
-    return NewAST(ctx->file, start, pos, Do, .body=body, .else_body=else_body);
+    return NewAST(ctx->file, start, pos, Do, .label=label, .body=body, .else_body=else_body);
 }
 
 PARSER(parse_using) {
