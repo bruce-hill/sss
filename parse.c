@@ -1799,9 +1799,16 @@ PARSER(parse_def) {
             spaces(&pos);
             ast_t *type = NULL;
             if (match(&pos, ":")) {
+                whitespace(&pos);
                 type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type here");
             } else if (match(&pos, "{")) {
                 type = parse_rest_of_struct_def(ctx, tag_start, &pos, tag_name);
+            }
+
+            // Check for duplicate values:
+            for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
+                if (LIST_ITEM(tag_values, i) == next_value)
+                    parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
             }
 
             APPEND(tag_names, tag_name);
