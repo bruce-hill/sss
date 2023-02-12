@@ -757,7 +757,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         env_t *default_arg_env = global_scope(env);
-        if (fn_t->arg_names) {
+        if (fn_t->arg_names && fn_t->arg_defaults) {
+            // Stash args in local variables so we don't evaluate them multiple times (e.g. def foo(x:Int,y=x)... foo(Int.random()))
+            gcc_func_t *func = gcc_block_func(*block);
+            for (int64_t i = 0; i < num_args; i++) {
+                if (arg_vals[i]) {
+                    gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, ith(fn_t->arg_types, i)), fresh(ith(fn_t->arg_names, i)));
+                    gcc_assign(*block, loc, tmp, arg_vals[i]);
+                    arg_vals[i] = gcc_rval(tmp);
+                }
+            }
             for (int64_t i = 0; i < num_args; i++) {
                 if (arg_vals[i])
                     hashmap_set(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
