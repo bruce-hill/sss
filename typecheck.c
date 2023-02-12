@@ -435,7 +435,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 compile_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_t));
             t = t2;
-        } else if (t->tag != VoidType) {
+        } else if (t->tag != VoidType && do_->label) {
             t = Type(GeneratorType, .generated=t);
         }
         return t;

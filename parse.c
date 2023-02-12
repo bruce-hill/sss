@@ -813,13 +813,20 @@ PARSER(parse_do) {
     size_t starting_indent = bl_get_indent(ctx->file, pos);
     istr_t label = get_id(&pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
-    const char *else_start = pos;
-    whitespace(&pos);
     ast_t *else_body = NULL;
-    if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else"))
-        else_body = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
-    else
-        pos = else_start;
+    if (label) {
+        const char *else_start = pos;
+        whitespace(&pos);
+        if (bl_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else"))
+            else_body = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+        else
+            pos = else_start;
+    } else {
+        const char *tmp = pos;
+        whitespace(&tmp);
+        if (bl_get_indent(ctx->file, tmp) == starting_indent && match_word(&tmp, "else"))
+            parser_err(ctx, pos, tmp, "'else' blocks aren't allowed for 'do' blocks that don't have labels");
+    }
     return NewAST(ctx->file, start, pos, Do, .label=label, .body=body, .else_body=else_body);
 }
 

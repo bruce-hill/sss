@@ -257,13 +257,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t *do_env = fresh_scope(env);
         gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),
                     *do_end = gcc_new_block(func, fresh("do_end"));
-        if (do_->else_body || t->tag == VoidType) {
-            auto labels = LIST(istr_t, intern_str("do"));
-            if (do_->label) APPEND(labels, do_->label);
+        if (do_->label && (do_->else_body || t->tag == VoidType)) {
             do_env->loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = labels,
+                .names = LIST(istr_t, do_->label),
                 .skip_label = do_else,
+                .stop_label = do_else,
             };
         }
 
