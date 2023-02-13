@@ -4,7 +4,7 @@
 #include "util.h"
 #include "types.h"
 
-static CORD type_to_cord(bl_type_t *t) {
+static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
     switch (t->tag) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
@@ -27,7 +27,7 @@ static CORD type_to_cord(bl_type_t *t) {
         }
         case TypeType: {
             CORD ret;
-            CORD_sprintf(&ret, "Type(%r)", type_to_cord(Match(t, TypeType)->type));
+            CORD_sprintf(&ret, "Type(%r)", type_to_cord(Match(t, TypeType)->type, true));
             return ret;
         }
         case RangeType: return "Range";
@@ -38,14 +38,14 @@ static CORD type_to_cord(bl_type_t *t) {
                     return CORD_cat("$", list->dsl);
                 return "String";
             }
-            return CORD_cat("[", CORD_cat(type_to_cord(list->item_type), "]"));
+            return CORD_cat("[", CORD_cat(type_to_cord(list->item_type, false), "]"));
         }
         case TableType: {
             CORD c = "{";
             auto table = Match(t, TableType);
-            c = CORD_cat(c, type_to_cord(table->key_type));
+            c = CORD_cat(c, type_to_cord(table->key_type, false));
             c = CORD_cat(c, "=");
-            c = CORD_cat(c, type_to_cord(table->value_type));
+            c = CORD_cat(c, type_to_cord(table->value_type, false));
             c = CORD_cat(c, "}");
             return c;
         }
@@ -54,22 +54,25 @@ static CORD type_to_cord(bl_type_t *t) {
             auto fn = Match(t, FunctionType);
             for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ",");
-                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i)));
+                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), false));
             }
             c = CORD_cat(c, ")=>");
-            c = CORD_cat(c, type_to_cord(fn->ret));
+            c = CORD_cat(c, type_to_cord(fn->ret, false));
             return c;
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            if (struct_->name) {
+            if (struct_->name && !expand_structs) {
                 if (!struct_->units)
                     return struct_->name;
                 CORD c;
                 CORD_sprintf(&c, "%s<%s>", struct_->name, struct_->units);
                 return c;
             }
-            CORD c = CORD_cat(NULL, "{");
+            CORD c = NULL;
+            if (struct_->name)
+                c = CORD_cat(c, struct_->name);
+            c = CORD_cat(c, "{");
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 bl_type_t *ft = LIST_ITEM(struct_->field_types, i);
                 istr_t fname = LIST_ITEM(struct_->field_names, i);
@@ -77,9 +80,9 @@ static CORD type_to_cord(bl_type_t *t) {
                     c = CORD_cat(c, ",");
 
                 if (fname)
-                    c = CORD_cat(CORD_cat(c, fname), "=");
+                    c = CORD_cat(CORD_cat(c, fname), ":");
 
-                CORD fstr = type_to_cord(ft);
+                CORD fstr = type_to_cord(ft, false);
                 c = CORD_cat(c, fstr);
             }
             c = CORD_cat(c, "}");
@@ -89,11 +92,11 @@ static CORD type_to_cord(bl_type_t *t) {
         }
         case PointerType: {
             auto ptr = Match(t, PointerType);
-            return CORD_cat(ptr->is_optional ? "@?" : "@", type_to_cord(ptr->pointed));
+            return CORD_cat(ptr->is_optional ? "@?" : "@", type_to_cord(ptr->pointed, false));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
-            return CORD_cat(type_to_cord(gen->generated), "(generator)");
+            return CORD_cat(type_to_cord(gen->generated, false), "(generator)");
         }
         case TagType: {
             auto tag = Match(t, TagType);
@@ -101,7 +104,31 @@ static CORD type_to_cord(bl_type_t *t) {
         }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            return tagged->name;
+            if (!expand_structs)
+                return tagged->name;
+
+            CORD c = CORD_cat(tagged->name, " oneof{");
+
+            auto tags = Match(tagged->tag_type, TagType);
+            auto union_ = Match(tagged->data, UnionType);
+            for (int64_t i = 0, len = LIST_LEN(tags->names); i < len; i++) {
+                if (i > 0)
+                    c = CORD_cat(c, ",");
+                istr_t name = LIST_ITEM(tags->names, i);
+                if (LIST_ITEM(tags->values, i) == i)
+                    c = CORD_cat(c, name);
+                else
+                    CORD_sprintf(&c, "%r%s=%ld", c, name, LIST_ITEM(tags->values, i));
+
+                for (int64_t j = 0, jlen = LIST_LEN(union_->field_names); j < jlen; j++) {
+                    if (LIST_ITEM(union_->field_names, j) == name) {
+                        CORD_sprintf(&c, "%r:%r", c, type_to_cord(LIST_ITEM(union_->field_types, j), true));
+                        break;
+                    }
+                }
+            }
+            c = CORD_cat(c, "}");
+            return c;
         }
         case UnionType: return "Union";
         default: {
@@ -113,7 +140,7 @@ static CORD type_to_cord(bl_type_t *t) {
 }
 
 istr_t type_to_string(bl_type_t *t) {
-    return intern_str(CORD_to_char_star(type_to_cord(t)));
+    return intern_str(CORD_to_char_star(type_to_cord(t, false)));
 }
 
 bool type_is_a(bl_type_t *t, bl_type_t *req)
