@@ -37,14 +37,12 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             compile_err(env, ast, "I don't know any type with this name.");
         return Match(b->type, TypeType)->type;
     }
-
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
         bl_type_t *item_t = parse_type_ast(env, item_type);
         if (!item_t) compile_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
-
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         if (ptr->pointed->tag == TypeOptional) {
@@ -55,7 +53,6 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             return Type(PointerType, .is_optional=false, .pointed=pointed_t);
         }
     }
-
     case TypeOptional: {
         auto opt = Match(ast, TypeOptional);
         bl_type_t *t = parse_type_ast(env, opt->type);
@@ -64,7 +61,6 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
                         "but this type isn't a pointer", type_to_string(t));
         return Type(PointerType, .is_optional=true, .pointed=Match(t, PointerType)->pointed);
     }
-
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
         bl_type_t *raw = parse_type_ast(env, measure->type);
@@ -74,7 +70,6 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         istr_t units = unit_derive(measure->units, NULL, env->derived_units);
         return with_units(raw, units);
     }
-
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
         bl_type_t *ret_t = parse_type_ast(env, fn->ret_type);
@@ -85,19 +80,19 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         }
         return Type(FunctionType, .arg_types=arg_types, .ret=ret_t);
     }
-
-    case TypeTuple: {
-        auto tuple = Match(ast, TypeTuple);
+    case TypeStruct: {
+        auto struct_ = Match(ast, TypeStruct);
+        // binding_t *b = struct_->name ? hashmap_get(env->bindings, struct_->name) : NULL;
+        // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(istr_t, member_names);
         NEW_LIST(bl_type_t*, member_types);
-        for (int64_t i = 0, len = length(tuple->member_types); i < len; i++) {
-            istr_t member_name = ith(tuple->member_names, i);
+        for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
+            istr_t member_name = ith(struct_->member_names, i);
             APPEND(member_names, member_name);
-            bl_type_t *member_t = parse_type_ast(env, ith(tuple->member_types, i));
+            bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
         }
-        // TODO: support default values for tuples?
-        bl_type_t *t = Type(StructType, .name=NULL, .field_names=member_names, .field_types=member_types);
+        bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
         bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
@@ -106,12 +101,10 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         }
         return t;
     }
-
     case TypeDSL: {
         auto dsl = Match(ast, TypeDSL);
         return Type(ArrayType, .item_type=Type(CharType), .dsl=dsl->name);
     }
-
     default: compile_err(env, ast, "This is not a Type value");
     }
 }

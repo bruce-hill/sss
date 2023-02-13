@@ -37,7 +37,7 @@ typedef enum {
     Return,
     Fail,
     Extern,
-    TypeArray, TypeTable, TypeTuple,
+    TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer, TypeOptional,
     TypeMeasure, TypeDSL,
     Cast, Bitcast,
@@ -200,9 +200,10 @@ struct ast_s {
             ast_t *key_type, *val_type;
         } TypeTable;
         struct {
+            istr_t name;
             List(istr_t) member_names;
             List(ast_t*) member_types;
-        } TypeTuple;
+        } TypeStruct;
         struct {
             List(istr_t) arg_names;
             List(ast_t*) arg_types;

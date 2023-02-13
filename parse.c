@@ -426,8 +426,9 @@ PARSER(parse_int) {
 
 STUB_PARSER(parse_table_type)
 
-PARSER(parse_tuple_type) {
+PARSER(parse_struct_type) {
     const char *start = pos;
+    istr_t name = get_id(&pos);
     if (!match(&pos, "{")) return NULL;
     NEW_LIST(istr_t, member_names);
     NEW_LIST(ast_t*, member_types);
@@ -451,7 +452,7 @@ PARSER(parse_tuple_type) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tuple type");
-    return NewAST(ctx->file, start, pos, TypeTuple, .member_names=member_names, .member_types=member_types);
+    return NewAST(ctx->file, start, pos, TypeStruct, .name=name, .member_names=member_names, .member_types=member_types);
 }
 
 PARSER(parse_func_type) {
@@ -532,7 +533,7 @@ PARSER(parse_type) {
         || (type=parse_dsl_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
-        || (type=parse_tuple_type(ctx, pos))
+        || (type=parse_struct_type(ctx, pos))
         || (type=parse_type_name(ctx, pos))
         || (type=parse_func_type(ctx, pos))
     );
