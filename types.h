@@ -25,8 +25,8 @@ struct bl_type_s {
         GeneratorType,
         StructType,
         TagType,
-        TaggedUnionType,
         UnionType,
+        TaggedUnionType,
     } tag;
 
     union {
@@ -77,15 +77,15 @@ struct bl_type_s {
             List(int64_t) values;
         } TagType;
         struct {
-            istr_t name;
-            bl_type_t *tag_type;
-            bl_type_t *data;
-        } TaggedUnionType;
-        struct {
             List(istr_t) field_names;
             List(bl_type_t*) field_types;
             List(gcc_jit_field*) fields;
         } UnionType;
+        struct {
+            istr_t name;
+            bl_type_t *tag_type;
+            bl_type_t *data;
+        } TaggedUnionType;
     } __data;
 };
 
