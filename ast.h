@@ -42,7 +42,7 @@ typedef enum {
     TypeMeasure, TypeDSL,
     Cast, Bitcast,
     Struct, StructDef, StructField,
-    TaggedUnionDef, TaggedUnionField,
+    TaggedUnionDef, TypeTaggedUnion, TaggedUnionField,
     Index, FieldAccess,
     UnitDef, ConvertDef,
     Reduction,
@@ -246,7 +246,7 @@ struct ast_s {
             List(istr_t) tag_names;
             List(int64_t) tag_values;
             List(ast_t *) tag_types;
-        } TaggedUnionDef;
+        } TaggedUnionDef, TypeTaggedUnion;
         struct {
             istr_t name;
             ast_t *value;

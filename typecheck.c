@@ -101,6 +101,23 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         }
         return t;
     }
+    case TypeTaggedUnion: {
+        auto tu = Match(ast, TypeTaggedUnion);
+        NEW_LIST(bl_type_t*, union_field_types);
+        NEW_LIST(istr_t, union_field_names);
+        bl_type_t *tag_t = Type(TagType, .name=tu->name, .names=tu->tag_names, .values=tu->tag_values);
+        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types, .fields=LIST(gcc_field_t*));
+        bl_type_t *t = Type(TaggedUnionType, .name=tu->name, .tag_type=tag_t, .data=union_t);
+        for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
+            istr_t tag_name = ith(tu->tag_names, i);
+            ast_t *field_type_ast = ith(tu->tag_types, i);
+            if (field_type_ast) {
+                APPEND(union_field_names, tag_name);
+                APPEND(union_field_types, parse_type_ast(env, field_type_ast));
+            }
+        }
+        return t;
+    }
     case TypeDSL: {
         auto dsl = Match(ast, TypeDSL);
         return Type(ArrayType, .item_type=Type(CharType), .dsl=dsl->name);

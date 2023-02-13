@@ -455,6 +455,53 @@ PARSER(parse_struct_type) {
     return NewAST(ctx->file, start, pos, TypeStruct, .name=name, .member_names=member_names, .member_types=member_types);
 }
 
+PARSER(parse_tagged_union_type) {
+    const char *start = pos;
+    istr_t name = get_id(&pos);
+    if (!match_word(&pos, "oneof")) return NULL;
+    spaces(&pos);
+    if (!match(&pos, "{")) return NULL;
+    NEW_LIST(istr_t, tag_names);
+    NEW_LIST(int64_t, tag_values);
+    NEW_LIST(ast_t*, tag_types);
+    int64_t next_value = 0;
+    for (;;) {
+        whitespace(&pos);
+        const char *tag_start = pos;
+        istr_t tag_name = get_id(&pos);
+        if (!tag_name) break;
+        spaces(&pos);
+        if (match(&pos, "=")) {
+            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+            next_value = Match(val, Int)->i;
+        }
+
+        spaces(&pos);
+        ast_t *type = NULL;
+        if (match(&pos, ":")) {
+            whitespace(&pos);
+            type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type here");
+        }
+
+        // Check for duplicate values:
+        for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
+            if (LIST_ITEM(tag_values, i) == next_value)
+                parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
+        }
+
+        APPEND(tag_names, tag_name);
+        APPEND(tag_values, next_value);
+        APPEND(tag_types, type);
+
+        whitespace(&pos);
+        match(&pos, ",");
+
+        ++next_value;
+    }
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
+    return NewAST(ctx->file, start, pos, TypeTaggedUnion, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+}
+
 PARSER(parse_func_type) {
     const char *start = pos;
     if (!match(&pos, "(")) return NULL;
@@ -534,6 +581,7 @@ PARSER(parse_type) {
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_struct_type(ctx, pos))
+        || (type=parse_tagged_union_type(ctx, pos))
         || (type=parse_type_name(ctx, pos))
         || (type=parse_func_type(ctx, pos))
     );
