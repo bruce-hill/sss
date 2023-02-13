@@ -6,10 +6,7 @@ def dot(a:[Num],b:[Num]):Num
         sum += ai*bi
     return sum
 
-def Mat2D {
-    rows,cols:Int
-    data:[Num]
-
+def Mat2D {rows,cols:Int, data:[Num]}
     def from_nested(data:[[Num]]):Mat2D
         fail unless #row == #data[1] for row in data[2..]
         return Mat2D{#data,#data[1], [x for x in row for row in data]}
@@ -46,7 +43,6 @@ def Mat2D {
             s = "$s; "
         s = "$s]"
         return s
-}
 
 mat := Mat2D.from_nested([[1.,2,3], [4.,5,6]])
 say "$:mat $(mat.row(1)) $(mat.col(1))"

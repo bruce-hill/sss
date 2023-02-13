@@ -45,9 +45,8 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         env_t *struct_env = fresh_scope(env);
         hashmap_set(env->type_namespaces, t, struct_env->bindings);
 
-        foreach (struct_def->members, member, _) {
-            predeclare_def_types(struct_env, *member);
-        }
+        foreach (struct_def->definitions, def, _)
+            predeclare_def_types(struct_env, *def);
         return t;
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
@@ -126,34 +125,25 @@ static void populate_def_members(env_t *env, ast_t *def)
         binding_t *binding = hashmap_get(env->bindings, name);
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
-        if (length(struct_def->members) == 0)
+        if (length(struct_def->field_names) == 0)
             compile_err(env, def, "This struct has no fields, which is currently not supported");
 
         env_t inner_env = *env;
         inner_env.bindings = get_namespace(env, t);
 
-        foreach (struct_def->members, member, _) {
-            if ((*member)->tag == StructFieldDef) {
-                auto field_def = Match((*member), StructFieldDef);
-                bl_type_t *ft = parse_type_ast(&inner_env, field_def->type);
-                if (ft->tag == VoidType)
-                    compile_err(env, field_def->type, "This field is a Void type, but that isn't supported for struct members.");
-                auto struct_type = Match(t, StructType);
-                foreach(field_def->names, fname, __) {
-                    APPEND(struct_type->field_names, *fname);
-                    APPEND(struct_type->field_types, ft);
-                }
-                foreach(field_def->defaults, def, __) {
-                    bl_type_t *def_t = *def ? get_type(env, *def) : NULL;
-                    if (*def && !can_promote(def_t, ft))
-                        compile_err(env, *def, "This default value has type %s instead of %s",
-                                    type_to_string(get_type(env, *def)), type_to_string(ft));
-
-                    APPEND(struct_type->field_defaults, *def);
-                }
-            } else {
-                populate_def_members(&inner_env, *member);
-            }
+        auto struct_type = Match(t, StructType);
+        for (int64_t i = 0, len = LIST_LEN(struct_def->field_names); i < len; i++) {
+            APPEND(struct_type->field_names, ith(struct_def->field_names, i));
+            ast_t *type = ith(struct_def->field_types, i);
+            ast_t *default_val = ith(struct_def->field_defaults, i);
+            bl_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
+            if (ft->tag == VoidType)
+                compile_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
+            APPEND(struct_type->field_types, ft);
+            APPEND(struct_type->field_defaults, default_val);
+        }
+        foreach (struct_def->definitions, def, _) {
+            populate_def_members(&inner_env, *def);
         }
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
@@ -219,15 +209,15 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         inner_env.bindings = get_namespace(env, Match(b->type, TypeType)->type);
         env = &inner_env;
         // Struct methods:
-        foreach (struct_def->members, member, _) {
-            if ((*member)->tag == FunctionDef) {
-                auto fndef = Match((*member), FunctionDef);
-                bl_type_t *t = get_type(env, *member);
-                gcc_func_t *func = get_function_def(env, *member, intern_strf("%s__%s", struct_def->name, fndef->name), true);
+        foreach (struct_def->definitions, s_def, _) {
+            if ((*s_def)->tag == FunctionDef) {
+                auto fndef = Match((*s_def), FunctionDef);
+                bl_type_t *t = get_type(env, *s_def);
+                gcc_func_t *func = get_function_def(env, *s_def, intern_strf("%s__%s", struct_def->name, fndef->name), true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
                 hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
             } else {
-                predeclare_def_funcs(env, *member);
+                predeclare_def_funcs(env, *s_def);
             }
         }
     }

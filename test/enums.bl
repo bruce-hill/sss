@@ -14,9 +14,7 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
 def Baz oneof {
     Text:String
     Integer:Int
-    Vec2{
-        x,y:Num
-    }
+    Vec2:{x:Num,y:Num}
     Nil,
 }
 

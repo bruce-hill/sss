@@ -1,12 +1,5 @@
-def NumberValue {
-
-    def CallbackList {
-        fn:(Num)=>Void
-        next:?@CallbackList
-    }
-
-    _value:Num
-    _callbacks:?@CallbackList
+def NumberValue {_value:Num, _callbacks:?@CallbackList}
+    def CallbackList {fn:(Num)=>Void, next:?@CallbackList}
 
     def set(self:@NumberValue, value:Num)
         self._value = value
@@ -20,7 +13,6 @@ def NumberValue {
     def on_changed(self:@NumberValue, callback:((Num)=>Void)):((Num)=>Void)
         self._callbacks = @CallbackList{callback, next=self._callbacks}
         return callback
-}
 
 n := @NumberValue{1.5}
 _ := n.on_changed((n:Num)=> say "callback 1: Changed to $n")

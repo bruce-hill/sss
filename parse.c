@@ -1668,50 +1668,61 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-PARSER(parse_struct_field_def) {
-    const char *start = pos;
-    NEW_LIST(istr_t, names);
-    NEW_LIST(ast_t*, defaults);
+ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {
+    if (!match(pos, "{")) return NULL;
+    size_t starting_indent = bl_get_indent(ctx->file, *pos);
+    NEW_LIST(istr_t, field_names);
+    NEW_LIST(ast_t*, field_types);
+    NEW_LIST(ast_t*, field_defaults);
     for (;;) {
-        spaces(&pos);
-        istr_t name = get_id(&pos);
-        if (!name) break;
-        APPEND(names, name);
-        spaces(&pos);
-        if (match(&pos, "=")) {
-            ast_t *def = expect_ast(ctx, pos-1, &pos, parse_term, "I expected a value after this '='");
-            APPEND(defaults, def);
-        } else {
-            APPEND(defaults, NULL);
+        const char *batch_start = *pos;
+        int64_t first = LIST_LEN(field_names);
+        ast_t *default_val = NULL;
+        ast_t *type = NULL;
+        for (;;) {
+            whitespace(pos);
+            istr_t name = get_id(pos);
+            if (!name) break;
+            APPEND(field_names, name);
+            whitespace(pos);
+            if (match(pos, "=")) {
+                default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");
+                break;
+            } else if (match(pos, ":")) {
+                type = expect_ast(ctx, *pos-1, pos, parse_type, "I expected a type here");
+                break;
+            }
+            if (!match(pos, ",")) break;
         }
-        if (!match(&pos, ",")) break;
-    }
-    if (LIST_LEN(names) == 0) return NULL;
-    spaces(&pos);
-    if (!match(&pos, ":")) return NULL;
-    ast_t *type = expect_ast(ctx, pos-1, &pos, parse_type, "I expected a type here");
-    return NewAST(ctx->file, start, pos, StructFieldDef, .names=names, .defaults=defaults, .type=type);
-}
-
-ast_t *parse_rest_of_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {
-    NEW_LIST(ast_t*, members);
-    for (;;) {
+        if (LIST_LEN(field_names) == first) break;
         whitespace(pos);
-        ast_t *memb = NULL;
-        bool success = (
-            false
-            || (memb=optional_ast(ctx, pos, parse_declaration))
-            || (memb=optional_ast(ctx, pos, parse_struct_field_def))
-            || (memb=optional_ast(ctx, pos, parse_def))
-        );
-        if (!success) break;
-        APPEND(members, memb);
-        spaces(pos);
+        if (!default_val && !type)
+            parser_err(ctx, batch_start, *pos, "I expected a ':' and type, or '=' and a default value after this field(s)");
+
+        for (int64_t i = first; i < LIST_LEN(field_names); i++) {
+            APPEND(field_defaults, default_val);
+            APPEND(field_types, type);
+        }
         match(pos, ",");
     }
     whitespace(pos);
     expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
-    return NewAST(ctx->file, start, *pos, StructDef, .name=name, .members=members);
+
+    whitespace(pos);
+    NEW_LIST(ast_t*, definitions);
+    size_t indent = bl_get_indent(ctx->file, *pos);
+    if (indent > starting_indent) {
+        for (;;) {
+            whitespace(pos);
+            if (bl_get_indent(ctx->file, *pos) != indent) break;
+            ast_t *def = optional_ast(ctx, pos, parse_declaration);
+            if (!def) def = optional_ast(ctx, pos, parse_def);
+            if (!def) break;
+            APPEND(definitions, def);
+        }
+    }
+    return NewAST(ctx->file, start, *pos, StructDef, .name=name, .field_names=field_names, .field_types=field_types,
+                  .field_defaults=field_defaults, .definitions=definitions);
 }
 
 PARSER(parse_def) {
@@ -1777,7 +1788,8 @@ PARSER(parse_def) {
                       .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported,
                       .is_inline=is_inline);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
-        return parse_rest_of_struct_def(ctx, start, &pos, name);
+        --pos;
+        return parse_struct_def(ctx, start, &pos, name);
     } else if (match_word(&pos, "oneof")) { // tagged union: def Foo oneof {...}
         expect_str(ctx, start, &pos, "{", "I expected a '{' after 'oneof'");
 
@@ -1801,8 +1813,6 @@ PARSER(parse_def) {
             if (match(&pos, ":")) {
                 whitespace(&pos);
                 type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type here");
-            } else if (match(&pos, "{")) {
-                type = parse_rest_of_struct_def(ctx, tag_start, &pos, tag_name);
             }
 
             // Check for duplicate values:

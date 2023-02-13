@@ -41,7 +41,7 @@ typedef enum {
     TypeFunction, TypePointer, TypeOptional,
     TypeMeasure, TypeDSL,
     Cast, Bitcast,
-    Struct, StructDef, StructFieldDef, StructField,
+    Struct, StructDef, StructField,
     TaggedUnionDef, TaggedUnionField,
     Index, FieldAccess,
     UnitDef, ConvertDef,
@@ -231,13 +231,11 @@ struct ast_s {
         } Struct;
         struct {
             istr_t name;
-            List(ast_t *) members;
+            List(istr_t) field_names;
+            List(ast_t*) field_types;
+            List(ast_t*) field_defaults;
+            List(ast_t*) definitions;
         } StructDef;
-        struct {
-            List(istr_t) names;
-            List(ast_t*) defaults;
-            ast_t *type;
-        } StructFieldDef;
         struct {
             istr_t name;
             ast_t *value;

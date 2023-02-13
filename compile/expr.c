@@ -498,25 +498,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         env = get_type_env(env, struct_t);
 
-        foreach (struct_def->members, member, _) {
-            if ((*member)->tag == FunctionDef) {
-                auto fndef = Match((*member), FunctionDef);
+        foreach (struct_def->definitions, s_def, _) {
+            if ((*s_def)->tag == FunctionDef) {
+                auto fndef = Match((*s_def), FunctionDef);
                 binding_t *binding = hashmap_get(env->bindings, fndef->name);
                 assert(binding);
-                compile_function(env, binding->func, *member);
-            } else if ((*member)->tag == Declare) {
-                auto decl = Match((*member), Declare);
+                compile_function(env, binding->func, *s_def);
+            } else if ((*s_def)->tag == Declare) {
+                auto decl = Match((*s_def), Declare);
                 gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
                 bl_type_t *t = get_type(env, decl->value);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 istr_t name = Match(decl->var, Var)->name;
                 istr_t global_name = intern_strf("%s__%s", struct_def->name, name);
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*s_def)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
                 hashmap_set(env->bindings, name,
                             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
                 assert(rval);
-                gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
+                gcc_assign(*block, ast_loc(env, (*s_def)), lval, rval);
             }
         }
 
@@ -845,6 +845,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *value = Match(ast, HeapAllocate)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *t = get_type(env, value);
+        if (t->tag == VoidType)
+            compile_err(env, value, "This expression is a Void type, which can't be heap allocated");
         gcc_func_t *func = gcc_block_func(*block);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
