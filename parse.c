@@ -62,6 +62,7 @@ static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
 static PARSER(parse_defer);
+static PARSER(parse_with);
 static PARSER(parse_do);
 static PARSER(parse_using);
 static PARSER(parse_when);
@@ -888,6 +889,26 @@ PARSER(parse_defer) {
     return NewAST(ctx->file, start, pos, Defer, .body=body);
 }
 
+PARSER(parse_with) {
+    // with [var :=] expr [then cleanup] body
+    const char *start = pos;
+    if (!match_word(&pos, "with")) return NULL;
+    ast_t *var = optional_ast(ctx, &pos, parse_var);
+    ast_t *expr;
+    if (var && match_word(&pos, ":=")) {
+        expr = expect_ast(ctx, var->span.start, &pos, parse_expr, "I expected an expression for this variable");
+    } else {
+        pos = var ? var->span.start : pos;
+        expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression for this 'with'");
+    }
+    ast_t *cleanup = NULL;
+    if (match_word(&pos, "then"))
+        cleanup = expect_ast(ctx, start, &pos, parse_statement, "I expected a cleanup expression for this 'with'");
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'with'");
+    return NewAST(ctx->file, start, pos, With, .var=var, .expr=expr, .cleanup=cleanup, .body=body);
+}
+
+
 PARSER(parse_using) {
     // using var1,var2,... [<indent>] body
     const char *start = pos;
@@ -1671,6 +1692,7 @@ PARSER(parse_extended_expr) {
         || (expr=optional_ast(ctx, &pos, parse_repeat))
         || (expr=optional_ast(ctx, &pos, parse_do))
         || (expr=optional_ast(ctx, &pos, parse_defer))
+        || (expr=optional_ast(ctx, &pos, parse_with))
         || (expr=optional_ast(ctx, &pos, parse_using))
         )
         return expr;

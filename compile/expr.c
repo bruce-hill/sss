@@ -326,6 +326,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
         return NULL;
     }
+    case With: { // with var := expr, cleanup(var) ...
+        auto with = Match(ast, With);
+        NEW_LIST(ast_t*, statements);
+        if (with->var)
+            APPEND(statements, WrapAST(ast, Declare, .var=with->var, .value=with->expr));
+        if (with->cleanup)
+            APPEND(statements, WrapAST(ast, Defer, .body=with->cleanup));
+        APPEND(statements, with->body);
+        return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
+    }
     case Using: {
         auto using = Match(ast, Using);
         env_t *env2 = global_scope(env);

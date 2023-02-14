@@ -258,6 +258,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         }
     }
 
+    assert(!ret);
     insert_defers(env, block, prev_deferred);
 
     return ret;
@@ -265,7 +266,8 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
 
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    return _compile_block(env, block, ast, true);
+    bl_type_t *t = get_type(env, ast);
+    return _compile_block(env, block, ast, t->tag != VoidType && t->tag != AbortType);
 }
 
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast)
