@@ -282,11 +282,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Var: {
         istr_t name = Match(ast, Var)->name;
         binding_t *binding = get_binding(env, name);
-        if (binding) {
-            return binding->type;
-        } else {
+        if (!binding)
             compile_err(env, ast, "I don't know what \"%s\" refers to", name);
-        }
+        return binding->type;
     }
     case Len: {
         return INT_TYPE;
@@ -789,7 +787,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto with = Match(ast, With);
         if (with->var) {
             env = fresh_scope(env);
-            hashmap_set(env->bindings, with->var, new(binding_t, .type=get_type(env, with->expr)));
+            hashmap_set(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
         }
         return get_type(env, with->body);
     }
