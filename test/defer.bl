@@ -1,0 +1,8 @@
+def cleanup(x:Int)
+    say "Cleaning up: $x"
+
+f := 1
+defer cleanup(f)
+f = 2
+defer cleanup(f)
+
