@@ -295,17 +295,35 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return result ? gcc_rval(result) : NULL;
     }
     case Defer: {
-        // TODO: find all referenced variables and create local copies of them
-        // Use case:
-        // f := open(file1)
-        // defer f.close() // close file1
-        // ...
-        // f = open(file2)
-        // ...
-        // defer f.close() // close file2
-        env_t *environment = fresh_scope(env);
-        environment->is_deferred = true;
-        env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=environment);
+        // For all variables in the local scope, copy their current values,
+        // so that when the deferred code runs, it uses the value when the `defer`
+        // was written, rather than any new values that have been taken on.
+        //
+        // This is important for a use case like this:
+        //
+        //     f := open(file1)
+        //     defer f.close() // close file1, even if we reassign `f`
+        //     f = open(file2)
+        //     defer f.close() // close file2
+        //
+        // TODO: we don't technically need to copy *all* local variables, since
+        // some aren't referenced inside the defer block, but this is a pretty
+        // small amount of extra work that should hopefully be elided by GCC
+        env_t *defer_env = fresh_scope(env);
+        defer_env->bindings->fallback = env->bindings->fallback;
+        gcc_func_t *func = gcc_block_func(*block);
+        for (istr_t key = NULL; (key=hashmap_next(env->bindings, key)); ) {
+            binding_t *cur_binding = hashmap_get(env->bindings, key);
+            gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, cur_binding->type), fresh(intern_strf("deferred_%s", key)));
+            gcc_assign(*block, loc, cached, cur_binding->rval);
+            binding_t *cached_binding = new(binding_t);
+            *cached_binding = *cur_binding;
+            cached_binding->lval = cached;
+            cached_binding->rval = gcc_rval(cached);
+            hashmap_set(defer_env->bindings, key, cached_binding);
+        }
+        defer_env->is_deferred = true;
+        env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
         return NULL;
     }
     case Using: {
@@ -336,6 +354,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_get_func_address(func, loc);
     }
     case Return: {
+        if (env->is_deferred)
+            compile_err(env, ast, "This 'return' is inside a 'defer' block, which is not allowed");
+
         auto ret = Match(ast, Return);
         assert(env->return_type);
 
@@ -1600,6 +1621,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Skip: case Stop: {
+        if (env->is_deferred)
+            compile_err(env, ast, "This '%s' is inside a 'defer' block, which is not allowed", ast->tag == Skip ? "skip" : "stop");
+
         gcc_block_t *jump_dest = NULL;
         defer_t *prev_deferred = env->deferred;
         istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
@@ -1669,6 +1693,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(ret);
     }
     case Fail: {
+        if (env->is_deferred)
+            compile_err(env, ast, "This 'fail' is inside a 'defer' block, which is not allowed");
+
         ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
         gcc_rvalue_t *len;

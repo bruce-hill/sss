@@ -258,13 +258,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         }
     }
 
-    defer_t *deferred = env->deferred;
-    env->deferred = prev_deferred;
-    if (*block) {
-        for (defer_t *d = deferred; d && d != prev_deferred; d = d->next) {
-            compile_block_statement(env, block, d->body);
-        }
-    }
+    insert_defers(env, block, prev_deferred);
 
     return ret;
 }

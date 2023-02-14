@@ -1023,6 +1023,10 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
 
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer)
 {
+    if (!*block) {
+        // This can happen if the block ends due to a 'fail', in which case the defers won't run
+        return;
+    }
     for (; env->deferred && env->deferred != stop_at_defer; env->deferred = env->deferred->next) {
         compile_block_statement(env->deferred->environment, block, env->deferred->body);
     }
