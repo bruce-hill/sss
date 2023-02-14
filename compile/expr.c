@@ -329,10 +329,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case With: { // with var := expr, cleanup(var) ...
         auto with = Match(ast, With);
         NEW_LIST(ast_t*, statements);
-        if (with->var)
-            APPEND(statements, WrapAST(ast, Declare, .var=with->var, .value=with->expr));
-        if (with->cleanup)
-            APPEND(statements, WrapAST(ast, Defer, .body=with->cleanup));
+        ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name=intern_str("with"));
+        APPEND(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
+        ast_t *cleanup = with->cleanup;
+        if (!cleanup)
+            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field=intern_str("close")), .args=LIST(ast_t*));
+        APPEND(statements, WrapAST(ast, Defer, .body=cleanup));
         APPEND(statements, with->body);
         return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
     }

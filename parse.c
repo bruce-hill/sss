@@ -899,6 +899,7 @@ PARSER(parse_with) {
         expr = expect_ast(ctx, var->span.start, &pos, parse_expr, "I expected an expression for this variable");
     } else {
         pos = var ? var->span.start : pos;
+        var = NULL;
         expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression for this 'with'");
     }
     ast_t *cleanup = NULL;

@@ -1,0 +1,21 @@
+
+def File{name:String}
+    def open(name:String):File
+        say "Opening file '$name'"
+        return File{name}
+
+    def close(f:File)
+        say "Closing file $f"
+
+with File.open("first")
+    say "Automatic .close()ing:"
+
+say ""
+
+with f := File.open("second")
+    say "$:f Automatic .close()ing:"
+
+say ""
+
+with f := File.open("third") then say "Not closing $f"
+    say "$:f custom cleanup:"
