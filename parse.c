@@ -1089,8 +1089,12 @@ PARSER(parse_char) {
     const char *start = pos;
     if (!match(&pos, "`")) return NULL;
     char c = *pos;
+    if (c == '\\') {
+        c = unescape(&pos)[0];
+    } else {
+        ++pos;
+    }
     if (!c) return NULL;
-    ++pos;
     return NewAST(ctx->file, start, pos, Char, .c=c);
 }
 
