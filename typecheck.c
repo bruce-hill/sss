@@ -195,6 +195,14 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     }
 }
 
+static bl_type_t *generate(bl_type_t *t)
+{
+    if (t->tag == VoidType)
+        return t;
+    else
+        return Type(GeneratorType, .generated=t);
+}
+
 bl_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -445,8 +453,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 compile_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_t));
             t = t2;
-        } else if (t->tag != VoidType && do_->label) {
-            t = Type(GeneratorType, .generated=t);
+        } else if (do_->label) {
+            t = generate(t);
         }
         return t;
     }
@@ -695,8 +703,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
             t = t2;
-        } else if (t->tag != VoidType) {
-            t = Type(GeneratorType, .generated=t);
+        } else {
+            t = generate(t);
         }
         return t;
     }
@@ -722,18 +730,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                             type_to_string(t), type_to_string(else_type));
             t = t2;
         } else {
-            if (t->tag == VoidType)
-                return t;
-            t = Type(GeneratorType, .generated=t);
+            t = generate(t);
         }
         return t;
     }
 
     case While: {
-        return Type(GeneratorType, .generated=get_type(env, Match(ast, While)->body));
+        return generate(get_type(env, Match(ast, While)->body));
     }
     case Repeat: {
-        return Type(GeneratorType, .generated=get_type(env, Match(ast, Repeat)->body));
+        return generate(get_type(env, Match(ast, Repeat)->body));
     }
     case For: {
         auto for_loop = Match(ast, For);
@@ -759,13 +765,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         
         if (for_loop->first)
-            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->first));
+            return generate(get_type(loop_env, for_loop->first));
         else if (for_loop->body)
-            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->body));
+            return generate(get_type(loop_env, for_loop->body));
         else if (for_loop->between)
-            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->between));
+            return generate(get_type(loop_env, for_loop->between));
         else if (for_loop->empty)
-            return Type(GeneratorType, .generated=get_type(loop_env, for_loop->empty));
+            return generate(get_type(loop_env, for_loop->empty));
         else
             compile_err(env, ast, "I can't figure out the type of this 'for' loop");
     }
