@@ -247,6 +247,11 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         if (!*block)
             compile_err(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
+            bl_type_t *last_t = get_type(env, *stmt);
+            if (last_t->tag == VoidType || last_t->tag == AbortType)
+                give_expression = false;
+        }
+        if (stmt == last_stmt && give_expression) {
             ret = compile_expr(env, block, *stmt);
         } else {
             env_t tmp = *env;
@@ -258,7 +263,6 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         }
     }
 
-    assert(!ret);
     insert_defers(env, block, prev_deferred);
 
     return ret;
@@ -266,8 +270,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
 
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    bl_type_t *t = get_type(env, ast);
-    return _compile_block(env, block, ast, t->tag != VoidType && t->tag != AbortType);
+    return _compile_block(env, block, ast, true);
 }
 
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast)
