@@ -241,20 +241,32 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         predeclare_def_funcs(env, *stmt);
     }
 
+    defer_t *prev_deferred = env->deferred;
+    gcc_rvalue_t *ret = NULL;
     foreach (statements, stmt, last_stmt) {
         if (!*block)
             compile_err(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
-            return compile_expr(env, block, *stmt);
+            ret = compile_expr(env, block, *stmt);
         } else {
             env_t tmp = *env;
             tmp.comprehension_callback = NULL;
             compile_statement(&tmp, block, *stmt);
             env->derived_units = tmp.derived_units;
             env->conversions = tmp.conversions;
+            env->deferred = tmp.deferred;
         }
     }
-    return NULL;
+
+    defer_t *deferred = env->deferred;
+    env->deferred = prev_deferred;
+    if (*block) {
+        for (defer_t *d = deferred; d && d != prev_deferred; d = d->next) {
+            compile_block_statement(env, block, d->body);
+        }
+    }
+
+    return ret;
 }
 
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast)

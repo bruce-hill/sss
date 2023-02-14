@@ -14,10 +14,16 @@
 #include "types.h"
 #include "units.h"
 
+typedef struct defer_s {
+    ast_t *body;
+    struct defer_s *next;
+} defer_t;
+
 typedef struct loop_label_s {
     struct loop_label_s *enclosing;
     gcc_block_t *skip_label, *stop_label;
     List(istr_t) names;
+    defer_t *deferred;
 } loop_label_t;
 
 typedef struct {
@@ -55,6 +61,7 @@ typedef struct env_s {
     conversions_t *conversions;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
+    defer_t *deferred;
     bool debug;
 } env_t;
 

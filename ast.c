@@ -151,6 +151,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
         T(Reduction, F(iter), F(combination), F(fallback))
         T(DocTest, F(expr), F(output))
+        T(Defer, F(body))
 #undef BINOP
 #undef UNOP
 #undef F

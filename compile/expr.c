@@ -263,6 +263,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 .names = LIST(istr_t, do_->label),
                 .skip_label = do_else,
                 .stop_label = do_else,
+                .deferred = do_env->deferred,
             };
         }
 
@@ -292,6 +293,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         *block = do_end;
         return result ? gcc_rval(result) : NULL;
+    }
+    case Defer: {
+        // TODO: find all referenced variables and create local copies of them
+        env->deferred = new(defer_t, .body=Match(ast, Defer)->body);
+        return NULL;
     }
     case Using: {
         auto using = Match(ast, Using);
@@ -323,6 +329,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Return: {
         auto ret = Match(ast, Return);
         assert(env->return_type);
+
+        for (defer_t *d = env->deferred; d; d = d->next)
+            compile_block_statement(env, block, d->body);
+
         if (env->return_type->tag == VoidType) {
             if (ret->value) {
                 bl_type_t *child_type = get_type(env, ret->value);
@@ -1583,6 +1593,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Skip: case Stop: {
         gcc_block_t *jump_dest = NULL;
+        defer_t *prev_deferred = env->deferred;
         istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
         if (target) {
             for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
@@ -1592,6 +1603,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                             jump_dest = lbl->skip_label;
                         else
                             jump_dest = lbl->stop_label;
+                        prev_deferred = lbl->deferred;
                         if (jump_dest)
                             goto found_label;
                     }
@@ -1603,10 +1615,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 jump_dest = env->loop_label->skip_label;
             else
                 jump_dest = env->loop_label->stop_label;
+            prev_deferred = env->loop_label->deferred;
         }
         if (!jump_dest)
             compile_err(env, ast, "I'm not sure what %s is referring to",
                         target ? target : (ast->tag == Skip ? "this 'skip'" : "this 'stop'"));
+
+        for (; env->deferred && env->deferred != prev_deferred; env->deferred = env->deferred->next)
+            compile_block_statement(env, block, env->deferred->body);
+
         gcc_jump(*block, loc, jump_dest);
         *block = NULL;
         return NULL;

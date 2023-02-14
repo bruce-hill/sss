@@ -102,9 +102,9 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                    .names = LIST(istr_t, intern_str("[]")),
-                    .skip_label = item_done,
-                    .stop_label = array_done,
+                .names = LIST(istr_t, intern_str("[]")),
+                .skip_label = item_done,
+                .stop_label = array_done,
             };
 
             add_array_item(env, block, *item_ast, &info);

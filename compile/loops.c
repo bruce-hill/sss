@@ -251,6 +251,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         .names = label_names,
         .skip_label = for_next,
         .stop_label = for_end,
+        .deferred = env->deferred,
     };
 
     if (for_->first) {
@@ -314,9 +315,10 @@ void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t
     env_t loop_env = *env;
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-            .names = LIST(istr_t, loop_name),
-            .skip_label = loop_top,
-            .stop_label = loop_end,
+        .names = LIST(istr_t, loop_name),
+        .skip_label = loop_top,
+        .stop_label = loop_end,
+        .deferred = env->deferred,
     };
 
 
