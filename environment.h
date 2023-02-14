@@ -14,8 +14,11 @@
 #include "types.h"
 #include "units.h"
 
+typedef struct env_s env_t;
+
 typedef struct defer_s {
     ast_t *body;
+    env_t *environment;
     struct defer_s *next;
 } defer_t;
 
@@ -62,7 +65,7 @@ typedef struct env_s {
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     defer_t *deferred;
-    bool debug;
+    bool debug, is_deferred;
 } env_t;
 
 __attribute__((noreturn, format(printf,3,4)))

@@ -296,7 +296,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Defer: {
         // TODO: find all referenced variables and create local copies of them
-        env->deferred = new(defer_t, .body=Match(ast, Defer)->body);
+        env_t *environment = fresh_scope(env);
+        environment->is_deferred = true;
+        env->deferred = new(defer_t, .body=Match(ast, Defer)->body, .environment=environment);
         return NULL;
     }
     case Using: {
@@ -330,8 +332,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto ret = Match(ast, Return);
         assert(env->return_type);
 
-        for (defer_t *d = env->deferred; d; d = d->next)
-            compile_block_statement(env, block, d->body);
+        insert_defers(env, block, NULL);
 
         if (env->return_type->tag == VoidType) {
             if (ret->value) {
@@ -1621,8 +1622,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ast, "I'm not sure what %s is referring to",
                         target ? target : (ast->tag == Skip ? "this 'skip'" : "this 'stop'"));
 
-        for (; env->deferred && env->deferred != prev_deferred; env->deferred = env->deferred->next)
-            compile_block_statement(env, block, env->deferred->body);
+        insert_defers(env, block, prev_deferred);
 
         gcc_jump(*block, loc, jump_dest);
         *block = NULL;

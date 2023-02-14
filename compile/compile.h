@@ -59,6 +59,8 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices);
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
+// Compile all the deferred statements up to a given point
+void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);

@@ -321,7 +321,6 @@ void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t
         .deferred = env->deferred,
     };
 
-
     if (condition) {
         check_truthiness(env, block, condition, loop_body, loop_end);
     } else {
