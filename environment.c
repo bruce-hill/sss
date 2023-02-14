@@ -124,7 +124,7 @@ static bl_type_t *define_string_type(env_t *env)
     load_method(env, ns, "bl_string_replace", "replace", str_type,
                 ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
 
-    bl_type_t *c_str = Type(PointerType, .pointed=Type(CharType), .is_optional=true);
+    bl_type_t *c_str = Type(PointerType, .pointed=Type(CharType));
     load_method(env, ns, "c_string", "c_string", c_str, ARG("str",str_type,0));
     load_method(env, ns, "from_c_string", "from_pointer", str_type, ARG("str",c_str,0));
     hashmap_t *ns2 = get_namespace(env, c_str);
