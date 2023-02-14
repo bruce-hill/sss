@@ -296,9 +296,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Defer: {
         // TODO: find all referenced variables and create local copies of them
+        // Use case:
+        // f := open(file1)
+        // defer f.close() // close file1
+        // ...
+        // f = open(file2)
+        // ...
+        // defer f.close() // close file2
         env_t *environment = fresh_scope(env);
         environment->is_deferred = true;
-        env->deferred = new(defer_t, .body=Match(ast, Defer)->body, .environment=environment);
+        env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=environment);
         return NULL;
     }
     case Using: {
