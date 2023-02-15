@@ -1769,24 +1769,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *type_info = WrapAST(ast, StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
         // Stringify and add type info:
         ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=expr), type_info));
-        ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
 
         // Call say(str):
         ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, result_str));
         compile_statement(env, block, say_result);
 
         if (test->output) {
+            ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
             ast_t *expected = StringAST(ast, test->output);
-            List(ast_t*) chunks = LIST(ast_t*,
-                                       WrapAST(ast, StringLiteral, .str=intern_str("Test failed, expected: ")), 
-                                       WrapAST(ast, Interp, .value=expected),
-                                       WrapAST(ast, StringLiteral, .str=intern_str(", but got: ")), 
-                                       WrapAST(ast, Interp, .value=result_str_plain));
+            ast_t *message = WrapAST(
+                ast, StringJoin, .children=LIST(
+                    ast_t*,
+                    WrapAST(ast, StringLiteral, .str=intern_str("Test failed, expected: ")), 
+                    WrapAST(ast, Interp, .value=expected),
+                    WrapAST(ast, StringLiteral, .str=intern_str(", but got: ")), 
+                    WrapAST(ast, Interp, .value=result_str_plain)));
             compile_statement(
                 env, block, WrapAST(
                     ast, If, .condition=WrapAST(ast, NotEqual, .lhs=result_str_plain, .rhs=expected),
-                    .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=WrapAST(ast, StringJoin, .children=chunks))))));
-
+                    .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=message)))));
         }
 
         return NULL;
