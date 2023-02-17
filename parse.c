@@ -35,7 +35,7 @@ static int op_tightness[NUM_AST_TAGS] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","using","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","export","enum","else","do","deftype",
+    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","extend","export","enum","else","do","deftype",
     "defer","def","bitcast","between","as","and", NULL,
 };
 
@@ -66,6 +66,7 @@ static PARSER(parse_with);
 static PARSER(parse_do);
 static PARSER(parse_using);
 static PARSER(parse_when);
+static PARSER(parse_extend);
 static PARSER(parse_expr);
 static PARSER(parse_extended_expr);
 static PARSER(parse_term);
@@ -909,6 +910,14 @@ PARSER(parse_with) {
     return NewAST(ctx->file, start, pos, With, .var=var, .expr=expr, .cleanup=cleanup, .body=body);
 }
 
+PARSER(parse_extend) {
+    // extend <type> <indent> body
+    const char *start = pos;
+    if (!match_word(&pos, "extend")) return NULL;
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type, "I expected a type to parse");
+    ast_t *body = expect_ast(ctx, start, &pos, parse_indented_block, "I expected a body for this 'extend'");
+    return NewAST(ctx->file, start, pos, Extend, .type=type, .body=body);
+}
 
 PARSER(parse_using) {
     // using var1,var2,... [<indent>] body
@@ -1698,6 +1707,7 @@ PARSER(parse_extended_expr) {
         || (expr=optional_ast(ctx, &pos, parse_do))
         || (expr=optional_ast(ctx, &pos, parse_defer))
         || (expr=optional_ast(ctx, &pos, parse_with))
+        || (expr=optional_ast(ctx, &pos, parse_extend))
         || (expr=optional_ast(ctx, &pos, parse_using))
         )
         return expr;

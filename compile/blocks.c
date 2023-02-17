@@ -201,23 +201,27 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         gcc_func_t *func = get_function_def(env, def, fndef->is_exported ? fndef->name : fresh(fndef->name), fndef->is_exported);
         gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
         hashmap_set(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
-    } else if (def->tag == StructDef) {
-        auto struct_def = Match(def, StructDef);
-        binding_t *b = hashmap_get(env->bindings, struct_def->name);
-        assert(b && b->type->tag == TypeType);
-        env_t inner_env = *env;
-        inner_env.bindings = get_namespace(env, Match(b->type, TypeType)->type);
-        env = &inner_env;
-        // Struct methods:
-        foreach (struct_def->definitions, s_def, _) {
-            if ((*s_def)->tag == FunctionDef) {
-                auto fndef = Match((*s_def), FunctionDef);
-                bl_type_t *t = get_type(env, *s_def);
-                gcc_func_t *func = get_function_def(env, *s_def, intern_strf("%s__%s", struct_def->name, fndef->name), true);
+    } else if (def->tag == StructDef || def->tag == Extend) {
+        List(ast_t*) members;
+        if (def->tag == StructDef) {
+            auto struct_def = Match(def, StructDef);
+            binding_t *b = hashmap_get(env->bindings, struct_def->name);
+            env = get_type_env(env, Match(b->type, TypeType)->type);
+            members = struct_def->definitions;
+        } else {
+            auto extend = Match(def, Extend);
+            members = Match(extend->body, Block)->statements;
+            env = get_type_env(env, parse_type_ast(env, extend->type));
+        }
+        foreach (members, member, _) {
+            if ((*member)->tag == FunctionDef) {
+                auto fndef = Match((*member), FunctionDef);
+                bl_type_t *t = get_type(env, *member);
+                gcc_func_t *func = get_function_def(env, *member, fresh(fndef->name), true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
                 hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
             } else {
-                predeclare_def_funcs(env, *s_def);
+                predeclare_def_funcs(env, *member);
             }
         }
     }

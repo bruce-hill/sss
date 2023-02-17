@@ -49,6 +49,7 @@ typedef enum {
     DocTest,
     Defer,
     With,
+    Extend,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -281,6 +282,9 @@ struct ast_s {
         struct {
             ast_t *var, *expr, *cleanup, *body;
         } With;
+        struct {
+            ast_t *type, *body;
+        } Extend;
     } __data;
 };
 

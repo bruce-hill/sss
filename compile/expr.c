@@ -543,34 +543,36 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env->conversions = new(conversions_t, .src=src_t, .dest=target_t, .func=func, .next=env->conversions);
         return NULL;
     }
-    case StructDef: {
-        auto struct_def = Match(ast, StructDef);
-        bl_type_t *struct_t = Match(get_binding(env, struct_def->name)->type, TypeType)->type;
-
-        env = get_type_env(env, struct_t);
-
-        foreach (struct_def->definitions, s_def, _) {
-            if ((*s_def)->tag == FunctionDef) {
-                auto fndef = Match((*s_def), FunctionDef);
-                binding_t *binding = hashmap_get(env->bindings, fndef->name);
-                assert(binding);
-                compile_function(env, binding->func, *s_def);
-            } else if ((*s_def)->tag == Declare) {
-                auto decl = Match((*s_def), Declare);
+    case StructDef: case Extend: {
+        bl_type_t *t;
+        List(ast_t*) members;
+        if (ast->tag == StructDef) {
+            auto struct_def = Match(ast, StructDef);
+            members = struct_def->definitions;
+            t = Match(get_binding(env, struct_def->name)->type, TypeType)->type;
+        } else {
+            auto extend = Match(ast, Extend);
+            members = Match(extend->body, Block)->statements;
+            t = parse_type_ast(env, extend->type);
+        }
+        env = get_type_env(env, t);
+        foreach (members, member, _) {
+            if ((*member)->tag == Declare) {
+                auto decl = Match((*member), Declare);
                 gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
                 bl_type_t *t = get_type(env, decl->value);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 istr_t name = Match(decl->var, Var)->name;
-                istr_t global_name = intern_strf("%s__%s", struct_def->name, name);
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*s_def)), GCC_GLOBAL_INTERNAL, gcc_t, global_name);
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, fresh(name));
                 hashmap_set(env->bindings, name,
                             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
                 assert(rval);
-                gcc_assign(*block, ast_loc(env, (*s_def)), lval, rval);
+                gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
+            } else {
+                compile_statement(env, block, *member);
             }
         }
-
         return NULL;
     }
     case Struct: {
