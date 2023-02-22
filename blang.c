@@ -1,3 +1,4 @@
+// The main program
 #include <bhash.h>
 #include <err.h>
 #include <gc.h>
@@ -31,8 +32,8 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, NULL, f, ast, true, &result);
-    if (!run) errx(1, "run func is NULL");
+    main_func_t run = compile_file(ctx, NULL, f, ast, true, !dll, &result);
+    if (!run && !dll) errx(1, "run func is NULL");
 
     CORD binary_name;
     int i = 0;
@@ -86,7 +87,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, 
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, &result);
+    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, true, &result);
     if (!main_fn) errx(1, "run func is NULL");
 
     if (verbose)
@@ -254,7 +255,7 @@ int main(int argc, char *argv[])
     assert(ctx != NULL);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-lintern", "-lbhash", "-lm", "-L.", "-lblang",
+        "-lgc", "-lcord", "-lm", "-lintern", "-lbhash", "-ldl", "-L.", "-lblang",
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)

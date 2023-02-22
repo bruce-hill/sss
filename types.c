@@ -265,7 +265,7 @@ bool is_comparable(bl_type_t *t)
 bool has_heap_memory(bl_type_t *t)
 {
     switch (t->tag) {
-    case ArrayType: return has_heap_memory(Match(t, ArrayType)->item_type);
+    case ArrayType: return true;
     case TableType: return true;
     case PointerType: return true;
     case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated);

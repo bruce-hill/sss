@@ -39,7 +39,7 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer, TypeOptional,
-    TypeMeasure, TypeDSL,
+    TypeMeasure, TypeDSL, TypeTypeAST,
     Cast, Bitcast,
     Struct, StructDef, StructField,
     TaggedUnionDef, TypeTaggedUnion, TaggedUnionField,
@@ -50,6 +50,8 @@ typedef enum {
     Defer,
     With,
     Extend,
+    Use,
+    Export,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (FieldAccess + 1)
@@ -226,6 +228,9 @@ struct ast_s {
             istr_t name;
         } TypeDSL;
         struct {
+            ast_t *type;
+        } TypeTypeAST;
+        struct {
             ast_t *value, *type;
         } Cast, Bitcast;
         struct {
@@ -285,6 +290,12 @@ struct ast_s {
         struct {
             ast_t *type, *body;
         } Extend;
+        struct {
+            istr_t path;
+        } Use;
+        struct {
+            List(istr_t) vars;
+        } Export;
     } __data;
 };
 

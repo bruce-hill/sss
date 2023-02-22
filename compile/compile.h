@@ -12,6 +12,7 @@
 #include "../util.h"
 #include "../files.h"
 #include "libgccjit_abbrev.h"
+#include "modules.h"
 
 #define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
 
@@ -64,7 +65,7 @@ void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result);
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, bool standalone, gcc_jit_result **result);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);

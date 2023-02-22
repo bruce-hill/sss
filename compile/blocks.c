@@ -33,9 +33,10 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         NEW_LIST(istr_t, field_names);
         NEW_LIST(bl_type_t*, field_types);
         NEW_LIST(ast_t*, field_defaults);
-        // Placeholder type, will be populated later:
         if (hashmap_get(env->bindings, name))
             compile_err(env, def, "Something called %s is already defined.", name);
+        // This is a placeholder type, whose fields will be populated later.
+        // This is necessary because of recursive/corecursive structs.
         bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types, .field_defaults=field_defaults);
         gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
         lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
@@ -231,6 +232,13 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
 {
     auto statements = ast->tag == Block ? Match(ast, Block)->statements : LIST(ast_t*, ast);
+
+    // Imports first
+    foreach (statements, stmt, _) {
+        if ((*stmt)->tag == Use) {
+            load_module(env, block, *stmt);
+        }
+    }
 
     // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
     foreach (statements, stmt, _) {

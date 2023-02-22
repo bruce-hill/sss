@@ -169,11 +169,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
         istr_t name = Match(decl->var, Var)->name;
+        istr_t sym_name = fresh(name);
         if (decl->is_global) {
-            lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, name);
+            lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
         } else {
             gcc_func_t *func = gcc_block_func(*block);
-            lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
+            lval = gcc_local(func, ast_loc(env, ast), gcc_t, sym_name);
         }
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type->tag == TypeType)
@@ -182,7 +183,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (clobbered && decl->is_global)
             compile_err(env, ast, "This name is already being used for a global");
         hashmap_set(decl->is_global ? env->global_bindings : env->bindings, name,
-                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
+                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);
@@ -358,6 +359,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding = hashmap_get(env->bindings, fn->name);
         assert(binding && binding->func);
         compile_function(env, binding->func, ast);
+        if (fn->is_exported) {
+            binding->sym_name = fn->name;
+            hashmap_set(env->exports, fn->name, binding);
+        }
         return binding->rval;
     }
     case Lambda: {
@@ -564,9 +569,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
                 istr_t name = Match(decl->var, Var)->name;
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, fresh(name));
+                istr_t sym_name = fresh(name);
+                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
                 hashmap_set(env->bindings, name,
-                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
+                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             } else {
@@ -1792,6 +1798,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=message)))));
         }
 
+        return NULL;
+    }
+    case Use: {
+        return NULL;
+    }
+    case Export: {
+        foreach (Match(ast, Export)->vars, name, _) {
+            binding_t *b = hashmap_get(env->bindings, *name);
+            if (!b)
+                compile_err(env, ast, "I couldn't find the variable '%s'", *name);
+            hashmap_set(env->exports, *name, b);
+        }
         return NULL;
     }
     default: break;

@@ -86,13 +86,17 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(istr_t, member_names);
         NEW_LIST(bl_type_t*, member_types);
+        bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
+        if (struct_->name) {
+            env = fresh_scope(env);
+            hashmap_set(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
+        }
         for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
             istr_t member_name = ith(struct_->member_names, i);
             APPEND(member_names, member_name);
             bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
         }
-        bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
         bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
@@ -121,6 +125,10 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeDSL: {
         auto dsl = Match(ast, TypeDSL);
         return Type(ArrayType, .item_type=Type(CharType), .dsl=dsl->name);
+    }
+    case TypeTypeAST: {
+        auto t = Match(ast, TypeTypeAST);
+        return Type(TypeType, .type=parse_type_ast(env, t->type));
     }
     default: compile_err(env, ast, "This is not a Type value");
     }
@@ -459,7 +467,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Using: {
         return get_type(env, Match(ast, Using)->body);
     }
-    case Declare: case Extern: case Assign: case DocTest: {
+    case Declare: case Extern: case Assign: case DocTest: case Use: case Export: {
         return Type(VoidType);
     }
     case Return: case Fail: case Stop: case Skip: {

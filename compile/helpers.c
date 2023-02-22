@@ -173,7 +173,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "stride"),
         };
-        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, "Array", 3, fields);
+        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), 3, fields);
         gcc_t = gcc_struct_as_type(array);
         break;
     }
@@ -529,6 +529,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         // If it's nil, print !Type:
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
         gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
+
+        if (pointed_type->tag == CharType) {
+            gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+            gcc_return(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, f));
+            return func;
+        }
 
         // If it's non-nil, check for cycles:
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);

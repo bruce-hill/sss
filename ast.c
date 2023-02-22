@@ -137,6 +137,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(TypeOptional, F(type))
         T(TypeMeasure, F(type), F(units))
         T(TypeDSL, F(name))
+        T(TypeTypeAST, F(type))
         T(Cast, F(value), F(type))
         T(Bitcast, F(value), F(type))
         T(Struct, F(type), F(members))
@@ -154,6 +155,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Defer, F(body))
         T(With, F(var), F(expr), F(cleanup), F(body))
         T(Extend, F(type), F(body))
+        T(Use, F(path))
+        T(Export, F(vars))
 #undef BINOP
 #undef UNOP
 #undef F

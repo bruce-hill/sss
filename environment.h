@@ -33,6 +33,7 @@ typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
     bl_type_t *type;
+    istr_t sym_name;
     union {
         gcc_jit_rvalue *tag_rval;
         gcc_jit_function *func;
@@ -54,6 +55,7 @@ typedef struct env_s {
     hashmap_t *cmp_funcs; // type -> func
     hashmap_t *bindings; // name -> binding_t
     hashmap_t *global_bindings; // name -> binding_t
+    hashmap_t *exports; // name -> binding_t
     hashmap_t *gcc_types; // name -> bl_type
     hashmap_t *global_funcs; // name -> func
     hashmap_t *type_namespaces; // bl_type -> name -> binding_t

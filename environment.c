@@ -81,6 +81,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void, "free", PARAM(t_void_ptr, "ptr"));
     load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
     load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
+    load_global_func(env, t_int, "puts", PARAM(t_str, "str"));
     load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
     load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
@@ -94,6 +95,9 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
     hashmap_set(env->print_funcs, Type(RangeType), hashmap_get(env->global_funcs, intern_str("range_print")));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
+    load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
+    load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
+    load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
 #undef PARAM
 }
 
@@ -308,6 +312,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .on_err = on_err,
         .file = f,
         .global_bindings = hashmap_new(),
+        .exports = hashmap_new(),
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
         .tuple_types = hashmap_new(),
