@@ -367,12 +367,17 @@ env_t *global_scope(env_t *env)
 
 void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
-    fputs("\x1b[31;7;1m", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs("\x1b[31;7;1m", stderr);
+    fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
+            bl_get_line_column(ast->span.file, ast->span.start));
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
-    fputs("\x1b[m\n\n", stderr);
+    if (isatty(STDERR_FILENO))
+        fputs(" \x1b[m", stderr);
+    fputs("\n\n", stderr);
     if (ast)
         fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO));
 
