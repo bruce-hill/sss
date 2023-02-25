@@ -90,9 +90,11 @@ __attribute__((noreturn))
 static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, va_list args) {
     if (isatty(STDERR_FILENO))
         fputs("\x1b[31;1;7m", stderr);
+    fprintf(stderr, "%s:%ld.%ld: ", ctx->file->filename, bl_get_line_number(ctx->file, start),
+            bl_get_line_column(ctx->file, start));
     vfprintf(stderr, fmt, args);
     if (isatty(STDERR_FILENO))
-        fputs("\x1b[m", stderr);
+        fputs(" \x1b[m", stderr);
     fputs("\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};

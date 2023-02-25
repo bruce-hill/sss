@@ -233,7 +233,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
             if (!promote(env, t_rhs, &rval, t_lhs))
-                compile_err(env, rhs, "You're assigning this value with type %s to a variable with type %s and I can't figure out how to make that work.",
+                compile_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
 
             if (len > 1) {
@@ -1071,7 +1071,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
                     gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-                    istr_t fmt_str = intern_strf("\x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s", access->field);
+                    istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s",
+                                                 ast->span.file->filename,
+                                                 bl_get_line_number(ast->span.file, ast->span.start),
+                                                 bl_get_line_column(ast->span.file, ast->span.start),
+                                                 access->field);
                     gcc_rvalue_t *fmt = gcc_str(env->ctx, fmt_str);
                     gcc_rvalue_t *failure = gcc_callx(env->ctx, loc, fail, fmt, callstack);
                     gcc_eval(tag_wrong, loc, failure);
@@ -1731,7 +1735,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             len = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), strlen(default_msg));
         }
 
-        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: %.*s\x1b[m\n\n%s");
+        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7m%s: %.*s\x1b[m\n\n%s");
+        gcc_rvalue_t *loc_info = gcc_str(
+            env->ctx, intern_strf("%s:%ld.%ld",
+                                  ast->span.file->filename,
+                                  bl_get_line_number(ast->span.file, ast->span.start),
+                                  bl_get_line_column(ast->span.file, ast->span.start)));
 
         char *info = NULL;
         size_t size = 0;
@@ -1741,7 +1750,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, len, msg, callstack);
+        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, loc_info, len, msg, callstack);
         gcc_eval(*block, loc, ret);
         fclose(f);
         free(info);
