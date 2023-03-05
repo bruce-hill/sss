@@ -552,10 +552,11 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                            gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index), gcc_zero(env->ctx, i64)),
                            cycle_block, noncycle_block);
 
-        // If we're in a recursive cycle, print @?T#index and return without recursing further
+        // If we're in a recursive cycle, print @T#index and return without recursing further
         block = cycle_block;
         gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
-        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, intern_strf("%s#%%ld", type_to_string(t))), gcc_rval(index)));
+        istr_t backref = intern_strf("@%s#%%ld", type_to_string(pointed_type));
+        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref), gcc_rval(index)));
 
         // If this is a nonrecursive situation
         block = noncycle_block;
