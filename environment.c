@@ -160,6 +160,8 @@ static void define_num_types(env_t *env)
     hashmap_t *ns64 = get_namespace(env, num64_type);
     hashmap_t *ns32 = get_namespace(env, num32_type);
 
+    load_method(env, ns64, "drand48", "random", num64_type);
+
     struct { const char *c_name, *bl_name; } unary_methods[] = {
         {"acos",0},{"asin",0},{"atan",0},{"cos",0},{"sin",0},{"tan",0},{"cosh",0},{"sinh",0},
         {"tanh",0},{"acosh",0},{"asinh",0},{"atanh",0},{"exp",0},{"log",0},{"log10",0},
@@ -251,7 +253,7 @@ static void define_int_types(env_t *env)
         gcc_type_t *gcc_i64 = bl_type_to_gcc(env, i64);
 
         load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
-        load_method(env, ns, "random", "random", i64);
+        load_method(env, ns, "arc4random_uniform", "random", i64, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
         hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
@@ -263,7 +265,7 @@ static void define_int_types(env_t *env)
         gcc_type_t *gcc_i32 = bl_type_to_gcc(env, i32);
 
         load_method(env, ns, "abs", "abs", i32, ARG("i",i32,0));
-        load_method(env, ns, "rand", "random", i32);
+        load_method(env, ns, "arc4random_uniform", "random", i32, ARG("max", i32, FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
         hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
@@ -273,6 +275,7 @@ static void define_int_types(env_t *env)
         bl_type_t *i16 = Type(IntType, .bits=16);
         hashmap_t *ns = get_namespace(env, i16);
         gcc_type_t *gcc_i16 = bl_type_to_gcc(env, i16);
+        load_method(env, ns, "arc4random_uniform", "random", i16, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT16_MAX, .precision=32)));
         hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
     }
@@ -281,6 +284,7 @@ static void define_int_types(env_t *env)
         bl_type_t *i8 = Type(IntType, .bits=8);
         hashmap_t *ns = get_namespace(env, i8);
         gcc_type_t *gcc_i8 = bl_type_to_gcc(env, i8);
+        load_method(env, ns, "arc4random_uniform", "random", i8, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT8_MAX, .precision=32)));
         hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
         hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
     }
@@ -319,6 +323,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
+        .union_fields = hashmap_new(),
         .global_funcs = hashmap_new(),
         .debug = debug,
     );

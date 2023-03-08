@@ -79,7 +79,6 @@ struct bl_type_s {
         struct {
             List(istr_t) field_names;
             List(bl_type_t*) field_types;
-            List(gcc_jit_field*) fields;
         } UnionType;
         struct {
             istr_t name;

@@ -129,6 +129,24 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     }
 }
 
+List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
+{
+    // This is memoized to preserve GCC equality:
+    List(gcc_field_t*) fields = hashmap_get(env->union_fields, type_to_string(t));
+    if (fields) return fields;
+
+    fields = LIST(gcc_field_t*);
+    auto union_ = Match(t, UnionType);
+    for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
+        bl_type_t *ft = ith(union_->field_types, i);
+        gcc_type_t *gcc_ft = bl_type_to_gcc(env, ft);
+        gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(union_->field_names, i));
+        append(fields, field);
+    }
+    hashmap_set(env->union_fields, type_to_string(t), fields);
+    return fields;
+}
+
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {
@@ -239,17 +257,9 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     case UnionType: {
-        // NEW_LIST(gcc_field_t*, union_types);
-        // for (int64_t i = 0, len = length(t->union_.field_names); i < len; i++) {
-        //     bl_type_t *ft = ith(t->union_.field_types, i);
-        //     gcc_type_t *gcc_ft = bl_type_to_gcc(env, ft);
-        //     gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(t->union_.field_names, i));
-        //     append(union_types, field);
-        // }
-
-        auto union_t = Match(t, UnionType);
-        if (length(union_t->fields) > 0) {
-            gcc_t = gcc_union(env->ctx, NULL, "data_u", length(union_t->fields), union_t->fields[0]);
+        List(gcc_field_t*) fields = get_union_fields(env, t);
+        if (length(fields) > 0) {
+            gcc_t = gcc_union(env->ctx, NULL, "data_u", length(fields), fields[0]);
         } else {
             gcc_t = NULL;
         }
@@ -470,12 +480,13 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
 
             auto union_t = Match(tagged_t->data, UnionType);
+            List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
             for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
                 if (ith(union_t->field_names, u) == tag_name) {
                     bl_type_t *tag_data_type = ith(union_t->field_types, u);
                     gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                     gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
-                    gcc_field_t *union_field = ith(union_t->fields, u);
+                    gcc_field_t *union_field = ith(union_fields, u);
                     gcc_func_t *tag_print = get_print_func(env, tag_data_type);
                     if (tag_data_type->tag != StructType)
                         gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(intern_strf("%s{", tag_name)));
@@ -746,6 +757,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
             istr_t tag_name = ith(tags->names, i);
 
             auto union_t = Match(tagged_t->data, UnionType);
+            List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
             for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
                 if (ith(union_t->field_names, u) == tag_name) {
                     gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
@@ -753,7 +765,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
                     gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                     gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, data_field);
                     gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, data_field);
-                    gcc_field_t *union_field = ith(union_t->fields, u);
+                    gcc_field_t *union_field = ith(union_fields, u);
                     gcc_rvalue_t *lhs_field = gcc_rvalue_access_field(lhs_data, NULL, union_field);
                     gcc_rvalue_t *rhs_field = gcc_rvalue_access_field(rhs_data, NULL, union_field);
                     gcc_return(tag_block, NULL, compare_values(env, tag_data_type, lhs_field, rhs_field));

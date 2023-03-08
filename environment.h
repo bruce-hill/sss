@@ -57,6 +57,7 @@ typedef struct env_s {
     hashmap_t *global_bindings; // name -> binding_t
     hashmap_t *exports; // name -> binding_t
     hashmap_t *gcc_types; // name -> bl_type
+    hashmap_t *union_fields; // name -> [gcc_field]
     hashmap_t *global_funcs; // name -> func
     hashmap_t *type_namespaces; // bl_type -> name -> binding_t
     hashmap_t *tuple_types; // istr_t -> bl_type_t

@@ -130,7 +130,18 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             c = CORD_cat(c, "}");
             return c;
         }
-        case UnionType: return "Union";
+        case UnionType: {
+            CORD c = "Union(";
+            auto union_ = Match(t, UnionType);
+            for (int64_t i = 0, len = LIST_LEN(union_->field_names); i < len; i++) {
+                if (i > 0)
+                    c = CORD_cat(c, ",");
+                istr_t name = LIST_ITEM(union_->field_names, i);
+                CORD_sprintf(&c, "%r%s:%r", c, name, type_to_cord(LIST_ITEM(union_->field_types, i), true));
+            }
+            c = CORD_cat(c, ")");
+            return c;
+        }
         default: {
             CORD c;
             CORD_sprintf(&c, "Unknown type: %d", t->tag);

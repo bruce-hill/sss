@@ -110,7 +110,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         NEW_LIST(bl_type_t*, union_field_types);
         NEW_LIST(istr_t, union_field_names);
         bl_type_t *tag_t = Type(TagType, .name=tu->name, .names=tu->tag_names, .values=tu->tag_values);
-        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types, .fields=LIST(gcc_field_t*));
+        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types);
         bl_type_t *t = Type(TaggedUnionType, .name=tu->name, .tag_type=tag_t, .data=union_t);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
             istr_t tag_name = ith(tu->tag_names, i);

@@ -35,7 +35,8 @@ gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *tagged_union_t, bl_type_t 
             break;
         }
     }
-    gcc_field_t *union_field = ith(union_->fields, field_index);
+    List(gcc_field_t*) union_fields = get_union_fields(env, tagged->data);
+    gcc_field_t *union_field = ith(union_fields, field_index);
     gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
     gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
     gcc_field_t *fields[] = {
@@ -1043,9 +1044,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
             bl_type_t* tag_bl_type = Match(fielded_t, TaggedUnionType)->tag_type;
             auto tag_type = Match(tag_bl_type, TagType);
-            auto union_type = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
-            for (int64_t i = 0, len = length(union_type->field_names); i < len; i++) {
-                if (ith(union_type->field_names, i) == access->field) {
+            bl_type_t *union_type = Match(fielded_t, TaggedUnionType)->data;
+            auto union_ = Match(union_type, UnionType);
+            for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
+                if (ith(union_->field_names, i) == access->field) {
                     // Step 1: check tag and fail if it's the wrong one:
                     gcc_rvalue_t *tagged_tag = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
                     gcc_rvalue_t *field_tag = NULL;
@@ -1085,7 +1087,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                     // Step 2: access tagged.__data.TagName
                     *block = tag_ok;
-                    gcc_field_t *field = ith(union_type->fields, i);
+                    List(gcc_field_t*) union_fields = get_union_fields(env, union_type);
+                    gcc_field_t *field = ith(union_fields, i);
                     gcc_rvalue_t *data = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
                     return gcc_rvalue_access_field(data, loc, field);
                 }
@@ -1554,7 +1557,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
         gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
-        auto union_type = Match(Match(subject_t, TaggedUnionType)->data, UnionType);
+        bl_type_t *union_type = Match(subject_t, TaggedUnionType)->data;
+        auto union_ = Match(union_type, UnionType);
+        List(gcc_field_t*) union_fields = get_union_fields(env, union_type);
         NEW_LIST(gcc_case_t*, gcc_cases);
         foreach (when->cases, case_, _) {
             istr_t tag_name = Match(case_->tag, Var)->name;
@@ -1565,11 +1570,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 gcc_rvalue_t *case_rval = NULL;
                 bl_type_t *case_t = NULL;
-                for (int64_t i = 0, len = length(union_type->field_names); i < len; i++) {
-                    if (ith(union_type->field_names, i) == tag_name) {
+                for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
+                    if (ith(union_->field_names, i) == tag_name) {
                         gcc_rvalue_t *data = gcc_rvalue_access_field(subject, case_loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
-                        case_rval = gcc_rvalue_access_field(data, case_loc, ith(union_type->fields, i));
-                        case_t = ith(union_type->field_types, i);
+                        case_rval = gcc_rvalue_access_field(data, case_loc, ith(union_fields, i));
+                        case_t = ith(union_->field_types, i);
                         break;
                     }
                 }

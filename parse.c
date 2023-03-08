@@ -1112,15 +1112,17 @@ PARSER(parse_bool) {
 
 PARSER(parse_char) {
     const char *start = pos;
-    if (!match(&pos, "`")) return NULL;
-    char c = *pos;
-    if (c == '\\') {
-        c = unescape(&pos)[0];
-    } else {
+    if (*pos == '`') {
         ++pos;
+        char c = *pos;
+        ++pos;
+        return NewAST(ctx->file, start, pos, Char, .c=c);
+    } else if (*pos == '\\') {
+        char c = unescape(&pos)[0];
+        return NewAST(ctx->file, start, pos, Char, .c=c);
+    } else {
+        return NULL;
     }
-    if (!c) return NULL;
-    return NewAST(ctx->file, start, pos, Char, .c=c);
 }
 
 PARSER(parse_interpolation) {

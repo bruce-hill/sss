@@ -57,7 +57,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         NEW_LIST(bl_type_t*, union_field_types);
         NEW_LIST(istr_t, union_field_names);
         bl_type_t *tag_t = Type(TagType, .name=tu_name, .names=tu_def->tag_names, .values=tu_def->tag_values);
-        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types, .fields=LIST(gcc_field_t*));
+        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types);
         bl_type_t *t = Type(TaggedUnionType, .name=tu_name, .tag_type=tag_t, .data=union_t);
         gcc_rvalue_t *rval = gcc_str(env->ctx, tu_name);
 
@@ -159,7 +159,6 @@ static void populate_def_members(env_t *env, ast_t *def)
         inner_env.bindings = get_namespace(env, t);
 
         // populate the unioned structs for the tagged data:
-        auto union_t = Match(Match(t, TaggedUnionType)->data, UnionType);
         int64_t field_index = 0;
         for (int64_t i = 0, len = length(tu_def->tag_names); i < len; i++) {
             ast_t *field_type_ast = ith(tu_def->tag_types, i);
@@ -167,10 +166,6 @@ static void populate_def_members(env_t *env, ast_t *def)
                 continue;
 
             populate_def_members(&inner_env, field_type_ast);
-            bl_type_t *bl_field_type = ith(union_t->field_types, field_index);
-            gcc_type_t *field_type = bl_type_to_gcc(env, bl_field_type);
-            gcc_field_t *field = gcc_new_field(env->ctx, NULL, field_type, ith(tu_def->tag_names, i));
-            APPEND(union_t->fields, field);
             ++field_index;
         }
 
