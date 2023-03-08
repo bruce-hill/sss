@@ -39,6 +39,8 @@ istr_t fresh(istr_t name);
 // Data layout information:
 ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t);
 ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t);
+// Get the list of GCC fields in a union:
+List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t);
 // Convert a blang type to the GCC JIT representation
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t);
 // Check whether a value is truthy or not

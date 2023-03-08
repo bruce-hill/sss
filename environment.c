@@ -318,6 +318,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
+        .union_fields = hashmap_new(),
         .global_funcs = hashmap_new(),
         .debug = debug,
     );
