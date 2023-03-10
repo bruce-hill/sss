@@ -1551,6 +1551,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
         spaces(&pos);
         ast_t *rhs = tag == Cast ? parse_type(ctx, pos) : parse_term(ctx, pos);
+        if (!rhs && tag == Range) rhs = NewAST(ctx->file, pos, pos, Ellipsis);
         if (!rhs) goto no_more_binops;
         pos = rhs->span.end;
         APPEND(terms, rhs);
