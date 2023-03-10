@@ -24,6 +24,14 @@ static istr_t loop_var_name(ast_t *var)
     return Match(var, Var)->name;
 }
 
+static gcc_rvalue_t *rvalue_in_var(gcc_block_t **block, const char *name, gcc_type_t *gcc_t, gcc_rvalue_t *rval)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *var = gcc_local(func, NULL, gcc_t, fresh(name));
+    gcc_assign(*block, NULL, var, rval);
+    return gcc_rval(var);
+}
+
 void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto for_ = Match(ast, For);
@@ -124,40 +132,77 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case RangeType: {
+        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
+        gcc_assign(*block, NULL, iter_var, iter_rval);
+        iter_rval = gcc_rval(iter_var);
         if (for_->value && for_->value->tag == Dereference)
             compile_err(env, for_->value, "Range values can't be dereferenced because they don't reside in memory anywhere");
         // x = range.first
         gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
         assert(range_struct);
-        gcc_lvalue_t *x = gcc_local(func, NULL, i64, fresh("_x"));
-        gcc_assign(*block, NULL, x,
+        gcc_lvalue_t *x_var = gcc_local(func, NULL, i64, fresh("_x"));
+        gcc_assign(*block, NULL, x_var,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 0)));
+        gcc_rvalue_t *x = gcc_rval(x_var);
 
-        // goto (index > len) ? end : body
-        gcc_rvalue_t *len = range_len(env, gcc_iter_t, iter_rval);
-        gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var), len);
-        gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
+        gcc_rvalue_t *step = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 1));
+        step = rvalue_in_var(block, "step", i64, step);
+        gcc_rvalue_t *last = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 2));
+        last = rvalue_in_var(block, "last", i64, last);
+
+        gcc_type_t *b = gcc_type(env->ctx, BOOL);
+        gcc_rvalue_t *zero64 = gcc_zero(env->ctx, i64);
+        gcc_rvalue_t *i64_max = gcc_rvalue_from_long(env->ctx, i64, INT64_MAX);
+        gcc_rvalue_t *i64_min = gcc_rvalue_from_long(env->ctx, i64, INT64_MIN);
+
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        ///// The logic around this is *very* sensitive to overflow errors, so be careful!!! /////////
+        //////////////////////////////////////////////////////////////////////////////////////////////
+#define BINOP(t,a,op,b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_ ## op, t, a, b)
+#define CMP(a,op,b) gcc_comparison(env->ctx, NULL, GCC_COMPARISON_ ## op, a, b)
+        // Check if the range is empty:
+        // is_empty = ((step > 0) && (x > last)) || ((step < 0) && (x < last))
+        gcc_rvalue_t *is_empty = BINOP(
+            b, BINOP(b, CMP(step, GT, zero64), LOGICAL_AND, CMP(x, GT, last)),
+            LOGICAL_OR,
+            BINOP(b, CMP(step, LT, zero64), LOGICAL_AND, CMP(x, LT, last)));
+
+        // We can only take the next step if no over/underflow will occur and we don't go past `last`:
+        // can_continue = ((step > 0) && x <= (INT64_MAX - step) && (x + step <= last))
+        //             || ((step < 0) && x >= (INT64_MIN - step) && (x + step >= last))
+        gcc_rvalue_t *can_continue = BINOP(
+            b, BINOP(b, CMP(step, GT, zero64), LOGICAL_AND,
+                     BINOP(b, CMP(x, LE, BINOP(i64, i64_max, MINUS, step)), LOGICAL_AND, CMP(BINOP(i64, x, PLUS, step), LE, last))),
+            LOGICAL_OR,
+            BINOP(b, CMP(step, LT, zero64), LOGICAL_AND,
+                  BINOP(b, CMP(x, GE, BINOP(i64, i64_min, MINUS, step)), LOGICAL_AND, CMP(BINOP(i64, x, PLUS, step), GE, last))));
+#undef CMP
+#undef BINOP
+        //////////////////////////////////////////////////////////////////////////////////////////////
+        /////////////////////////// Overflow-sensitive code ends here ////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////////////
+
+        gcc_jump_condition(*block, NULL, is_empty, for_empty ? for_empty : for_end,
                            for_first ? for_first : for_body);
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
         item_t = Type(IntType, .bits=64);
         item_shadow = gcc_local(func, NULL, i64, fresh("x"));
-        gcc_assign(for_body, NULL, item_shadow, gcc_rval(x));
+        gcc_assign(for_body, NULL, item_shadow, x);
         if (for_first)
-            gcc_assign(for_first, NULL, item_shadow, gcc_rval(x));
+            gcc_assign(for_first, NULL, item_shadow, x);
 
-        // next: x+=step
-        gcc_rvalue_t *step = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 1));
-        gcc_update(for_next, NULL, x, GCC_BINOP_PLUS, step);
+        // goto can_continue ? update : end
+        gcc_block_t *for_update = gcc_new_block(func, "for_update");
+        gcc_jump_condition(for_next, NULL, can_continue, for_update, for_end);
 
-        // goto is_done ? end : between
-        gcc_jump_condition(for_next, NULL, is_done, for_end,
-                           for_between ? for_between : for_body);
+        // x+=step
+        gcc_update(for_update, NULL, x_var, GCC_BINOP_PLUS, step);
+        gcc_jump(for_update, NULL, for_between ? for_between : for_body);
 
-        // between:
         if (for_between)
-            gcc_assign(for_between, NULL, item_shadow, gcc_rval(x));
+            gcc_assign(for_between, NULL, item_shadow, x);
 
         break;
     }

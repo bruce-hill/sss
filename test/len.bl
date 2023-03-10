@@ -6,6 +6,6 @@ l := [1,2,3,4,5]
 say "Len($l) == $(#l)"
 fail unless #l == 5
 
-r := 1..+2..10
+r := 1..10 by 2
 say "Len($r) == $(#r)"
 fail unless #r == 5

@@ -792,6 +792,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return get_type(env, with->body);
     }
     case Extend: return Type(VoidType);
+    case Ellipsis: compile_err(env, ast, "The ellipsis is only allowed to be used inside of Range literals"
+                               " (like `.. to ..`), it can't be used as a standalone value");
     default: break;
     }
     compile_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));
