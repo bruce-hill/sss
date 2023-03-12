@@ -52,9 +52,10 @@ typedef enum {
     Extend,
     Use,
     Export,
+    Ellipsis,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (FieldAccess + 1)
+#define NUM_AST_TAGS (Ellipsis + 1)
 
 typedef struct ast_s ast_t;
 
@@ -296,6 +297,7 @@ struct ast_s {
         struct {
             List(istr_t) vars;
         } Export;
+        struct {} Ellipsis;
     } __data;
 };
 

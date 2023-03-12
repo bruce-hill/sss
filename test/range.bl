@@ -1,5 +1,5 @@
 
-r := 5..+2..10
+r := 5 to 10 by 2
 say "$r"
 say "len: $(#r)"
 
@@ -9,13 +9,13 @@ for i,x in r
 // for i,x in -r
 //     say "$i) $x"
 
-for i,x in 100..97
+for i,x in 100 to 97
     say "$i) $x"
 
-for i in 1..
+for i in 1 to..
     say "$i..."
     stop if i >= 4
 
-for i in 1..+2..
+for i in 1 to.. by 2
     say "odd $i..."
     stop if i >= 4

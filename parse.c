@@ -22,19 +22,23 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
 
-static int op_tightness[NUM_AST_TAGS] = {
+#define RANGE_STEP NUM_AST_TAGS
+
+static int op_tightness[NUM_AST_TAGS+1] = {
     [Power]=1,
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3,
     [Modulus]=4,
-    [Cast]=5,
-    [Greater]=6, [GreaterEqual]=6, [Less]=6, [LessEqual]=6,
-    [Equal]=7, [NotEqual]=7,
-    [And]=8, [Or]=8, [Xor]=8,
+    [Range]=5,
+    [RANGE_STEP]=6,
+    [Cast]=6,
+    [Greater]=7, [GreaterEqual]=7, [Less]=7, [LessEqual]=7,
+    [Equal]=8, [NotEqual]=8,
+    [And]=9, [Or]=9, [Xor]=9,
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","when","using","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
+    "yes","xor","with","while","when","using","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","extend","export","enum","else","do","deftype",
     "defer","def","bitcast","between","as","and", NULL,
 };
@@ -82,6 +86,7 @@ static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
 static PARSER(parse_export);
+static PARSER(parse_ellipsis);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -735,25 +740,16 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char *pos = lhs->span.end;
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
+    if (*pos == '.') return NULL;
     istr_t field = get_id(&pos);
     if (!field) return NULL;
     return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
-PARSER(parse_range) {
+PARSER(parse_ellipsis) {
     const char *start = pos;
-    ast_t *first = optional_ast(ctx, &pos, parse_term);
     if (!match(&pos, "..")) return NULL;
-    match(&pos, "+");
-    ast_t *step = optional_ast(ctx, &pos, parse_term);
-    ast_t *last = NULL;
-    if (step && match(&pos, "..")) {
-        last = optional_ast(ctx, &pos, parse_term);
-    } else {
-        last = step;
-        step = NULL;
-    }
-    return NewAST(ctx->file, start, pos, Range, .first=first, .step=step, .last=last);
+    return NewAST(ctx->file, start, pos, Ellipsis);
 }
 
 PARSER(parse_reduction) {
@@ -1079,26 +1075,26 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
     return NewAST(ctx->file, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
-ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix) {
+ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix, bool exprs_ok) {
     const char *start = pos;
     if (!match(&pos, prefix)) return NULL;
     if (isalpha(prefix[0]) && (isalpha(*pos) || isdigit(*pos) || *pos == '_')) return NULL;
     whitespace(&pos);
-    ast_t *term = parse_term(ctx, pos);
-    if (!term) return NULL;
+    ast_t *val = exprs_ok ? parse_expr(ctx, pos) : parse_term(ctx, pos);
+    if (!val) return NULL;
     // Unsafe: all the unary ops have a '.value' field in the same spot, so this is a hack
-    return new(ast_t, .span.file=ctx->file, .span.start=start, .span.end=term->span.end,
-               .tag=tag, .__data.Not.value=term);
+    return new(ast_t, .span.file=ctx->file, .span.start=start, .span.end=val->span.end,
+               .tag=tag, .__data.Not.value=val);
     // End unsafe area
 }
-#define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-")
-#define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@")
-#define parse_dereference(...) parse_unary(__VA_ARGS__, Dereference, "*")
-#define parse_len(...) parse_unary(__VA_ARGS__, Len, "#")
-#define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?")
-#define parse_not(...) parse_unary(__VA_ARGS__, Not, "not")
-#define parse_typeof(...) parse_unary(__VA_ARGS__, TypeOf, "typeof")
-#define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof")
+#define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-", false)
+#define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@", false)
+#define parse_dereference(...) parse_unary(__VA_ARGS__, Dereference, "*", false)
+#define parse_len(...) parse_unary(__VA_ARGS__, Len, "#", false)
+#define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?", false)
+#define parse_not(...) parse_unary(__VA_ARGS__, Not, "not", true)
+#define parse_typeof(...) parse_unary(__VA_ARGS__, TypeOf, "typeof", true)
+#define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof", true)
 
 PARSER(parse_bool) {
     const char *start = pos;
@@ -1382,11 +1378,7 @@ PARSER(parse_term) {
     bool success = (
         false
         || (term=parse_nil(ctx, pos))
-        || (term=parse_fail(ctx, pos))
-        || (term=parse_skip(ctx, pos))
-        || (term=parse_stop(ctx, pos))
-        || (term=parse_return(ctx, pos))
-        || (term=parse_bitcast(ctx, pos))
+        || (term=parse_ellipsis(ctx, pos))
         || (term=parse_num(ctx, pos))
         || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
@@ -1394,9 +1386,6 @@ PARSER(parse_term) {
         || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
         || (term=parse_maybe(ctx, pos))
-        || (term=parse_typeof(ctx, pos))
-        || (term=parse_sizeof(ctx, pos))
-        || (term=parse_not(ctx, pos))
         || (term=parse_bool(ctx, pos))
         || (term=parse_char(ctx, pos))
         || (term=parse_string(ctx, pos))
@@ -1405,6 +1394,15 @@ PARSER(parse_term) {
         || (term=parse_struct(ctx, pos))
         || (term=parse_var(ctx, pos))
         || (term=parse_array(ctx, pos))
+        || (term=parse_reduction(ctx, pos))
+        || (term=parse_fail(ctx, pos))
+        || (term=parse_skip(ctx, pos))
+        || (term=parse_stop(ctx, pos))
+        || (term=parse_return(ctx, pos))
+        || (term=parse_bitcast(ctx, pos))
+        || (term=parse_typeof(ctx, pos))
+        || (term=parse_sizeof(ctx, pos))
+        || (term=parse_not(ctx, pos))
         );
 
     if (!success) return NULL;
@@ -1505,13 +1503,12 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 }
 
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
-    ast_t *term = optional_ast(ctx, &pos, parse_range);
-    if (!term) term = optional_ast(ctx, &pos, parse_term);
-    if (!term) term = optional_ast(ctx, &pos, parse_reduction);
+    ast_t *term = parse_term(ctx, pos);
     if (!term) return NULL;
 
-    NEW_LIST(ast_t*, terms);
-    APPEND(terms, term);
+    pos = term->span.end;
+
+    auto terms = LIST(ast_t*, term);
     NEW_LIST(ast_tag_e, binops);
     for (;;) {
         spaces(&pos);
@@ -1552,6 +1549,12 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 tag = Modulus; break;
             } else if (match_word(&pos, "as")) {
                 tag = Cast; break;
+            } else if (match(&pos, "..")) {
+                tag = Range; break;
+            } else if (match_word(&pos, "to")) {
+                tag = Range; break;
+            } else if (match_word(&pos, "by")) {
+                tag = RANGE_STEP; break;
             } else {
                 goto no_more_binops;
             }
@@ -1562,6 +1565,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
         spaces(&pos);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, pos) : parse_term(ctx, pos);
+        if (!rhs && tag == Range) rhs = NewAST(ctx->file, pos, pos, Ellipsis);
         if (!rhs) goto no_more_binops;
         pos = rhs->span.end;
         APPEND(terms, rhs);
@@ -1588,14 +1592,25 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         ast_t *lhs = LIST_ITEM(terms, tightest_op);
         ast_t *rhs = LIST_ITEM(terms, tightest_op + 1);
 
-        // Unsafe, relies on these having the same type:
-        ast_t *merged = new(
-            ast_t,
-            .span.file=ctx->file, .span.start=lhs->span.start, .span.end=rhs->span.end,
-            .tag=tag,
-            .__data.Add.lhs=lhs,
-            .__data.Add.rhs=rhs);
-        // End unsafe
+        ast_t *merged;
+        if (tag == RANGE_STEP) {
+            if (lhs->tag != Range)
+                parser_err(ctx, lhs->span.start, rhs->span.end, "This 'by' is not attached to a Range");
+
+            merged = NewAST(ctx->file, lhs->span.start, rhs->span.end, Range,
+                            .first=Match(lhs, Range)->first,
+                            .last=Match(lhs, Range)->last,
+                            .step=rhs);
+        } else {
+            // Unsafe, relies on these having the same type:
+            merged = new(
+                ast_t,
+                .span.file=ctx->file, .span.start=lhs->span.start, .span.end=rhs->span.end,
+                .tag=tag,
+                .__data.Add.lhs=lhs,
+                .__data.Add.rhs=rhs);
+            // End unsafe
+        }
 
         LIST_REMOVE(terms, tightest_op);
         terms[0][tightest_op] = merged;
@@ -1701,8 +1716,8 @@ PARSER(parse_statement) {
 
     for (bool progress = true; progress; ) {
         ast_t *new_stmt;
-        progress = (
-            (new_stmt=parse_index_suffix(ctx, stmt))
+        progress = (false
+            || (new_stmt=parse_index_suffix(ctx, stmt))
             || (new_stmt=parse_field_suffix(ctx, stmt))
             || (new_stmt=parse_suffix_if(ctx, stmt, false))
             || (new_stmt=parse_suffix_for(ctx, stmt))

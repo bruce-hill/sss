@@ -1137,7 +1137,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_func_t *func = gcc_block_func(*block);
                     gcc_rvalue_t *old_items = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 0));
                     gcc_rvalue_t *offset;
-                    if (range->first)
+                    if (range->first && range->first->tag != Ellipsis)
                         offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
                     else
                         offset = gcc_zero(env->ctx, i32_t);
@@ -1151,7 +1151,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                     // len = MIN(array_len, range.last)-first
                     gcc_rvalue_t *array_len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
-                    if (range->last) {
+                    if (range->last && range->last->tag != Ellipsis) {
                         gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
                                     *range_shorter = gcc_new_block(func, "range_shorter"),
                                     *len_assigned = gcc_new_block(func, "len_assigned");
@@ -1635,6 +1635,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Range: {
         return compile_range(env, block, ast);
     }
+    case Ellipsis: return compile_range(env, block, WrapAST(ast, Range));
     case Repeat: {
         auto loop = Match(ast, Repeat);
         compile_while_loop(env, block, intern_str("repeat"), NULL, loop->body, loop->between);
