@@ -141,6 +141,22 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     compile_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
 }
 
+static void export(env_t *env, istr_t name, binding_t *b)
+{
+    export_t *exp = new(export_t, .qualified_name=name, .binding=b);
+    APPEND(env->exports, exp);
+    // Export everything from the inner scope:
+    if (b->type->tag == TypeType) {
+        printf("Adding inner scope defs for: %s\n", type_to_string(b->type));
+        hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
+        for (istr_t inner = NULL; (inner=hashmap_next(ns, inner)); ) {
+            printf("Found inner scope def: %s\n", inner);
+            binding_t *b2 = hashmap_get(ns, inner);
+            export(env, intern_strf("%s.%s", name, inner), b2);
+        }
+    }
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -360,10 +376,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding = hashmap_get(env->bindings, fn->name);
         assert(binding && binding->func);
         compile_function(env, binding->func, ast);
-        if (fn->is_exported) {
-            binding->sym_name = fn->name;
-            hashmap_set(env->exports, fn->name, binding);
-        }
+        if (fn->is_exported)
+            APPEND(env->exports, new(export_t, .qualified_name=fn->name, .binding=binding));
         return binding->rval;
     }
     case Lambda: {
@@ -1823,7 +1837,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             binding_t *b = hashmap_get(env->bindings, *name);
             if (!b)
                 compile_err(env, ast, "I couldn't find the variable '%s'", *name);
-            hashmap_set(env->exports, *name, b);
+            export(env, *name, b);
         }
         return NULL;
     }

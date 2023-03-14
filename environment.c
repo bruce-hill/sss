@@ -93,7 +93,9 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
-    hashmap_set(env->print_funcs, Type(RangeType), hashmap_get(env->global_funcs, intern_str("range_print")));
+    gcc_func_t *range_print = hashmap_get(env->global_funcs, intern_str("range_print"));
+    hashmap_set(get_namespace(env, Type(RangeType)), intern_str("__print"),
+                new(binding_t, .func=range_print, .sym_name=intern_str("range_print")));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
@@ -316,11 +318,10 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .on_err = on_err,
         .file = f,
         .global_bindings = hashmap_new(),
-        .exports = hashmap_new(),
+        .exports = LIST(export_t*),
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
         .tuple_types = hashmap_new(),
-        .print_funcs = hashmap_new(),
         .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
         .union_fields = hashmap_new(),

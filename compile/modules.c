@@ -20,13 +20,16 @@
 hashmap_t *get_qualified_ns(env_t *env, const char *qualified_name)
 {
     hashmap_t *ns = env->bindings;
-    for (size_t len; (len=strcspn(qualified_name, ".")) < strlen(qualified_name); qualified_name += len) {
-        istr_t name = intern_strn(qualified_name, len);
-        bl_type_t *t = hashmap_get(ns, name);
-        assert(t);
-        t = Match(t, TypeType)->type;
-        ns = hashmap_get(env->type_namespaces, t);
+    const char *segment = qualified_name;
+    while (strchr(segment, '.')) {
+        size_t len = strcspn(segment, ".");
+        istr_t name = intern_strn(segment, len);
+        binding_t *b = hashmap_get(ns, name);
+        assert(b);
+        bl_type_t *t = Match(b->type, TypeType)->type;
+        ns = get_namespace(env, t);
         assert(ns);
+        segment += len + 1;
     }
     return ns;
 }

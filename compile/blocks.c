@@ -194,9 +194,10 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
         bl_type_t *t = get_type(env, def);
-        gcc_func_t *func = get_function_def(env, def, fndef->is_exported ? fndef->name : fresh(fndef->name), fndef->is_exported);
+        istr_t sym_name = fresh(fndef->name);
+        gcc_func_t *func = get_function_def(env, def, sym_name, fndef->is_exported);
         gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-        hashmap_set(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
+        hashmap_set(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
     } else if (def->tag == StructDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
@@ -213,9 +214,10 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
             if ((*member)->tag == FunctionDef) {
                 auto fndef = Match((*member), FunctionDef);
                 bl_type_t *t = get_type(env, *member);
-                gcc_func_t *func = get_function_def(env, *member, fresh(fndef->name), true);
+                istr_t sym_name = fresh(fndef->name);
+                gcc_func_t *func = get_function_def(env, *member, sym_name, true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr));
+                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
             } else {
                 predeclare_def_funcs(env, *member);
             }

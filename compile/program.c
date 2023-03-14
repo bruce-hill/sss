@@ -32,8 +32,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
     (void)fresh("get_exports");
     (void)fresh("prepare_exports");
 
-    // Compile main() function
     if (standalone) {
+        // Compile main() function
         const char *main_name = "main";
         gcc_func_t *main_func = gcc_new_func(
             ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, INT),
@@ -82,9 +82,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_lvalue_t *exports_var = gcc_local(get_exports, NULL, gcc_t, fresh("exports"));
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
-        int64_t num_exports = 0;
-        for (istr_t key = NULL; (key=hashmap_next(env->exports, key)); )
-            ++num_exports;
+        int64_t num_exports = LIST_LEN(env->exports);
         bl_type_t *item_t = Match(exports_t, ArrayType)->item_type;
         gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, "GC_malloc");
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * num_exports));
@@ -104,17 +102,18 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
 #define GC_STR(s) gcc_callx(env->ctx, NULL, intern_str_func, gcc_str(env->ctx, (s)))
-        for (istr_t name = NULL; (name=hashmap_next(env->exports, name)); ) {
+        foreach (env->exports, exp, _) {
             // array.items[array.length] = item
             gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, items, gcc_rval(length_field));
-            printf("Exporting: %s\n", name);
-            binding_t *b = hashmap_get(env->exports, name);
+            printf("Exporting: %s\n", (*exp)->qualified_name);
             istr_t sym_name;
-            if (b->func) {
+            binding_t *b = (*exp)->binding;
+            if (b->sym_name) {
                 sym_name = b->sym_name;
+                assert(sym_name);
             } else {
                 // Create an exported global to make it visible:
-                sym_name = fresh(name);
+                sym_name = fresh((*exp)->qualified_name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, bl_type_to_gcc(env, b->type), sym_name);
                 gcc_assign(block, NULL, lval, b->rval);
             }
@@ -123,7 +122,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             gcc_rvalue_t *item_val = gcc_struct_constructor(
                 env->ctx, NULL, gcc_item_t, 4,
                 (gcc_field_t*[]){gcc_get_field(gcc_item_struct, 0), gcc_get_field(gcc_item_struct, 1), gcc_get_field(gcc_item_struct, 2), gcc_get_field(gcc_item_struct, 3)},
-                (gcc_rvalue_t*[]){GC_STR(name), GC_STR(type_to_string(b->type)), GC_STR(sym_name), deref});
+                (gcc_rvalue_t*[]){GC_STR((*exp)->qualified_name), GC_STR(type_to_string(b->type)), GC_STR(sym_name), deref});
             gcc_assign(block, NULL, item_home, item_val);
 
             // array.length += 1

@@ -22,6 +22,13 @@ istr_t fresh(istr_t name)
     static hashmap_t *seen = NULL;
     if (!seen) seen = hashmap_new();
     // static int id = 0;
+    char *tmp = strdup(name);
+    for (size_t i = 0; i < strlen(tmp); i++) {
+        if (!isalpha(name[i]) && !isdigit(name[i]) && name[i] != '_')
+            tmp[i] = '_';
+    }
+    name = intern_str(tmp);
+    free(tmp);
     int64_t count = (int64_t)hashmap_get(seen, name);
     istr_t ret = intern_strf("%s__%ld", name, count++);
     hashmap_set(seen, name, (void*)(count+1));
@@ -371,21 +378,26 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
 
     // Memoize:
-    gcc_func_t *func = hashmap_get(env->print_funcs, t);
-    if (func) return func;
+    binding_t *b = get_from_namespace(env, t, "__print");
+    if (b) return b->func;
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
+    bl_type_t *fn_t = Type(FunctionType,
+                           .arg_names=LIST(istr_t, intern_str("obj"), intern_str("file"), intern_str("recursion")),
+                           .arg_types=LIST(bl_type_t*, t, Type(PointerType, .pointed=Type(VoidType)), Type(PointerType, .pointed=Type(VoidType))),
+                           .ret=Type(IntType, .bits=32));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("recursion")),
     };
-    func = gcc_new_func(
-        env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
-        fresh("print"), 3, params, 0);
-    hashmap_set(env->print_funcs, t, func);
+    istr_t sym_name = fresh("__print");
+    printf("New print symbol: %s\n", sym_name);
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
+    hashmap_set(get_namespace(env, t), intern_str("print"),
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));

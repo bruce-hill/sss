@@ -51,6 +51,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global)
 {
+    (void)is_global;
     auto t = Match(get_type(env, def), FunctionType);
     NEW_LIST(gcc_param_t*, params);
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
@@ -63,7 +64,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global
 
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
     return gcc_new_func(
-        env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : (is_global ? GCC_FUNCTION_EXPORTED : GCC_FUNCTION_INTERNAL),
+        env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
 }
 
