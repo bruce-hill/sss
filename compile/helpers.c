@@ -32,6 +32,7 @@ istr_t fresh(istr_t name)
 ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
 {
     switch (bl_t->tag) {
+    case ArrayType: return sizeof(void*);
     case StructType: {
         ssize_t align = 0;
         auto struct_type = Match(bl_t, StructType);
