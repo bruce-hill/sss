@@ -979,7 +979,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         if (get_type(env, indexing->indexed)->tag == ArrayType)
             compile_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
 
-        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, COW_DO_COPY);
+        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
     }
     default:
         compile_err(env, ast, "This is not a valid Lvalue");

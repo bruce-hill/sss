@@ -1120,7 +1120,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, COW_MARK_DIRTY));
+        return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;

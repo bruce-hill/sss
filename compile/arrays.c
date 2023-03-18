@@ -101,7 +101,7 @@ static void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rva
 }
 
 
-gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, cow_e cow_behavior)
+gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, access_type_e access)
 {
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     bl_type_t *arr_t = get_type(env, arr_ast);
@@ -113,9 +113,9 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
         // Copy on write
         if (ptr->pointed->tag == ArrayType) {
-            if (cow_behavior == COW_DO_COPY)
+            if (access == ACCESS_WRITE)
                 check_cow(env, block, ptr->pointed, arr);
-            else if (cow_behavior == COW_MARK_DIRTY)
+            else if (access == ACCESS_READ)
                 mark_array_cow(env, block, arr);
         }
 
@@ -190,7 +190,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         array_gcc_t);
 }
 
-gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, cow_e cow_behavior)
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access)
 {
     bl_type_t *index_t = get_type(env, index);
     if (index_t->tag == RangeType) {
@@ -198,7 +198,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         bl_type_t *slice_t = get_type(env, arr_ast);
         while (slice_t->tag == PointerType) slice_t = Match(slice_t, PointerType)->pointed;
         gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, slice_t), fresh("slice"));
-        gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index, cow_behavior));
+        gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index, access));
         return slice;
     } else if (!is_integral(index_t)) {
         compile_err(env, index, "This array index should be an Int or a Range, not %s", type_to_string(index_t));
@@ -212,12 +212,8 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             compile_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
 
         // Copy on write
-        if (ptr->pointed->tag == ArrayType) {
-            if (cow_behavior == COW_DO_COPY)
-                check_cow(env, block, ptr->pointed, arr);
-            else if (cow_behavior == COW_MARK_DIRTY)
-                mark_array_cow(env, block, arr);
-        }
+        if (ptr->pointed->tag == ArrayType && access == ACCESS_WRITE)
+            check_cow(env, block, ptr->pointed, arr);
 
         arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
         arr_t = ptr->pointed;
