@@ -435,15 +435,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, string_t);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
+        // Optimize the case of empty strings
+        if (length(chunks) == 0) {
+            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
+        } else if (length(chunks) == 1 && LIST_ITEM(chunks, 0)->tag == StringLiteral) {
+            // Optimize the case of a single string literal
+            return compile_expr(env, block, LIST_ITEM(chunks, 0));
+        }
+
         gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
         gcc_func_t *free_fn = hashmap_gets(env->global_funcs, "free");
         gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
         gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
         gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
-        // Optimize the case of empty strings
-        if (length(chunks) == 0) {
-            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
-        }
 
         // char *buf; size_t size;
         // FILE *f = open_memstream(&buf, &size);
