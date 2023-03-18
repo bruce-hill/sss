@@ -63,6 +63,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             *block = continued;
         }
 
+        // Arrays get flagged for COW when iterating
+        if (ptr->pointed->tag == ArrayType)
+            mark_array_cow(env, block, iter_rval);
+
         iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
         iter_t = Match(iter_t, PointerType)->pointed;
         gcc_iter_t = bl_type_to_gcc(env, iter_t);
