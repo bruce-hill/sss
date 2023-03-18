@@ -948,20 +948,25 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (fielded_ptr->is_optional)
                 compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
             fielded_lval = gcc_rvalue_dereference(gcc_rval(fielded_lval), NULL);
+
+            if (fielded_ptr->pointed->tag == StructType) {
+                auto fielded_struct = Match(fielded_ptr->pointed, StructType);
+                for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+                    if (ith(fielded_struct->field_names, i) == access->field) {
+                        gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_ptr->pointed));
+                        gcc_field_t *field = gcc_get_field(gcc_struct, i);
+                        return gcc_lvalue_access_field(fielded_lval, NULL, field);
+                    }
+                }
+                compile_err(env, ast, "The struct %s doesn't have a field called '%s'",
+                      type_to_string(fielded_ptr->pointed), access->field);
+            }
+
             fielded_t = fielded_ptr->pointed;
             goto keep_going;
         }
         case StructType: {
-            auto fielded_struct = Match(fielded_t, StructType);
-            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
-                if (ith(fielded_struct->field_names, i) == access->field) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_t));
-                    gcc_field_t *field = gcc_get_field(gcc_struct, i);
-                    return gcc_lvalue_access_field(fielded_lval, NULL, field);
-                }
-            }
-            compile_err(env, ast, "The struct %s doesn't have a field called '%s'",
-                  type_to_string(fielded_t), access->field);
+            compile_err(env, ast, "The fields of a struct value cannot be modified directly");
         }
         // TODO: support using TaggedUnion field and Type fields as lvalues
         default: {
