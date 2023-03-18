@@ -94,6 +94,8 @@ void math_update_rec(
     gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs);
 
 // ============================== arrays.c ==============================
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked);
+gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
 

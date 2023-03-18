@@ -383,6 +383,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Index: {
         auto indexing = Match(ast, Index);
         bl_type_t *indexed_t = get_type(env, indexing->indexed);
+      try_again:
         switch (indexed_t->tag) {
         case ArrayType: {
             bl_type_t *index_t = get_type(env, indexing->index);
@@ -392,6 +393,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return Match(indexed_t, ArrayType)->item_type;
             default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
+        }
+        case PointerType: {
+            indexed_t = Match(indexed_t, PointerType)->pointed;
+            goto try_again;
         }
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]

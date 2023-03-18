@@ -970,64 +970,14 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        bl_type_t *indexed_t = get_type(env, indexing->indexed);
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, indexed_t);
-        gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
-        if (indexed_t->tag != ArrayType)
-            compile_err(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
-        bl_type_t *index_t = get_type(env, indexing->index);
-        if (index_t->tag == RangeType) {
-            if (!allow_slices)
-                compile_err(env, ast, "I can't assign to array slices");
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
-            gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
-            return slice;
-        } else if (!is_integral(index_t)) {
-            compile_err(env, indexing->index, "I only support indexing arrays by integers, not %s", type_to_string(index_t));
-        }
-        
-        gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
-        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        gcc_loc_t *loc = ast_loc(env, ast);
-        gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 0));
-        gcc_rvalue_t *index = gcc_cast(env->ctx, loc, compile_expr(env, block, indexing->index), i64_t);
-        gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 2)), i64_t);
+        if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
+            compile_err(env, ast, "I can't assign to array slices");
 
-        if (!indexing->unchecked) {
-            // Bounds check:
-            gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index, gcc_one(env->ctx, i64_t));
-            gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 1)), i64_t);
-            gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index, len64);
-            gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
+        if (get_type(env, indexing->indexed)->tag == ArrayType)
+            compile_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
 
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
-                        *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
-            gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
-
-            // Bounds check failure:
-            gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
-            char *info = NULL;
-            size_t size = 0;
-            FILE *f = open_memstream(&info, &size);
-            fprint_span(f, ast->span, "\x1b[31;1m", 2, true);
-            fputc('\0', f);
-            fflush(f);
-            gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-            gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-            gcc_eval(bounds_unsafe, loc, gcc_callx(env->ctx, loc, fail, fmt, index, len64, callstack));
-            fclose(f);
-            free(info);
-            gcc_jump(bounds_unsafe, loc, bounds_unsafe);
-
-            // Bounds check success:
-            *block = bounds_safe;
-        }
-        gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index, gcc_one(env->ctx, i64_t));
-        index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
-        return gcc_array_access(env->ctx, loc, items, index0);
+        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked);
     }
     default:
         compile_err(env, ast, "This is not a valid Lvalue");
