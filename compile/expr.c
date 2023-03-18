@@ -970,6 +970,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto ptr = Match(fielded_t, PointerType);
             if (ptr->is_optional)
                 compile_err(env, ast, "This field access is unsafe because the value may be nil");
+            if (ptr->pointed->tag == ArrayType)
+                mark_array_cow(env, block, obj);
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
@@ -1015,9 +1017,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
                     gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
                     stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
-                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, array->item_type)));
+                                           gcc_rvalue_int32(env->ctx, gcc_sizeof(env, array->item_type)));
                     stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_DIVIDE, gcc_type(env->ctx, INT32), stride,
-                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, field_type)));
+                                           gcc_rvalue_int32(env->ctx, gcc_sizeof(env, field_type)));
 
                     gcc_type_t *slice_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
                     gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
