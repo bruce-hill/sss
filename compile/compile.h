@@ -94,8 +94,12 @@ void math_update_rec(
     gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs);
 
 // ============================== arrays.c ==============================
-gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked);
-gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index);
+// Copy on write behavior:
+typedef enum {COW_DO_COPY, COW_MARK_DIRTY} cow_e;
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, cow_e cow_behavior);
+gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, cow_e cow_behavior);
+gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
+void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
 

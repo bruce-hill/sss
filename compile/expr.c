@@ -902,7 +902,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == VoidType)
             compile_err(env, value, "This expression is a Void type, which can't be heap allocated");
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
+        ssize_t gcc_size = gcc_sizeof(env, t);
+        if (t->tag == ArrayType) {
+            gcc_size += 4; // Hidden "capacity" field
+        }
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
         gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
@@ -1110,7 +1114,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked));
+        return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, COW_MARK_DIRTY));
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;

@@ -68,7 +68,40 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_assign(*block, NULL, item_home, item_val);
 }
 
-gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index)
+gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr)
+{
+    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+    return gcc_array_access(env->ctx, NULL, gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(i32)),
+                            gcc_rvalue_from_long(env->ctx, i32, sizeof(void*)/sizeof(int32_t) + 2));
+}
+
+void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr)
+{
+    gcc_lvalue_t *capacity = array_capacity(env, arr_ptr);
+    gcc_assign(*block, NULL, capacity, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), -1));
+}
+
+static void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rvalue_t *arr)
+{
+    // Copy on write
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *needs_cow = gcc_new_block(func, "needs_cow"),
+                *done = gcc_new_block(func, "done_cow");
+    gcc_rvalue_t *should_cow = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(array_capacity(env, arr)), gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
+    gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
+    *block = needs_cow;
+    // Copy array contents:
+    gcc_func_t *cow_fn = hashmap_gets(env->global_funcs, "array_cow");
+    gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
+                                     gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, Match(arr_t, ArrayType)->item_type)),
+                                     gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t))));
+    gcc_jump(*block, NULL, done);
+    *block = done;
+}
+
+
+gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, cow_e cow_behavior)
 {
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     bl_type_t *arr_t = get_type(env, arr_ast);
@@ -77,6 +110,14 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         auto ptr = Match(arr_t, PointerType);
         if (ptr->is_optional)
             compile_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
+
+        // Copy on write
+        if (ptr->pointed->tag == ArrayType) {
+            if (cow_behavior == COW_DO_COPY)
+                check_cow(env, block, ptr->pointed, arr);
+            else if (cow_behavior == COW_MARK_DIRTY)
+                mark_array_cow(env, block, arr);
+        }
 
         arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
         arr_t = ptr->pointed;
@@ -149,7 +190,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         array_gcc_t);
 }
 
-gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked)
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, cow_e cow_behavior)
 {
     bl_type_t *index_t = get_type(env, index);
     if (index_t->tag == RangeType) {
@@ -157,7 +198,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         bl_type_t *slice_t = get_type(env, arr_ast);
         while (slice_t->tag == PointerType) slice_t = Match(slice_t, PointerType)->pointed;
         gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, slice_t), fresh("slice"));
-        gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index));
+        gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index, cow_behavior));
         return slice;
     } else if (!is_integral(index_t)) {
         compile_err(env, index, "This array index should be an Int or a Range, not %s", type_to_string(index_t));
@@ -169,6 +210,14 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         auto ptr = Match(arr_t, PointerType);
         if (ptr->is_optional)
             compile_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
+
+        // Copy on write
+        if (ptr->pointed->tag == ArrayType) {
+            if (cow_behavior == COW_DO_COPY)
+                check_cow(env, block, ptr->pointed, arr);
+            else if (cow_behavior == COW_MARK_DIRTY)
+                mark_array_cow(env, block, arr);
+        }
 
         arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
         arr_t = ptr->pointed;

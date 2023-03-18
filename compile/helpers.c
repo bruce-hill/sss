@@ -930,14 +930,6 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env, access->fielded);
-        if (fielded_t->tag == ArrayType) {
-            if (!allow_slices)
-                compile_err(env, ast, "I can't assign to array slices");
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
-            gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
-            return slice;
-        }
         gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded, true);
       keep_going:
         switch (fielded_t->tag) { 
@@ -977,7 +969,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         if (get_type(env, indexing->indexed)->tag == ArrayType)
             compile_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
 
-        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked);
+        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, COW_DO_COPY);
     }
     default:
         compile_err(env, ast, "This is not a valid Lvalue");

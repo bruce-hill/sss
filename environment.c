@@ -68,6 +68,7 @@ static void load_global_functions(env_t *env)
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE),
+               *t_bool = gcc_get_type(ctx, GCC_T_BOOL),
                *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
                *t_range = bl_type_to_gcc(env, Type(RangeType)),
                *t_bl_str = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
@@ -94,6 +95,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
     hashmap_set(env->print_funcs, Type(RangeType), hashmap_get(env->global_funcs, intern_str("range_print")));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
+    load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
 #undef PARAM
 }
 

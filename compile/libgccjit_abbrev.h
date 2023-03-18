@@ -151,6 +151,10 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_rvalue_type gcc_jit_rvalue_get_type
 #define gcc_rvalue_from_int gcc_jit_context_new_rvalue_from_int
 #define gcc_rvalue_from_long gcc_jit_context_new_rvalue_from_long
+#define gcc_rvalue_size(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_SIZE), i)
+#define gcc_rvalue_int32(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT32), i)
+#define gcc_rvalue_int64(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT64), i)
+#define gcc_rvalue_bool(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_BOOL), i)
 #define gcc_zero gcc_jit_context_zero
 #define gcc_one gcc_jit_context_one
 #define gcc_rvalue_from_double gcc_jit_context_new_rvalue_from_double
