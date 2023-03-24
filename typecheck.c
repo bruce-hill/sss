@@ -810,26 +810,4 @@ bool is_discardable(env_t *env, ast_t *ast)
     return (t->tag == VoidType || t->tag == AbortType);
 }
 
-void check_discardable(env_t *env, ast_t *ast)
-{
-    switch (ast->tag) {
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Assign: case Declare: case Block: case FunctionDef: case StructDef:
-        return;
-    default: {
-        bl_type_t *t = get_type(env, ast);
-        bool was_generator = (t->tag == GeneratorType);
-        while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
-        if (!(t->tag == VoidType || t->tag == AbortType)) {
-            if (was_generator)
-                compile_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
-                            type_to_string(t));
-            else
-                compile_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
-                            type_to_string(t));
-        }
-    }
-    }
-}
-
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
