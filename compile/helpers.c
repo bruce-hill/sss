@@ -779,8 +779,17 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
 
     // int halfsiphash(const void *in, const size_t inlen, const void *k, uint8_t *out, const size_t outlen);
     switch (t->tag) {
+    case StructType: {
+        auto struct_type = Match(t, StructType);
+        foreach (struct_type->field_types, ftype, _) {
+            if ((*ftype)->tag == ArrayType)
+                compile_err(env, NULL, "I don't currently support using structs as table keys when the struct holds an array");
+        }
+        goto memory_hash;
+    }
     case PointerType: case IntType: case NumType: case CharType: case BoolType:
     case RangeType: case FunctionType: {
+      memory_hash:
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, t));
         gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
         gcc_rvalue_t *call = gcc_callx(
@@ -1016,6 +1025,19 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 
         // loop_end:
         gcc_return(loop_end, NULL, gcc_cast(env->ctx, NULL, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int32, lhs_len, rhs_len), int_t));
+        break;
+    }
+    case TableType: {
+        gcc_func_t *compare_fn = hashmap_gets(env->global_funcs, "bl_hashmap_compare");
+        bl_type_t *entry_t = table_entry_type(t);
+        gcc_func_t *entry_hash = get_hash_func(env, entry_t);
+        gcc_func_t *entry_compare = get_compare_func(env, entry_t);
+        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, compare_fn,
+                                          gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL),
+                                          gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL),
+                                          gcc_get_func_address(entry_hash, NULL),
+                                          gcc_get_func_address(entry_compare, NULL),
+                                          gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t))));
         break;
     }
     default: {

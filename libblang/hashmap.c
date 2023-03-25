@@ -348,4 +348,10 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
     return hash;
 }
 
+int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t entry_hash, cmp_fn_t entry_cmp, size_t entry_size_padded)
+{
+    (void)h1; (void)h2; (void)entry_cmp; (void)entry_size_padded;
+    return (int32_t)bl_hashmap_hash(h1, entry_hash, entry_size_padded) - (int32_t)bl_hashmap_hash(h2, entry_hash, entry_size_padded);
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1
