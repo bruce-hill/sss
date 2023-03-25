@@ -54,7 +54,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                                      gcc_lvalue_address(entry_lval, NULL)));
 }
 
-gcc_lvalue_t *table_lookup(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key)
+gcc_rvalue_t *table_lookup(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key)
 {
     gcc_loc_t *loc = ast_loc(env, key);
     bl_type_t *table_t = get_type(env, table_ast);
@@ -117,7 +117,7 @@ gcc_lvalue_t *table_lookup(env_t *env, gcc_block_t **block, ast_t *table_ast, as
     gcc_jump(found_key, loc, done);
 
     *block = done;
-    return value_lval;
+    return gcc_rval(value_lval);
 }
 
 gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
