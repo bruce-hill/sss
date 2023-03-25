@@ -870,7 +870,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Assign: case Declare: case Block: case FunctionDef: case StructDef:
+    case Assign: case Declare: case FunctionDef: case StructDef:
         return true;
     default: break;
     }

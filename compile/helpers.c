@@ -69,6 +69,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     case TableType: return sizeof (bl_hashmap_t);
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case BoolType: return sizeof(bool);
+    case TypeType: return sizeof(char*);
     case NumType: return Match(bl_t, NumType)->bits / 8;
     case FunctionType:
     case PointerType: return sizeof(void*);
@@ -1189,10 +1190,24 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
             compile_err(env, ast, "I can't assign to array slices");
 
-        if (get_type(env, indexing->indexed)->tag == ArrayType)
+        bl_type_t *indexed_t = get_type(env, indexing->indexed);
+        if (indexed_t->tag == ArrayType)
             compile_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
+        else if (indexed_t->tag == TableType)
+            compile_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
 
-        return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
+        bl_type_t *pointed_type = indexed_t;
+        while (pointed_type->tag == PointerType)
+            pointed_type = Match(pointed_type, PointerType)->pointed;
+
+        if (pointed_type->tag == ArrayType) {
+            return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
+        } else if (pointed_type->tag == TableType) {
+            return gcc_rvalue_dereference(table_set(env, block, pointed_type, compile_expr(env, block, indexing->indexed),
+                                                    compile_expr(env, block, indexing->index)), NULL);
+        } else {
+            compile_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
+        }
     }
     default:
         compile_err(env, ast, "This is not a valid Lvalue");

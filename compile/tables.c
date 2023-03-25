@@ -21,6 +21,24 @@ typedef struct {
     gcc_rvalue_t *table_ptr;
 } table_insert_info_t;
 
+gcc_rvalue_t *table_set(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
+{
+    gcc_type_t *entry_t = bl_type_to_gcc(env, table_entry_type(t));
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, fresh("entry"));
+    gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), key_val);
+
+    gcc_func_t *hashmap_set_fn = hashmap_gets(env->global_funcs, "bl_hashmap_set");
+    gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
+    gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(t, TableType)->key_type);
+    return gcc_callx(env->ctx, NULL, hashmap_set_fn,
+                     gcc_cast(env->ctx, NULL, table, gcc_type(env->ctx, VOID_PTR)),
+                     gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
+                     gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
+                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
+                     gcc_lvalue_address(entry_lval, NULL));
+}
+
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)
 {
     bl_type_t *entry_t = get_type(env, entry); // entry type
