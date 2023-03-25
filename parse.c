@@ -701,10 +701,6 @@ PARSER(parse_array) {
     whitespace(&pos);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array");
 
-    const char *after = pos;
-    whitespace(&after);
-    if (match(&after, "=")) return NULL;
-
     if (!item_type && LIST_LEN(items) == 0)
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 

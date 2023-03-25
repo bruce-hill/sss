@@ -69,6 +69,14 @@ int main(void) {
                 size_t len = 0;
                 ssize_t nread;
                 while ((nread = getline(&line, &len, stdin)) > 0) {
+                    if (*line == '?') {
+                        int key = strtol(line+1, NULL, 10);
+                        int *val = bl_hashmap_get(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &key);
+                        if (val)
+                            printf("= %d\n", *val);
+                        else
+                            printf("= <missing>\n");
+                    }
                     char *eq = strchr(line, '=');
                     if (eq) {
                         int_entry_t entry = {

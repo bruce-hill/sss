@@ -140,10 +140,14 @@ void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     if (!h || !key || h->capacity == 0) return NULL;
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
-    for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].index1 - 1) {
+    hshow(h);
+    hdebug("Getting with initial probe at %u\n", hash);
+    for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
         char *entry = h->entries + entry_size_padded*(h->buckets[i].index1-1);
         if (key_cmp(entry, key) == 0)
             return entry;
+        if (h->buckets[i].next1 == 0)
+            break;
     }
     return NULL;
 }
@@ -152,7 +156,7 @@ void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_c
 {
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
-    printf("Hash value = %u\n", hash);
+    hdebug("Hash value = %u\n", hash);
     bl_hash_bucket_t *bucket = &h->buckets[hash];
     if (bucket->index1 == 0) {
         hdebug("Got an empty space\n");
@@ -348,10 +352,16 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
     return hash;
 }
 
-int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t entry_hash, cmp_fn_t entry_cmp, size_t entry_size_padded)
+int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t entry_cmp, size_t entry_size_padded)
 {
-    (void)h1; (void)h2; (void)entry_cmp; (void)entry_size_padded;
-    return (int32_t)bl_hashmap_hash(h1, entry_hash, entry_size_padded) - (int32_t)bl_hashmap_hash(h2, entry_hash, entry_size_padded);
+    if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
+    for (uint32_t i = 0; i < h1->count; i++) {
+        void *entry = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded);
+        if (!entry) return -1;
+        int32_t diff = entry_cmp(h1->entries + i*entry_size_padded, entry);
+        if (diff) return diff;
+    }
+    return 0;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1
