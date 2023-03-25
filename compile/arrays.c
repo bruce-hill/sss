@@ -361,7 +361,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // add_next_item:
     // item = *item_ptr
     gcc_rvalue_t *item = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
-    // item_str = tocord(item)
+    // print(item)
     gcc_func_t *item_print = get_print_func(env, item_type);
     assert(item_print);
     ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print, quote_string(env, item_type, item), file, rec));
@@ -390,6 +390,5 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_return(end, NULL, gcc_rval(written_var));
 #undef WRITE_LITERAL 
-#undef ADD_INT
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

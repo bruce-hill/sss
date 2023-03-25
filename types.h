@@ -106,5 +106,6 @@ bool is_comparable(bl_type_t *t);
 bool has_heap_memory(bl_type_t *t);
 bool can_promote(bl_type_t *actual, bl_type_t *needed);
 bool can_leave_uninitialized(bl_type_t *t);
+bl_type_t *table_entry_type(bl_type_t *table_t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

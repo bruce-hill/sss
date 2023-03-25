@@ -209,6 +209,32 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_struct_as_type(array);
         break;
     }
+    case TableType: {
+        gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
+        auto table = Match(t, TableType);
+        bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                                  .field_types=LIST(bl_type_t*, table->key_type, table->value_type));
+
+        gcc_field_t *bucket_fields[] = {
+            gcc_new_field(env->ctx, NULL, u32, "index1"),
+            gcc_new_field(env->ctx, NULL, u32, "next1"),
+        };
+        gcc_struct_t *bucket = gcc_new_struct_type(env->ctx, NULL, "Bucket", 2, bucket_fields);
+
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, "Table");
+        gcc_field_t *fields[] = {
+            /*0*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, entry_t)), "entries"),
+            /*1*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
+            /*2*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
+            /*3*/ gcc_new_field(env->ctx, NULL, u32, "capacity"),
+            /*4*/ gcc_new_field(env->ctx, NULL, u32, "count"),
+            /*5*/ gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
+            /*6*/ gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
+        };
+        gcc_set_fields(gcc_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
+        gcc_t = gcc_struct_as_type(gcc_struct);
+        break;
+    }
     case FunctionType: {
         NEW_LIST(gcc_type_t*, arg_types);
         auto fn = Match(t, FunctionType);
@@ -672,6 +698,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef ADD_INT
     case ArrayType: {
         compile_array_print_func(env, &block, obj, rec, f, t);
+        break;
+    }
+    case TableType: {
+        compile_table_print_func(env, &block, obj, rec, f, t);
         break;
     }
     case FunctionType: {

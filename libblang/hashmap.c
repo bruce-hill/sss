@@ -135,7 +135,7 @@ uint32_t bl_hashmap_len(bl_hashmap_t *h)
     return h->count;
 }
 
-void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *key, size_t entry_size_padded)
+void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
     if (!h || !key || h->capacity == 0) return NULL;
 

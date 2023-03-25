@@ -102,6 +102,11 @@ static void load_global_functions(env_t *env)
     // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
     load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
                      PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
+
+    load_global_func(env, t_void, "bl_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
+    load_global_func(env, t_void, "bl_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "entry"));
 #undef PARAM
 }
 

@@ -525,6 +525,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Array: {
         return compile_array(env, block, ast);
     }
+    case Table: {
+        return compile_table(env, block, ast);
+    }
+    case TableEntry: {
+        auto entry = Match(ast, TableEntry);
+        bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                                  .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
+        gcc_type_t *entry_gcc_t = bl_type_to_gcc(env, entry_t);
+        gcc_field_t *fields[] = {
+            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 0),
+            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 1),
+        };
+
+        gcc_rvalue_t *rvals[] = {
+            compile_expr(env, block, entry->key),
+            compile_expr(env, block, entry->value),
+        };
+        return gcc_struct_constructor(env->ctx, loc, bl_type_to_gcc(env, entry_t), 2, fields, rvals);
+    }
     case TaggedUnionDef: {
         return NULL;
     }

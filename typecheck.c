@@ -135,6 +135,9 @@ static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
         auto list_t = Match(iter_t, ArrayType);
         return list_t->item_type;
     }
+    case TableType: {
+        return table_entry_type(iter_t);
+    }
     case RangeType: {
         return INT_TYPE;
     }
@@ -338,6 +341,18 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             value_type = val_merged;
         }
         return Type(TableType, .key_type=key_type, .value_type=value_type);
+    }
+    case TableEntry: {
+        auto entry = Match(ast, TableEntry);
+        bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                            .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
+        bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+        if (memoized) {
+            t = memoized;
+        } else {
+            hashmap_set(env->tuple_types, type_to_string(t), t);
+        }
+        return t;
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
