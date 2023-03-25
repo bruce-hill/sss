@@ -152,7 +152,7 @@ void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     return NULL;
 }
 
-void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
+static void *bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
 {
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
@@ -169,7 +169,7 @@ void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_c
         }
         bucket->index1 = index1;
         hshow(h);
-        return;
+        return h->entries + entry_size_padded*(index1-1);
     }
 
     while (h->buckets[h->lastfree_index1-1].index1)
@@ -196,7 +196,7 @@ void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_c
                 // Found exact key, so clobber old value:
                 hdebug("Clobbering key\n");
                 memcpy(h->entries + entry_size_padded*(bucket->index1-1), entry, entry_size_padded);
-                return;
+                return h->entries + entry_size_padded*(bucket->index1-1);
             } else if (bucket->next1 == 0) {
                 // End of chain
                 break;
@@ -220,6 +220,7 @@ void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_c
     bucket->next1 = 0;
     bucket->index1 = index1;
     hshow(h);
+    return h->entries + entry_size_padded*(index1-1);
 }
 
 static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
@@ -240,9 +241,9 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
     hdebug("Finished resizing\n");
 }
 
-void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
+void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
 {
-    if (!h || !entry) return;
+    if (!h || !entry) return NULL;
     hshow(h);
 
     if (h->capacity == 0) {
@@ -254,9 +255,7 @@ void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_
         hashmap_resize(h, key_hash, key_cmp, newsize, entry_size_padded);
     }
 
-    bl_hashmap_set_internal(h, key_hash, key_cmp, entry, entry_size_padded, 0);
-    hshow(h);
-    hdebug("Finished setting key\n");
+    return bl_hashmap_set_internal(h, key_hash, key_cmp, entry, entry_size_padded, 0);
 }
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)

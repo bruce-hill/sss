@@ -156,6 +156,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(With, F(var), F(expr), F(cleanup), F(body))
         T(Extend, F(type), F(body))
         T(Ellipsis)
+        T(Compiled)
 #undef BINOP
 #undef UNOP
 #undef F

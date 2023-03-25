@@ -1156,12 +1156,31 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         while (t->tag == PointerType)
             t = Match(t, PointerType)->pointed;
 
-        if (t->tag == ArrayType)
+        if (t->tag == ArrayType) {
             return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
-        else if (t->tag == TableType)
-            return table_lookup(env, block, indexing->indexed, indexing->index);
-        else
+        } else if (t->tag == TableType) {
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_type_t *gcc_value_t = bl_type_to_gcc(env, Match(t, TableType)->key_type);
+            gcc_lvalue_t *value_var = gcc_local(func, loc, gcc_value_t, fresh("value"));
+            gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
+                        *if_nonnil = gcc_new_block(func, fresh("if_nonnil")),
+                        *done = gcc_new_block(func, fresh("if_nonnil"));
+            gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
+                               if_nil, if_nonnil);
+            *block = if_nil;
+            // TODO: skip
+            gcc_jump(*block, loc, done);
+
+            *block = if_nonnil;
+            gcc_assign(*block, loc, value_var, gcc_rval(gcc_rvalue_dereference(val_opt, loc)));
+            gcc_jump(*block, loc, done);
+
+            *block = done;
+            return gcc_rval(value_var);
+        } else {
             compile_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
+        }
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
