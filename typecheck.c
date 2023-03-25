@@ -455,7 +455,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
         }
         case TableType: {
-            return Type(PointerType, .pointed=Match(indexed_t, TableType)->key_type, .is_optional=true);
+            return Type(PointerType, .pointed=Match(indexed_t, TableType)->value_type, .is_optional=true);
         }
         case PointerType: {
             indexed_t = Match(indexed_t, PointerType)->pointed;
