@@ -303,11 +303,41 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
                 compile_err(env, LIST_ITEM(list->items, i),
-                            "This list item has type %s, which is different from earlier list items which have type %s",
+                            "This array item has type %s, which is different from earlier array items which have type %s",
                             type_to_string(t2),  type_to_string(item_type));
             item_type = merged;
         }
         return Type(ArrayType, .item_type=item_type);
+    }
+    case Table: {
+        auto table = Match(ast, Table);
+        if (table->key_type && table->value_type)
+            return Type(TableType, .key_type=parse_type_ast(env, table->key_type), .value_type=parse_type_ast(env, table->value_type));
+
+        bl_type_t *key_type = NULL, *value_type = NULL;
+        for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
+            auto entry = Match(LIST_ITEM(table->entries, i), TableEntry);
+            bl_type_t *key_t2 = get_type(env, entry->key);
+            while (key_t2->tag == GeneratorType)
+                key_t2 = Match(key_t2, GeneratorType)->generated;
+            bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t2) : key_t2;
+            if (!key_merged)
+                compile_err(env, LIST_ITEM(table->entries, i),
+                            "This table entry has type %s, which is different from earlier table entries which have type %s",
+                            type_to_string(key_t2),  type_to_string(key_type));
+            key_type = key_merged;
+
+            bl_type_t *val_t2 = get_type(env, entry->value);
+            while (val_t2->tag == GeneratorType)
+                val_t2 = Match(val_t2, GeneratorType)->generated;
+            bl_type_t *val_merged = value_type ? type_or_type(value_type, val_t2) : val_t2;
+            if (!val_merged)
+                compile_err(env, LIST_ITEM(table->entries, i),
+                            "This table entry has type %s, which is different from earlier table entries which have type %s",
+                            type_to_string(val_t2),  type_to_string(value_type));
+            value_type = val_merged;
+        }
+        return Type(TableType, .key_type=key_type, .value_type=value_type);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -805,6 +835,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
 bool is_discardable(env_t *env, ast_t *ast)
 {
+    switch (ast->tag) {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+    case Assign: case Declare: case Block: case FunctionDef: case StructDef:
+        return true;
+    default: break;
+    }
     bl_type_t *t = get_type(env, ast);
     while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
     return (t->tag == VoidType || t->tag == AbortType);

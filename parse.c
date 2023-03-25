@@ -688,6 +688,48 @@ PARSER(parse_array) {
     return NewAST(ctx->file, start, pos, Array, .type=item_type, .items=items);
 }
 
+PARSER(parse_table) {
+    const char *start = pos;
+    if (!match(&pos, "{")) return NULL;
+
+    whitespace(&pos);
+
+    NEW_LIST(ast_t*, entries);
+    ast_t *key_type = NULL, *value_type = NULL;
+    if (match(&pos, ":")) {
+        whitespace(&pos);
+        key_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a key type for this table");
+        whitespace(&pos);
+        if (!match(&pos, "="))
+            parser_err(ctx, pos, pos, "I expected an '=' for this table type");
+        value_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a value type for this table");
+    }
+
+    for (;;) {
+        whitespace(&pos);
+        const char *entry_start = pos;
+        if (!match(&pos, "[")) break;
+        ast_t *key = optional_ast(ctx, &pos, parse_extended_expr);
+        if (!key) break;
+        expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this table key");
+        whitespace(&pos);
+        if (!match(&pos, "=")) return NULL;
+        ast_t *value = expect_ast(ctx, pos-1, &pos, parse_extended_expr, "I couldn't parse the value for this table entry");
+        ast_t *entry = NewAST(ctx->file, entry_start, pos, TableEntry, .key=key, .value=value);
+        APPEND(entries, entry);
+        whitespace(&pos);
+        if (!match(&pos, ",")) break;
+    }
+
+    if (!key_type && !value_type && LIST_LEN(entries) == 0)
+        return NULL;
+
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table");
+
+    return NewAST(ctx->file, start, pos, Table, .key_type=key_type, .value_type=value_type, .entries=entries);
+}
+
 PARSER(parse_struct) {
     const char *start = pos;
     ast_t *type = optional_ast(ctx, &pos, parse_type_name);
@@ -1377,6 +1419,7 @@ PARSER(parse_term) {
         || (term=parse_string(ctx, pos))
         || (term=parse_lambda(ctx, pos))
         || (term=parse_parens(ctx, pos))
+        || (term=parse_table(ctx, pos))
         || (term=parse_struct(ctx, pos))
         || (term=parse_var(ctx, pos))
         || (term=parse_array(ctx, pos))

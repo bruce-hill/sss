@@ -50,8 +50,6 @@ typedef struct env_s {
     gcc_ctx_t *ctx;
     bl_file_t *file;
     jmp_buf *on_err;
-    hashmap_t *print_funcs; // type -> func
-    hashmap_t *cmp_funcs; // type -> func
     hashmap_t *bindings; // name -> binding_t
     hashmap_t *global_bindings; // name -> binding_t
     hashmap_t *gcc_types; // name -> bl_type

@@ -28,7 +28,7 @@ typedef enum {
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
     HeapAllocate, Dereference,
-    Array, Table,
+    Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
@@ -131,8 +131,11 @@ struct ast_s {
         } Array;
         struct {
             ast_t *key_type, *value_type;
-            List(ast_t*) items;
+            List(ast_t*) entries;
         } Table;
+        struct {
+            ast_t *key, *value;
+        } TableEntry;
         struct {
             istr_t name;
             List(istr_t) arg_names;

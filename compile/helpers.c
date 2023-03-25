@@ -372,8 +372,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
 
     // Memoize:
-    gcc_func_t *func = hashmap_get(env->print_funcs, t);
-    if (func) return func;
+    binding_t *b = get_from_namespace(env, t, "__print");
+    if (b) return b->func;
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
@@ -383,10 +383,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("recursion")),
     };
-    func = gcc_new_func(
-        env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
-        fresh("print"), 3, params, 0);
-    hashmap_set(env->print_funcs, t, func);
+    istr_t sym_name = fresh("print");
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
+    hashmap_set(get_namespace(env, t), intern_str("__print"),
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
@@ -675,6 +675,29 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef WRITE_LITERAL
 }
 
+gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
+{
+    // Return a hash function for a given type.
+
+    // Memoize:
+    binding_t *b = get_from_namespace(env, t, "__hash");
+    if (b) return b->func;
+
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
+
+    gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj"))};
+    istr_t sym_name = fresh("hash");
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
+    // bl_type_t *fn_t = Type(FunctionType, .arg_names=LIST(istr_t, intern_str("obj")),
+    //                        .arg_types=LIST(bl_type_t*, t), .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
+    hashmap_set(get_namespace(env, t), intern_str("__hash"),
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+    gcc_block_t *block = gcc_new_block(func, fresh("hash"));
+    gcc_return(block, NULL, gcc_zero(env->ctx, u32));
+    return func;
+}
+
 // Helper function to make value comparison return an int that is one of [-1,0,1]
 gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
 {
@@ -694,8 +717,8 @@ gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rval
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 {
     // Memoize:
-    gcc_func_t *func = hashmap_get(env->cmp_funcs, t);
-    if (func) return func;
+    binding_t *b = get_from_namespace(env, t, "__compare");
+    if (b) return b->func;
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
@@ -704,10 +727,12 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("lhs")),
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
-    func = gcc_new_func(
+    gcc_func_t *func = gcc_new_func(
         env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
         fresh("compare"), 2, params, 0);
-    hashmap_set(env->cmp_funcs, t, func);
+
+    hashmap_set(get_namespace(env, t), intern_str("__compare"),
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
 
     gcc_block_t *block = gcc_new_block(func, fresh("compare"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare(a,b) for type: ", type_to_string(t))));
