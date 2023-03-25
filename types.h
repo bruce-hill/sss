@@ -22,6 +22,7 @@ struct bl_type_s {
         TableType,
         FunctionType,
         PointerType,
+        FileType,
         GeneratorType,
         StructType,
         TagType,
@@ -31,7 +32,7 @@ struct bl_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, BoolType, CharType;
+        } UnknownType, AbortType, VoidType, BoolType, CharType, FileType;
         struct {
             istr_t units;
             uint16_t bits;

@@ -20,6 +20,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             return name;
         }
         case CharType: return "Char";
+        case FileType: return "File";
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
@@ -261,7 +262,7 @@ bool is_comparable(bl_type_t *t)
 {
     switch (t->tag) {
     case ArrayType: return is_comparable(Match(t, ArrayType)->item_type);
-    case PointerType: case FunctionType: return false;
+    case PointerType: case FunctionType: case FileType: return false;
     case StructType: case UnionType: {
         auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {

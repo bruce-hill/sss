@@ -163,6 +163,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             case 32: gcc_t = gcc_type(env->ctx, UINT32); break;
             case 16: gcc_t = gcc_type(env->ctx, UINT16); break;
             case 8: gcc_t = gcc_type(env->ctx, UINT8); break;
+            case 0: gcc_t = gcc_type(env->ctx, UINT32); break;
             default: compile_err(env, NULL, "I couldn't get a GCC type for an unsigned integer with %d bits", Match(t, IntType)->bits);
             }
         } else {
@@ -171,12 +172,14 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             case 32: gcc_t = gcc_type(env->ctx, INT32); break;
             case 16: gcc_t = gcc_type(env->ctx, INT16); break;
             case 8: gcc_t = gcc_type(env->ctx, INT8); break;
+            case 0: gcc_t = gcc_type(env->ctx, INT); break;
             default: compile_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
             }
         }
         break;
     }
     case CharType: gcc_t = gcc_type(env->ctx, CHAR); break;
+    case FileType: gcc_t = gcc_type(env->ctx, FILE_PTR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
@@ -388,15 +391,20 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
+    gcc_type_t *file_t = bl_type_to_gcc(env, Type(FileType));
+    gcc_type_t *void_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), fresh("recursion")),
+        gcc_new_param(env->ctx, NULL, file_t, fresh("file")),
+        gcc_new_param(env->ctx, NULL, void_ptr_t, fresh("recursion")),
     };
     istr_t sym_name = fresh("print");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(FileType), Type(PointerType, .pointed=Type(VoidType))),
+                           .arg_names=LIST(istr_t, intern_str("obj"), intern_str("file"), intern_str("recursion")),
+                           .arg_defaults=NULL, .ret=Type(IntType));
     hashmap_set(get_namespace(env, t), intern_str("__print"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
@@ -802,8 +810,10 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
         fresh("compare"), 2, params, 0);
 
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
+                           .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hashmap_set(get_namespace(env, t), intern_str("__compare"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
 
     gcc_block_t *block = gcc_new_block(func, fresh("compare"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare(a,b) for type: ", type_to_string(t))));
