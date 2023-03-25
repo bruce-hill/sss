@@ -60,6 +60,7 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
+static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static PARSER(parse_indented_block);
 static PARSER(parse_if);
 static PARSER(parse_for);
@@ -700,6 +701,10 @@ PARSER(parse_array) {
     whitespace(&pos);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array");
 
+    const char *after = pos;
+    whitespace(&after);
+    if (match(&after, "=")) return NULL;
+
     if (!item_type && LIST_LEN(items) == 0)
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 
@@ -732,8 +737,23 @@ PARSER(parse_table) {
         expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this table key");
         whitespace(&pos);
         if (!match(&pos, "=")) return NULL;
-        ast_t *value = expect_ast(ctx, pos-1, &pos, parse_extended_expr, "I couldn't parse the value for this table entry");
+        ast_t *value = expect_ast(ctx, pos-1, &pos, parse_expr, "I couldn't parse the value for this table entry");
+
         ast_t *entry = NewAST(ctx->file, entry_start, pos, TableEntry, .key=key, .value=value);
+        for (bool progress = true; progress; ) {
+            ast_t *new_entry;
+            progress = (false
+                || (new_entry=parse_index_suffix(ctx, entry))
+                || (new_entry=parse_field_suffix(ctx, entry))
+                || (new_entry=parse_suffix_if(ctx, entry, false))
+                || (new_entry=parse_suffix_for(ctx, entry))
+                || (new_entry=parse_suffix_while(ctx, entry))
+                || (new_entry=parse_fncall_suffix(ctx, entry, true))
+            );
+            if (progress) entry = new_entry;
+        }
+        pos = entry->span.end;
+
         APPEND(entries, entry);
         whitespace(&pos);
         if (!match(&pos, ",")) break;

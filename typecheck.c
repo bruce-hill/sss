@@ -328,25 +328,25 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
         bl_type_t *key_type = NULL, *value_type = NULL;
         for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
-            auto entry = Match(LIST_ITEM(table->entries, i), TableEntry);
-            bl_type_t *key_t2 = get_type(env, entry->key);
-            while (key_t2->tag == GeneratorType)
-                key_t2 = Match(key_t2, GeneratorType)->generated;
-            bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t2) : key_t2;
+            ast_t *entry = LIST_ITEM(table->entries, i);
+            bl_type_t *entry_t = get_type(env, entry);
+            while (entry_t->tag == GeneratorType)
+                entry_t = Match(entry_t, GeneratorType)->generated;
+
+            bl_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
+            bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
             if (!key_merged)
                 compile_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
-                            type_to_string(key_t2),  type_to_string(key_type));
+                            type_to_string(key_t),  type_to_string(key_type));
             key_type = key_merged;
 
-            bl_type_t *val_t2 = get_type(env, entry->value);
-            while (val_t2->tag == GeneratorType)
-                val_t2 = Match(val_t2, GeneratorType)->generated;
-            bl_type_t *val_merged = value_type ? type_or_type(value_type, val_t2) : val_t2;
+            bl_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
+            bl_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
             if (!val_merged)
                 compile_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
-                            type_to_string(val_t2),  type_to_string(value_type));
+                            type_to_string(value_t),  type_to_string(value_type));
             value_type = val_merged;
         }
         return Type(TableType, .key_type=key_type, .value_type=value_type);
