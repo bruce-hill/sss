@@ -69,7 +69,7 @@ static void load_global_functions(env_t *env)
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE),
                *t_bool = gcc_get_type(ctx, GCC_T_BOOL),
-               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
+               *t_file = bl_type_to_gcc(env, Type(FileType)),
                *t_range = bl_type_to_gcc(env, Type(RangeType)),
                *t_bl_str = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
 
@@ -352,6 +352,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Char);
+    DEFTYPE(File);
 #undef DEFTYPE
     define_int_types(env);
 
