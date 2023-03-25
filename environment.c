@@ -97,6 +97,11 @@ static void load_global_functions(env_t *env)
     hashmap_set(get_namespace(env, Type(RangeType)), intern_str("__print"), new(binding_t, .func=range_print));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
+    load_global_func(env, t_bl_str, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
+
+    // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
+    load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
+                     PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
 #undef PARAM
 }
 
@@ -375,8 +380,9 @@ void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO))
         fputs("\x1b[31;7;1m", stderr);
-    fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
-            bl_get_line_column(ast->span.file, ast->span.start));
+    if (ast)
+        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
+                bl_get_line_column(ast->span.file, ast->span.start));
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);

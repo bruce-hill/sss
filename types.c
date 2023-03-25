@@ -12,10 +12,12 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         case BoolType: return "Bool";
         case IntType: {
             auto int_ = Match(t, IntType);
-            if (int_->bits == 64)
-                return int_->units ? intern_strf("Int<%s>", int_->units) : "Int";
-            else
-                return int_->units ? intern_strf("Int%d<%s>", int_->bits, int_->units) : intern_strf("Int%d", int_->bits);
+            CORD name = int_->is_unsigned ? "UInt" : "Int";
+            if (int_->bits != 64)
+                CORD_sprintf(&name, "%r%d", name, int_->bits);
+            if (int_->units)
+                CORD_sprintf(&name, "%r<%s>", name, int_->units);
+            return name;
         }
         case CharType: return "Char";
         case NumType: {
@@ -202,7 +204,7 @@ istr_t type_units(bl_type_t *t)
 bl_type_t *with_units(bl_type_t *t, istr_t units)
 {
     switch (t->tag) {
-    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits);
+    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits, .is_unsigned=Match(t, IntType)->is_unsigned);
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);

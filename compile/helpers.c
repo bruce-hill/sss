@@ -157,12 +157,22 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 
     switch (t->tag) {
     case IntType: {
-        switch (Match(t, IntType)->bits) {
-        case 64: gcc_t = gcc_type(env->ctx, INT64); break;
-        case 32: gcc_t = gcc_type(env->ctx, INT32); break;
-        case 16: gcc_t = gcc_type(env->ctx, INT16); break;
-        case 8: gcc_t = gcc_type(env->ctx, INT8); break;
-        default: compile_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
+        if (Match(t, IntType)->is_unsigned) {
+            switch (Match(t, IntType)->bits) {
+            case 64: gcc_t = gcc_type(env->ctx, UINT64); break;
+            case 32: gcc_t = gcc_type(env->ctx, UINT32); break;
+            case 16: gcc_t = gcc_type(env->ctx, UINT16); break;
+            case 8: gcc_t = gcc_type(env->ctx, UINT8); break;
+            default: compile_err(env, NULL, "I couldn't get a GCC type for an unsigned integer with %d bits", Match(t, IntType)->bits);
+            }
+        } else {
+            switch (Match(t, IntType)->bits) {
+            case 64: gcc_t = gcc_type(env->ctx, INT64); break;
+            case 32: gcc_t = gcc_type(env->ctx, INT32); break;
+            case 16: gcc_t = gcc_type(env->ctx, INT16); break;
+            case 8: gcc_t = gcc_type(env->ctx, INT8); break;
+            default: compile_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
+            }
         }
         break;
     }
@@ -415,16 +425,16 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     case IntType: case NumType: {
         const char *fmt;
         if (t->tag == IntType && Match(t, IntType)->bits == 64) {
-            fmt = "%ld";
+            fmt = Match(t, IntType)->is_unsigned ? "%lu" : "%ld";
         } else if (t->tag == IntType && Match(t, IntType)->bits == 32) {
-            fmt = "%d_i32";
+            fmt = Match(t, IntType)->is_unsigned ? "%u_u32" : "%d_i32";
         } else if (t->tag == IntType && Match(t, IntType)->bits == 16) {
             // I'm not sure why, but printf() gets confused if you pass smaller ints to a "%d" format
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
-            fmt = "%d_i16";
+            fmt = Match(t, IntType)->is_unsigned ? "%u_u16" : "%d_i16";
         } else if (t->tag == IntType && Match(t, IntType)->bits == 8) {
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
-            fmt = "%d_i8";
+            fmt = Match(t, IntType)->is_unsigned ? "%u_u8" : "%d_i8";
         } else if (t->tag == NumType && Match(t, NumType)->bits == 64) {
             fmt = "%g";
         } else if (t->tag == NumType && Match(t, NumType)->bits == 32) {
@@ -689,12 +699,73 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj"))};
     istr_t sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
-    // bl_type_t *fn_t = Type(FunctionType, .arg_names=LIST(istr_t, intern_str("obj")),
-    //                        .arg_types=LIST(bl_type_t*, t), .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(istr_t, intern_str("obj")), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
     hashmap_set(get_namespace(env, t), intern_str("__hash"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
-    gcc_return(block, NULL, gcc_zero(env->ctx, u32));
+
+    gcc_func_t *halfsiphash = hashmap_gets(env->global_funcs, "halfsiphash");
+
+    gcc_type_t *t_void_ptr = gcc_get_type(env->ctx, GCC_T_VOID_PTR);
+    gcc_rvalue_t *k = gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "My secret key!!!"), t_void_ptr);
+
+    gcc_lvalue_t *hashval = gcc_local(func, NULL, gcc_type(env->ctx, UINT32), fresh("hashval"));
+
+    // int halfsiphash(const void *in, const size_t inlen, const void *k, uint8_t *out, const size_t outlen);
+    switch (t->tag) {
+    case PointerType: case IntType: case NumType: case CharType: case BoolType:
+    case RangeType: case FunctionType: {
+        gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, t));
+        gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
+        gcc_rvalue_t *call = gcc_callx(
+            env->ctx, NULL, halfsiphash,
+            gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), inlen, k,
+            gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
+        gcc_eval(block, NULL, call);
+        break;
+    case ArrayType: {
+        // If necessary, flatten first:
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+        gcc_rvalue_t *array = gcc_param_as_rvalue(params[0]);
+        gcc_rvalue_t *data_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 0));
+        gcc_rvalue_t *length_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 1));
+        gcc_rvalue_t *stride_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 2));
+        bl_type_t *item_type = Match(t, ArrayType)->item_type;
+
+        gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
+                    *already_flat = gcc_new_block(func, fresh("already_flat"));
+        gcc_jump_condition(block, NULL,
+                           gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT32))),
+                           needs_flattening, already_flat);
+        block = needs_flattening;
+        gcc_func_t *flatten = hashmap_gets(env->global_funcs, "array_flatten");
+        gcc_eval(block, NULL, gcc_callx(
+                env->ctx, NULL, flatten,
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), t_void_ptr),
+                gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
+                gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
+
+        gcc_jump(block, NULL, already_flat);
+
+        block = already_flat;
+        gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type));
+        gcc_type_t *t_size = gcc_type(env->ctx, SIZE);
+        inlen = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, t_size, inlen, gcc_cast(env->ctx, NULL, length_field, t_size));
+        gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
+        gcc_rvalue_t *call = gcc_callx(
+            env->ctx, NULL, halfsiphash,
+            gcc_cast(env->ctx, NULL, data_field, t_void_ptr), inlen, k,
+            gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
+        gcc_eval(block, NULL, call);
+        break;
+    }
+    }
+    default:
+        compile_err(env, NULL, "Hash functions aren't yet implemented for %s", type_to_string(t));
+    }
+
+    gcc_return(block, NULL, gcc_rval(hashval));
     return func;
 }
 

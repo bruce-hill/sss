@@ -35,6 +35,7 @@ struct bl_type_s {
         struct {
             istr_t units;
             uint16_t bits;
+            bool is_unsigned;
         } IntType;
         struct {
             istr_t units;

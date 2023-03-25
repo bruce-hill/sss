@@ -25,7 +25,7 @@ LIBS=-lgc -lgccjit -lcord -lbhash -lintern -lm -L. -lblang
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so
-CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c
+CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c SipHash/halfsiphash.c
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libblang/list.h libblang/string.h libblang/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 

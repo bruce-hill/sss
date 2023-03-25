@@ -760,6 +760,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env, self);
+            if (access->field == intern_str("__hash"))
+                (void)get_hash_func(env, self_t); 
+            else if (access->field == intern_str("__compare"))
+                (void)get_compare_func(env, self_t); 
+            else if (access->field == intern_str("__print"))
+                (void)get_print_func(env, self_t); 
             bl_type_t *value_type = self_t;
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;

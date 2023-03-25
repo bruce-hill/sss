@@ -219,10 +219,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (i->precision) {
-        case 64: return Type(IntType, .units=units, .bits=64);
-        case 32: return Type(IntType, .units=units, .bits=32);
-        case 16: return Type(IntType, .units=units, .bits=16);
-        case 8: return Type(IntType, .units=units, .bits=8);
+        case 64: return Type(IntType, .units=units, .bits=64, .is_unsigned=i->is_unsigned);
+        case 32: return Type(IntType, .units=units, .bits=32, .is_unsigned=i->is_unsigned);
+        case 16: return Type(IntType, .units=units, .bits=16, .is_unsigned=i->is_unsigned);
+        case 8: return Type(IntType, .units=units, .bits=8, .is_unsigned=i->is_unsigned);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -342,6 +342,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env, access->fielded);
+        if (access->field == intern_str("__hash"))
+            (void)get_hash_func(env, fielded_t); 
+        else if (access->field == intern_str("__compare"))
+            (void)get_compare_func(env, fielded_t); 
+        else if (access->field == intern_str("__print"))
+            (void)get_print_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
         bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
         switch (value_t->tag) {
