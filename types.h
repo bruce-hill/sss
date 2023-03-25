@@ -102,7 +102,7 @@ bool is_numeric(bl_type_t *t);
 int numtype_priority(bl_type_t *t);
 istr_t type_units(bl_type_t *t);
 bl_type_t *with_units(bl_type_t *t, istr_t units);
-bool is_comparable(bl_type_t *t);
+bool is_orderable(bl_type_t *t);
 bool has_heap_memory(bl_type_t *t);
 bool can_promote(bl_type_t *actual, bl_type_t *needed);
 bool can_leave_uninitialized(bl_type_t *t);

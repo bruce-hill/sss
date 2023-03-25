@@ -1249,8 +1249,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (lhs_t != rhs_t)
             compile_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
-        if (is_ordered && !is_comparable(lhs_t))
-            compile_err(env, ast, "I don't have a good way to do ordered comparisons when pointers are involved (this has type %s), because this could be a recursive structure",
+        if (is_ordered && !is_orderable(lhs_t))
+            compile_err(env, ast, "I can't do ordered comparisons between values with type %s",
                   type_to_string(lhs_t));
 
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)

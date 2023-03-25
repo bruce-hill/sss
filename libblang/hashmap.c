@@ -18,7 +18,7 @@
 
 typedef struct { const char *data; int32_t len, stride; } array_t;
 
-#define DEBUG_HASHTABLE 1
+// #define DEBUG_HASHTABLE 1
 
 #ifdef DEBUG_HASHTABLE
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
@@ -357,7 +357,7 @@ int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_has
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
         void *entry = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded);
-        if (!entry) return -1;
+        if (!entry) return 1;
         int32_t diff = entry_cmp(h1->entries + i*entry_size_padded, entry);
         if (diff) return diff;
     }

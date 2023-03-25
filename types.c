@@ -258,20 +258,20 @@ int numtype_priority(bl_type_t *t)
     }
 }
 
-bool is_comparable(bl_type_t *t)
+bool is_orderable(bl_type_t *t)
 {
     switch (t->tag) {
-    case ArrayType: return is_comparable(Match(t, ArrayType)->item_type);
-    case PointerType: case FunctionType: case FileType: return false;
+    case ArrayType: return is_orderable(Match(t, ArrayType)->item_type);
+    case PointerType: case FunctionType: case FileType: case TableType: return false;
     case StructType: case UnionType: {
         auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {
-            if (!is_comparable(LIST_ITEM(subtypes, i)))
+            if (!is_orderable(LIST_ITEM(subtypes, i)))
                 return false;
         }
         return true;
     }
-    case TaggedUnionType: return is_comparable(Match(t, TaggedUnionType)->data);
+    case TaggedUnionType: return is_orderable(Match(t, TaggedUnionType)->data);
     default: return true;
     }
 }
