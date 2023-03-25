@@ -64,6 +64,7 @@ static void load_global_functions(env_t *env)
     gcc_ctx_t *ctx = env->ctx;
     gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
+               *t_u32 = gcc_get_type(ctx, GCC_T_UINT32),
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
@@ -103,10 +104,11 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
                      PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
 
-    load_global_func(env, t_void, "bl_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+    load_global_func(env, t_void_ptr, "bl_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
     load_global_func(env, t_void, "bl_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "entry"));
+    load_global_func(env, t_u32, "bl_hashmap_hash", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "entry_hash"), PARAM(t_size, "entry_size"));
 #undef PARAM
 }
 

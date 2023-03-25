@@ -1145,7 +1145,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
+
+        bl_type_t *t = get_type(env, indexing->indexed);
+        while (t->tag == PointerType)
+            t = Match(t, PointerType)->pointed;
+
+        if (t->tag == ArrayType)
+            return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
+        else if (t->tag == TableType)
+            return gcc_rval(table_lookup(env, block, indexing->indexed, indexing->index));
+        else
+            compile_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;

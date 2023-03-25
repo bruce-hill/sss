@@ -43,6 +43,15 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         if (!item_t) compile_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
+    case TypeTable: {
+        ast_t *key_type_ast = Match(ast, TypeTable)->key_type;
+        bl_type_t *key_type = parse_type_ast(env, key_type_ast);
+        if (!key_type) compile_err(env, key_type_ast, "I can't figure out what type this is.");
+        ast_t *val_type_ast = Match(ast, TypeTable)->value_type;
+        bl_type_t *val_type = parse_type_ast(env, val_type_ast);
+        if (!val_type) compile_err(env, val_type_ast, "I can't figure out what type this is.");
+        return Type(TableType, .key_type=key_type, .value_type=val_type);
+    }
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         if (ptr->pointed->tag == TypeOptional) {
@@ -444,6 +453,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return Match(indexed_t, ArrayType)->item_type;
             default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
+        }
+        case TableType: {
+            return Type(PointerType, .pointed=Match(indexed_t, TableType)->key_type, .is_optional=true);
         }
         case PointerType: {
             indexed_t = Match(indexed_t, PointerType)->pointed;

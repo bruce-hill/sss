@@ -221,23 +221,25 @@ void bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_c
 static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
 {
     uint32_t old_count = h->count;
+    hdebug("About to resize from %u to %u\n", h->capacity, new_capacity);
+    hshow(h);
     h->buckets = GC_MALLOC_ATOMIC((size_t)new_capacity*sizeof(bl_hash_bucket_t));
+    memset(h->buckets, 0, (size_t)new_capacity*sizeof(bl_hash_bucket_t));
     h->capacity = new_capacity;
     h->lastfree_index1 = new_capacity;
     // Rehash:
-    for (uint32_t i = 1; i <= old_count; i++)
+    for (uint32_t i = 1; i <= old_count; i++) {
+        hdebug("Rehashing %u\n", i);
         bl_hashmap_set_internal(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
+    }
+    hshow(h);
+    hdebug("Finished resizing\n");
 }
 
 void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
 {
     if (!h || !entry) return;
-
-    // if (h->copy_on_write) {
-    //     if (h->keys) h->keys = memcpy(GC_MALLOC(h->count * key_size_padded), h->keys, h->count * key_size_padded);
-    //     if (h->values) h->values = memcpy(GC_MALLOC(h->count * value_size_padded), h->values, h->count * value_size_padded);
-    //     if (h->buckets) h->buckets = memcpy(GC_MALLOC_ATOMIC(h->capacity * sizeof(bl_hash_bucket_t)), h->buckets, h->capacity * sizeof(bl_hash_bucket_t));
-    // }
+    hshow(h);
 
     if (h->capacity == 0) {
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
@@ -249,6 +251,8 @@ void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_
     }
 
     bl_hashmap_set_internal(h, key_hash, key_cmp, entry, entry_size_padded, 0);
+    hshow(h);
+    hdebug("Finished setting key\n");
 }
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)

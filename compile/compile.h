@@ -55,6 +55,8 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t);
 gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b);
 // Get a function to compare two values of a type
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
+// Get a function to compare two pointers to values of a type
+gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t);
 // Coerce two numbers into the larger representation
 void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
 // A ternary expression (a ? b : c)

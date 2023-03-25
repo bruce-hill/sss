@@ -205,7 +205,7 @@ struct ast_s {
             ast_t *item_type;
         } TypeArray;
         struct {
-            ast_t *key_type, *val_type;
+            ast_t *key_type, *value_type;
         } TypeTable;
         struct {
             istr_t name;

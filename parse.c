@@ -440,7 +440,19 @@ PARSER(parse_int) {
     return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units, .is_unsigned=is_unsigned);
 }
 
-STUB_PARSER(parse_table_type)
+PARSER(parse_table_type) {
+    const char *start = pos;
+    if (!match(&pos, "{")) return NULL;
+    whitespace(&pos);
+    ast_t *key_type = optional_ast(ctx, &pos, parse_type);
+    if (!key_type) return NULL;
+    whitespace(&pos);
+    if (!match(&pos, "=")) return NULL;
+    ast_t *value_type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the rest of this table type");
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table type");
+    return NewAST(ctx->file, start, pos, TypeTable, .key_type=key_type, .value_type=value_type);
+}
 
 PARSER(parse_struct_type) {
     const char *start = pos;

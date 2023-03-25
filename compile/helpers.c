@@ -13,6 +13,7 @@
 #include "../ast.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
+#include "../libblang/hashmap.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
@@ -65,6 +66,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
 
     switch (bl_t->tag) {
     case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
+    case TableType: return sizeof (bl_hashmap_t);
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case BoolType: return sizeof(bool);
     case NumType: return Match(bl_t, NumType)->bits / 8;
@@ -734,7 +736,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
 
-    gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj"))};
+    gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("obj"))};
     istr_t sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(istr_t, intern_str("obj")), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
@@ -757,18 +759,29 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
         gcc_rvalue_t *call = gcc_callx(
             env->ctx, NULL, halfsiphash,
-            gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), inlen, k,
+            gcc_param_as_rvalue(params[0]), inlen, k,
             gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
         gcc_eval(block, NULL, call);
         break;
+    }
+    case TableType: {
+        // uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded);
+        gcc_func_t *hash_fn = hashmap_gets(env->global_funcs, "bl_hashmap_hash");
+        bl_type_t *entry_t = table_entry_type(t);
+        gcc_func_t *entry_hash = get_hash_func(env, entry_t);
+        gcc_assign(block, NULL, hashval, gcc_callx(env->ctx, NULL, hash_fn, gcc_param_as_rvalue(params[0]),
+                                                   gcc_get_func_address(entry_hash, NULL),
+                                                   gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t))));
+        break;
+    }
     case ArrayType: {
         // If necessary, flatten first:
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *array = gcc_param_as_rvalue(params[0]);
-        gcc_rvalue_t *data_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 0));
-        gcc_rvalue_t *length_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 1));
-        gcc_rvalue_t *stride_field = gcc_rvalue_access_field(array, NULL, gcc_get_field(struct_t, 2));
+        gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 0)));
+        gcc_rvalue_t *length_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 1)));
+        gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 2)));
         bl_type_t *item_type = Match(t, ArrayType)->item_type;
 
         gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
@@ -780,7 +793,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         gcc_func_t *flatten = hashmap_gets(env->global_funcs, "array_flatten");
         gcc_eval(block, NULL, gcc_callx(
                 env->ctx, NULL, flatten,
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), t_void_ptr),
+                gcc_cast(env->ctx, NULL, array, t_void_ptr),
                 gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
                 gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
 
@@ -797,7 +810,6 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
             gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
         gcc_eval(block, NULL, call);
         break;
-    }
     }
     default:
         compile_err(env, NULL, "Hash functions aren't yet implemented for %s", type_to_string(t));
@@ -836,10 +848,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("lhs")),
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
-    gcc_func_t *func = gcc_new_func(
-        env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t,
-        fresh("compare"), 2, params, 0);
-
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare"), 2, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hashmap_set(get_namespace(env, t), intern_str("__compare"),
@@ -1009,6 +1018,36 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         exit(1);
     }
     }
+    return func;
+}
+
+// Get a comparison function for pointers to data (instead of the data itself)
+// This is just a shim around the real comparison function
+gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
+{
+    // Memoize:
+    binding_t *b = get_from_namespace(env, t, "__compare_indirect");
+    if (b) return b->func;
+
+    gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+    gcc_type_t *int_t = gcc_type(env->ctx, INT);
+
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_t, fresh("lhs")),
+        gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare_indirect"), 2, params, 0);
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
+                           .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
+    hashmap_set(get_namespace(env, t), intern_str("__compare_indirect"),
+                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
+
+    gcc_block_t *block = gcc_new_block(func, fresh("compare_indirect"));
+    gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare_indirect(a,b) for type: ", type_to_string(t))));
+    gcc_rvalue_t *lhs = gcc_rval(gcc_rvalue_dereference(gcc_param_as_rvalue(params[0]), NULL));
+    gcc_rvalue_t *rhs = gcc_rval(gcc_rvalue_dereference(gcc_param_as_rvalue(params[1]), NULL));
+    gcc_func_t *compare_func = get_compare_func(env, t);
+    gcc_return(block, NULL, gcc_callx(env->ctx, NULL, compare_func, lhs, rhs));
     return func;
 }
 
