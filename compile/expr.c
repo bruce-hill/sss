@@ -530,16 +530,22 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
+        bl_type_t *key_t = get_type(env, entry->key);
+        bl_type_t *value_t = get_type(env, entry->value);
         bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
-                                  .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
+                                  .field_types=LIST(bl_type_t*, key_t, value_t));
         gcc_type_t *entry_gcc_t = bl_type_to_gcc(env, entry_t);
         gcc_field_t *fields[] = {
             gcc_get_field(gcc_type_if_struct(entry_gcc_t), 0),
             gcc_get_field(gcc_type_if_struct(entry_gcc_t), 1),
         };
 
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), fresh("key"));
+        gcc_assign(*block, loc, key_lval, compile_expr(env, block, entry->key));
+        flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
         gcc_rvalue_t *rvals[] = {
-            compile_expr(env, block, entry->key),
+            gcc_rval(key_lval),
             compile_expr(env, block, entry->value),
         };
         return gcc_struct_constructor(env->ctx, loc, bl_type_to_gcc(env, entry_t), 2, fields, rvals);

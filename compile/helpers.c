@@ -725,6 +725,32 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef WRITE_LITERAL
 }
 
+void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array_ptr)
+{
+    if (t->tag != ArrayType) return;
+    // If necessary, flatten first:
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, 2)));
+    bl_type_t *item_type = Match(t, ArrayType)->item_type;
+    gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
+                *already_flat = gcc_new_block(func, fresh("already_flat"));
+    gcc_jump_condition(*block, NULL,
+                       gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT32))),
+                       needs_flattening, already_flat);
+    *block = needs_flattening;
+    gcc_func_t *flatten = hashmap_gets(env->global_funcs, "array_flatten");
+    gcc_eval(*block, NULL, gcc_callx(
+            env->ctx, NULL, flatten,
+            gcc_cast(env->ctx, NULL, array_ptr, gcc_get_type(env->ctx, GCC_T_VOID_PTR)),
+            gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
+            gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
+
+    gcc_jump(*block, NULL, already_flat);
+    *block = already_flat;
+}
+
 gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
 {
     // Return a hash function for a given type.
@@ -777,29 +803,12 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     case ArrayType: {
         // If necessary, flatten first:
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *array = gcc_param_as_rvalue(params[0]);
+        // flatten_arrays(env, &block, t, array);
+        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 0)));
         gcc_rvalue_t *length_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 1)));
-        gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 2)));
         bl_type_t *item_type = Match(t, ArrayType)->item_type;
-
-        gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
-                    *already_flat = gcc_new_block(func, fresh("already_flat"));
-        gcc_jump_condition(block, NULL,
-                           gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT32))),
-                           needs_flattening, already_flat);
-        block = needs_flattening;
-        gcc_func_t *flatten = hashmap_gets(env->global_funcs, "array_flatten");
-        gcc_eval(block, NULL, gcc_callx(
-                env->ctx, NULL, flatten,
-                gcc_cast(env->ctx, NULL, array, t_void_ptr),
-                gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
-                gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
-
-        gcc_jump(block, NULL, already_flat);
-
-        block = already_flat;
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type));
         gcc_type_t *t_size = gcc_type(env->ctx, SIZE);
         inlen = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, t_size, inlen, gcc_cast(env->ctx, NULL, length_field, t_size));

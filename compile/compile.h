@@ -67,6 +67,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 // Compile all the deferred statements up to a given point
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
+// Ensure array is flat (stride == 1) for easy comparisons/hashes
+void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
