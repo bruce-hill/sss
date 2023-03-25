@@ -53,10 +53,9 @@ typedef enum {
     With,
     Extend,
     Ellipsis,
-    Compiled,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (Compiled + 1)
+#define NUM_AST_TAGS (Ellipsis + 1)
 
 typedef struct ast_s ast_t;
 
@@ -294,10 +293,6 @@ struct ast_s {
             ast_t *type, *body;
         } Extend;
         struct {} Ellipsis;
-        struct {
-            gcc_rvalue_t *rval;
-            void *type;
-        } Compiled;
     } __data;
 };
 

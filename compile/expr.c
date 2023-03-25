@@ -1169,8 +1169,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
                                if_nil, if_nonnil);
             *block = if_nil;
-            // TODO: skip
-            gcc_jump(*block, loc, done);
+
+            if (env->loop_label && !indexing->unchecked) {
+                gcc_block_t *skip_dest = env->loop_label->skip_label;
+                insert_defers(env, block, env->loop_label->deferred);
+                gcc_jump(*block, loc, skip_dest);
+            } else {
+                // ast_t *str_ast = WrapAST(indexing->index, StringJoin, .children=LIST(ast_t*, WrapAST(indexing->index, Interp, .value=indexing->index)));
+                // insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s", NULL, compile_expr(env, block, str_ast));
+                insert_failure(env, block, ast->span, "Error: this table does not have the given key");
+                gcc_jump(*block, loc, done);
+            }
 
             *block = if_nonnil;
             gcc_assign(*block, loc, value_var, gcc_rval(gcc_rvalue_dereference(val_opt, loc)));

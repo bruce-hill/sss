@@ -1225,4 +1225,54 @@ void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer)
     }
 }
 
+void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *user_fmt, ...)
+{
+    char *info = NULL;
+    size_t size = 0;
+    FILE *f = open_memstream(&info, &size);
+    fprint_span(f, span, "\x1b[31;1m", 2, true);
+    fputc('\0', f);
+    fflush(f);
+    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+    istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7m%s\x1b[m\n\n%s",
+                                 span.file->filename,
+                                 bl_get_line_number(span.file, span.start),
+                                 bl_get_line_column(span.file, span.start),
+                                 user_fmt,
+                                 info);
+    gcc_rvalue_t *fmt_val = gcc_str(env->ctx, fmt_str);
+
+    NEW_LIST(gcc_rvalue_t*, args);
+    append(args, fmt_val);
+
+    va_list ap;
+    va_start(ap, user_fmt);
+
+    for (const char *p = user_fmt; *p; p++) {
+        if (*p != '%') continue;
+        switch (*(++p)) {
+        case '#': {
+            assert(*(++p) == 's');
+            bl_type_t *t = va_arg(ap, bl_type_t*);
+            gcc_rvalue_t *rval = va_arg(ap, gcc_rvalue_t*);
+            (void)t;
+            append(args, rval);
+            break;
+        }
+        case 's': {
+            const char *str = va_arg(ap, const char*);
+            append(args, gcc_str(env->ctx, str));
+            break;
+        }
+        default: compile_err(env, NULL, "String format option not supported: %c", p[-1]);
+        }
+    }
+    va_end(ap);
+
+    gcc_rvalue_t *failure = gcc_jit_context_new_call(env->ctx, NULL, fail, LIST_LEN(args), args[0]);
+    gcc_eval(*block, NULL, failure);
+    fclose(f);
+    free(info);
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

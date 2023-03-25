@@ -69,6 +69,7 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes
 void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array);
+void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *user_fmt, ...);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
