@@ -275,15 +275,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t *do_env = fresh_scope(env);
         gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),
                     *do_end = gcc_new_block(func, fresh("do_end"));
-        if (do_->label && (do_->else_body || t->tag == VoidType)) {
-            do_env->loop_label = &(loop_label_t){
-                .enclosing = env->loop_label,
-                .names = LIST(istr_t, do_->label),
-                .skip_label = do_else,
-                .stop_label = do_else,
-                .deferred = do_env->deferred,
-            };
-        }
+        
+        do_env->loop_label = &(loop_label_t){
+            .enclosing = env->loop_label,
+            .names = LIST(istr_t, do_->label),
+            .skip_label = do_else,
+            .stop_label = do_else,
+            .deferred = do_env->deferred,
+        };
 
         gcc_rvalue_t *do_rval = compile_block_expr(do_env, block, do_->body);
         if (*block) {
