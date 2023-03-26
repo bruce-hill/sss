@@ -1202,9 +1202,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             t = Match(t, PointerType)->pointed;
 
         if (t->tag == ArrayType) {
-            return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
+            return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->type, ACCESS_READ));
         } else if (t->tag == TableType) {
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index);
+            if (indexing->type == INDEX_UNCHECKED)
+                return gcc_rval(gcc_rvalue_dereference(val_opt, loc));
+
             gcc_func_t *func = gcc_block_func(*block);
             gcc_type_t *gcc_value_t = bl_type_to_gcc(env, Match(t, TableType)->value_type);
             gcc_lvalue_t *value_var = gcc_local(func, loc, gcc_value_t, fresh("value"));
@@ -1215,7 +1218,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                if_nil, if_nonnil);
             *block = if_nil;
 
-            if (env->loop_label && !indexing->unchecked) {
+            if (indexing->type == INDEX_NORMAL && env->loop_label) {
                 gcc_block_t *skip_dest = env->loop_label->skip_label;
                 insert_defers(env, block, env->loop_label->deferred);
                 gcc_jump(*block, loc, skip_dest);

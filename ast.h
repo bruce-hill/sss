@@ -16,6 +16,8 @@
 #define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define StringAST(ast, _str) WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, StringLiteral, .str=intern_str(_str))))
 
+typedef enum {INDEX_NORMAL, INDEX_FAIL, INDEX_UNCHECKED} index_type_e;
+
 typedef enum {
     Unknown = 0,
     Nil, Bool, Var,
@@ -269,7 +271,7 @@ struct ast_s {
         } TaggedUnionField;
         struct {
             ast_t *indexed, *index;
-            bool unchecked;
+            index_type_e type;
         } Index;
         struct {
             ast_t *fielded;

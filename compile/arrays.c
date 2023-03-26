@@ -190,7 +190,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         array_gcc_t);
 }
 
-gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access)
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, index_type_e index_type, access_type_e access)
 {
     bl_type_t *index_t = get_type(env, index);
     if (index_t->tag == RangeType) {
@@ -230,19 +230,30 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_rvalue_t *index_val = gcc_cast(env->ctx, loc, compile_expr(env, block, index), i64_t);
     gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 2)), i64_t);
 
-    if (!unchecked) {
-        // Bounds check:
-        gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index_val, gcc_one(env->ctx, i64_t));
-        gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 1)), i64_t);
-        gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index_val, len64);
-        gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
+    gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
+    index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
 
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
-                    *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
-        gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
+    if (index_type == INDEX_UNCHECKED)
+        return gcc_array_access(env->ctx, loc, items, index0);
 
-        // Bounds check failure:
+    // Bounds check:
+    gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index_val, gcc_one(env->ctx, i64_t));
+    gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 1)), i64_t);
+    gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index_val, len64);
+    gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
+
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
+                *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
+    gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
+
+    // Bounds check failure:
+    *block = bounds_unsafe;
+    if (index_type == INDEX_NORMAL && env->loop_label) {
+        gcc_block_t *skip_dest = env->loop_label->skip_label;
+        insert_defers(env, block, env->loop_label->deferred);
+        gcc_jump(*block, loc, skip_dest);
+    } else {
         gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
         char *info = NULL;
         size_t size = 0;
@@ -252,16 +263,14 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
         gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
-        gcc_eval(bounds_unsafe, loc, gcc_callx(env->ctx, loc, fail, fmt, index_val, len64, callstack));
+        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fail, fmt, index_val, len64, callstack));
         fclose(f);
         free(info);
-        gcc_jump(bounds_unsafe, loc, bounds_unsafe);
-
-        // Bounds check success:
-        *block = bounds_safe;
+        gcc_jump(*block, loc, bounds_unsafe);
     }
-    gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
-    index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
+
+    // Bounds check success:
+    *block = bounds_safe;
     return gcc_array_access(env->ctx, loc, items, index0);
 }
 

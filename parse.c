@@ -858,8 +858,13 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
-    bool unchecked = match(&pos,"!");
-    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
+    auto access_type = INDEX_NORMAL;
+    spaces(&pos);
+    if (match_word(&pos, "unchecked"))
+        access_type = INDEX_UNCHECKED;
+    else if (match(&pos, "!"))
+        access_type = INDEX_FAIL;
+    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .type=access_type);
 }
 
 PARSER(parse_if) {
