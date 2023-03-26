@@ -1,0 +1,25 @@
+t := @{["abc"]=1, ["def"]=2}
+>>> t
+=== @{["abc"]=1, ["def"]=2}
+
+>>> t["abc"]
+=== 1
+
+>>> t["cba"[..to.. by -1]]
+=== 1
+
+do
+    >>> t["missing"]
+    fail "Missing key lookup failed to skip ahead"
+else
+    say "(table lookup successfully skipped out of the block)"
+
+>>> t["new_key"] = 3
+>>> t
+=== @{["abc"]=1, ["def"]=2, ["new_key"]=3}
+
+>>> t2 := {[{[1]=2}]=yes}
+>>> t2
+=== {[{[1]=2}]=yes}
+>>> t2[{[1]=2}]
+=== yes
