@@ -110,7 +110,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             binding_t *b = (*exp)->binding;
             if (b->sym_name) {
                 sym_name = b->sym_name;
-                assert(sym_name);
             } else {
                 // Create an exported global to make it visible:
                 sym_name = fresh((*exp)->qualified_name);

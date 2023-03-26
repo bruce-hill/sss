@@ -200,7 +200,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (clobbered && decl->is_global)
             compile_err(env, ast, "This name is already being used for a global");
         hashmap_set(decl->is_global ? env->global_bindings : env->bindings, name,
-                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
+                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);
