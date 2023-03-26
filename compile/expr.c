@@ -263,7 +263,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 .enclosing = env->loop_label,
                 .names = LIST(istr_t, do_->label),
                 .skip_label = do_else,
-                .stop_label = do_end,
+                .stop_label = do_else,
                 .deferred = do_env->deferred,
             };
         }
