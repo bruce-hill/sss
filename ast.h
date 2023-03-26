@@ -3,8 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <intern.h>
+#include <libgccjit.h>
 
 #include "libblang/list.h"
+#include "compile/libgccjit_abbrev.h"
 #include "span.h"
 #include "util.h"
 
@@ -28,7 +30,7 @@ typedef enum {
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
     HeapAllocate, Dereference,
-    Array, Table,
+    Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
@@ -81,6 +83,7 @@ struct ast_s {
         struct {
             int64_t i;
             uint8_t precision;
+            bool is_unsigned;
             istr_t units;
         } Int;
         struct {
@@ -133,8 +136,11 @@ struct ast_s {
         } Array;
         struct {
             ast_t *key_type, *value_type;
-            List(ast_t*) items;
+            List(ast_t*) entries;
         } Table;
+        struct {
+            ast_t *key, *value;
+        } TableEntry;
         struct {
             istr_t name;
             List(istr_t) arg_names;
@@ -203,7 +209,7 @@ struct ast_s {
             ast_t *item_type;
         } TypeArray;
         struct {
-            ast_t *key_type, *val_type;
+            ast_t *key_type, *value_type;
         } TypeTable;
         struct {
             istr_t name;

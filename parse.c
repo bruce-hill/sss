@@ -60,6 +60,7 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
+static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static PARSER(parse_indented_block);
 static PARSER(parse_if);
 static PARSER(parse_for);
@@ -426,17 +427,35 @@ PARSER(parse_int) {
 
     match(&pos, "_");
     int64_t precision = 64;
+    bool is_unsigned = false;
     if (match(&pos, "i64")) precision = 64;
     else if (match(&pos, "i32")) precision = 32;
     else if (match(&pos, "i16")) precision = 16;
     else if (match(&pos, "i8")) precision = 8;
+    else if (match(&pos, "u64")) { precision = 64; is_unsigned = true; }
+    else if (match(&pos, "u32")) { precision = 32; is_unsigned = true; }
+    else if (match(&pos, "u16")) { precision = 16; is_unsigned = true; }
+    else if (match(&pos, "u8")) { precision = 8; is_unsigned = true; }
+
     // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
     istr_t units = match_units(&pos);
-    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units);
+    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units, .is_unsigned=is_unsigned);
 }
 
-STUB_PARSER(parse_table_type)
+PARSER(parse_table_type) {
+    const char *start = pos;
+    if (!match(&pos, "{")) return NULL;
+    whitespace(&pos);
+    ast_t *key_type = optional_ast(ctx, &pos, _parse_type);
+    if (!key_type) return NULL;
+    whitespace(&pos);
+    if (!match(&pos, "=")) return NULL;
+    ast_t *value_type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the rest of this table type");
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table type");
+    return NewAST(ctx->file, start, pos, TypeTable, .key_type=key_type, .value_type=value_type);
+}
 
 PARSER(parse_struct_type) {
     const char *start = pos;
@@ -700,6 +719,63 @@ PARSER(parse_array) {
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 
     return NewAST(ctx->file, start, pos, Array, .type=item_type, .items=items);
+}
+
+PARSER(parse_table) {
+    const char *start = pos;
+    if (!match(&pos, "{")) return NULL;
+
+    whitespace(&pos);
+
+    NEW_LIST(ast_t*, entries);
+    ast_t *key_type = NULL, *value_type = NULL;
+    if (match(&pos, ":")) {
+        whitespace(&pos);
+        key_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a key type for this table");
+        whitespace(&pos);
+        if (!match(&pos, "="))
+            parser_err(ctx, pos, pos, "I expected an '=' for this table type");
+        value_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a value type for this table");
+    }
+
+    for (;;) {
+        whitespace(&pos);
+        const char *entry_start = pos;
+        if (!match(&pos, "[")) break;
+        ast_t *key = optional_ast(ctx, &pos, parse_extended_expr);
+        if (!key) break;
+        expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this table key");
+        whitespace(&pos);
+        if (!match(&pos, "=")) return NULL;
+        ast_t *value = expect_ast(ctx, pos-1, &pos, parse_expr, "I couldn't parse the value for this table entry");
+
+        ast_t *entry = NewAST(ctx->file, entry_start, pos, TableEntry, .key=key, .value=value);
+        for (bool progress = true; progress; ) {
+            ast_t *new_entry;
+            progress = (false
+                || (new_entry=parse_index_suffix(ctx, entry))
+                || (new_entry=parse_field_suffix(ctx, entry))
+                || (new_entry=parse_suffix_if(ctx, entry, false))
+                || (new_entry=parse_suffix_for(ctx, entry))
+                || (new_entry=parse_suffix_while(ctx, entry))
+                || (new_entry=parse_fncall_suffix(ctx, entry, true))
+            );
+            if (progress) entry = new_entry;
+        }
+        pos = entry->span.end;
+
+        APPEND(entries, entry);
+        whitespace(&pos);
+        if (!match(&pos, ",")) break;
+    }
+
+    if (!key_type && !value_type && LIST_LEN(entries) == 0)
+        return NULL;
+
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table");
+
+    return NewAST(ctx->file, start, pos, Table, .key_type=key_type, .value_type=value_type, .entries=entries);
 }
 
 PARSER(parse_struct) {
@@ -1391,6 +1467,7 @@ PARSER(parse_term) {
         || (term=parse_string(ctx, pos))
         || (term=parse_lambda(ctx, pos))
         || (term=parse_parens(ctx, pos))
+        || (term=parse_table(ctx, pos))
         || (term=parse_struct(ctx, pos))
         || (term=parse_var(ctx, pos))
         || (term=parse_array(ctx, pos))

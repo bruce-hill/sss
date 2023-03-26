@@ -43,6 +43,15 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         if (!item_t) compile_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
+    case TypeTable: {
+        ast_t *key_type_ast = Match(ast, TypeTable)->key_type;
+        bl_type_t *key_type = parse_type_ast(env, key_type_ast);
+        if (!key_type) compile_err(env, key_type_ast, "I can't figure out what type this is.");
+        ast_t *val_type_ast = Match(ast, TypeTable)->value_type;
+        bl_type_t *val_type = parse_type_ast(env, val_type_ast);
+        if (!val_type) compile_err(env, val_type_ast, "I can't figure out what type this is.");
+        return Type(TableType, .key_type=key_type, .value_type=val_type);
+    }
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         if (ptr->pointed->tag == TypeOptional) {
@@ -143,6 +152,9 @@ static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
         auto list_t = Match(iter_t, ArrayType);
         return list_t->item_type;
     }
+    case TableType: {
+        return table_entry_type(iter_t);
+    }
     case RangeType: {
         return INT_TYPE;
     }
@@ -227,10 +239,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (i->precision) {
-        case 64: return Type(IntType, .units=units, .bits=64);
-        case 32: return Type(IntType, .units=units, .bits=32);
-        case 16: return Type(IntType, .units=units, .bits=16);
-        case 8: return Type(IntType, .units=units, .bits=8);
+        case 64: return Type(IntType, .units=units, .bits=64, .is_unsigned=i->is_unsigned);
+        case 32: return Type(IntType, .units=units, .bits=32, .is_unsigned=i->is_unsigned);
+        case 16: return Type(IntType, .units=units, .bits=16, .is_unsigned=i->is_unsigned);
+        case 8: return Type(IntType, .units=units, .bits=8, .is_unsigned=i->is_unsigned);
         default: compile_err(env, ast, "Unsupported precision");
         }
     }
@@ -311,15 +323,63 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
                 compile_err(env, LIST_ITEM(list->items, i),
-                            "This list item has type %s, which is different from earlier list items which have type %s",
+                            "This array item has type %s, which is different from earlier array items which have type %s",
                             type_to_string(t2),  type_to_string(item_type));
             item_type = merged;
         }
         return Type(ArrayType, .item_type=item_type);
     }
+    case Table: {
+        auto table = Match(ast, Table);
+        if (table->key_type && table->value_type)
+            return Type(TableType, .key_type=parse_type_ast(env, table->key_type), .value_type=parse_type_ast(env, table->value_type));
+
+        bl_type_t *key_type = NULL, *value_type = NULL;
+        for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
+            ast_t *entry = LIST_ITEM(table->entries, i);
+            bl_type_t *entry_t = get_type(env, entry);
+            while (entry_t->tag == GeneratorType)
+                entry_t = Match(entry_t, GeneratorType)->generated;
+
+            bl_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
+            bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
+            if (!key_merged)
+                compile_err(env, LIST_ITEM(table->entries, i),
+                            "This table entry has type %s, which is different from earlier table entries which have type %s",
+                            type_to_string(key_t),  type_to_string(key_type));
+            key_type = key_merged;
+
+            bl_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
+            bl_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
+            if (!val_merged)
+                compile_err(env, LIST_ITEM(table->entries, i),
+                            "This table entry has type %s, which is different from earlier table entries which have type %s",
+                            type_to_string(value_t),  type_to_string(value_type));
+            value_type = val_merged;
+        }
+        return Type(TableType, .key_type=key_type, .value_type=value_type);
+    }
+    case TableEntry: {
+        auto entry = Match(ast, TableEntry);
+        bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                            .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
+        bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+        if (memoized) {
+            t = memoized;
+        } else {
+            hashmap_set(env->tuple_types, type_to_string(t), t);
+        }
+        return t;
+    }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env, access->fielded);
+        if (access->field == intern_str("__hash"))
+            (void)get_hash_func(env, fielded_t); 
+        else if (access->field == intern_str("__compare"))
+            (void)get_compare_func(env, fielded_t); 
+        else if (access->field == intern_str("__print"))
+            (void)get_print_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
         bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
         switch (value_t->tag) {
@@ -360,7 +420,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 compile_err(env, ast, "I can't find anything called %s on this type", access->field);
         }
         case ArrayType: {
-            auto array = Match(fielded_t, ArrayType);
+            auto array = Match(value_t, ArrayType);
             bl_type_t *item_t = array->item_type;
             // TODO: support other things like pointers
             if (item_t->tag == StructType) {
@@ -391,6 +451,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Index: {
         auto indexing = Match(ast, Index);
         bl_type_t *indexed_t = get_type(env, indexing->indexed);
+      try_again:
         switch (indexed_t->tag) {
         case ArrayType: {
             bl_type_t *index_t = get_type(env, indexing->index);
@@ -400,6 +461,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return Match(indexed_t, ArrayType)->item_type;
             default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
+        }
+        case TableType: {
+            return Match(indexed_t, TableType)->value_type;
+        }
+        case PointerType: {
+            indexed_t = Match(indexed_t, PointerType)->pointed;
+            goto try_again;
         }
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]
@@ -422,6 +490,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
+        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
+        // Early out if the type is knowable without any context from the block:
+        switch (last->tag) {
+        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+        case Assign: case Declare: case FunctionDef: case StructDef:
+            return Type(VoidType);
+        default: break;
+        }
+        // The compiler hasn't implemented full typechecking for blocks that define new
+        // types, though it does support declaring new variables:
         env = fresh_scope(env);
         for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
             ast_t *stmt = LIST_ITEM(block->statements, i);
@@ -446,7 +524,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 break;
             }
         }
-        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
         return get_type(env, last);
     }
     case Do: {
@@ -808,31 +885,15 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
 bool is_discardable(env_t *env, ast_t *ast)
 {
+    switch (ast->tag) {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+    case Assign: case Declare: case FunctionDef: case StructDef:
+        return true;
+    default: break;
+    }
     bl_type_t *t = get_type(env, ast);
     while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
     return (t->tag == VoidType || t->tag == AbortType);
-}
-
-void check_discardable(env_t *env, ast_t *ast)
-{
-    switch (ast->tag) {
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Assign: case Declare: case Block: case FunctionDef: case StructDef:
-        return;
-    default: {
-        bl_type_t *t = get_type(env, ast);
-        bool was_generator = (t->tag == GeneratorType);
-        while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
-        if (!(t->tag == VoidType || t->tag == AbortType)) {
-            if (was_generator)
-                compile_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
-                            type_to_string(t));
-            else
-                compile_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
-                            type_to_string(t));
-        }
-    }
-    }
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

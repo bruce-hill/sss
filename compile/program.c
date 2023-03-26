@@ -63,7 +63,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
                                            gcc_param_as_rvalue(main_params[1]));
         gcc_assign(block, NULL, args, arg_list);
 
-        compile_statement(env, &block, ast);
+        compile_block_statement(env, &block, ast);
         if (block)
             gcc_return(block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
     } else {
@@ -76,7 +76,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_func_t *get_exports = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_t, "get_exports", 0, NULL, 0);
         gcc_block_t *block = gcc_new_block(get_exports, fresh("get_exports"));
 
-        compile_statement(env, &block, ast);
+        compile_block_statement(env, &block, ast);
         assert(block);
 
         gcc_lvalue_t *exports_var = gcc_local(get_exports, NULL, gcc_t, fresh("exports"));
@@ -147,7 +147,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
         gcc_return(block, NULL, gcc_rval(exports_var));
     }
-
 
     *result = gcc_compile(ctx);
     if (*result == NULL)

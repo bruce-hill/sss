@@ -19,10 +19,37 @@
 
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    check_discardable(env, ast);
-    gcc_rvalue_t *val = compile_expr(env, block, ast);
-    if (val && *block)
-        gcc_eval(*block, ast_loc(env, ast), val);
+    if (is_discardable(env, ast)) {
+        gcc_rvalue_t *val = compile_expr(env, block, ast);
+        if (val && *block)
+            gcc_eval(*block, ast_loc(env, ast), val);
+    } else if (get_type(env, ast)->tag == BoolType && env->loop_label && env->loop_label->skip_label) {
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_block_t *skip = gcc_new_block(func, fresh("skip")),
+                    *pass = gcc_new_block(func, fresh("pass"));
+
+        gcc_rvalue_t *val = compile_expr(env, block, ast);
+        gcc_jump_condition(*block, NULL, val, pass, skip);
+        *block = skip;
+        insert_defers(env, block, env->loop_label->deferred);
+        gcc_jump(*block, NULL, env->loop_label->skip_label);
+        *block = pass;
+    } else {
+        bl_type_t *t = get_type(env, ast);
+        bool was_generator = (t->tag == GeneratorType);
+        while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
+        if (!(t->tag == VoidType || t->tag == AbortType)) {
+            if (was_generator)
+                compile_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
+                            type_to_string(t));
+            else
+                compile_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
+                            type_to_string(t));
+        }
+        gcc_rvalue_t *val = compile_expr(env, block, ast);
+        if (val && *block)
+            gcc_eval(*block, ast_loc(env, ast), val);
+    }
 }
 
 static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)

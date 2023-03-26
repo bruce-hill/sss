@@ -64,11 +64,13 @@ static void load_global_functions(env_t *env)
     gcc_ctx_t *ctx = env->ctx;
     gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
+               *t_u32 = gcc_get_type(ctx, GCC_T_UINT32),
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE),
-               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
+               *t_bool = gcc_get_type(ctx, GCC_T_BOOL),
+               *t_file = bl_type_to_gcc(env, Type(FileType)),
                *t_range = bl_type_to_gcc(env, Type(RangeType)),
                *t_bl_str = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
 
@@ -100,6 +102,20 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
     load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
+    load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
+    load_global_func(env, t_bl_str, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
+
+    // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
+    load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
+                     PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
+
+    load_global_func(env, t_void_ptr, "bl_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
+    load_global_func(env, t_void_ptr, "bl_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "entry"));
+    load_global_func(env, t_u32, "bl_hashmap_hash", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "entry_hash"), PARAM(t_size, "entry_size"));
+    load_global_func(env, t_int, "bl_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "entry_compare"), PARAM(t_size, "entry_size"));
 #undef PARAM
 }
 
@@ -322,7 +338,6 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
         .tuple_types = hashmap_new(),
-        .cmp_funcs = hashmap_new(),
         .gcc_types = hashmap_new(),
         .union_fields = hashmap_new(),
         .global_funcs = hashmap_new(),
@@ -352,6 +367,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Char);
+    DEFTYPE(File);
 #undef DEFTYPE
     define_int_types(env);
 
@@ -380,8 +396,9 @@ void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO))
         fputs("\x1b[31;7;1m", stderr);
-    fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
-            bl_get_line_column(ast->span.file, ast->span.start));
+    if (ast)
+        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
+                bl_get_line_column(ast->span.file, ast->span.start));
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);

@@ -454,22 +454,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = bl_type_to_gcc(env, string_t);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
+        // Optimize the case of empty strings
+        if (length(chunks) == 0) {
+            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
+        } else if (length(chunks) == 1 && LIST_ITEM(chunks, 0)->tag == StringLiteral) {
+            // Optimize the case of a single string literal
+            return compile_expr(env, block, LIST_ITEM(chunks, 0));
+        }
+
         gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
         gcc_func_t *free_fn = hashmap_gets(env->global_funcs, "free");
         gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
         gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
         gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
-        // Optimize the case of empty strings
-        if (length(chunks) == 0) {
-            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
-        }
 
         // char *buf; size_t size;
         // FILE *f = open_memstream(&buf, &size);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *buf_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), fresh("buf"));
         gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), fresh("size"));
-        gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), fresh("file"));
+        gcc_lvalue_t *file_var = gcc_local(func, loc, bl_type_to_gcc(env, Type(FileType)), fresh("file"));
         gcc_assign(*block, loc, file_var,
                    gcc_callx(env->ctx, loc, open_memstream_fn, gcc_lvalue_address(buf_var, loc), gcc_lvalue_address(size_var, loc)));
         gcc_rvalue_t *file = gcc_rval(file_var);
@@ -539,6 +543,31 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Array: {
         return compile_array(env, block, ast);
+    }
+    case Table: {
+        return compile_table(env, block, ast);
+    }
+    case TableEntry: {
+        auto entry = Match(ast, TableEntry);
+        bl_type_t *key_t = get_type(env, entry->key);
+        bl_type_t *value_t = get_type(env, entry->value);
+        bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                                  .field_types=LIST(bl_type_t*, key_t, value_t));
+        gcc_type_t *entry_gcc_t = bl_type_to_gcc(env, entry_t);
+        gcc_field_t *fields[] = {
+            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 0),
+            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 1),
+        };
+
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), fresh("key"));
+        gcc_assign(*block, loc, key_lval, compile_expr(env, block, entry->key));
+        flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
+        gcc_rvalue_t *rvals[] = {
+            gcc_rval(key_lval),
+            compile_expr(env, block, entry->value),
+        };
+        return gcc_struct_constructor(env->ctx, loc, bl_type_to_gcc(env, entry_t), 2, fields, rvals);
     }
     case TaggedUnionDef: {
         return NULL;
@@ -776,6 +805,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env, self);
+            if (access->field == intern_str("__hash"))
+                (void)get_hash_func(env, self_t); 
+            else if (access->field == intern_str("__compare"))
+                (void)get_compare_func(env, self_t); 
+            else if (access->field == intern_str("__print"))
+                (void)get_print_func(env, self_t); 
             bl_type_t *value_type = self_t;
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
@@ -922,7 +957,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == VoidType)
             compile_err(env, value, "This expression is a Void type, which can't be heap allocated");
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, t));
+        ssize_t gcc_size = gcc_sizeof(env, t);
+        if (t->tag == ArrayType) {
+            gcc_size += 4; // Hidden "capacity" field
+        }
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
         gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
@@ -986,6 +1025,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto ptr = Match(fielded_t, PointerType);
             if (ptr->is_optional)
                 compile_err(env, ast, "This field access is unsafe because the value may be nil");
+            if (ptr->pointed->tag == ArrayType)
+                mark_array_cow(env, block, obj);
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
@@ -1031,9 +1072,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
                     gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
                     stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
-                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, array->item_type)));
+                                           gcc_rvalue_int32(env->ctx, gcc_sizeof(env, array->item_type)));
                     stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_DIVIDE, gcc_type(env->ctx, INT32), stride,
-                                           gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), gcc_sizeof(env, field_type)));
+                                           gcc_rvalue_int32(env->ctx, gcc_sizeof(env, field_type)));
 
                     gcc_type_t *slice_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
                     gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
@@ -1130,82 +1171,44 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        bl_type_t *indexed_t = get_type(env, indexing->indexed);
-        if (indexed_t->tag != ArrayType)
-            compile_err(env, ast, "I only know how to index into lists, but this is a %s", type_to_string(indexed_t));
 
-        bl_type_t *index_t = get_type(env, indexing->index);
-        if (is_integral(index_t)) {
-            return gcc_rval(get_lvalue(env, block, ast, true));
-        } else if (index_t->tag == RangeType) {
-            // Slicing (currently not implemented as an Lvalue)
-            gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
+        bl_type_t *t = get_type(env, indexing->indexed);
+        while (t->tag == PointerType)
+            t = Match(t, PointerType)->pointed;
 
-            gcc_type_t *array_gcc_t = bl_type_to_gcc(env, indexed_t);
-            if (indexing->index->tag == Range) {
-                auto range = Match(indexing->index, Range);
-                if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
-                    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
-                    gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
-#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
-                    gcc_func_t *func = gcc_block_func(*block);
-                    gcc_rvalue_t *old_items = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 0));
-                    gcc_rvalue_t *offset;
-                    if (range->first && range->first->tag != Ellipsis)
-                        offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
-                    else
-                        offset = gcc_zero(env->ctx, i32_t);
-                    gcc_rvalue_t *items = gcc_lvalue_address(gcc_array_access(env->ctx, loc, old_items, offset), loc);
-                    gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, fresh("slice"));
-                    // assign slice.items and slice.stride
-                    gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 0)), items);
-                    gcc_rvalue_t *old_stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
-                    gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 2)),
-                               old_stride);
+        if (t->tag == ArrayType) {
+            return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
+        } else if (t->tag == TableType) {
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_type_t *gcc_value_t = bl_type_to_gcc(env, Match(t, TableType)->key_type);
+            gcc_lvalue_t *value_var = gcc_local(func, loc, gcc_value_t, fresh("value"));
+            gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
+                        *if_nonnil = gcc_new_block(func, fresh("if_nonnil")),
+                        *done = gcc_new_block(func, fresh("if_nonnil"));
+            gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
+                               if_nil, if_nonnil);
+            *block = if_nil;
 
-                    // len = MIN(array_len, range.last)-first
-                    gcc_rvalue_t *array_len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
-                    if (range->last && range->last->tag != Ellipsis) {
-                        gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
-                                    *range_shorter = gcc_new_block(func, "range_shorter"),
-                                    *len_assigned = gcc_new_block(func, "len_assigned");
-                        gcc_rvalue_t *range_len = gcc_cast(env->ctx, loc, compile_expr(env, block, range->last), i32_t);
-
-                        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, array_len, range_len), array_shorter, range_shorter);
-                        
-                        gcc_assign(array_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
-                                   SUB(array_len, offset));
-                        gcc_jump(array_shorter, loc, len_assigned);
-
-                        gcc_assign(range_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
-                                   SUB(range_len, offset));
-                        gcc_jump(range_shorter, loc, len_assigned);
-
-                        *block = len_assigned;
-                    } else {
-                        gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
-                                   SUB(array_len, offset));
-                    }
-
-                    return gcc_rval(slice);
-#undef SUB
-                }
+            if (env->loop_label && !indexing->unchecked) {
+                gcc_block_t *skip_dest = env->loop_label->skip_label;
+                insert_defers(env, block, env->loop_label->deferred);
+                gcc_jump(*block, loc, skip_dest);
+            } else {
+                // ast_t *str_ast = WrapAST(indexing->index, StringJoin, .children=LIST(ast_t*, WrapAST(indexing->index, Interp, .value=indexing->index)));
+                // insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s", NULL, compile_expr(env, block, str_ast));
+                insert_failure(env, block, ast->span, "Error: this table does not have the given key");
+                gcc_jump(*block, loc, done);
             }
 
-            // If we're not in the optimized case, fall back to the C function:
-            gcc_rvalue_t *index = compile_expr(env, block, indexing->index);
-            gcc_type_t *str_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-            gcc_func_t *slice_fn = hashmap_gets(env->global_funcs, "range_slice");
-            return gcc_bitcast(
-                env->ctx, loc,
-                gcc_callx(
-                    env->ctx, loc, slice_fn,
-                    gcc_bitcast(env->ctx, loc, obj, str_gcc_t),
-                    index,
-                    gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(indexed_t, ArrayType)->item_type))),
-                array_gcc_t);
+            *block = if_nonnil;
+            gcc_assign(*block, loc, value_var, gcc_rval(gcc_rvalue_dereference(val_opt, loc)));
+            gcc_jump(*block, loc, done);
+
+            *block = done;
+            return gcc_rval(value_var);
         } else {
-            compile_err(env, indexing->index, "I only support indexing arrays by integers, not %s", type_to_string(index_t));
+            compile_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
         }
     }
     case TypeOf: {
@@ -1294,8 +1297,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (lhs_t != rhs_t)
             compile_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
-        if (is_ordered && !is_comparable(lhs_t))
-            compile_err(env, ast, "I don't have a good way to do ordered comparisons when pointers are involved (this has type %s), because this could be a recursive structure",
+        if (is_ordered && !is_orderable(lhs_t))
+            compile_err(env, ast, "I can't do ordered comparisons between values with type %s",
                   type_to_string(lhs_t));
 
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)

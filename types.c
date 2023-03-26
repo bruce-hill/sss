@@ -12,12 +12,15 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         case BoolType: return "Bool";
         case IntType: {
             auto int_ = Match(t, IntType);
-            if (int_->bits == 64)
-                return int_->units ? intern_strf("Int<%s>", int_->units) : "Int";
-            else
-                return int_->units ? intern_strf("Int%d<%s>", int_->bits, int_->units) : intern_strf("Int%d", int_->bits);
+            CORD name = int_->is_unsigned ? "UInt" : "Int";
+            if (int_->bits != 64)
+                CORD_sprintf(&name, "%r%d", name, int_->bits);
+            if (int_->units)
+                CORD_sprintf(&name, "%r<%s>", name, int_->units);
+            return name;
         }
         case CharType: return "Char";
+        case FileType: return "File";
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
@@ -202,7 +205,7 @@ istr_t type_units(bl_type_t *t)
 bl_type_t *with_units(bl_type_t *t, istr_t units)
 {
     switch (t->tag) {
-    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits);
+    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits, .is_unsigned=Match(t, IntType)->is_unsigned);
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
@@ -255,20 +258,20 @@ int numtype_priority(bl_type_t *t)
     }
 }
 
-bool is_comparable(bl_type_t *t)
+bool is_orderable(bl_type_t *t)
 {
     switch (t->tag) {
-    case ArrayType: return is_comparable(Match(t, ArrayType)->item_type);
-    case PointerType: case FunctionType: return false;
+    case ArrayType: return is_orderable(Match(t, ArrayType)->item_type);
+    case PointerType: case FunctionType: case FileType: case TableType: return false;
     case StructType: case UnionType: {
         auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {
-            if (!is_comparable(LIST_ITEM(subtypes, i)))
+            if (!is_orderable(LIST_ITEM(subtypes, i)))
                 return false;
         }
         return true;
     }
-    case TaggedUnionType: return is_comparable(Match(t, TaggedUnionType)->data);
+    case TaggedUnionType: return is_orderable(Match(t, TaggedUnionType)->data);
     default: return true;
     }
 }
@@ -361,6 +364,13 @@ bool can_leave_uninitialized(bl_type_t *t)
     }
     default: return false;
     }
+}
+
+bl_type_t *table_entry_type(bl_type_t *table_t)
+{
+    return Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
+                                  Match(table_t, TableType)->value_type));
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

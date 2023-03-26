@@ -50,10 +50,14 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
 gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val);
 // Get a function to convert an object of a given type to a string
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t);
+// Get a hash function for a type
+gcc_func_t *get_hash_func(env_t *env, bl_type_t *t);
 // Compare two values (returns [-1,0,1])
 gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b);
 // Get a function to compare two values of a type
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
+// Get a function to compare two pointers to values of a type
+gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t);
 // Coerce two numbers into the larger representation
 void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
 // A ternary expression (a ? b : c)
@@ -64,6 +68,9 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
 bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed);
 // Compile all the deferred statements up to a given point
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
+// Ensure array is flat (stride == 1) for easy comparisons/hashes
+void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array);
+void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *user_fmt, ...);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
@@ -95,8 +102,20 @@ void math_update_rec(
     gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs);
 
 // ============================== arrays.c ==============================
+// Copy on write behavior:
+typedef enum {ACCESS_READ, ACCESS_WRITE} access_type_e;
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access);
+gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, access_type_e access);
+gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
+void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
+
+// ============================== tables.c ==============================
+gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key);
+gcc_lvalue_t *table_set_loc(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val);
+gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast);
+void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
