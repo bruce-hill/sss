@@ -270,7 +270,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto do_ = Match(ast, Do);
         gcc_func_t *func = gcc_block_func(*block);
         bl_type_t *t = get_type(env, ast);
-        gcc_lvalue_t *result = t->tag != VoidType ? gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("do_result")) : NULL;
+        gcc_lvalue_t *result = (t->tag != VoidType && t->tag != AbortType)? gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("do_result")) : NULL;
 
         env_t *do_env = fresh_scope(env);
         gcc_block_t *do_else = gcc_new_block(func, fresh("do_else")),

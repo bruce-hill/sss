@@ -320,7 +320,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     default: {
-        errx(1, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
+        compile_err(env, NULL, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
     }
     }
 
