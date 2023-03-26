@@ -482,6 +482,16 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
+        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
+        // Early out if the type is knowable without any context from the block:
+        switch (last->tag) {
+        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+        case Assign: case Declare: case FunctionDef: case StructDef:
+            return Type(VoidType);
+        default: break;
+        }
+        // The compiler hasn't implemented full typechecking for blocks that define new
+        // types, though it does support declaring new variables:
         env = fresh_scope(env);
         for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
             ast_t *stmt = LIST_ITEM(block->statements, i);
@@ -506,7 +516,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 break;
             }
         }
-        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
         return get_type(env, last);
     }
     case Do: {
