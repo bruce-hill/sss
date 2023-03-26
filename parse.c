@@ -39,8 +39,8 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","using","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","extend","export","enum","else","do","deftype",
-    "defer","def","bitcast","between","as","and", NULL,
+    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","extend","export","enum","else","do","del",
+    "deftype", "defer","def","bitcast","between","as","and", NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -1751,21 +1751,23 @@ PARSER(parse_assignment) {
     if (match(&pos, "=")) return NULL; // == comparison
 
     NEW_LIST(ast_t*, values);
-    if (LIST_LEN(targets) == 1) {
-        ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
+    for (;;) {
+        ast_t *rhs = optional_ast(ctx, &pos, parse_extended_expr);
+        if (!rhs) break;
         APPEND(values, rhs);
-    } else {
-        for (;;) {
-            ast_t *rhs = optional_ast(ctx, &pos, parse_extended_expr);
-            if (!rhs) break;
-            APPEND(values, rhs);
-            spaces(&pos);
-            if (!match(&pos, ",")) break;
-            whitespace(&pos);
-        }
+        spaces(&pos);
+        if (!match(&pos, ",")) break;
+        whitespace(&pos);
     }
 
     return NewAST(ctx->file, start, pos, Assign, .targets=targets, .values=values);
+}
+
+PARSER(parse_deletion) {
+    const char *start = pos;
+    if (!match_word(&pos, "del")) return NULL;
+    ast_t *val = expect_ast(ctx, start, &pos, parse_term, "I expected a value after this 'del'");
+    return NewAST(ctx->file, start, pos, Delete, .value=val);
 }
 
 PARSER(parse_statement) {
@@ -1779,6 +1781,7 @@ PARSER(parse_statement) {
         return stmt;
 
     if (!(false 
+        || (stmt=parse_deletion(ctx, pos))
         || (stmt=parse_update(ctx, pos))
         || (stmt=parse_assignment(ctx, pos))
     ))

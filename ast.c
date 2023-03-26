@@ -159,6 +159,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Use, F(path))
         T(Export, F(vars))
         T(Ellipsis)
+        T(Delete, F(value))
 #undef BINOP
 #undef UNOP
 #undef F

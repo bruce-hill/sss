@@ -47,6 +47,30 @@ gcc_lvalue_t *table_set_loc(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_r
     return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(entry_t)), NULL, value_field);
 }
 
+void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
+{
+    gcc_type_t *entry_t = bl_type_to_gcc(env, table_entry_type(t));
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, fresh("entry"));
+
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, Match(t, TableType)->key_type), fresh("key"));
+    gcc_assign(*block, NULL, key_lval, key_val);
+    flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
+    gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
+
+    gcc_func_t *hashmap_remove_fn = hashmap_gets(env->global_funcs, "bl_hashmap_remove");
+    gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
+    gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(t, TableType)->key_type);
+    gcc_rvalue_t *call = gcc_callx(
+        env->ctx, NULL, hashmap_remove_fn,
+        gcc_cast(env->ctx, NULL, table, gcc_type(env->ctx, VOID_PTR)),
+        gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
+        gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
+        gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
+        gcc_lvalue_address(entry_lval, NULL));
+    gcc_eval(*block, NULL, call);
+}
+
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)
 {
     bl_type_t *entry_t = get_type(env, entry); // entry type

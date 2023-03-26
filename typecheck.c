@@ -494,7 +494,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-        case Assign: case Declare: case FunctionDef: case StructDef:
+        case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
             return Type(VoidType);
         default: break;
         }
@@ -544,7 +544,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Using: {
         return get_type(env, Match(ast, Using)->body);
     }
-    case Declare: case Extern: case Assign: case DocTest: case Use: case Export: {
+    case Declare: case Extern: case Assign: case Delete: case DocTest: case Use: case Export: {
         return Type(VoidType);
     }
     case Return: case Fail: case Stop: case Skip: {
@@ -887,7 +887,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
-    case Assign: case Declare: case FunctionDef: case StructDef:
+    case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
         return true;
     default: break;
     }

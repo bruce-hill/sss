@@ -234,6 +234,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         List(ast_t*) targets = assignment->targets;
         List(ast_t*) values = assignment->values;
         int64_t len = length(targets);
+        int64_t num_values = length(values);
+        if (num_values != len)
+            compile_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
+
         NEW_LIST(gcc_lvalue_t*, lvals);
         foreach (targets, lhs, _) {
             append(lvals, get_lvalue(env, block, *lhs, false));
@@ -241,9 +245,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *func = gcc_block_func(*block);
         NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
+            bl_type_t *t_lhs = get_type(env, ith(targets, i));
             ast_t *rhs = ith(values, i);
-            bl_type_t *t_lhs = get_type(env, ith(targets, i)),
-                      *t_rhs = get_type(env, rhs);
+            bl_type_t *t_rhs = get_type(env, rhs);
             // TODO: maybe allow generators to assign the *last* value, if any
             if (t_rhs->tag == GeneratorType)
                 compile_err(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
@@ -265,6 +269,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (int64_t i = 0; i < len; i++)
             gcc_assign(*block, ast_loc(env, ast), ith(lvals, i), ith(rvals, i));
         return ith(rvals, length(rvals)-1);
+    }
+    case Delete: {
+        ast_t *to_delete = Match(ast, Delete)->value;
+        if (to_delete->tag != Index)
+            compile_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
+        auto index = Match(to_delete, Index);
+        bl_type_t *t = get_type(env, index->indexed);
+        if (t->tag != PointerType)
+            compile_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+        if (Match(t, PointerType)->is_optional)
+            compile_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
+        bl_type_t *table_t = Match(t, PointerType)->pointed;
+        if (table_t->tag != TableType)
+            compile_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+
+        bl_type_t *key_t = get_type(env, index->index);
+        if (!type_is_a(key_t, Match(table_t, TableType)->key_type))
+            compile_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
+                        type_to_string(key_t), type_to_string(Match(table_t, TableType)->key_type));
+
+        table_remove(env, block, table_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
+        return NULL;
     }
     case Do: {
         auto do_ = Match(ast, Do);
