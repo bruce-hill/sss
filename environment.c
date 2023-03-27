@@ -118,6 +118,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void, "bl_hashmap_remove", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
     load_global_func(env, t_u32, "bl_hashmap_hash", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "entry_hash"), PARAM(t_size, "entry_size"));
+    load_global_func(env, t_u32, "bl_hashmap_len", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_int, "bl_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "entry_compare"), PARAM(t_size, "entry_size"));
 #undef PARAM

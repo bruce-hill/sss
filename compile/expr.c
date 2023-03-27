@@ -157,6 +157,68 @@ static void export(env_t *env, istr_t name, binding_t *b)
     }
 }
 
+static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *obj)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    switch (t->tag) {
+    case ArrayType: {
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1)), gcc_type(env->ctx, INT64));
+    }
+    case TableType: {
+        gcc_func_t *hashmap_len_fn = hashmap_gets(env->global_funcs, "bl_hashmap_len");
+        gcc_lvalue_t *table_var = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("table"));
+        gcc_assign(*block, NULL, table_var, obj);
+        return gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, hashmap_len_fn, gcc_lvalue_address(table_var, NULL)), gcc_type(env->ctx, INT64));
+    }
+    case PointerType: {
+        auto ptr = Match(t, PointerType);
+        if (ptr->is_optional) {
+            gcc_lvalue_t *len_var = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("len"));
+            gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
+                        *if_nonnil = gcc_new_block(func, fresh("if_nonnil")),
+                        *done = gcc_new_block(func, fresh("if_nonnil"));
+            gcc_jump_condition(*block, NULL,
+                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, bl_type_to_gcc(env, t))),
+                               if_nil, if_nonnil);
+            *block = if_nil;
+            gcc_assign(*block, NULL, len_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
+            gcc_jump(*block, NULL, done);
+
+            *block = if_nonnil;
+            gcc_assign(*block, NULL, len_var, compile_len(env, block, ptr->pointed, gcc_rval(gcc_rvalue_dereference(obj, NULL))));
+            gcc_jump(*block, NULL, done);
+
+            *block = done;
+            return gcc_rval(len_var);
+        }
+
+        if (ptr->pointed == Type(CharType)) {
+            // String length
+            gcc_func_t *len_func = hashmap_gets(env->global_funcs, "strlen");
+            gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
+            return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
+        } else if (ptr->pointed->tag == TableType) {
+            gcc_func_t *hashmap_len_fn = hashmap_gets(env->global_funcs, "bl_hashmap_len");
+            return gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, hashmap_len_fn, obj), gcc_type(env->ctx, INT64));
+        } else {
+            return compile_len(env, block, ptr->pointed, gcc_rval(gcc_rvalue_dereference(obj, NULL)));
+        }
+    }
+    case TypeType: {
+        size_t len = strlen(type_to_string(Match(t, TypeType)->type));
+        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), len);
+    }
+    case RangeType: {
+        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        return range_len(env, gcc_t, obj);
+    }
+    default: break;
+    }
+    return NULL;
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -1008,36 +1070,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *value = Match(ast, Len)->value;
         bl_type_t *t = get_type(env, value);
         gcc_rvalue_t *obj = compile_expr(env, block, value);
-        switch (t->tag) {
-        case ArrayType: {
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-            return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 1)), gcc_type(env->ctx, INT64));
-        }
-        case PointerType: {
-            auto ptr = Match(t, PointerType);
-            if (ptr->pointed == Type(CharType)) {
-                // String length
-                gcc_func_t *len_func = hashmap_gets(env->global_funcs, "strlen");
-                gcc_rvalue_t *len = gcc_callx(env->ctx, ast_loc(env, ast), len_func, obj);
-                return gcc_cast(env->ctx, ast_loc(env, ast), len, gcc_type(env->ctx, INT64));
-            } else {
-                goto unknown_len;
-            }
-        }
-        case TypeType: {
-            size_t len = strlen(type_to_string(Match(t, TypeType)->type));
-            return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), len);
-        }
-        case RangeType: {
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            return range_len(env, gcc_t, obj);
-        }
-        default: {
-          unknown_len:
+        gcc_rvalue_t *len = compile_len(env, block, t, obj);
+        if (!len)
             compile_err(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
-        }
-        }
+        return len;
     }
     case FieldAccess: {
         (void)get_type(env, ast); // typecheck
