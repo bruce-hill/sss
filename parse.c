@@ -706,9 +706,23 @@ PARSER(parse_array) {
 
     for (;;) {
         whitespace(&pos);
+        const char *item_start = pos;
+        if (match(&pos, "...")) {
+            ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
+            if (item) {
+                ast_t *loop = NewAST(ctx->file, item_start, item->span.end, For,
+                                     .iter=item,
+                                     .value=WrapAST(item, Var, .name=intern_str("x")),
+                                     .body=WrapAST(item, Var, .name=intern_str("x")));
+                APPEND(items, loop);
+                goto added_item;
+            }
+            pos = item_start;
+        }
         ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
         if (!item) break;
         APPEND(items, item);
+      added_item:
         whitespace(&pos);
         if (!match(&pos, ",")) break;
     }
