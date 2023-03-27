@@ -152,7 +152,7 @@ void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     return NULL;
 }
 
-static void *bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
+static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
 {
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
@@ -161,15 +161,9 @@ static void *bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn
     if (bucket->index1 == 0) {
         hdebug("Got an empty space\n");
         // Empty space:
-        if (index1 == 0) {
-            hdebug("Appended to list of keys/values\n");
-            index1 = ++h->count;
-            h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
-            memcpy(h->entries + entry_size_padded*(index1-1), entry, entry_size_padded);
-        }
         bucket->index1 = index1;
         hshow(h);
-        return h->entries + entry_size_padded*(index1-1);
+        return;
     }
 
     while (h->buckets[h->lastfree_index1-1].index1)
@@ -192,12 +186,8 @@ static void *bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
         for (;;) {
-            if (key_cmp(h->entries + (bucket->index1-1)*entry_size_padded, entry) == 0) {
-                // Found exact key, so clobber old value:
-                hdebug("Clobbering key\n");
-                memcpy(h->entries + entry_size_padded*(bucket->index1-1), entry, entry_size_padded);
-                return h->entries + entry_size_padded*(bucket->index1-1);
-            } else if (bucket->next1 == 0) {
+            assert(key_cmp(h->entries + (bucket->index1-1)*entry_size_padded, entry) != 0);
+            if (bucket->next1 == 0) {
                 // End of chain
                 break;
             } else {
@@ -210,17 +200,9 @@ static void *bl_hashmap_set_internal(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn
         bucket = &h->buckets[bucket->next1-1];
     }
 
-    if (index1 == 0) {
-        hdebug("Appending key/value\n");
-        index1 = ++h->count;
-        h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
-        memcpy(h->entries + entry_size_padded*(index1-1), entry, entry_size_padded);
-    }
-
     bucket->next1 = 0;
     bucket->index1 = index1;
     hshow(h);
-    return h->entries + entry_size_padded*(index1-1);
 }
 
 static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
@@ -235,27 +217,44 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
     // Rehash:
     for (uint32_t i = 1; i <= old_count; i++) {
         hdebug("Rehashing %u\n", i);
-        bl_hashmap_set_internal(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
+        bl_hashmap_set_bucket(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
     }
     hshow(h);
     hdebug("Finished resizing\n");
 }
 
-void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
+void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
 {
     if (!h || !entry) return NULL;
     hshow(h);
 
-    if (h->capacity == 0) {
+    if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
-    } else if (h->count >= h->capacity) {
+
+    void *entry_home = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, entry);
+    if (entry_home)
+        return entry_home;
+
+    if (h->count >= h->capacity) {
         uint32_t newsize = h->capacity;
         if (h->count + 1 > newsize) newsize *= 2;
         else if (h->count + 1 <= newsize/2) newsize /= 2;
         hashmap_resize(h, key_hash, key_cmp, newsize, entry_size_padded);
     }
 
-    return bl_hashmap_set_internal(h, key_hash, key_cmp, entry, entry_size_padded, 0);
+    int32_t index1 = ++h->count;
+    h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
+    entry_home = h->entries + (index1-1)*entry_size_padded;
+    bl_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
+
+    return entry_home;
+}
+
+void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
+{
+    void *dest = bl_hashmap_lvalue(h, key_hash, key_cmp, entry_size_padded, entry);
+    if (dest)
+        memcpy(dest, entry, entry_size_padded);
 }
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)

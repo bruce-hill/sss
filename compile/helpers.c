@@ -1216,8 +1216,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         if (pointed_type->tag == ArrayType) {
             return array_index(env, block, indexing->indexed, indexing->index, indexing->type, ACCESS_WRITE);
         } else if (pointed_type->tag == TableType) {
-            return table_set_loc(env, block, pointed_type, compile_expr(env, block, indexing->indexed),
-                                 compile_expr(env, block, indexing->index));
+            return table_lvalue(env, block, pointed_type, compile_expr(env, block, indexing->indexed),
+                                compile_expr(env, block, indexing->index));
         } else {
             compile_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
         }

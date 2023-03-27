@@ -8,6 +8,10 @@ t := @{["abc"]=1, ["def"]=2}
 >>> t["cba"[..to.. by -1]]
 === 1
 
+>>> t["abc"] += 10
+>>> t
+=== @{["abc"]=11, ["def"]=2}
+
 do
     >>> t["missing"]
     fail "Missing key lookup failed to skip ahead"
@@ -16,7 +20,7 @@ else
 
 >>> t["new_key"] = 3
 >>> t
-=== @{["abc"]=1, ["def"]=2, ["new_key"]=3}
+=== @{["abc"]=11, ["def"]=2, ["new_key"]=3}
 
 >>> del t["abc"]
 >>> t
