@@ -450,7 +450,7 @@ PARSER(parse_table_type) {
     ast_t *key_type = optional_ast(ctx, &pos, _parse_type);
     if (!key_type) return NULL;
     whitespace(&pos);
-    if (!match(&pos, "=")) return NULL;
+    if (!match(&pos, "=>")) return NULL;
     ast_t *value_type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the rest of this table type");
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table type");
@@ -747,20 +747,18 @@ PARSER(parse_table) {
         whitespace(&pos);
         key_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a key type for this table");
         whitespace(&pos);
-        if (!match(&pos, "="))
-            parser_err(ctx, pos, pos, "I expected an '=' for this table type");
+        if (!match(&pos, "=>"))
+            parser_err(ctx, pos, pos, "I expected an '=>' for this table type");
         value_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a value type for this table");
     }
 
     for (;;) {
         whitespace(&pos);
         const char *entry_start = pos;
-        if (!match(&pos, "[")) break;
         ast_t *key = optional_ast(ctx, &pos, parse_extended_expr);
         if (!key) break;
-        expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this table key");
         whitespace(&pos);
-        if (!match(&pos, "=")) return NULL;
+        if (!match(&pos, "=>")) return NULL;
         ast_t *value = expect_ast(ctx, pos-1, &pos, parse_expr, "I couldn't parse the value for this table entry");
 
         ast_t *entry = NewAST(ctx->file, entry_start, pos, TableEntry, .key=key, .value=value);

@@ -47,7 +47,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             CORD c = "{";
             auto table = Match(t, TableType);
             c = CORD_cat(c, type_to_cord(table->key_type, false));
-            c = CORD_cat(c, "=");
+            c = CORD_cat(c, "=>");
             c = CORD_cat(c, type_to_cord(table->value_type, false));
             c = CORD_cat(c, "}");
             return c;

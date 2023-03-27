@@ -259,14 +259,13 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // add_next_entry:
     // entry = *entry_ptr
     gcc_rvalue_t *entry = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
-    // print("[") print(key) print("]=") print(value)
+    // print(key) print("=>") print(value)
     bl_type_t *key_type = Match(t, TableType)->key_type;
     gcc_func_t *key_print = get_print_func(env, key_type);
-    ADD_WRITE(add_next_entry, WRITE_LITERAL("["));
     gcc_struct_t *entry_struct = gcc_type_if_struct(bl_type_to_gcc(env, entry_t));
     gcc_rvalue_t *key = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 0));
     ADD_WRITE(add_next_entry, gcc_callx(env->ctx, NULL, key_print, quote_string(env, key_type, key), file, rec));
-    ADD_WRITE(add_next_entry, WRITE_LITERAL("]="));
+    ADD_WRITE(add_next_entry, WRITE_LITERAL("=>"));
     gcc_rvalue_t *value = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 1));
     bl_type_t *value_type = Match(t, TableType)->value_type;
     gcc_func_t *value_print = get_print_func(env, value_type);
