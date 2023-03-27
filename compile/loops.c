@@ -63,9 +63,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             *block = continued;
         }
 
-        // Arrays get flagged for COW when iterating
+        // Arrays and Tables get flagged for copy-on-write when iterating
         if (ptr->pointed->tag == ArrayType)
             mark_array_cow(env, block, iter_rval);
+        else if (ptr->pointed->tag == TableType)
+            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), iter_rval));
 
         iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
         iter_t = Match(iter_t, PointerType)->pointed;

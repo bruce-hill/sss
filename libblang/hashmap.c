@@ -41,6 +41,18 @@ uint32_t bl_hashmap_len(bl_hashmap_t *h)
     return h->count;
 }
 
+static void copy_on_write(bl_hashmap_t *h, size_t entry_size_padded)
+{
+    h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
+    h->buckets = memcpy(GC_MALLOC(sizeof(bl_hash_bucket_t)*h->capacity), h->entries, sizeof(bl_hash_bucket_t)*h->capacity);
+    h->copy_on_write = false;
+}
+
+void bl_hashmap_mark_cow(bl_hashmap_t *h)
+{
+    h->copy_on_write = true;
+}
+
 void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
     if (!h || !key || h->capacity == 0) return NULL;
@@ -134,6 +146,9 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
     if (!h || !entry) return NULL;
     hshow(h);
 
+    if (h->copy_on_write)
+        copy_on_write(h, entry_size_padded);
+
     if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
@@ -166,6 +181,9 @@ void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
     if (!h || !key || h->capacity == 0) return;
+
+    if (h->copy_on_write)
+        copy_on_write(h, entry_size_padded);
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
     bl_hash_bucket_t *bucket, *prev = NULL;

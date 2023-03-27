@@ -1057,10 +1057,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(tmp);
     }
     case Dereference: {
-        (void)get_type(env, ast); // Check this is a pointer type
+        bl_type_t *t = get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;
-        gcc_rvalue_t *rval = compile_expr(env, block, value);
-        return gcc_rval(gcc_rvalue_dereference(rval, ast_loc(env, ast)));
+        gcc_rvalue_t *obj = compile_expr(env, block, value);
+        if (t->tag == ArrayType)
+            mark_array_cow(env, block, obj);
+        else if (t->tag == TableType)
+            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), obj));
+        return gcc_rval(gcc_rvalue_dereference(obj, loc));
     }
     case Maybe: {
         ast_t *value = Match(ast, Maybe)->value;
@@ -1088,6 +1092,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compile_err(env, ast, "This field access is unsafe because the value may be nil");
             if (ptr->pointed->tag == ArrayType)
                 mark_array_cow(env, block, obj);
+            else if (ptr->pointed->tag == TableType)
+                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), obj));
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
