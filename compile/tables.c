@@ -45,9 +45,12 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
         gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
         gcc_lvalue_address(entry_lval, NULL));
 
-    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(key_gcc_t)), NULL), key_val);
+    gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(entry_t), fresh("dest"));
+    gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(entry_t)));
+
+    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_rval(dest), gcc_get_ptr_type(key_gcc_t)), NULL), key_val);
     gcc_field_t *value_field = gcc_get_field(gcc_type_if_struct(entry_t), 1);
-    return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(entry_t)), NULL, value_field);
+    return gcc_rvalue_dereference_field(gcc_rval(dest), NULL, value_field);
 }
 
 void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
