@@ -92,6 +92,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
         if (for_->value && for_->value->tag == Dereference) {
+            if (!original_pointer)
+                compile_err(env, for_->value, "You can't iterate by internal pointers to an array value");
             item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
             gcc_item_t = gcc_get_ptr_type(gcc_item_t);
         }
@@ -136,15 +138,14 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case TableType: {
+        if (for_->value && for_->value->tag == Dereference)
+            compile_err(env, for_->value, "Iterating references to table entries is not supported");
+
         // entry_ptr = table->entries
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = table_entry_type(iter_t);
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("entry_ptr"));
-        if (for_->value && for_->value->tag == Dereference) {
-            item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
-            gcc_item_t = gcc_get_ptr_type(gcc_item_t);
-        }
         gcc_assign(*block, NULL, entry_ptr,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 0)));
 
