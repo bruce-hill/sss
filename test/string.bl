@@ -9,7 +9,7 @@ l2 := [[Vec{2.,3.}]]
 
 say "Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!"
 say "\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done"
-say "Fn: $( (x:Int,y:Int)=> x + y )"
+say "Fn: $( (x:Int,y:Int)-> x + y )"
 
 toslice := "Hello world"
 char := toslice[1]

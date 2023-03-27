@@ -322,7 +322,7 @@ deeply unpleasant to work with, so I don't want to make a language like that.
 ## Non-feature 6: Full Type Inference
 
 In Blang, there are two little morsels of type inference: variable declaration
-(`x := 5`) and lambda return values (`fn := (x:Int)=> x+1`). Everything else in
+(`x := 5`) and lambda return values (`fn := (x:Int)-> x+1`). Everything else in
 Blang is either annotated with a type (as in the case of function arguments and
 return types) or a literal value whose type is trivial to deduce (e.g. `5` is
 an `Int` and `["hi"]` is a `[String]`). A small amount of type inference

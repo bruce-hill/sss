@@ -1,4 +1,4 @@
-extern sqrt:(Num)=>Num
+extern sqrt:(Num)->Num
 // Demonstrate calling external C func:
 x := sqrt(2.0)
 say "Result: $x"

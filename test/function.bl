@@ -3,6 +3,6 @@ def add_one(x:Int):Int
 
 say "5+1 = $(add_one 5)"
 
-add_two := (x:Int)=> x + 2
+add_two := (x:Int)-> x + 2
 
 say "5+2 = $(add_two 5)"

@@ -546,7 +546,7 @@ PARSER(parse_func_type) {
     }
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function type");
     spaces(&pos);
-    if (!match(&pos, "=>")) return NULL;
+    if (!match(&pos, "->")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, _parse_type);
     return NewAST(ctx->file, start, pos, TypeFunction, .arg_types=arg_types, .ret_type=ret);
 }
@@ -1391,7 +1391,7 @@ PARSER(parse_lambda) {
     NEW_LIST(istr_t, arg_names);
     NEW_LIST(ast_t*, arg_types);
     if (!match(&pos, "(")) {
-        if (match(&pos, "=>")) goto thunk;
+        if (match(&pos, "->")) goto thunk;
         return NULL;
     }
     for (spaces(&pos); ; spaces(&pos)) {
@@ -1418,7 +1418,7 @@ PARSER(parse_lambda) {
         parser_err(ctx, start, pos, "This lambda doesn't have a closing ')'");
     }
     spaces(&pos);
-    if (!match(&pos, "=>"))
+    if (!match(&pos, "->"))
         return NULL;
 
   thunk:

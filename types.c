@@ -59,7 +59,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
                 if (i > 0) c = CORD_cat(c, ",");
                 c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), false));
             }
-            c = CORD_cat(c, ")=>");
+            c = CORD_cat(c, ")->");
             c = CORD_cat(c, type_to_cord(fn->ret, false));
             return c;
         }
