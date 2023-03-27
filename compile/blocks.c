@@ -23,17 +23,6 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *val = compile_expr(env, block, ast);
         if (val && *block)
             gcc_eval(*block, ast_loc(env, ast), val);
-    } else if (get_type(env, ast)->tag == BoolType && env->loop_label && env->loop_label->skip_label) {
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_block_t *skip = gcc_new_block(func, fresh("skip")),
-                    *pass = gcc_new_block(func, fresh("pass"));
-
-        gcc_rvalue_t *val = compile_expr(env, block, ast);
-        gcc_jump_condition(*block, NULL, val, pass, skip);
-        *block = skip;
-        insert_defers(env, block, env->loop_label->deferred);
-        gcc_jump(*block, NULL, env->loop_label->skip_label);
-        *block = pass;
     } else {
         bl_type_t *t = get_type(env, ast);
         bool was_generator = (t->tag == GeneratorType);
