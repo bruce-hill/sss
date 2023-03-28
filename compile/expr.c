@@ -1275,6 +1275,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
         }
     }
+    case In: {
+        auto in = Match(ast, In);
+        bl_type_t *member_t = get_type(env, in->member);
+        bl_type_t *container_t = get_type(env, in->container);
+
+        while (container_t->tag == PointerType)
+            container_t = Match(container_t, PointerType)->pointed;
+
+        if (container_t->tag == TableType) {
+            if (!type_is_a(member_t, Match(container_t, TableType)->key_type))
+                compile_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
+                            type_to_string(member_t), type_to_string(container_t));
+
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member);
+            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, member_t))));
+        } else {
+            compile_err(env, ast, "'in' membership testing is only supported for Tables, not %s", type_to_string(container_t));
+        }
+    }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
         gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");

@@ -33,13 +33,14 @@ static int op_tightness[NUM_AST_TAGS+1] = {
     [RANGE_STEP]=6,
     [Cast]=6,
     [Greater]=7, [GreaterEqual]=7, [Less]=7, [LessEqual]=7,
-    [Equal]=8, [NotEqual]=8,
-    [And]=9, [Or]=9, [Xor]=9,
+    [In]=8,
+    [Equal]=9, [NotEqual]=9,
+    [And]=10, [Or]=10, [Xor]=10,
 };
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","using","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","if","global","for","fail","extern","extend","export","enum","else","do","del",
+    "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","export","enum","else","do","del",
     "deftype", "defer","def","bitcast","between","as","and", NULL,
 };
 
@@ -1669,6 +1670,8 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 tag = Range; break;
             } else if (match_word(&pos, "by")) {
                 tag = RANGE_STEP; break;
+            } else if (match_word(&pos, "in")) {
+                tag = In; break;
             } else {
                 goto no_more_binops;
             }

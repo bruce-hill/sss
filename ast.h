@@ -58,9 +58,10 @@ typedef enum {
     Export,
     Ellipsis,
     Delete,
+    In,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (Delete + 1)
+#define NUM_AST_TAGS (In + 1)
 
 typedef struct ast_s ast_t;
 
@@ -310,6 +311,9 @@ struct ast_s {
         struct {
             ast_t *value;
         } Delete;
+        struct {
+            ast_t *member, *container;
+        } In;
     } __data;
 };
 

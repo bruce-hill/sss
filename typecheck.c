@@ -637,7 +637,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
     }
-    case Less: case LessEqual: case Greater: case GreaterEqual: {
+    case Less: case LessEqual: case Greater: case GreaterEqual: case In: {
         return Type(BoolType);
     }
 

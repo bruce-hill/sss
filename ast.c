@@ -160,6 +160,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Export, F(vars))
         T(Ellipsis)
         T(Delete, F(value))
+        T(In, F(member), F(container))
 #undef BINOP
 #undef UNOP
 #undef F
