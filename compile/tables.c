@@ -166,8 +166,10 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
                   gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_null(env->ctx, entry_ptr_gcc_t), gcc_rval(entry_lval)),
                   missing_key, found_key);
 
-    gcc_assign(missing_key, loc, value_lval, gcc_null(env->ctx, value_ptr_t));
-    gcc_jump(missing_key, loc, done);
+    *block = missing_key;
+    gcc_field_t *default_field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, table_t)), TABLE_DEFAULT_FIELD);
+    gcc_assign(*block, loc, value_lval, gcc_rvalue_access_field(table, NULL, default_field));
+    gcc_jump(*block, loc, done);
 
     gcc_field_t *value_field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, entry_t)), 1);
     gcc_assign(found_key, loc, value_lval, gcc_lvalue_address(gcc_rvalue_dereference_field(gcc_rval(entry_lval), loc, value_field), loc));
@@ -216,6 +218,35 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, loc, table_done);
         *block = table_done;
     }
+
+    if (table->fallback) {
+        ast_t *fallback = table->fallback;
+        bl_type_t *fallback_t = get_type(env, fallback);
+        if (fallback_t->tag != PointerType) {
+            fallback = WrapAST(fallback, HeapAllocate, .value=fallback);
+            fallback_t = get_type(env, fallback);
+        }
+        if (Match(fallback_t, PointerType)->pointed != t)
+            compile_err(env, fallback, "This fallback has type %s, which doesn't match the table's type: %s",
+                        type_to_string(fallback_t), type_to_string(t));
+
+        gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
+        gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_FALLBACK_FIELD)),
+                   compile_expr(env, block, fallback));
+    }
+
+    if (table->default_value) {
+        bl_type_t *default_t = get_type(env, table->default_value);
+        bl_type_t *value_t = Match(t, TableType)->key_type;
+        if (default_t != value_t)
+            compile_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
+                        type_to_string(default_t), type_to_string(value_t));
+
+        gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
+        gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD)),
+                   compile_expr(env, block, WrapAST(table->default_value, HeapAllocate, .value=table->default_value)));
+    }
+
     return gcc_rval(table_var);
 }
 
@@ -237,9 +268,9 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // i = 0
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
     gcc_assign(*block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
-    gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-    gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 0));
-    gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 4));
+    gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
+    gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
+    gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD));
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));

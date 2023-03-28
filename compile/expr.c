@@ -167,10 +167,8 @@ static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, 
         return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1)), gcc_type(env->ctx, INT64));
     }
     case TableType: {
-        gcc_func_t *hashmap_len_fn = hashmap_gets(env->global_funcs, "bl_hashmap_len");
-        gcc_lvalue_t *table_var = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("table"));
-        gcc_assign(*block, NULL, table_var, obj);
-        return gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, hashmap_len_fn, gcc_lvalue_address(table_var, NULL)), gcc_type(env->ctx, INT64));
+        gcc_struct_t *table_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
+        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD)), gcc_type(env->ctx, INT64));
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
@@ -199,9 +197,6 @@ static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, 
             gcc_func_t *len_func = hashmap_gets(env->global_funcs, "strlen");
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
             return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
-        } else if (ptr->pointed->tag == TableType) {
-            gcc_func_t *hashmap_len_fn = hashmap_gets(env->global_funcs, "bl_hashmap_len");
-            return gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, hashmap_len_fn, obj), gcc_type(env->ctx, INT64));
         } else {
             return compile_len(env, block, ptr->pointed, gcc_rval(gcc_rvalue_dereference(obj, NULL)));
         }

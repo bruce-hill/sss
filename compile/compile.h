@@ -28,6 +28,15 @@
         (int)bl_get_line_number((ast)->span.file, (ast)->span.start),\
         (int)bl_get_line_column((ast)->span.file, (ast)->span.start)) : NULL)
 
+#define TABLE_ENTRIES_FIELD 0
+#define TABLE_BUCKETS_FIELD 1
+#define TABLE_FALLBACK_FIELD 2
+#define TABLE_DEFAULT_FIELD 3
+#define TABLE_CAPACITY_FIELD 4
+#define TABLE_COUNT_FIELD 5
+#define TABLE_LASTFREE_FIELD 6
+#define TABLE_COW_FIELD 7
+
 typedef struct {
     bl_type_t *key_type, *value_type;
     gcc_lvalue_t *key_lval, *value_lval;

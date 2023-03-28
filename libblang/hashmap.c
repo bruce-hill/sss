@@ -55,6 +55,7 @@ void bl_hashmap_mark_cow(bl_hashmap_t *h)
 
 void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
+  recurse:
     if (!h || !key || h->capacity == 0) return NULL;
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
@@ -66,6 +67,10 @@ void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
             return entry;
         if (h->buckets[i].next1 == 0)
             break;
+    }
+    if (h->fallback) {
+        h = h->fallback;
+        goto recurse;
     }
     return NULL;
 }
@@ -152,9 +157,14 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
     if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
+    bl_hashmap_t *fallback = h->fallback;
+    h->fallback = NULL;
+
     void *entry_home = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, entry);
-    if (entry_home)
+    if (entry_home) {
+        h->fallback = fallback;
         return entry_home;
+    }
 
     if (h->count >= h->capacity) {
         uint32_t newsize = h->capacity;
@@ -167,6 +177,13 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
     h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
     entry_home = h->entries + (index1-1)*entry_size_padded;
     bl_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
+
+    if (fallback) {
+        void *fallback_entry = bl_hashmap_get(fallback, key_hash, key_cmp, entry_size_padded, entry);
+        if (fallback_entry)
+            memcpy(entry_home, fallback_entry, entry_size_padded);
+        h->fallback = fallback;
+    }
 
     return entry_home;
 }

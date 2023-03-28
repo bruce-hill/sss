@@ -785,9 +785,36 @@ PARSER(parse_table) {
         return NULL;
 
     whitespace(&pos);
+
+    ast_t *fallback = NULL, *default_val = NULL;
+    if (match(&pos, ";")) {
+        for (;;) {
+            whitespace(&pos);
+            const char *attr_start = pos;
+            if (match(&pos, "fallback")) {
+                whitespace(&pos);
+                if (!match(&pos, "=")) parser_err(ctx, attr_start, pos, "I expected an '=' after 'fallback'");
+                if (fallback)
+                    parser_err(ctx, attr_start, pos, "This table already has a fallback");
+                fallback = expect_ast(ctx, attr_start, &pos, parse_expr, "I expected a fallback table");
+            } else if (match(&pos, "default")) {
+                whitespace(&pos);
+                if (!match(&pos, "=")) parser_err(ctx, attr_start, pos, "I expected an '=' after 'default'");
+                if (default_val)
+                    parser_err(ctx, attr_start, pos, "This table already has a default value");
+                default_val = expect_ast(ctx, attr_start, &pos, parse_expr, "I expected a default value for this table");
+            } else {
+                break;
+            }
+            whitespace(&pos);
+            if (!match(&pos, ",")) break;
+        }
+    }
+
+    whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table");
 
-    return NewAST(ctx->file, start, pos, Table, .key_type=key_type, .value_type=value_type, .entries=entries);
+    return NewAST(ctx->file, start, pos, Table, .key_type=key_type, .value_type=value_type, .entries=entries, .fallback=fallback, .default_value=default_val);
 }
 
 PARSER(parse_struct) {

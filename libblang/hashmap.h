@@ -15,6 +15,7 @@ typedef struct bl_hashmap_s {
     char *entries;
     bl_hash_bucket_t *buckets;
     struct bl_hashmap_s *fallback;
+    void *default_value;
     uint32_t capacity, count, lastfree_index1;
     bool copy_on_write;
 } bl_hashmap_t;

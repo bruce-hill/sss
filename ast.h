@@ -138,7 +138,7 @@ struct ast_s {
             List(ast_t*) items;
         } Array;
         struct {
-            ast_t *key_type, *value_type;
+            ast_t *key_type, *value_type, *fallback, *default_value;
             List(ast_t*) entries;
         } Table;
         struct {

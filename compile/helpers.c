@@ -233,13 +233,14 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, "Table");
         gcc_field_t *fields[] = {
-            /*0*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, entry_t)), "entries"),
-            /*1*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
-            /*2*/ gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
-            /*3*/ gcc_new_field(env->ctx, NULL, u32, "capacity"),
-            /*4*/ gcc_new_field(env->ctx, NULL, u32, "count"),
-            /*5*/ gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
-            /*6*/ gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
+            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, entry_t)), "entries"),
+            [TABLE_BUCKETS_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
+            [TABLE_FALLBACK_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
+            [TABLE_DEFAULT_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, table->value_type)), "default_value"),
+            [TABLE_CAPACITY_FIELD]=gcc_new_field(env->ctx, NULL, u32, "capacity"),
+            [TABLE_COUNT_FIELD]=gcc_new_field(env->ctx, NULL, u32, "count"),
+            [TABLE_LASTFREE_FIELD]=gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
+            [TABLE_COW_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
         };
         gcc_set_fields(gcc_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(gcc_struct);
