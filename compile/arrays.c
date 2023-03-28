@@ -156,7 +156,7 @@ void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr)
     gcc_assign(*block, NULL, capacity, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), -1));
 }
 
-static void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rvalue_t *arr)
+void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rvalue_t *arr)
 {
     // Copy on write
     gcc_func_t *func = gcc_block_func(*block);
