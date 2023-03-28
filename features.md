@@ -95,6 +95,66 @@ for num in nums
     s += str(num)
 ```
 
+Blang loops also support a `first` block, which only executes on the first
+iteration:
+
+```python
+best := 0
+for num in nums first
+    best = num
+between
+    if num > best
+        best = num
+```
+
+## Vectorized Math Operations
+
+Inspired by languages like like APL and Octave, Blang, supports automatically
+extending math operations to structs and arrays that hold numeric values. All
+operations are pairwise and do not require operator overloading.
+
+For example, adding two 2D vectors:
+
+```blang
+def Vec2{x,y:Num}
+
+v1 := Vec2{2, 3}
+v2 := Vec2{10, 20}
+>>> v1 + v2
+=== Vec2{12, 23}
+```
+
+Operations are also automatically defined for scalar operations on numeric containers:
+
+```blang
+v1 := Vec2{2, 3}
+>>> v1 * 10
+=== Vec2{20, 30}
+
+nums := [1, 2, 3, 4]
+>>> nums * 10
+=== [10, 20, 30, 40]
+```
+
+## Seamless Slicing of Arrays-of-Structs
+
+When dealing with arrays of structs, Blang supports easy (and constant-time)
+creation of slices that contain one member of a struct:
+
+```
+def Enemy{id:Int, name:String}
+
+enemies := @[
+  Enemy{123, "Evil Ed"},
+  Enemy{456, "Bad Bob"},
+]
+
+>>> enemies.id
+=== [123, 456]
+>>> enemies.name
+=== ["Evil Ed", "Bad Bob"]
+```
+
 ## Units of Measure
 
 Inspired by [Graydon Hoare's blogpost "What's
@@ -133,6 +193,16 @@ to irreducible base units (i.e. those not defined in relation to other units),
 and all math occurs as double precision floating point operations in base
 units. In other words, there is no run-time overhead when performing unitful
 calculations.
+
+Units of measure can also be applied to structs, such as vectors:
+
+```python
+def Vec2{x,y:Num}
+
+pos := Vec2{0,0}<m>
+vel := Vec2{5,3}<m/s>
+pos += 2<s>*vel
+```
 
 ## Minimally Intrusive Optional Types
 
