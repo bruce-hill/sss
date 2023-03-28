@@ -222,7 +222,9 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     if (table->fallback) {
         ast_t *fallback = table->fallback;
         bl_type_t *fallback_t = get_type(env, fallback);
-        if (fallback_t->tag != PointerType) {
+        if (fallback_t->tag == PointerType) {
+            fallback = WrapAST(fallback, HeapAllocate, .value=WrapAST(fallback, Dereference, .value=fallback));
+        } else {
             fallback = WrapAST(fallback, HeapAllocate, .value=fallback);
             fallback_t = get_type(env, fallback);
         }
