@@ -1290,6 +1290,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member);
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, member_t))));
+        } else if (container_t->tag == ArrayType) {
+            return array_contains(env, block, in->container, in->member);
         } else {
             compile_err(env, ast, "'in' membership testing is only supported for Tables, not %s", type_to_string(container_t));
         }

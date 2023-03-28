@@ -119,6 +119,7 @@ gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t);
+gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member);
 
 // ============================== tables.c ==============================
 gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key);

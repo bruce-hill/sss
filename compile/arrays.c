@@ -68,6 +68,81 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_assign(*block, NULL, item_home, item_val);
 }
 
+gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member)
+{
+    // TODO: support subsets like ("def" in "abcdefghi")
+    bl_type_t *t = get_type(env, array);
+
+    gcc_rvalue_t *array_val = compile_expr(env, block, array);
+    while (t->tag == PointerType) {
+        auto ptr = Match(t, PointerType);
+        if (ptr->is_optional)
+            compile_err(env, array, "This is an optional pointer, which can't be safely dereferenced.");
+        array_val = gcc_rval(gcc_rvalue_dereference(array_val, NULL));
+        t = ptr->pointed;
+    }
+
+    bl_type_t *item_type = get_type(env, member);
+    if (!type_is_a(item_type, Match(t, ArrayType)->item_type))
+        compile_err(env, member, "This value has type %s, but you're checking an array of type %s for membership",
+                    type_to_string(item_type), type_to_string(t));
+
+    gcc_loc_t *loc = ast_loc(env, member);
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *member_var = gcc_local(func, loc, bl_type_to_gcc(env, item_type), fresh("member"));
+    gcc_assign(*block, loc, member_var, compile_expr(env, block, member));
+    gcc_lvalue_t *contains_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), fresh("contains"));
+    gcc_assign(*block, loc, contains_var, gcc_rvalue_bool(env->ctx, 0));
+
+    // i = 1
+    gcc_lvalue_t *array_var = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("array"));
+    gcc_assign(*block, loc, array_var, array_val);
+    gcc_lvalue_t *i = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("i"));
+    gcc_assign(*block, loc, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+    gcc_rvalue_t *items = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 0));
+    gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 1));
+    gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, len, gcc_type(env->ctx, INT64));
+    gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 2));
+
+    gcc_block_t *next = gcc_new_block(func, fresh("next_item")),
+                *end = gcc_new_block(func, fresh("done"));
+
+    // item_ptr = array.items
+    gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_type);
+    gcc_lvalue_t *item_ptr = gcc_local(func, loc, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+    gcc_assign(*block, loc, item_ptr, items);
+
+    // if (i < len) goto next;
+    gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, gcc_rval(i), len64), next, end);
+
+    *block = next;
+    // item = *item_ptr
+    gcc_rvalue_t *item = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), loc));
+    // check
+    gcc_func_t *compare_func = get_compare_func(env, item_type);
+    gcc_assign(next, loc, contains_var,
+               gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rvalue_int(env->ctx, 0),
+                              gcc_callx(env->ctx, loc, compare_func, item, gcc_rval(member_var))));
+    
+    // i += 1
+    assert(i);
+    gcc_update(next, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+    // item_ptr = &item_ptr[stride]
+    gcc_assign(next, NULL, item_ptr,
+               gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
+    // if (i < len) goto add_comma;
+    gcc_jump_condition(next, NULL, 
+                       gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_OR, gcc_type(env->ctx, BOOL),
+                                     gcc_rval(contains_var),
+                                     gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, gcc_rval(i), len64)),
+                       end, next);
+
+    *block = end;
+    return gcc_rval(contains_var);
+}
+
 gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr)
 {
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
@@ -99,7 +174,6 @@ static void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rva
     gcc_jump(*block, NULL, done);
     *block = done;
 }
-
 
 gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, access_type_e access)
 {
@@ -329,7 +403,6 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-
     gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
 
 #define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
