@@ -1225,8 +1225,31 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             compile_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
         }
     }
+    case HeapAllocate: {
+        ast_t *value = Match(ast, HeapAllocate)->value;
+        if (value->tag == FieldAccess && get_type(env, Match(value, FieldAccess)->fielded)->tag == PointerType)
+            goto safe;
+        else if (value->tag == Index && get_type(env, Match(value, Index)->indexed)->tag == PointerType)
+            goto safe;
+        else
+            compile_err(env, ast, "I don't know how to assign to this value");
+      safe:;
+        gcc_rvalue_t *rval = compile_expr(env, block, value);
+        bl_type_t *t = get_type(env, value);
+        gcc_func_t *func = gcc_block_func(*block);
+        ssize_t gcc_size = gcc_sizeof(env, t);
+        if (t->tag == ArrayType)
+            gcc_size += 4; // Hidden "capacity" field
+        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
+        gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
+        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), gcc_t));
+        gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), rval);
+        return tmp;
+    }
     default:
-        compile_err(env, ast, "This is not a valid Lvalue");
+        compile_err(env, ast, "This is not a valid value for assignment");
     }
 }
 
