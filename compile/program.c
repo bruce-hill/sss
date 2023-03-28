@@ -105,7 +105,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         foreach (env->exports, exp, _) {
             // array.items[array.length] = item
             gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, items, gcc_rval(length_field));
-            printf("Exporting: %s\n", (*exp)->qualified_name);
             istr_t sym_name;
             binding_t *b = (*exp)->binding;
             if (b->sym_name) {

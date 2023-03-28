@@ -147,10 +147,8 @@ static void export(env_t *env, istr_t name, binding_t *b)
     APPEND(env->exports, exp);
     // Export everything from the inner scope:
     if (b->type->tag == TypeType) {
-        printf("Adding inner scope defs for: %s\n", type_to_string(b->type));
         hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
         for (istr_t inner = NULL; (inner=hashmap_next(ns, inner)); ) {
-            printf("Found inner scope def: %s\n", inner);
             binding_t *b2 = hashmap_get(ns, inner);
             export(env, intern_strf("%s.%s", name, inner), b2);
         }
