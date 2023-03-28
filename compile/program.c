@@ -131,17 +131,17 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         // ast_t *debug = FakeAST(FunctionCall, .fn=FakeAST(Var, .name=intern_str("say")), .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, FakeAST(StringLiteral, .str=intern_str("loaded"))))));
         // compile_statement(env, &block, debug);
 
-        gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-        gcc_lvalue_t *stdout_var = gcc_jit_context_new_global(env->ctx, NULL, GCC_JIT_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout");
-        gcc_func_t *print_fn = get_print_func(env, exports_t);
-        gcc_type_t *hashmap_gcc_t = gcc_array_type(env->ctx, NULL, gcc_type(env->ctx, CHAR), sizeof(hashmap_t));
-        gcc_lvalue_t *cycle_checker = gcc_local(get_exports, NULL, hashmap_gcc_t, fresh("rec"));
-        gcc_assign(block, NULL, cycle_checker, gcc_array_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL));
-        gcc_eval(block, NULL,
-                 gcc_callx(env->ctx, NULL, print_fn, 
-                           gcc_rval(exports_var),
-                           gcc_rval(stdout_var),
-                           gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star)));
+        // gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+        // gcc_lvalue_t *stdout_var = gcc_jit_context_new_global(env->ctx, NULL, GCC_JIT_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout");
+        // gcc_func_t *print_fn = get_print_func(env, exports_t);
+        // gcc_type_t *hashmap_gcc_t = gcc_array_type(env->ctx, NULL, gcc_type(env->ctx, CHAR), sizeof(hashmap_t));
+        // gcc_lvalue_t *cycle_checker = gcc_local(get_exports, NULL, hashmap_gcc_t, fresh("rec"));
+        // gcc_assign(block, NULL, cycle_checker, gcc_array_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL));
+        // gcc_eval(block, NULL,
+        //          gcc_callx(env->ctx, NULL, print_fn, 
+        //                    gcc_rval(exports_var),
+        //                    gcc_rval(stdout_var),
+        //                    gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star)));
 
         gcc_return(block, NULL, gcc_rval(exports_var));
     }
