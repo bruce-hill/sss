@@ -1232,7 +1232,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         else if (value->tag == Index && get_type(env, Match(value, Index)->indexed)->tag == PointerType)
             goto safe;
         else
-            compile_err(env, ast, "I don't know how to assign to this value");
+            compile_err(env, ast, "I don't know how to assign to this value. Maybe it's immutable?");
       safe:;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *t = get_type(env, value);
