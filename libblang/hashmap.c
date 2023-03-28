@@ -291,7 +291,7 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
     return hash;
 }
 
-int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t entry_cmp, size_t entry_size_padded)
+int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, cmp_fn_t entry_cmp, size_t entry_size_padded)
 {
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
@@ -299,6 +299,22 @@ int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_has
         if (!entry) return 1;
         int32_t diff = entry_cmp(h1->entries + i*entry_size_padded, entry);
         if (diff) return diff;
+    }
+    if (h1->fallback != h2->fallback) {
+        if (h1->fallback && h2->fallback) {
+            int32_t diff = bl_hashmap_compare(h1->fallback, h2->fallback, key_hash, key_cmp, value_cmp, entry_cmp, entry_size_padded);
+            if (diff) return diff;
+        } else {
+            return 1;
+        }
+    }
+    if (h1->default_value != h2->default_value) {
+        if (h1->default_value && h2->default_value) {
+            int32_t diff = value_cmp(h1->default_value, h2->default_value);
+            if (diff) return diff;
+        } else {
+            return 1;
+        }
     }
     return 0;
 }

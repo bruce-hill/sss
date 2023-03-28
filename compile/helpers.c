@@ -1047,12 +1047,14 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         bl_type_t *entry_t = table_entry_type(t);
         gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
         gcc_func_t *key_compare = get_indirect_compare_func(env, Match(t, TableType)->key_type);
+        gcc_func_t *value_compare = get_indirect_compare_func(env, Match(t, TableType)->value_type);
         gcc_func_t *entry_compare = get_indirect_compare_func(env, entry_t);
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, compare_fn,
                                           gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL),
                                           gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL),
                                           gcc_get_func_address(key_hash, NULL),
                                           gcc_get_func_address(key_compare, NULL),
+                                          gcc_get_func_address(value_compare, NULL),
                                           gcc_get_func_address(entry_compare, NULL),
                                           gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t))));
         break;

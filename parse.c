@@ -807,7 +807,7 @@ PARSER(parse_table) {
                 break;
             }
             whitespace(&pos);
-            if (!match(&pos, ",")) break;
+            if (!match(&pos, ";")) break;
         }
     }
 
