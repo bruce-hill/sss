@@ -223,7 +223,9 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *fallback = table->fallback;
         bl_type_t *fallback_t = get_type(env, fallback);
         if (fallback_t->tag == PointerType) {
-            fallback = WrapAST(fallback, HeapAllocate, .value=WrapAST(fallback, Dereference, .value=fallback));
+            compile_err(env, fallback, "Fallback tables are not allowed to be pointers to mutable tables, only table values are allowed. \n"
+                        "Use '*' to dereference this value if you want to use it as a fallback.");
+            // fallback = WrapAST(fallback, HeapAllocate, .value=WrapAST(fallback, Dereference, .value=fallback));
         } else {
             fallback = WrapAST(fallback, HeapAllocate, .value=fallback);
             fallback_t = get_type(env, fallback);
