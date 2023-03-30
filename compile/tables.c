@@ -90,13 +90,8 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
     gcc_rvalue_t *entry_val = compile_expr(env, block, entry);
     if (!*block) return;
 
-    bl_type_t *expected_entry_t = table_entry_type(info->table_type);
-    // if (entry_t != expected_entry_t)
-    //     if (!promote(env, entry_t, &entry_val, expected_entry_t))
-    //         compile_err(env, entry, "I can't convert this type (%s) to %s", type_to_string(entry_t), type_to_string(expected_entry_t));
-
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, bl_type_to_gcc(env, expected_entry_t), fresh("entry"));
+    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, bl_type_to_gcc(env, entry_t), fresh("entry"));
     gcc_assign(*block, NULL, entry_lval, entry_val);
 
     gcc_func_t *hashmap_set_fn = hashmap_gets(env->global_funcs, "bl_hashmap_set");
@@ -106,7 +101,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                                      gcc_cast(env->ctx, NULL, info->table_ptr, gcc_type(env->ctx, VOID_PTR)),
                                      gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
                                      gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, expected_entry_t)),
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t)),
                                      gcc_lvalue_address(entry_lval, NULL)));
 }
 
@@ -241,8 +236,8 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (table->default_value) {
         bl_type_t *default_t = get_type(env, table->default_value);
-        bl_type_t *value_t = Match(t, TableType)->key_type;
-        if (default_t != value_t)
+        bl_type_t *value_t = Match(t, TableType)->value_type;
+        if (!type_is_a(default_t, value_t))
             compile_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
                         type_to_string(default_t), type_to_string(value_t));
 

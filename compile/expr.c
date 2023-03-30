@@ -1708,9 +1708,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *branch_val = compile_expr(case_env, &case_block, case_->body);
             if (branch_val) {
                 if (has_value) {
-                    bl_type_t *actual = get_type(env, case_->body);
-                    if (!promote(env, actual, &branch_val, result_t))
-                        compile_err(env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                    bl_type_t *actual = get_type(case_env, case_->body);
+                    if (!promote(case_env, actual, &branch_val, result_t))
+                        compile_err(case_env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(case_block, case_loc, when_value, branch_val);
                 } else {

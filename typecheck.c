@@ -335,6 +335,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             return Type(TableType, .key_type=parse_type_ast(env, table->key_type), .value_type=parse_type_ast(env, table->value_type));
 
         bl_type_t *key_type = NULL, *value_type = NULL;
+        if (table->default_value)
+            value_type = get_type(env, table->default_value);
         for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
             ast_t *entry = LIST_ITEM(table->entries, i);
             bl_type_t *entry_t = get_type(env, entry);
@@ -794,10 +796,29 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
 
     case When: {
-        bl_type_t *t = NULL;
         auto when = Match(ast, When);
+        bl_type_t *tagged_t = get_type(env, when->subject);
+        if (tagged_t->tag != TaggedUnionType)
+            compile_err(env, when->subject, "A 'when' statement requires the subject be a tagged union, not %s",
+                        type_to_string(tagged_t));
+
+        bl_type_t *t = NULL;
         LIST_FOR (when->cases, case_, _) {
-            bl_type_t *case_t = get_type(env, (case_)->body);
+            env_t *case_env = env;
+            if (case_->var) {
+                case_env = fresh_scope(env);
+                istr_t tagname = Match(case_->tag, Var)->name;
+                auto union_ = Match(Match(tagged_t, TaggedUnionType)->data, UnionType);
+                for (int64_t i = 0; i < LIST_LEN(union_->field_names); i++) {
+                    if (ith(union_->field_names, i) == tagname) {
+                        hashmap_set(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=ith(union_->field_types, i)));
+                        goto env_ready;
+                    }
+                }
+                compile_err(env, case_->tag, "I couldn't find a tagged union value with this tag.");
+            }
+          env_ready:;
+            bl_type_t *case_t = get_type(case_env, (case_)->body);
             bl_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
                 compile_err(env, (case_)->body,

@@ -57,6 +57,33 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
     return ret;
 }
 
+const char *ast_cases_to_str(const char *name, List(ast_case_t) cases)
+{
+    char *buf; size_t size;
+    FILE *mem = open_memstream(&buf, &size);
+    if (name) fprintf(mem, "%s=", name);
+    if (cases) {
+        fputs("[", mem);
+        for (int64_t i = 0, len = LIST_LEN(cases); i < len; i++) {
+            if (i > 0) fputs(", ", mem);
+            fputs(_ast_to_str(NULL, LIST_ITEM(cases, i).var), mem);
+            fputs(":", mem);
+            fputs(_ast_to_str(NULL, LIST_ITEM(cases, i).tag), mem);
+            fputs(":", mem);
+            fputs(_ast_to_str(NULL, LIST_ITEM(cases, i).body), mem);
+        }
+        fputs("]", mem);
+    } else {
+        fputs("\x1b[35mNULL\x1b[m", mem);
+    }
+    fflush(mem);
+    char *ret = GC_MALLOC_ATOMIC(size+1);
+    memcpy(ret, buf, size);
+    fclose(mem);
+    free(buf);
+    return ret;
+}
+
 const char *label_str(const char *name, const char *str) {
     if (str)
         return intern_strf("%s=\x1b[35m\"%s\"\x1b[m", name, str);
@@ -84,6 +111,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           double: label_double, \
                           bool: label_bool, \
                           unsigned char: label_bool, \
+                          List(ast_case_t): ast_cases_to_str, \
                           List(istr_t): str_list_to_str)(#field, data->field)
 #define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs("\x1b[1m" #t "(\x1b[m", mem); \
     fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
@@ -124,7 +152,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(For, F(key), F(value), F(first), F(iter), F(body), F(between), F(empty))
         T(While, F(condition), F(body), F(between))
         T(Repeat, F(body), F(between))
-        T(When, F(subject), "...", F(default_body)) // TODO print cases
+        T(When, F(subject), F(cases), F(default_body)) // TODO print cases
         T(Skip, F(target))
         T(Stop, F(target))
         UNOP(Return)
