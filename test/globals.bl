@@ -1,0 +1,27 @@
+
+def sum100():Int
+    sum := 0
+    for i in 1 to 100
+        sum += i
+    return sum
+
+def Global{}
+    // Constant value
+    val := 123
+    // Calling a function
+    sum100 := sum100()
+
+def doop()
+    >>> Global.val
+    === 123
+    >>> Global.sum100
+    === 5050
+
+    // just for funsies:
+    >>> g := Global{}
+    >>> g
+    === Global{}
+    >>> g == Global{}
+    === yes
+
+doop()
