@@ -109,8 +109,13 @@ static void load_global_functions(env_t *env)
                      PARAM(t_void_ptr, "item"),
                      PARAM(t_int64, "index"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_insert_all", PARAM(t_void_ptr, "array"),
+                     PARAM(t_void_ptr, "other"),
+                     PARAM(t_int64, "index"),
+                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
     load_global_func(env, t_bl_str, "array_remove", PARAM(t_void_ptr, "array"),
                      PARAM(t_int64, "index"),
+                     PARAM(t_int64, "count"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
     load_global_func(env, t_bl_str, "array_sort", PARAM(t_void_ptr, "array"),
                      PARAM(t_void_ptr, "compare"),

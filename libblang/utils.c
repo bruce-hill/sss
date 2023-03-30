@@ -259,29 +259,55 @@ void array_insert(void *voidarr, char *item, int64_t index, size_t item_size, bo
     memcpy(arr->data + (index-1)*item_size, item, item_size);
 }
 
-void array_remove(void *voidarr, int64_t index, size_t item_size, bool atomic)
+void array_insert_all(void *voidarr, void *voidarr2, int64_t index, size_t item_size, bool atomic)
+{
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr, *arr2 = voidarr2;
+    if (index < 1) index = 1;
+    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+
+    if (arr->free < arr2->len || arr->stride != 1) {
+        arr->free = arr2->len;
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
+        for (int32_t i = 0; i < index-1; i++)
+            memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
+        for (int32_t i = index-1; i < arr->len; i++)
+            memcpy(copy + (i+arr2->len)*item_size, arr->data + arr->stride*i*item_size, item_size);
+        arr->data = copy;
+    } else if (index != arr->len+1) {
+        memmove(arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->len - index + arr2->len-1)*item_size);
+    }
+    arr->free -= arr2->len;
+    arr->len += arr2->len;
+    for (int64_t i = 0; i < arr2->len; i++)
+        memcpy(arr->data + (index-1 + i)*item_size, arr2->data + i*item_size*arr2->stride, item_size);
+}
+
+void array_remove(void *voidarr, int64_t index, int64_t count, size_t item_size, bool atomic)
 {
     struct {char *data; int32_t len, stride, free;} *arr = voidarr;
-    if (index < 1 || index > (int64_t)arr->len) return;
+    if (index < 1 || index > (int64_t)arr->len || count < 1) return;
 
-    if (index == arr->len+1) {
-        --arr->len;
+    if (count > arr->len - index + 1)
+        count = (arr->len - index) + 1;
+
+    if (index + count > arr->len) {
         if (arr->free >= 0)
-            ++arr->free;
-    } else if (arr->free < 0) {
+            arr->free += count;
+    } else if (arr->free < 0 || arr->stride != 1) { // Copy on write
         char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len-1) * item_size) : GC_MALLOC((arr->len-1) * item_size);
-        for (int32_t src = 0, dest = 0; src < arr->len; src++) {
-            if (src != index - 1)
-                memcpy(copy + (dest++)*item_size, arr->data + arr->stride*src*item_size, item_size);
+        for (int32_t src = 1, dest = 1; src <= arr->len; src++) {
+            if (src < index || src >= index + count) {
+                memcpy(copy + (dest - 1)*item_size, arr->data + arr->stride*(src - 1)*item_size, item_size);
+                ++dest;
+            }
         }
         arr->data = copy;
         arr->free = 0;
-        --arr->len;
     } else {
-        memmove(arr->data + (index-1)*item_size, arr->data + index*item_size, (arr->len - index)*item_size);
-        --arr->free;
-        --arr->len;
+        memmove(arr->data + (index-1)*item_size, arr->data + (index-1 + count)*item_size, (arr->len - index + count - 1)*item_size);
+        arr->free += count;
     }
+    arr->len -= count;
 }
 
 typedef int (cmp_fn_t)(const void *a, const void *b);

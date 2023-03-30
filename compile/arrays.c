@@ -505,6 +505,35 @@ static void define_array_insert(env_t *env, bl_type_t *t)
     set_in_namespace(env, t, "insert", b);
 }
 
+static void define_array_insert_all(env_t *env, bl_type_t *t)
+{
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    bl_type_t *item_t = Match(t, ArrayType)->item_type;
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
+        gcc_new_param(env->ctx, NULL, gcc_t, fresh("other")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT64), fresh("index")),
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("insert_all"), 3, params, 0);
+    gcc_block_t *block = gcc_new_block(func, fresh("insert_all"));
+    gcc_func_t *c_insert_all_func = hashmap_gets(env->global_funcs, "array_insert_all");
+    gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_insert_all_func,
+                                    AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
+                                    AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
+                                    gcc_param_as_rvalue(params[2]),
+                                    gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
+    gcc_return_void(block, NULL);
+
+    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array"))), .rhs=FakeAST(Int, .i=1, .precision=64));
+    binding_t *b = new(binding_t, .func=func,
+                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("other"), intern_str("index")),
+                                  .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), t, Type(IntType, .bits=64)),
+                                  .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
+                                  .ret=Type(VoidType)));
+    set_in_namespace(env, t, "insert_all", b);
+}
+
 static void define_array_remove(env_t *env, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -512,22 +541,24 @@ static void define_array_remove(env_t *env, bl_type_t *t)
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT64), fresh("index")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT64), fresh("count")),
     };
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("remove"), 2, params, 0);
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("remove"), 3, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("remove"));
     gcc_func_t *c_remove_func = hashmap_gets(env->global_funcs, "array_remove");
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_remove_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_param_as_rvalue(params[1]),
+                                    gcc_param_as_rvalue(params[2]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array")));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("index")),
-                                  .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), Type(IntType, .bits=64)),
-                                  .arg_defaults=LIST(ast_t*, NULL, len),
+                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("index"), intern_str("count")),
+                                  .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), Type(IntType, .bits=64), Type(IntType, .bits=64)),
+                                  .arg_defaults=LIST(ast_t*, NULL, len, FakeAST(Int, .precision=64, .i=1)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "remove", b);
 }
@@ -588,6 +619,8 @@ void define_array_methods(env_t *env, bl_type_t *t)
 {
     if (!get_from_namespace(env, t, "insert"))
         define_array_insert(env, t);
+    if (!get_from_namespace(env, t, "insert_all"))
+        define_array_insert_all(env, t);
     if (!get_from_namespace(env, t, "remove"))
         define_array_remove(env, t);
     if (!get_from_namespace(env, t, "sort"))
