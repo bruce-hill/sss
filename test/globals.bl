@@ -24,4 +24,7 @@ def doop()
     >>> g == Global{}
     === yes
 
+    >>> [g,g,g]
+    >>> {g=>g}
+
 doop()
