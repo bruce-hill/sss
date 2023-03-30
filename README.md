@@ -35,7 +35,8 @@ directory). Blang files can be run directly via `blang myprogram.bl`, compiled
 to a static executable via `blangc myprogram.bl -o myprogram`, or compiled to a
 library module via `blangc -c myprogram.bl -o libmyprogram.so`.
 
-Additional command
+Additional command line arguments can be found in the manpages (`man
+./blang.1`) or by running `blang --help` or `blangc --help`.
 
 ## Language Features
 
