@@ -1968,7 +1968,11 @@ ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, i
             if (bl_get_indent(ctx->file, *pos) != indent) break;
             ast_t *def = optional_ast(ctx, pos, parse_declaration);
             if (!def) def = optional_ast(ctx, pos, parse_def);
-            if (!def) break;
+            if (!def) {
+                if (bl_get_indent(ctx->file, *pos) > starting_indent)
+                    parser_err(ctx, *pos, strchrnul(*pos, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
+                break;
+            }
             APPEND(definitions, def);
         }
     }
