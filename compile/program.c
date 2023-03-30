@@ -23,10 +23,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
     gcc_type_t *gcc_string_t = bl_type_to_gcc(env, str_type);
-    gcc_param_t* main_params[] = {
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT), "argc"),
-        gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
-    };
     // Reserved names that shouldn't be used unadorned by anything else:
     (void)fresh("main");
     (void)fresh("get_exports");
@@ -34,6 +30,10 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
     if (standalone) {
         // Compile main() function
+        gcc_param_t* main_params[] = {
+            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT), "argc"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
+        };
         const char *main_name = "main";
         gcc_func_t *main_func = gcc_new_func(
             ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, INT),
@@ -41,10 +41,13 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_block_t *block = gcc_new_block(main_func, fresh("main"));
 
         // Set up `PROGRAM_NAME`
-        gcc_lvalue_t *program_name = gcc_local(main_func, NULL, gcc_string_t, "PROGRAM_NAME");
-        gcc_lvalue_t *name_lval = gcc_rvalue_dereference(gcc_param_as_rvalue(main_params[1]), NULL);
-        gcc_assign(block, NULL, program_name, gcc_rval(name_lval));
-        hashmap_set(env->bindings, intern_str("PROGRAM_NAME"),
+        gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_string_t, "PROGRAM_NAME");
+        gcc_func_t *prog_name_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t, "first_arg", 1, (gcc_param_t*[]){
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
+            }, 0);
+        gcc_assign(block, NULL, program_name, gcc_callx(env->ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
+        hashmap_set(env->global_bindings, intern_str("PROGRAM_NAME"),
                     new(binding_t, .rval=gcc_rval(program_name), .type=str_type));
 
         // Set up `args`
@@ -56,8 +59,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
             }, 0);
 
-        gcc_lvalue_t *args = gcc_local(main_func, NULL, args_gcc_t, "args");
-        hashmap_set(env->bindings, intern_str("args"), new(binding_t, .rval=gcc_rval(args), .type=args_t));
+        gcc_lvalue_t *args = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, args_gcc_t, "args");
+        hashmap_set(env->global_bindings, intern_str("args"), new(binding_t, .rval=gcc_rval(args), .type=args_t));
         gcc_rvalue_t *arg_list = gcc_callx(env->ctx, NULL, arg_func, 
                                            gcc_param_as_rvalue(main_params[0]),
                                            gcc_param_as_rvalue(main_params[1]));

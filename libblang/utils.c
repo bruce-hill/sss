@@ -18,6 +18,14 @@
 #include "string.h"
 #include "range.h"
 
+string_t first_arg(char *argv[]) {
+    return (string_t){
+        .data=intern_str(argv[0]),
+        .length=(int32_t)strlen(argv[0]),
+        .stride=1,
+    };
+}
+
 str_array_t arg_list(int argc, char *argv[]) {
     // Skip program name:
     --argc;
