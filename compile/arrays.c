@@ -560,12 +560,44 @@ static void define_array_shuffle(env_t *env, bl_type_t *t)
     set_in_namespace(env, t, "shuffle", b);
 }
 
+static void define_array_sort(env_t *env, bl_type_t *t)
+{
+    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    bl_type_t *item_t = Match(t, ArrayType)->item_type;
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("sort"), 1, params, 0);
+    gcc_block_t *block = gcc_new_block(func, fresh("sort"));
+    gcc_func_t *c_sort_func = hashmap_gets(env->global_funcs, "array_sort");
+#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
+    bl_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType));
+    bl_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
+    gcc_type_t *ptr_cmp_fn_gcc_t = bl_type_to_gcc(env, ptr_cmp_fn_t);
+    gcc_rvalue_t *cmp = gcc_get_func_address(get_indirect_compare_func(env, item_t), NULL);
+    gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_sort_func,
+                                    AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
+                                    gcc_cast(env->ctx, NULL, cmp, ptr_cmp_fn_gcc_t),
+                                    gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
+#undef AS_VOID_PTR
+    gcc_return_void(block, NULL);
+
+    binding_t *b = new(binding_t, .func=func,
+                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array")),
+                                  .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t)),
+                                  .ret=Type(VoidType)));
+    set_in_namespace(env, t, "sort", b);
+}
+
 void define_array_methods(env_t *env, bl_type_t *t)
 {
     if (!get_from_namespace(env, t, "insert"))
         define_array_insert(env, t);
     if (!get_from_namespace(env, t, "remove"))
         define_array_remove(env, t);
+    if (!get_from_namespace(env, t, "sort"))
+        define_array_sort(env, t);
     if (!get_from_namespace(env, t, "shuffle"))
         define_array_shuffle(env, t);
 }
