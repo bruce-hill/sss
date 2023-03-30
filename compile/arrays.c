@@ -474,6 +474,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 #undef WRITE_LITERAL 
 }
 
+#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
 static void define_array_insert(env_t *env, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
@@ -487,14 +488,12 @@ static void define_array_insert(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("insert"), 3, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("insert"));
     gcc_func_t *c_insert_func = hashmap_gets(env->global_funcs, "array_insert");
-#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_insert_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
                                     gcc_param_as_rvalue(params[2]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
-#undef AS_VOID_PTR
     gcc_return_void(block, NULL);
 
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array"))), .rhs=FakeAST(Int, .i=1, .precision=64));
@@ -517,13 +516,11 @@ static void define_array_remove(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("remove"), 2, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("remove"));
     gcc_func_t *c_remove_func = hashmap_gets(env->global_funcs, "array_remove");
-#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_remove_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_param_as_rvalue(params[1]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
-#undef AS_VOID_PTR
     gcc_return_void(block, NULL);
 
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array")));
@@ -545,12 +542,10 @@ static void define_array_shuffle(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("shuffle"), 1, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("shuffle"));
     gcc_func_t *c_shuffle_func = hashmap_gets(env->global_funcs, "array_shuffle");
-#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_shuffle_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
-#undef AS_VOID_PTR
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
@@ -570,7 +565,6 @@ static void define_array_sort(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("sort"), 1, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("sort"));
     gcc_func_t *c_sort_func = hashmap_gets(env->global_funcs, "array_sort");
-#define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))
     bl_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType));
     bl_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
     gcc_type_t *ptr_cmp_fn_gcc_t = bl_type_to_gcc(env, ptr_cmp_fn_t);
@@ -580,7 +574,6 @@ static void define_array_sort(env_t *env, bl_type_t *t)
                                     gcc_cast(env->ctx, NULL, cmp, ptr_cmp_fn_gcc_t),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
-#undef AS_VOID_PTR
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
@@ -589,6 +582,7 @@ static void define_array_sort(env_t *env, bl_type_t *t)
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "sort", b);
 }
+#undef AS_VOID_PTR
 
 void define_array_methods(env_t *env, bl_type_t *t)
 {
