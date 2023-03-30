@@ -64,6 +64,7 @@ static void load_global_functions(env_t *env)
     gcc_ctx_t *ctx = env->ctx;
     gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
                *t_int = gcc_get_type(ctx, GCC_T_INT),
+               *t_int64 = gcc_get_type(ctx, GCC_T_INT64),
                *t_u32 = gcc_get_type(ctx, GCC_T_UINT32),
                *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
                *t_void = gcc_get_type(ctx, GCC_T_VOID),
@@ -102,8 +103,19 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
     load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
-    load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
-    load_global_func(env, t_bl_str, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "range"), PARAM(t_bool, "item_size"));
+    load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_insert", PARAM(t_void_ptr, "array"),
+                     PARAM(t_void_ptr, "item"),
+                     PARAM(t_int64, "index"),
+                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_remove", PARAM(t_void_ptr, "array"),
+                     PARAM(t_int64, "index"),
+                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_sort", PARAM(t_void_ptr, "array"),
+                     PARAM(t_void_ptr, "compare"),
+                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_shuffle", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
 
     // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
     load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
@@ -468,6 +480,11 @@ env_t *get_type_env(env_t *env, bl_type_t *t)
 binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name)
 {
     return hashmap_get(get_namespace(env, t), intern_str(name));
+}
+
+binding_t *set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value)
+{
+    return hashmap_set(get_namespace(env, t), intern_str(name), value);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

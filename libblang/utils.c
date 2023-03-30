@@ -210,7 +210,7 @@ const void *bl_table_next(hashmap_t *h, const void *key, const void *key_nil) {
 // Copy on write for arrays:
 void array_cow(void *voidarr, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, capacity;} *arr = voidarr;
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
     char *copy = atomic ? GC_MALLOC_ATOMIC(arr->len * item_size) : GC_MALLOC(arr->len * item_size);
     if (arr->stride == 1) {
         memcpy(copy, arr->data, arr->len * item_size);
@@ -219,12 +219,12 @@ void array_cow(void *voidarr, size_t item_size, bool atomic)
             memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
     }
     arr->data = copy;
-    arr->capacity = 0;
+    arr->free = 0;
 }
 
 void array_flatten(void *voidarr, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride;} *arr = voidarr;
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
     char *copy = atomic ? GC_MALLOC_ATOMIC(arr->len * item_size) : GC_MALLOC(arr->len * item_size);
     if (arr->stride == 1) {
         memcpy(copy, arr->data, arr->len * item_size);
@@ -234,4 +234,77 @@ void array_flatten(void *voidarr, size_t item_size, bool atomic)
     }
     arr->stride = 1;
     arr->data = copy;
+    arr->free = 0;
+}
+
+void array_insert(void *voidarr, char *item, int64_t index, size_t item_size, bool atomic)
+{
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    if (index < 1) index = 1;
+    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+
+    if (arr->free < 1 || arr->stride != 1) {
+        arr->free = 6;
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
+        for (int32_t i = 0; i < index-1; i++)
+            memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
+        for (int32_t i = index-1; i < arr->len; i++)
+            memcpy(copy + (i+1)*item_size, arr->data + arr->stride*i*item_size, item_size);
+        arr->data = copy;
+    } else if (index != arr->len+1) {
+        memmove(arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->len - index)*item_size);
+    }
+    --arr->free;
+    ++arr->len;
+    memcpy(arr->data + (index-1)*item_size, item, item_size);
+}
+
+void array_remove(void *voidarr, int64_t index, size_t item_size, bool atomic)
+{
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    if (index < 1) index = 1;
+    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+
+    if (index == arr->len+1) {
+        --arr->len;
+        if (arr->free >= 0)
+            ++arr->free;
+    } else if (arr->free < 0) {
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len-1) * item_size) : GC_MALLOC((arr->len-1) * item_size);
+        for (int32_t src = 0, dest = 0; src < arr->len; src++) {
+            if (src != index - 1)
+                memcpy(copy + (dest++)*item_size, arr->data + arr->stride*src*item_size, item_size);
+        }
+        arr->data = copy;
+        arr->free = 0;
+        --arr->len;
+    } else {
+        memmove(arr->data + (index-1)*item_size, arr->data + index*item_size, (arr->len - index)*item_size);
+        --arr->free;
+        --arr->len;
+    }
+}
+
+typedef int (cmp_fn_t)(const void *a, const void *b);
+void array_sort(void *voidarr, cmp_fn_t compare, size_t item_size, bool atomic)
+{
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    if (arr->free < 0 || arr->stride != 1)
+        array_flatten(voidarr, item_size, atomic);
+    qsort(arr->data, arr->len, item_size, compare);
+}
+
+void array_shuffle(void *voidarr, size_t item_size, bool atomic)
+{
+    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    if (arr->free < 0 || arr->stride != 1)
+        array_flatten(voidarr, item_size, atomic);
+
+    char tmp[item_size];
+    for (int32_t i = arr->len-1; i > 1; i--) {
+        int32_t j = arc4random_uniform(i+1);
+        memcpy(tmp, arr->data + i*item_size, item_size);
+        memcpy(arr->data + i*item_size, arr->data + j*item_size, item_size);
+        memcpy(arr->data + j*item_size, tmp, item_size);
+    }
 }

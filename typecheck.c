@@ -420,6 +420,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 compile_err(env, ast, "I can't find anything called %s on this type", access->field);
         }
         case ArrayType: {
+            define_array_methods(env, value_t);
             auto array = Match(value_t, ArrayType);
             bl_type_t *item_t = array->item_type;
             // TODO: support other things like pointers

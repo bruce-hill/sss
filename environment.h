@@ -85,5 +85,6 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast);
 env_t *get_type_env(env_t *env, bl_type_t *t);
 hashmap_t *get_namespace(env_t *env, bl_type_t *t);
 binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name);
+binding_t *set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

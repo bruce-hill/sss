@@ -907,6 +907,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
+                if (value_type->tag == ArrayType)
+                    define_array_methods(env, value_type);
+
                 binding_t *binding = get_from_namespace(env, self_t, access->field);
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
