@@ -752,6 +752,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         auto struct_type = Match(t, StructType);
         if (length(struct_type->field_names) == 0) {
+            // GCC doesn't allow empty constructors for empty structs, but for
+            // some reason, it's perfectly fine to just declare an empty struct
+            // variable and use that as an rvalue.
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_lvalue_t *lval = gcc_local(gcc_block_func(*block), loc, gcc_t, fresh("empty_singleton"));
             return gcc_rval(lval);
