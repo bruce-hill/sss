@@ -321,8 +321,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 append(rvals, rval);
             }
         }
-        for (int64_t i = 0; i < len; i++)
+        for (int64_t i = 0; i < len; i++) {
             gcc_assign(*block, ast_loc(env, ast), ith(lvals, i), ith(rvals, i));
+
+            bl_type_t *t = get_type(env, ith(targets, i));
+            if (t->tag == ArrayType)
+                mark_array_cow(env, block, gcc_lvalue_address(ith(lvals, i), loc));
+            else if (t->tag == TableType)
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), gcc_lvalue_address(ith(lvals, i), loc)));
+        }
         return ith(rvals, length(rvals)-1);
     }
     case Delete: {

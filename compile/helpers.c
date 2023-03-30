@@ -1148,13 +1148,9 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         }
     }
     case Dereference: {
-        bl_type_t *t = get_type(env, ast); // Check this is a pointer type
+        (void)get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
-        if (t->tag == ArrayType)
-            mark_array_cow(env, block, rval);
-        else if (t->tag == TableType)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), rval));
         return gcc_rvalue_dereference(rval, ast_loc(env, ast));
     }
     case FieldAccess: {
