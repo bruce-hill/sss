@@ -142,8 +142,6 @@ static void populate_def_members(env_t *env, ast_t *def)
         binding_t *binding = hashmap_get(env->bindings, name);
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
-        if (length(struct_def->field_names) == 0)
-            compile_err(env, def, "This struct has no fields, which is currently not supported");
 
         env_t inner_env = *env;
         inner_env.bindings = get_namespace(env, t);
