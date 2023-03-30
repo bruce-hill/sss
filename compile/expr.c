@@ -751,8 +751,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         auto struct_type = Match(t, StructType);
-        if (length(struct_type->field_names) == 0)
-            compile_err(env, ast, "This struct type has no members and I'm not able to handle creating a struct with no members.");
+        if (length(struct_type->field_names) == 0) {
+            gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+            gcc_lvalue_t *lval = gcc_local(gcc_block_func(*block), loc, gcc_t, fresh("empty_singleton"));
+            return gcc_rval(lval);
+        }
         if (length(struct_->members) > length(struct_type->field_names))
             compile_err(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
                   type_to_string(t),
