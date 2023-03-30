@@ -262,8 +262,7 @@ void array_insert(void *voidarr, char *item, int64_t index, size_t item_size, bo
 void array_remove(void *voidarr, int64_t index, size_t item_size, bool atomic)
 {
     struct {char *data; int32_t len, stride, free;} *arr = voidarr;
-    if (index < 1) index = 1;
-    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+    if (index < 1 || index > (int64_t)arr->len) return;
 
     if (index == arr->len+1) {
         --arr->len;
