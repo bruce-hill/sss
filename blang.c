@@ -264,7 +264,16 @@ int main(int argc, char *argv[])
     gcc_jit_context_set_bool_allow_unreachable_blocks(ctx, true);
 
     for (int i = 1; i < argc; i++) {
-        if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
+        if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
+            if (run_program) {
+                puts("blang - The Blang programming language runner");
+                puts("Usage: blang [-v|--verbose] [-A|--asm] [-O optimization] [file.bl]");
+            } else {
+                puts("blangc - The Blang programming language compiler");
+                puts("Usage: blang [-v|--verbose] [-A|--asm] [-O optimization] [-c] file.bl [-o output]");
+            }
+            return 0;
+        } else if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
             verbose = true;
             continue;
