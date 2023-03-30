@@ -29,7 +29,7 @@ CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c co
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h compile/modules.h util.h libblang/list.h libblang/string.h libblang/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 
-all: blang blangc
+all: blang blangc blang.1
 
 $(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
@@ -51,6 +51,9 @@ tags: $(CFILES) $(HFILES) blang.c
 
 clean:
 	rm -f $(NAME) $(OBJFILES) $(LIBFILE)
+
+blang.1: blang.1.md
+	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
 
 test: all
 	@for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done

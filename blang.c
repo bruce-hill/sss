@@ -268,9 +268,6 @@ int main(int argc, char *argv[])
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
             verbose = true;
             continue;
-        } else if (streq(argv[i], "-r") || streq(argv[i], "--run")) {
-            run_program = true;
-            continue;
         } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE, 1);
             verbose = true;

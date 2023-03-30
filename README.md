@@ -1,8 +1,9 @@
 # Blang
 
 Blang is a small, statically typed, garbage-collected, compiled imperative
-language with ergonomic syntax. It uses [QBE](https://c9x.me/compile/) as a
-backend IR, and compiles from there to assembly code and then to a binary.
+language with ergonomic syntax. It uses
+[libgccjit](https://gcc.gnu.org/wiki/JIT) as a backend, which compiles to a
+binary.
 
 ## Example
 
