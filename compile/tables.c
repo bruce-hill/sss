@@ -136,9 +136,9 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
 }
 
 // Returns an optional pointer to a value
-gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key)
+gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast)
 {
-    gcc_loc_t *loc = ast_loc(env, key);
+    gcc_loc_t *loc = ast_loc(env, key_ast);
     bl_type_t *table_t = get_type(env, table_ast);
     gcc_rvalue_t *table = compile_expr(env, block, table_ast);
     while (table_t->tag == PointerType) {
@@ -153,21 +153,21 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     gcc_lvalue_t *table_var = gcc_local(func, loc, bl_type_to_gcc(env, table_t), fresh("table"));
     gcc_assign(*block, loc, table_var, table);
 
-    bl_type_t *key_t = get_type(env, key);
     bl_type_t *expected_key_t = Match(table_t, TableType)->key_type;
-    if (!type_is_a(key_t, expected_key_t))
-        compile_err(env, key, "This key is a %s, which is the wrong type for this table (%s)", type_to_string(key_t), type_to_string(table_t));
 
-    // void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *key, size_t entry_size_padded);
     gcc_func_t *hashmap_get_fn = hashmap_gets(env->global_funcs, "bl_hashmap_get");
     gcc_func_t *key_hash = get_hash_func(env, expected_key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, expected_key_t);
     bl_type_t *entry_t = table_entry_type(table_t);
 
-    gcc_rvalue_t *key_val = compile_expr(env, block, key);
+    bl_type_t *raw_key_t = get_type(env, key_ast);
+    gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
+    if (!promote(env, raw_key_t, &key_val, expected_key_t))
+        compile_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
+                    type_to_string(raw_key_t), type_to_string(expected_key_t));
     gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, expected_key_t), fresh("key"));
     gcc_assign(*block, loc, key_lval, key_val);
-    flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
+    flatten_arrays(env, block, expected_key_t, gcc_lvalue_address(key_lval, loc));
     gcc_rvalue_t *entry = gcc_callx(
         env->ctx, loc, hashmap_get_fn,
         gcc_cast(env->ctx, loc, gcc_lvalue_address(table_var, loc), gcc_type(env->ctx, VOID_PTR)),
