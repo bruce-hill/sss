@@ -32,7 +32,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         istr_t argname = ith(arg_names, i);
         bl_type_t *argtype = ith(t->arg_types, i);
         if (argtype->tag == VoidType)
-            compile_err(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
+            compiler_err(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
@@ -43,7 +43,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     compile_statement(env, &block, body);
     if (block) {
         if (t->ret->tag != VoidType)
-            compile_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
+            compiler_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
                   type_to_string(t->ret));
         gcc_return_void(block, NULL);
     }

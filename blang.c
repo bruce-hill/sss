@@ -195,7 +195,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         result = gcc_compile(ctx);
         if (result == NULL)
-            compile_err(fresh_env, NULL, "Compilation failed");
+            compiler_err(fresh_env, NULL, "Compilation failed");
 
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);

@@ -95,7 +95,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
         if (for_->value && for_->value->tag == Dereference) {
             if (!original_pointer)
-                compile_err(env, for_->value, "You can't iterate by internal pointers to an array value");
+                compiler_err(env, for_->value, "You can't iterate by internal pointers to an array value");
             item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
             gcc_item_t = gcc_get_ptr_type(gcc_item_t);
         }
@@ -141,7 +141,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case TableType: {
         if (for_->value && for_->value->tag == Dereference)
-            compile_err(env, for_->value, "Iterating references to table entries is not supported");
+            compiler_err(env, for_->value, "Iterating references to table entries is not supported");
 
         // entry_ptr = table->entries
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
@@ -192,7 +192,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, NULL, iter_var, iter_rval);
         iter_rval = gcc_rval(iter_var);
         if (for_->value && for_->value->tag == Dereference)
-            compile_err(env, for_->value, "Range values can't be dereferenced because they don't reside in memory anywhere");
+            compiler_err(env, for_->value, "Range values can't be dereferenced because they don't reside in memory anywhere");
         // x = range.first
         gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
         assert(range_struct);
@@ -273,7 +273,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             }
         }
 
-        compile_err(env, iter, "This value doesn't have an optional .next pointer field, so it can't be used for iteration.");
+        compiler_err(env, iter, "This value doesn't have an optional .next pointer field, so it can't be used for iteration.");
 
       found_next_field:
 
@@ -281,7 +281,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         if (for_->value && for_->value->tag == Dereference) {
             item_t = iter_var_t;
             if (!original_pointer)
-                compile_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%s instead)",
+                compiler_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%s instead)",
                             type_to_string(iter_t));
         } else {
             item_t = iter_t;
@@ -331,7 +331,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         break;
     }
-    default: compile_err(env, iter, "Iteration not supported yet");
+    default: compiler_err(env, iter, "Iteration not supported yet");
     }
 
     env_t *loop_env = fresh_scope(env);

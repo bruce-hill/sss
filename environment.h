@@ -75,7 +75,7 @@ typedef struct env_s {
 } env_t;
 
 __attribute__((noreturn, format(printf,3,4)))
-void compile_err(env_t *env, ast_t *ast, const char *fmt, ...);
+void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug);
 env_t *fresh_scope(env_t *env);

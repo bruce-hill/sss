@@ -151,7 +151,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
     *result = gcc_compile(ctx);
     if (*result == NULL)
-        compile_err(env, NULL, "Compilation failed");
+        compiler_err(env, NULL, "Compilation failed");
 
     // Extract the generated code from "result".   
     main_func_t main_fn = standalone ? (main_func_t)gcc_jit_result_get_code(*result, "main") : NULL;

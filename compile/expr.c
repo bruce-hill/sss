@@ -55,9 +55,9 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         auto var = Match(ast, Var);
         binding_t *binding = hashmap_get(env->bindings, var->name);
         if (!binding) {
-            compile_err(env, ast, "I can't find a definition for this variable"); 
+            compiler_err(env, ast, "I can't find a definition for this variable"); 
         } else if (!binding->is_constant) {
-            compile_err(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
+            compiler_err(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
         } else if (binding->rval) {
             return binding->rval;
         } else if (binding->lval) {
@@ -72,9 +72,9 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         bl_type_t *fielded_t = get_type(env, access->fielded);
         binding_t *binding = get_ast_binding(env, ast);
         if (!binding) {
-            compile_err(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", access->field, type_to_string(fielded_t));
+            compiler_err(env, ast, "I can't find any constant-value field or method called \"%s\" on a %s.", access->field, type_to_string(fielded_t));
         } else if (!binding->is_constant) {
-            compile_err(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
+            compiler_err(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
         } else if (binding->rval) {
             return binding->rval;
         } else if (binding->lval) {
@@ -97,7 +97,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
             if ((double)((int64_t)n) == n) // no floating point rounding
                 i = (int64_t)n;
             else
-                compile_err(env, ast, "This is an integer with a derived unit of measure (%s) which is %g<%s> in base units, "
+                compiler_err(env, ast, "This is an integer with a derived unit of measure (%s) which is %g<%s> in base units, "
                             "but that can't be represented as an integer without rounding errors",
                             intval->units, n, units);
         }
@@ -105,21 +105,21 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         switch (intval->precision) {
         case 32:
             if (i < INT32_MIN)
-                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
             else if (i > INT32_MAX)
-                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
             break;
         case 16:
             if (i < INT16_MIN)
-                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
             else if (i > INT16_MAX)
-                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
             break;
         case 8:
             if (i < INT8_MIN)
-                compile_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too small to fit in a %d bit integer %ld", intval->precision, i);
             else if (i > INT8_MAX)
-                compile_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
+                compiler_err(env, ast, "This integer literal is too big to fit in a %d bit integer %ld", intval->precision, i);
             break;
         default: break;
         }
@@ -138,7 +138,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     }
     default: break;
     }
-    compile_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
+    compiler_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
 }
 
 static void export(env_t *env, istr_t name, binding_t *b)
@@ -227,16 +227,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (binding->func)
                 return gcc_get_func_address(binding->func, loc);
         }
-        compile_err(env, ast, "I can't find a definition for this variable"); 
+        compiler_err(env, ast, "I can't find a definition for this variable"); 
     }
     case Declare: {
         auto decl = Match(ast, Declare);
         bl_type_t *t = get_type(env, decl->value);
         assert(t);
         if (t->tag == GeneratorType)
-            compile_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
+            compiler_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
         else if (t->tag == VoidType)
-            compile_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
+            compiler_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
@@ -250,10 +250,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type->tag == TypeType)
-            compile_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
+            compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         else if (clobbered && decl->is_global)
-            compile_err(env, ast, "This name is already being used for a global");
+            compiler_err(env, ast, "This name is already being used for a global");
         hashmap_set(decl->is_global ? env->global_bindings : env->bindings, name,
                     new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL));
         assert(rval);
@@ -291,7 +291,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         int64_t len = length(targets);
         int64_t num_values = length(values);
         if (num_values != len)
-            compile_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
+            compiler_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
 
         NEW_LIST(gcc_lvalue_t*, lvals);
         foreach (targets, lhs, _) {
@@ -305,11 +305,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *t_rhs = get_type(env, rhs);
             // TODO: maybe allow generators to assign the *last* value, if any
             if (t_rhs->tag == GeneratorType)
-                compile_err(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
+                compiler_err(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
             gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
             if (!promote(env, t_rhs, &rval, t_lhs))
-                compile_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
+                compiler_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
 
             if (len > 1) {
@@ -335,20 +335,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Delete: {
         ast_t *to_delete = Match(ast, Delete)->value;
         if (to_delete->tag != Index)
-            compile_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
+            compiler_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
         auto index = Match(to_delete, Index);
         bl_type_t *t = get_type(env, index->indexed);
         if (t->tag != PointerType)
-            compile_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+            compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
         if (Match(t, PointerType)->is_optional)
-            compile_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
+            compiler_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
         bl_type_t *table_t = Match(t, PointerType)->pointed;
         if (table_t->tag != TableType)
-            compile_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+            compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
 
         bl_type_t *key_t = get_type(env, index->index);
         if (!type_is_a(key_t, Match(table_t, TableType)->key_type))
-            compile_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
+            compiler_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
                         type_to_string(key_t), type_to_string(Match(table_t, TableType)->key_type));
 
         table_remove(env, block, table_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
@@ -449,7 +449,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (int64_t i = 0, len = length(using->vars); i < len; i++) {
             ast_t *var = ith(using->vars, i);
             binding_t *b = hashmap_get(env->bindings, Match(var, Var)->name);
-            if (!b) compile_err(env, var, "This variable is not defined");
+            if (!b) compiler_err(env, var, "This variable is not defined");
             hashmap_set(env2->bindings, Match(var, Var)->name, b);
         }
         return compile_expr(env2, block, using->body);
@@ -474,7 +474,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Return: {
         if (env->is_deferred)
-            compile_err(env, ast, "This 'return' is inside a 'defer' block, which is not allowed");
+            compiler_err(env, ast, "This 'return' is inside a 'defer' block, which is not allowed");
 
         auto ret = Match(ast, Return);
         assert(env->return_type);
@@ -485,18 +485,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ret->value) {
                 bl_type_t *child_type = get_type(env, ret->value);
                 if (child_type->tag != VoidType)
-                    compile_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
+                    compiler_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
                 compile_statement(env, block, ret->value);
             }
             gcc_return_void(*block, loc);
         } else {
             if (!ret->value)
-                compile_err(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
+                compiler_err(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
                       type_to_string(env->return_type));
             bl_type_t *t = get_type(env, ret->value);
             gcc_rvalue_t *val = compile_expr(env, block, ret->value);
             if (!promote(env, t, &val, env->return_type))
-                compile_err(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
+                compiler_err(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
             gcc_return(*block, loc, val);
@@ -534,7 +534,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (chunks, chunk, _) {
             bl_type_t *t = get_type(env, *chunk);
             if (t->tag == VoidType)
-                compile_err(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
+                compiler_err(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
         bl_type_t *string_t = Type(ArrayType, .item_type=Type(CharType), .dsl=string_join->dsl);
@@ -719,7 +719,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (struct_->type) {
             binding = get_ast_binding(env, struct_->type);
             if (!binding || binding->type->tag != TypeType)
-                compile_err(env, struct_->type, "This isn't a struct type that I recognize");
+                compiler_err(env, struct_->type, "This isn't a struct type that I recognize");
             t = Match(binding->type, TypeType)->type;
         } else {
             binding = NULL;
@@ -739,12 +739,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // For tagged enums, you can initialize with curly brace syntax (`Foo.Text{"hi"}`)
             // when it's just a value and not a struct
             if (num_values != 1)
-                compile_err(env, ast, "I expected this to have exactly one value");
+                compiler_err(env, ast, "I expected this to have exactly one value");
             ast_t *member_ast = ith(struct_->members, 0);
             ast_t *value = Match(member_ast, StructField)->value;
             gcc_rvalue_t *rval = compile_expr(env, block, value);
             if (!promote(env, get_type(env, value), &rval, t))
-                compile_err(env, value, "I couldn't promote this value to %s, which is what this struct needs", type_to_string(t));
+                compiler_err(env, value, "I couldn't promote this value to %s, which is what this struct needs", type_to_string(t));
             if (tagged_union_t)
                 rval = add_tag_to_value(env, tagged_union_t, t, rval, binding->tag_rval);
             return rval;
@@ -760,7 +760,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_rval(lval);
         }
         if (length(struct_->members) > length(struct_type->field_names))
-            compile_err(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
+            compiler_err(env, ast, "I expected this %s literal to only have %ld fields, but you provided %ld fields.",
                   type_to_string(t),
                   length(struct_type->field_names), length(struct_->members));
 
@@ -796,7 +796,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 gcc_field_t *field = unused_fields[field_index];
                 if (!field)
-                    compile_err(env, member_ast, "You already provided a value for this field earlier in this struct.");
+                    compiler_err(env, member_ast, "You already provided a value for this field earlier in this struct.");
 
                 // Found the field:
                 entries[value_index].field = field;
@@ -805,7 +805,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 goto found_name;
             }
 
-            compile_err(env, member_ast, "There is no struct field with this name");
+            compiler_err(env, member_ast, "There is no struct field with this name");
 
           found_name: continue;
         }
@@ -827,7 +827,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             // Unreachable, this should be handled earlier
-            compile_err(env, member_ast, "This field is beyond the number of fields in this struct.");
+            compiler_err(env, member_ast, "This field is beyond the number of fields in this struct.");
 
           found_index: continue;
         }
@@ -842,7 +842,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 entries[num_values].ast = def;
                 gcc_rvalue_t *def_val = compile_expr(env, block, def);
                 if (!promote(env, get_type(env, def), &def_val, ft))
-                    compile_err(env, def, "I couldn't make this default value work as a %s",
+                    compiler_err(env, def, "I couldn't make this default value work as a %s",
                                 type_to_string(ft));
                 entries[num_values].value = def_val;
                 unused_fields[field_index] = NULL;
@@ -851,7 +851,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             if (!can_leave_uninitialized(ft) && unused_fields[field_index]) {
-                compile_err(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
+                compiler_err(env, ast, "%s structs are supposed to have a non-optional field '%s' (%s), but you didn't provide a value for it.",
                       type_to_string(t),
                       ith(struct_type->field_names, field_index), type_to_string(ft));
             }
@@ -867,7 +867,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *actual = get_type(env, entries[i].ast);
             rvalues[i] = entries[i].value;
             if (!promote(env, actual, &rvalues[i], expected))
-                compile_err(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
+                compiler_err(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
                       type_to_string(expected), type_to_string(t), ith(struct_type->field_names, entries[i].field_num),
                       type_to_string(actual));
 
@@ -888,7 +888,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *fn = NULL;
         bl_type_t *fn_bl_t = get_type(env, call->fn);
         if (fn_bl_t->tag != FunctionType)
-            compile_err(env, call->fn, "This is not a callable function (it's a %s)", type_to_string(fn_bl_t));
+            compiler_err(env, call->fn, "This is not a callable function (it's a %s)", type_to_string(fn_bl_t));
         auto fn_t = Match(fn_bl_t, FunctionType);
 
         int64_t num_args = length(fn_t->arg_types);
@@ -910,11 +910,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             switch (value_type->tag) {
             case TypeType: {
                 if (access->fielded->tag != Var)
-                    compile_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
+                    compiler_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
                 bl_type_t *fielded_type = Match(value_type, TypeType)->type;
                 binding_t *binding = get_from_namespace(env, fielded_type, access->field);
                 if (!binding)
-                    compile_err(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_to_string(fielded_type));
+                    compiler_err(env, call->fn, "I couldn't find any method called %s for %s.", access->field, type_to_string(fielded_type));
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -927,18 +927,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)
-                    compile_err(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                    compiler_err(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
                 if (binding->type->tag != FunctionType)
-                    compile_err(env, call->fn, "This value isn't a function, it's a %s", type_to_string(binding->type));
+                    compiler_err(env, call->fn, "This value isn't a function, it's a %s", type_to_string(binding->type));
                 auto fn_info = Match(binding->type, FunctionType);
                 if (length(fn_info->arg_types) < 1)
-                    compile_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %s.%s()",
+                    compiler_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %s.%s()",
                           type_to_string(value_type), access->field);
 
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 bl_type_t *expected_self = ith(fn_info->arg_types, 0);
                 if (self_t != expected_self && !promote(env, self_t, &self_val, expected_self))
-                    compile_err(env, ast, "The method %s.%s(...) is being called on a %s, but it wants a %s.",
+                    compiler_err(env, ast, "The method %s.%s(...) is being called on a %s, but it wants a %s.",
                           type_to_string(self_t), access->field, type_to_string(self_t), type_to_string(expected_self));
                 arg_vals[0] = self_val;
                 fn = binding->func;
@@ -964,16 +964,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto kwarg = Match((*arg), KeywordArg);
             int64_t arg_index = (int64_t)hashmap_get(arg_positions, kwarg->name);
             if (arg_index == 0) // missing key
-                compile_err(env, *arg, "\"%s\" is not the name of any argument for this function that I'm aware of",
+                compiler_err(env, *arg, "\"%s\" is not the name of any argument for this function that I'm aware of",
                       kwarg->name);
             arg_index ^= MASK;
             if (arg_vals[arg_index])
-                compile_err(env, *arg, "This argument was already passed in earlier to this function call");
+                compiler_err(env, *arg, "This argument was already passed in earlier to this function call");
             gcc_rvalue_t *val = compile_expr(env, block, kwarg->arg);
             bl_type_t *actual = get_type(env, *arg);
             bl_type_t *expected = ith(fn_t->arg_types, arg_index);
             if (!promote(env, actual, &val, expected))
-                compile_err(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
+                compiler_err(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
             arg_vals[arg_index] = val;
         }
@@ -987,14 +987,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             while (arg_vals[pos]) {
                 ++pos;
                 if (pos >= num_args)
-                    compile_err(env, arg, "This is one argument too many for this function call");
+                    compiler_err(env, arg, "This is one argument too many for this function call");
                 assert(pos < num_args);
             }
             gcc_rvalue_t *val = compile_expr(env, block, arg);
             bl_type_t *actual = get_type(env, arg);
             bl_type_t *expected = ith(fn_t->arg_types, pos);
             if (!promote(env, actual, &val, expected))
-                compile_err(env, arg, "This function expected this argument to have type %s, but this value is a %s",
+                compiler_err(env, arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
             arg_vals[pos] = val;
         }
@@ -1028,7 +1028,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             bl_type_t *arg_t = ith(fn_t->arg_types, pos);
             if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional)
-                compile_err(env, ast, "The non-optional argument %s was not provided",
+                compiler_err(env, ast, "The non-optional argument %s was not provided",
                       fn_t->arg_names ? ith(fn_t->arg_names, pos) : intern_strf("%ld", pos));
             arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
         }
@@ -1051,7 +1051,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *t = get_type(env, value);
         if (t->tag == VoidType)
-            compile_err(env, value, "This expression is a Void type, which can't be heap allocated");
+            compiler_err(env, value, "This expression is a Void type, which can't be heap allocated");
         gcc_func_t *func = gcc_block_func(*block);
         ssize_t gcc_size = gcc_sizeof(env, t);
         if (t->tag == ArrayType)
@@ -1084,7 +1084,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *obj = compile_expr(env, block, value);
         gcc_rvalue_t *len = compile_len(env, block, t, obj);
         if (!len)
-            compile_err(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
+            compiler_err(env, ast, "I don't know how to get the length of a %s", type_to_string(t));
         return len;
     }
     case FieldAccess: {
@@ -1097,7 +1097,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case PointerType: {
             auto ptr = Match(fielded_t, PointerType);
             if (ptr->is_optional)
-                compile_err(env, ast, "This field access is unsafe because the value may be nil");
+                compiler_err(env, ast, "This field access is unsafe because the value may be nil");
             if (ptr->pointed->tag == ArrayType)
                 mark_array_cow(env, block, obj);
             else if (ptr->pointed->tag == TableType)
@@ -1230,7 +1230,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (val_binding)
                 return val_binding->rval;
             else
-                compile_err(env, ast, "I can't find any field or method called \"%s\" on the type %s.", access->field, type_to_string(t));
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on the type %s.", access->field, type_to_string(t));
             break;
         }
         default: break;
@@ -1240,7 +1240,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (binding)
             return binding->rval;
         else {
-            compile_err(env, ast, "I can't find any field or method called \"%s\" on the type %s.", access->field, type_to_string(fielded_t));
+            compiler_err(env, ast, "I can't find any field or method called \"%s\" on the type %s.", access->field, type_to_string(fielded_t));
         }
     }
     case Index: {
@@ -1285,7 +1285,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             *block = done;
             return gcc_rval(value_var);
         } else {
-            compile_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
         }
     }
     case In: {
@@ -1298,7 +1298,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         if (container_t->tag == TableType) {
             if (!type_is_a(member_t, Match(container_t, TableType)->key_type))
-                compile_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
+                compiler_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
                             type_to_string(member_t), type_to_string(container_t));
 
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member);
@@ -1306,7 +1306,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (container_t->tag == ArrayType) {
             return array_contains(env, block, in->container, in->member);
         } else {
-            compile_err(env, ast, "'in' membership testing is only supported for Tables, not %s", type_to_string(container_t));
+            compiler_err(env, ast, "'in' membership testing is only supported for Tables, not %s", type_to_string(container_t));
         }
     }
     case TypeOf: {
@@ -1335,7 +1335,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (!((is_numeric(src_t) && is_numeric(cast_t))
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
-            compile_err(env, ast, "I don't know how to convert %s to %s. "
+            compiler_err(env, ast, "I don't know how to convert %s to %s. "
                         "Maybe you could use 'bitcast' instead or implement a conversion function.",
                         type_to_string(src_t), type_to_string(cast_t));
         return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, cast_t));
@@ -1366,7 +1366,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
         else
-            compile_err(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
+            compiler_err(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }
     case Equal: case NotEqual:
     case Less: case LessEqual: case Greater: case GreaterEqual: {
@@ -1393,10 +1393,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         coerce_numbers(env, &lhs_t, &lhs_val, &rhs_t, &rhs_val);
         if (lhs_t != rhs_t)
-            compile_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (is_ordered && !is_orderable(lhs_t))
-            compile_err(env, ast, "I can't do ordered comparisons between values with type %s",
+            compiler_err(env, ast, "I can't do ordered comparisons between values with type %s",
                   type_to_string(lhs_t));
 
         if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
@@ -1409,7 +1409,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *value = Match(ast, Negative)->value;
         bl_type_t *t = get_type(env, value);
         if (!is_numeric(t))
-            compile_err(env, ast, "I only know how to negate numbers, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to negate numbers, not %s", type_to_string(t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         return gcc_unary_op(env->ctx, loc, GCC_UNOP_MINUS, gcc_t, rval);
@@ -1475,7 +1475,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             if (!promote(env, lhs_t, &lhs_val, rhs_t)
                 && !promote(env, rhs_t, &rhs_val, lhs_t))
-                compile_err(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
+                compiler_err(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_func_t *func = gcc_block_func(*block);
@@ -1531,7 +1531,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         if (!promote(env, lhs_t, &lhs_val, rhs_t)
             && !promote(env, rhs_t, &rhs_val, lhs_t))
-            compile_err(env, ast, "The left hand side of this modulus has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
+            compiler_err(env, ast, "The left hand side of this modulus has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType) {
             gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
@@ -1562,7 +1562,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *exponent_val = compile_expr(env, block, exponent);
         if (!promote(env, base_t, &base_val, rhs_t)
             && !promote(env, rhs_t, &exponent_val, base_t))
-            compile_err(env, ast, "The base of this operation has type %s, but the exponent has type %s and I can't figure out how to combine them.",
+            compiler_err(env, ast, "The base of this operation has type %s, but the exponent has type %s and I can't figure out how to combine them.",
                   type_to_string(base_t), type_to_string(rhs_t));
 
         gcc_type_t *double_t = gcc_type(env->ctx, DOUBLE);
@@ -1599,7 +1599,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         if (if_t->tag == GeneratorType && env->comprehension_callback) {
             if (!env->comprehension_callback)
-                compile_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
+                compiler_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
             env->comprehension_callback(branch_env, &if_truthy, body, env->comprehension_userdata);
             assert(end_if);
             if (if_truthy)
@@ -1611,7 +1611,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     if (has_value) {
                         bl_type_t *actual = get_type(env, body);
                         if (!promote(env, actual, &branch_val, if_t))
-                            compile_err(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                            compiler_err(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                                   type_to_string(if_t), type_to_string(actual));
                         gcc_assign(if_truthy, loc, if_ret, branch_val);
                     } else {
@@ -1631,7 +1631,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     assert(*block);
                     bl_type_t *actual = get_type(env, if_->else_body);
                     if (!promote(env, actual, &branch_val, if_t))
-                        compile_err(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                        compiler_err(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(if_t), type_to_string(actual));
                     gcc_assign(*block, loc, if_ret, branch_val);
                 } else if (*block) {
@@ -1654,12 +1654,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         while (subject_t->tag == PointerType) {
             auto ptr = Match(subject_t, PointerType);
             if (ptr->is_optional)
-                compile_err(env, when->subject, "This value may be nil, so it can't be safely dereferenced");
+                compiler_err(env, when->subject, "This value may be nil, so it can't be safely dereferenced");
             subject_t = ptr->pointed;
             subject = gcc_rval(gcc_rvalue_dereference(subject, ast_loc(env, when->subject)));
         }
         if (subject_t->tag != TaggedUnionType)
-            compile_err(env, when->subject, "'when' blocks must use enums, but this is a %s", type_to_string(subject_t));
+            compiler_err(env, when->subject, "'when' blocks must use enums, but this is a %s", type_to_string(subject_t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, subject_t);
 
         binding_t *tags_binding = get_from_namespace(env, subject_t, "__Tag");
@@ -1694,7 +1694,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     }
                 }
                 if (!case_rval)
-                    compile_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
+                    compiler_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
 
                 binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
                 hashmap_set(case_env->bindings, Match(case_->var, Var)->name, case_binding);
@@ -1710,7 +1710,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (has_value) {
                     bl_type_t *actual = get_type(case_env, case_->body);
                     if (!promote(case_env, actual, &branch_val, result_t))
-                        compile_err(case_env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                        compiler_err(case_env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(case_block, case_loc, when_value, branch_val);
                 } else {
@@ -1729,7 +1729,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (has_value) {
                     bl_type_t *actual = get_type(env, when->default_body);
                     if (!promote(env, actual, &branch_val, result_t))
-                        compile_err(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
+                        compiler_err(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
                               type_to_string(result_t), type_to_string(actual));
                     gcc_assign(end_of_default, else_loc, when_value, branch_val);
                 } else {
@@ -1767,7 +1767,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Skip: case Stop: {
         if (env->is_deferred)
-            compile_err(env, ast, "This '%s' is inside a 'defer' block, which is not allowed", ast->tag == Skip ? "skip" : "stop");
+            compiler_err(env, ast, "This '%s' is inside a 'defer' block, which is not allowed", ast->tag == Skip ? "skip" : "stop");
 
         gcc_block_t *jump_dest = NULL;
         defer_t *prev_deferred = env->deferred;
@@ -1795,7 +1795,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             prev_deferred = env->loop_label->deferred;
         }
         if (!jump_dest)
-            compile_err(env, ast, "I'm not sure what %s is referring to",
+            compiler_err(env, ast, "I'm not sure what %s is referring to",
                         target ? target : (ast->tag == Skip ? "this 'skip'" : "this 'stop'"));
 
         insert_defers(env, block, prev_deferred);
@@ -1826,7 +1826,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             } else if (empty_type->tag == AbortType) {
                 empty_block = reduction->fallback;
             } else {
-                compile_err(env, reduction->fallback, "This fallback value has type %s, but I need a %s",
+                compiler_err(env, reduction->fallback, "This fallback value has type %s, but I need a %s",
                             type_to_string(empty_type), type_to_string(t));
             }
         } else {
@@ -1839,7 +1839,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Fail: {
         if (env->is_deferred)
-            compile_err(env, ast, "This 'fail' is inside a 'defer' block, which is not allowed");
+            compiler_err(env, ast, "This 'fail' is inside a 'defer' block, which is not allowed");
 
         ast_t *message = Match(ast, Fail)->message;
         gcc_rvalue_t *msg;
@@ -1891,7 +1891,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env, expr);
         if (t->tag == VoidType) {
             if (test->output)
-                compile_err(env, ast, "There shouldn't be any output for a Void expression like this");
+                compiler_err(env, ast, "There shouldn't be any output for a Void expression like this");
 
             compile_statement(env, block, expr);
             return NULL;
@@ -1937,14 +1937,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (Match(ast, Export)->vars, name, _) {
             binding_t *b = hashmap_get(env->bindings, *name);
             if (!b)
-                compile_err(env, ast, "I couldn't find the variable '%s'", *name);
+                compiler_err(env, ast, "I couldn't find the variable '%s'", *name);
             export(env, *name, b);
         }
         return NULL;
     }
     default: break;
     }
-    compile_err(env, ast, "I haven't yet implemented compiling for: %s", ast_to_str(ast)); 
+    compiler_err(env, ast, "I haven't yet implemented compiling for: %s", ast_to_str(ast)); 
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

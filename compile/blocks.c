@@ -29,10 +29,10 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
         if (!(t->tag == VoidType || t->tag == AbortType)) {
             if (was_generator)
-                compile_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
+                compiler_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
                             type_to_string(t));
             else
-                compile_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
+                compiler_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
                             type_to_string(t));
         }
         gcc_rvalue_t *val = compile_expr(env, block, ast);
@@ -50,7 +50,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         NEW_LIST(bl_type_t*, field_types);
         NEW_LIST(ast_t*, field_defaults);
         if (hashmap_get(env->bindings, name))
-            compile_err(env, def, "Something called %s is already defined.", name);
+            compiler_err(env, def, "Something called %s is already defined.", name);
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
         bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types, .field_defaults=field_defaults);
@@ -69,7 +69,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         auto tu_def = Match(def, TaggedUnionDef);
         istr_t tu_name = tu_def->name;
         if (hashmap_get(env->bindings, tu_name))
-            compile_err(env, def, "Something called %s is already defined.", tu_name);
+            compiler_err(env, def, "Something called %s is already defined.", tu_name);
         NEW_LIST(bl_type_t*, union_field_types);
         NEW_LIST(istr_t, union_field_names);
         bl_type_t *tag_t = Type(TagType, .name=tu_name, .names=tu_def->tag_names, .values=tu_def->tag_values);
@@ -153,7 +153,7 @@ static void populate_def_members(env_t *env, ast_t *def)
             ast_t *default_val = ith(struct_def->field_defaults, i);
             bl_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
             if (ft->tag == VoidType)
-                compile_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
+                compiler_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
             APPEND(struct_type->field_types, ft);
             APPEND(struct_type->field_defaults, default_val);
         }
@@ -167,7 +167,7 @@ static void populate_def_members(env_t *env, ast_t *def)
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
         if (length(tu_def->tag_names) == 0)
-            compile_err(env, def, "This tagged union no fields, which is currently not supported");
+            compiler_err(env, def, "This tagged union no fields, which is currently not supported");
 
         env_t inner_env = *env;
         inner_env.bindings = get_namespace(env, t);
@@ -268,7 +268,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     gcc_rvalue_t *ret = NULL;
     foreach (statements, stmt, last_stmt) {
         if (!*block)
-            compile_err(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
+            compiler_err(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
             bl_type_t *last_t = get_type(env, *stmt);
             if (last_t->tag == VoidType || last_t->tag == AbortType)

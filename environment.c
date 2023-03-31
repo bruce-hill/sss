@@ -416,7 +416,7 @@ env_t *global_scope(env_t *env)
     return fresh;
 }
 
-void compile_err(env_t *env, ast_t *ast, const char *fmt, ...)
+void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO))
         fputs("\x1b[31;7;1m", stderr);
@@ -460,7 +460,7 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
         else
             return get_from_namespace(env, b->type, access->field);
     }
-    default: compile_err(env, ast, "I can't figure out at compile-time what this refers to");
+    default: compiler_err(env, ast, "I can't figure out at compile-time what this refers to");
     }
 }
 

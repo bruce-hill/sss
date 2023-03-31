@@ -33,7 +33,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!block) return NULL;
     if (!promote(env, get_type(env, key_ast), &key_val, needed_key_t))
-        compile_err(env, key_ast, "This key has type %s, but to work in this table, it needs type %s",
+        compiler_err(env, key_ast, "This key has type %s, but to work in this table, it needs type %s",
                     type_to_string(get_type(env, key_ast)), type_to_string(needed_key_t));
 
     gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, fresh("key"));
@@ -105,13 +105,13 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!*block) return;
     if (!promote(env, raw_key_t, &key_val, needed_key_t))
-        compile_err(env, key_ast, "This key was expected to be a %s, but was actually %s",
+        compiler_err(env, key_ast, "This key was expected to be a %s, but was actually %s",
                     type_to_string(needed_key_t), type_to_string(raw_key_t));
 
     gcc_rvalue_t *value_val = compile_expr(env, block, value_ast);
     if (!*block) return;
     if (!promote(env, raw_value_t, &value_val, needed_value_t))
-        compile_err(env, value_ast, "This value was expected to be a %s, but was actually %s",
+        compiler_err(env, value_ast, "This value was expected to be a %s, but was actually %s",
                     type_to_string(needed_value_t), type_to_string(raw_value_t));
 
     bl_type_t *needed_entry_t = table_entry_type(info->table_type);
@@ -146,7 +146,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     while (table_t->tag == PointerType) {
         auto ptr = Match(table_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, table_ast, "This is an optional pointer, which can't be safely dereferenced.");
+            compiler_err(env, table_ast, "This is an optional pointer, which can't be safely dereferenced.");
 
         table = gcc_rval(gcc_rvalue_dereference(table, loc));
         table_t = ptr->pointed;
@@ -165,7 +165,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     bl_type_t *raw_key_t = get_type(env, key_ast);
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!promote(env, raw_key_t, &key_val, expected_key_t))
-        compile_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
+        compiler_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
                     type_to_string(raw_key_t), type_to_string(expected_key_t));
     gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, expected_key_t), fresh("key"));
     gcc_assign(*block, loc, key_lval, key_val);
@@ -250,7 +250,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *fallback = table->fallback;
         bl_type_t *fallback_t = get_type(env, fallback);
         if (fallback_t->tag == PointerType) {
-            compile_err(env, fallback, "Fallback tables are not allowed to be pointers to mutable tables, only table values are allowed. \n"
+            compiler_err(env, fallback, "Fallback tables are not allowed to be pointers to mutable tables, only table values are allowed. \n"
                         "Use '*' to dereference this value if you want to use it as a fallback.");
             // fallback = WrapAST(fallback, HeapAllocate, .value=WrapAST(fallback, Dereference, .value=fallback));
         } else {
@@ -258,7 +258,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             fallback_t = get_type(env, fallback);
         }
         if (Match(fallback_t, PointerType)->pointed != t)
-            compile_err(env, fallback, "This fallback has type %s, which doesn't match the table's type: %s",
+            compiler_err(env, fallback, "This fallback has type %s, which doesn't match the table's type: %s",
                         type_to_string(fallback_t), type_to_string(t));
 
         gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
@@ -270,7 +270,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *default_t = get_type(env, table->default_value);
         bl_type_t *value_t = Match(t, TableType)->value_type;
         if (!type_is_a(default_t, value_t))
-            compile_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
+            compiler_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
                         type_to_string(default_t), type_to_string(value_t));
 
         gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);

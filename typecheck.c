@@ -16,7 +16,7 @@
 static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
 {
     if (condition && condition->tag == Declare)
-        compile_err(env, condition, "Declare is not supported in conditions for now");
+        compiler_err(env, condition, "Declare is not supported in conditions for now");
     return get_type(env, body);
 }
 
@@ -26,7 +26,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case Var: {
         binding_t *b = hashmap_get(env->bindings, Match(ast, Var)->name);
         if (!b || b->type->tag != TypeType)
-            compile_err(env, ast, "I don't know any type with this name.");
+            compiler_err(env, ast, "I don't know any type with this name.");
         return Match(b->type, TypeType)->type;
     }
     case FieldAccess: {
@@ -34,22 +34,22 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         bl_type_t *fielded_t = parse_type_ast(env, access->fielded);
         binding_t *b = get_from_namespace(env, fielded_t, access->field);
         if (!b || b->type->tag != TypeType)
-            compile_err(env, ast, "I don't know any type with this name.");
+            compiler_err(env, ast, "I don't know any type with this name.");
         return Match(b->type, TypeType)->type;
     }
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
         bl_type_t *item_t = parse_type_ast(env, item_type);
-        if (!item_t) compile_err(env, item_type, "I can't figure out what this type is.");
+        if (!item_t) compiler_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
     case TypeTable: {
         ast_t *key_type_ast = Match(ast, TypeTable)->key_type;
         bl_type_t *key_type = parse_type_ast(env, key_type_ast);
-        if (!key_type) compile_err(env, key_type_ast, "I can't figure out what type this is.");
+        if (!key_type) compiler_err(env, key_type_ast, "I can't figure out what type this is.");
         ast_t *val_type_ast = Match(ast, TypeTable)->value_type;
         bl_type_t *val_type = parse_type_ast(env, val_type_ast);
-        if (!val_type) compile_err(env, val_type_ast, "I can't figure out what type this is.");
+        if (!val_type) compiler_err(env, val_type_ast, "I can't figure out what type this is.");
         return Type(TableType, .key_type=key_type, .value_type=val_type);
     }
     case TypePointer: {
@@ -66,7 +66,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto opt = Match(ast, TypeOptional);
         bl_type_t *t = parse_type_ast(env, opt->type);
         if (t->tag != PointerType)
-            compile_err(env, ast, "I only know how to do optional types for pointers like @%s (because NULL is used to represent the absence of a value), "
+            compiler_err(env, ast, "I only know how to do optional types for pointers like @%s (because NULL is used to represent the absence of a value), "
                         "but this type isn't a pointer", type_to_string(t));
         return Type(PointerType, .is_optional=true, .pointed=Match(t, PointerType)->pointed);
     }
@@ -75,7 +75,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         bl_type_t *raw = parse_type_ast(env, measure->type);
         istr_t raw_units = type_units(raw);
         if (raw_units)
-            compile_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
+            compiler_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
         istr_t units = unit_derive(measure->units, NULL, env->derived_units);
         return with_units(raw, units);
     }
@@ -139,7 +139,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto t = Match(ast, TypeTypeAST);
         return Type(TypeType, .type=parse_type_ast(env, t->type));
     }
-    default: compile_err(env, ast, "This is not a Type value");
+    default: compiler_err(env, ast, "This is not a Type value");
     }
 }
 
@@ -162,7 +162,7 @@ static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
         return Type(PointerType, .pointed=iter_t, .is_optional=false);
     }
     default:
-        compile_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
+        compiler_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
         break;
     }
 }
@@ -182,22 +182,22 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     istr_t units;
     if (tag == Add || tag == Subtract) {
         if (u1 != u2)
-            compile_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
+            compiler_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
         units = u1;
     } else if (tag == Divide || tag == Multiply) {
         units = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
     } else if (tag == Power) {
         if (u1 && strlen(u1) > 0)
-            compile_err(env, ast, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
+            compiler_err(env, ast, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
         else if (u2 && strlen(u2) > 0)
-            compile_err(env, ast, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
+            compiler_err(env, ast, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
         units = NULL;
     } else if (tag == Modulus) {
         if (u2 && strlen(u2) > 0)
-            compile_err(env, ast, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
+            compiler_err(env, ast, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
         units = u1;
     } else {
-        compile_err(env, ast, "Unsupported math operation");
+        compiler_err(env, ast, "Unsupported math operation");
     }
 
     if (lhs_t == rhs_t) {
@@ -210,7 +210,7 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     } else if (is_numeric(rhs_t) && (lhs_t->tag == StructType || lhs_t->tag == ArrayType)) {
         return with_units(lhs_t, units);
     } else {
-        compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+        compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
 }
@@ -243,7 +243,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case 32: return Type(IntType, .units=units, .bits=32, .is_unsigned=i->is_unsigned);
         case 16: return Type(IntType, .units=units, .bits=16, .is_unsigned=i->is_unsigned);
         case 8: return Type(IntType, .units=units, .bits=8, .is_unsigned=i->is_unsigned);
-        default: compile_err(env, ast, "Unsupported precision");
+        default: compiler_err(env, ast, "Unsupported precision");
         }
     }
     case Char: return Type(CharType);
@@ -255,7 +255,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         switch (n->precision) {
         case 64: return Type(NumType, .units=units, .bits=64);
         case 32: return Type(NumType, .units=units, .bits=32);
-        default: compile_err(env, ast, "Unsupported precision");
+        default: compiler_err(env, ast, "Unsupported precision");
         }
     }
     case TypeOf: {
@@ -271,18 +271,18 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Dereference: {
         bl_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
         if (pointer_t->tag != PointerType)
-            compile_err(env, ast, "You're attempting to dereference something that isn't a pointer (it's a %s)",
+            compiler_err(env, ast, "You're attempting to dereference something that isn't a pointer (it's a %s)",
                         type_to_string(pointer_t));
         auto ptr = Match(pointer_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
+            compiler_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
         return ptr->pointed;
     }
     case Maybe: {
         ast_t *value = Match(ast, Maybe)->value;
         bl_type_t *pointed = get_type(env, value);
         if (pointed->tag != PointerType)
-            compile_err(env, value, "This value isn't a pointer type, so it doesn't make sense to say it's optional. "
+            compiler_err(env, value, "This value isn't a pointer type, so it doesn't make sense to say it's optional. "
                         "You can use `?@` to make it a potentially nil pointer to a heap allocated value.");
         pointed = Match(pointed, PointerType)->pointed;
         return Type(PointerType, .is_optional=true, .pointed=pointed);
@@ -303,7 +303,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         istr_t name = Match(ast, Var)->name;
         binding_t *binding = get_binding(env, name);
         if (!binding)
-            compile_err(env, ast, "I don't know what \"%s\" refers to", name);
+            compiler_err(env, ast, "I don't know what \"%s\" refers to", name);
         return binding->type;
     }
     case Len: {
@@ -322,7 +322,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 t2 = Match(t2, GeneratorType)->generated;
             bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
-                compile_err(env, LIST_ITEM(list->items, i),
+                compiler_err(env, LIST_ITEM(list->items, i),
                             "This array item has type %s, which is different from earlier array items which have type %s",
                             type_to_string(t2),  type_to_string(item_type));
             item_type = merged;
@@ -346,7 +346,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
             bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
             if (!key_merged)
-                compile_err(env, LIST_ITEM(table->entries, i),
+                compiler_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
                             type_to_string(key_t),  type_to_string(key_type));
             key_type = key_merged;
@@ -354,7 +354,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
             bl_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
             if (!val_merged)
-                compile_err(env, LIST_ITEM(table->entries, i),
+                compiler_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
                             type_to_string(value_t),  type_to_string(value_type));
             value_type = val_merged;
@@ -390,7 +390,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
                 if (LIST_ITEM(struct_t->field_names, i) == access->field) {
                     if (is_optional)
-                        compile_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
+                        compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
 
                     bl_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
                     if (struct_t->units)
@@ -405,7 +405,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
                 if (LIST_ITEM(union_t->field_names, i) == access->field) {
                     if (is_optional)
-                        compile_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
+                        compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(union_t->field_types, i);
                 }
             }
@@ -414,12 +414,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case TypeType: {
             binding_t *type_binding = get_ast_binding(env, access->fielded);
             if (!type_binding || type_binding->type->tag != TypeType)
-                compile_err(env, access->fielded, "Something went wrong with looking up this type");
+                compiler_err(env, access->fielded, "Something went wrong with looking up this type");
             binding_t *binding = get_from_namespace(env, Match(type_binding->type, TypeType)->type, access->field);
             if (binding)
                 return binding->type;
             else
-                compile_err(env, ast, "I can't find anything called %s on this type", access->field);
+                compiler_err(env, ast, "I can't find anything called %s on this type", access->field);
         }
         case ArrayType: {
             define_array_methods(env, value_t);
@@ -432,7 +432,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
                     if (LIST_ITEM(struct_->field_names, i) == access->field) {
                         if (is_optional)
-                            compile_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
+                            compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                         return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
                     }
                 }
@@ -447,7 +447,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             if (binding)
                 return binding->type;
             else
-                compile_err(env, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
         }
         }
     }
@@ -462,7 +462,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             case RangeType: return indexed_t;
             case IntType: case CharType: case CStringCharType:
                 return Match(indexed_t, ArrayType)->item_type;
-            default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
+            default: compiler_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }
         }
         case TableType: {
@@ -475,7 +475,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]
         default: {
-            compile_err(env, ast, "I don't know how to index %s values", type_to_string(indexed_t));
+            compiler_err(env, ast, "I don't know how to index %s values", type_to_string(indexed_t));
         }
         }
     }
@@ -486,7 +486,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto call = Match(ast, FunctionCall);
         bl_type_t *fn_type_t = get_type(env, call->fn);
         if (fn_type_t->tag != FunctionType) {
-            compile_err(env, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
+            compiler_err(env, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
         }
         auto fn_type = Match(fn_type_t, FunctionType);
         return fn_type->ret;
@@ -520,7 +520,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 break;
             }
             case StructDef: case TaggedUnionDef:
-                compile_err(env, stmt, "I don't currently support defining types inside blocks that are used as expressions");
+                compiler_err(env, stmt, "I don't currently support defining types inside blocks that are used as expressions");
                 break;
             default:
                 // TODO: bind structs/tagged unions in block typechecking
@@ -536,7 +536,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *else_t = get_type(env, do_->else_body);
             bl_type_t *t2 = type_or_type(t, else_t);
             if (!t2)
-                compile_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
+                compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_t));
             t = t2;
         } else if (do_->label) {
@@ -565,7 +565,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Negative: {
         bl_type_t *t = get_type(env, Match(ast, Negative)->value);
         if (!is_numeric(t))
-            compile_err(env, ast, "I only know how to negate numeric types, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to negate numeric types, not %s", type_to_string(t));
         return t;
     }
     case And: {
@@ -588,7 +588,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
         }
 
-        compile_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
+        compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case Or: {
@@ -613,7 +613,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                     return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional);
             }
         }
-        compile_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
+        compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case Xor: {
@@ -626,7 +626,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         else if (is_integral(lhs_t) && is_integral(rhs_t))
             return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
 
-        compile_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
+        compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
@@ -650,7 +650,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             return t;
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
             return Type(BoolType);
-        compile_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %s", type_to_string(t)); 
+        compiler_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %s", type_to_string(t)); 
     }
 
     case Equal: case NotEqual: {
@@ -667,7 +667,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         else if (is_numeric(lhs_t) && is_numeric(rhs_t))
             return Type(BoolType);
         else
-            compile_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between a %s and a %s",
+            compiler_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between a %s and a %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
     }
 
@@ -740,7 +740,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             NEW_LIST(bl_type_t*, field_types);
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != StructField)
-                    compile_err(env, *member, "Anonymous structs must have names for each field");
+                    compiler_err(env, *member, "Anonymous structs must have names for each field");
                 auto field = Match(*member, StructField);
                 APPEND(field_names, field->name);
                 bl_type_t *field_type = get_type(env, field->value);
@@ -758,7 +758,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         binding_t *b = get_ast_binding(env, struct_->type);
         if (!b)
-            compile_err(env, struct_->type, "I can't figure out this type");
+            compiler_err(env, struct_->type, "I can't figure out this type");
 
         bl_type_t *t = NULL;
         if (struct_->type && struct_->type->tag == FieldAccess) {
@@ -771,7 +771,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t = Match(b->type, TypeType)->type;
 
         if (t == NULL)
-            compile_err(env, ast, "There isn't any kind of struct like this");
+            compiler_err(env, ast, "There isn't any kind of struct like this");
 
         return struct_->units ? with_units(t, struct_->units) : t;
     }
@@ -785,7 +785,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *else_type = get_type(env, if_->else_body);
             bl_type_t *t2 = type_or_type(t, else_type);
             if (!t2)
-                compile_err(env, if_->else_body,
+                compiler_err(env, if_->else_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
             t = t2;
@@ -799,7 +799,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto when = Match(ast, When);
         bl_type_t *tagged_t = get_type(env, when->subject);
         if (tagged_t->tag != TaggedUnionType)
-            compile_err(env, when->subject, "A 'when' statement requires the subject be a tagged union, not %s",
+            compiler_err(env, when->subject, "A 'when' statement requires the subject be a tagged union, not %s",
                         type_to_string(tagged_t));
 
         bl_type_t *t = NULL;
@@ -815,13 +815,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                         goto env_ready;
                     }
                 }
-                compile_err(env, case_->tag, "I couldn't find a tagged union value with this tag.");
+                compiler_err(env, case_->tag, "I couldn't find a tagged union value with this tag.");
             }
           env_ready:;
             bl_type_t *case_t = get_type(case_env, (case_)->body);
             bl_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
-                compile_err(env, (case_)->body,
+                compiler_err(env, (case_)->body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(case_t));
             t = t2;
@@ -830,7 +830,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *else_type = get_type(env, when->default_body);
             bl_type_t *t2 = type_or_type(t, else_type);
             if (!t2)
-                compile_err(env, when->default_body,
+                compiler_err(env, when->default_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
             t = t2;
@@ -878,7 +878,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         else if (for_loop->empty)
             return generate(get_type(loop_env, for_loop->empty));
         else
-            compile_err(env, ast, "I can't figure out the type of this 'for' loop");
+            compiler_err(env, ast, "I can't figure out the type of this 'for' loop");
     }
     case Reduction: {
         env = fresh_scope(env);
@@ -902,7 +902,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Ellipsis: return Type(RangeType);
     default: break;
     }
-    compile_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));
+    compiler_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));
 }
 
 bool is_discardable(env_t *env, ast_t *ast)

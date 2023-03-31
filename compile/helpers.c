@@ -136,7 +136,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         size += gcc_sizeof(env, tagged->data);
         return size;
     }
-    default: compile_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
+    default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
     }
 }
 
@@ -174,7 +174,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             case 16: gcc_t = gcc_type(env->ctx, UINT16); break;
             case 8: gcc_t = gcc_type(env->ctx, UINT8); break;
             case 0: gcc_t = gcc_type(env->ctx, UINT32); break;
-            default: compile_err(env, NULL, "I couldn't get a GCC type for an unsigned integer with %d bits", Match(t, IntType)->bits);
+            default: compiler_err(env, NULL, "I couldn't get a GCC type for an unsigned integer with %d bits", Match(t, IntType)->bits);
             }
         } else {
             switch (Match(t, IntType)->bits) {
@@ -183,7 +183,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             case 16: gcc_t = gcc_type(env->ctx, INT16); break;
             case 8: gcc_t = gcc_type(env->ctx, INT8); break;
             case 0: gcc_t = gcc_type(env->ctx, INT); break;
-            default: compile_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
+            default: compiler_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
             }
         }
         break;
@@ -321,7 +321,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     default: {
-        compile_err(env, NULL, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
+        compiler_err(env, NULL, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
     }
     }
 
@@ -359,9 +359,9 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
 
         if (t->tag == GeneratorType)
-            compile_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
+            compiler_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
         else if (t->tag == VoidType)
-            compile_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
+            compiler_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
 
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_func_t *func = gcc_block_func(*block);
@@ -369,7 +369,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, fresh(name));
         binding_t *clobbered = hashmap_get_raw(env->bindings, name);
         if (clobbered && clobbered->type->tag == TypeType)
-            compile_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
+            compiler_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         hashmap_set(env->bindings, name,
                     new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
@@ -391,7 +391,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
     switch (t->tag) {
     case BoolType: break;
     case StructType: {
-        compile_err(env, obj, "This value is a struct and can't be used as a conditional.");
+        compiler_err(env, obj, "This value is a struct and can't be used as a conditional.");
         break;
     }
     default: {
@@ -809,7 +809,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         auto struct_type = Match(t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             if ((*ftype)->tag == ArrayType)
-                compile_err(env, NULL, "I don't currently support using structs as table keys when the struct holds an array");
+                compiler_err(env, NULL, "I don't currently support using structs as table keys when the struct holds an array");
         }
         goto memory_hash;
     }
@@ -856,7 +856,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         break;
     }
     default:
-        compile_err(env, NULL, "Hash functions aren't yet implemented for %s", type_to_string(t));
+        compiler_err(env, NULL, "Hash functions aren't yet implemented for %s", type_to_string(t));
     }
 
     gcc_return(block, NULL, gcc_rval(hashval));
@@ -1152,10 +1152,10 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         binding_t *binding = hashmap_get(env->bindings, Match(ast, Var)->name);
         if (binding) {
             if (!binding->lval)
-                compile_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
+                compiler_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
             return binding->lval;
         } else {
-            compile_err(env, ast, "I don't know what this variable is referring to."); 
+            compiler_err(env, ast, "I don't know what this variable is referring to."); 
         }
     }
     case Dereference: {
@@ -1170,7 +1170,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         // arr.x => [item.x for x in arr]
         if (fielded_t->tag == ArrayType) {
             if (!allow_slices)
-                compile_err(env, ast, "I can't assign to array slices");
+                compiler_err(env, ast, "I can't assign to array slices");
             gcc_func_t *func = gcc_block_func(*block);
             gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
             gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
@@ -1182,7 +1182,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         case PointerType: {
             auto fielded_ptr = Match(fielded_t, PointerType);
             if (fielded_ptr->is_optional)
-                compile_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+                compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
             fielded_lval = gcc_rvalue_dereference(gcc_rval(fielded_lval), NULL);
 
             if (fielded_ptr->pointed->tag == StructType) {
@@ -1194,7 +1194,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                         return gcc_lvalue_access_field(fielded_lval, NULL, field);
                     }
                 }
-                compile_err(env, ast, "The struct %s doesn't have a field called '%s'",
+                compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
                       type_to_string(fielded_ptr->pointed), access->field);
             }
 
@@ -1202,11 +1202,11 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             goto keep_going;
         }
         case StructType: {
-            compile_err(env, ast, "The fields of a struct value cannot be modified directly");
+            compiler_err(env, ast, "The fields of a struct value cannot be modified directly");
         }
         // TODO: support using TaggedUnion field and Type fields as lvalues
         default: {
-            compile_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
+            compiler_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
                   type_to_string(fielded_t));
         }
         }
@@ -1215,13 +1215,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         auto indexing = Match(ast, Index);
 
         if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
-            compile_err(env, ast, "I can't assign to array slices");
+            compiler_err(env, ast, "I can't assign to array slices");
 
         bl_type_t *indexed_t = get_type(env, indexing->indexed);
         if (indexed_t->tag == ArrayType)
-            compile_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
+            compiler_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
         else if (indexed_t->tag == TableType)
-            compile_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
+            compiler_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
 
         bl_type_t *pointed_type = indexed_t;
         while (pointed_type->tag == PointerType)
@@ -1232,7 +1232,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         } else if (pointed_type->tag == TableType) {
             return table_lvalue(env, block, pointed_type, compile_expr(env, block, indexing->indexed), indexing->index);
         } else {
-            compile_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
+            compiler_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
         }
     }
     case HeapAllocate: {
@@ -1242,7 +1242,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         else if (value->tag == Index && get_type(env, Match(value, Index)->indexed)->tag == PointerType)
             goto safe;
         else
-            compile_err(env, ast, "I don't know how to assign to this value. Maybe it's immutable?");
+            compiler_err(env, ast, "I don't know how to assign to this value. Maybe it's immutable?");
       safe:;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *t = get_type(env, value);
@@ -1259,7 +1259,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         return tmp;
     }
     default:
-        compile_err(env, ast, "This is not a valid value for assignment");
+        compiler_err(env, ast, "This is not a valid value for assignment");
     }
 }
 
@@ -1313,7 +1313,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             append(args, gcc_str(env->ctx, str));
             break;
         }
-        default: compile_err(env, NULL, "String format option not supported: %c", p[-1]);
+        default: compiler_err(env, NULL, "String format option not supported: %c", p[-1]);
         }
     }
     va_end(ap);

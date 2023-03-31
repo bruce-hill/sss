@@ -21,7 +21,7 @@ static gcc_rvalue_t *math_binop_rec(
     if (lhs_t->tag == PointerType) {
         auto ptr = Match(lhs_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+            compiler_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_binop_rec(env, block, ast, ptr->pointed, gcc_rval(gcc_rvalue_dereference(lhs, ast_loc(env, ast))), op, rhs_t, rhs);
     }
 
@@ -29,7 +29,7 @@ static gcc_rvalue_t *math_binop_rec(
     if (rhs_t->tag == PointerType) {
         auto ptr = Match(rhs_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+            compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_binop_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
     }
     gcc_func_t *func = gcc_block_func(*block);
@@ -179,7 +179,7 @@ static gcc_rvalue_t *math_binop_rec(
 
     bl_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (lhs_t != rhs_t) compile_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        if (lhs_t != rhs_t) compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
         struct_t = lhs_t;
     } else if (lhs_t->tag == StructType) {
         struct_t = lhs_t;
@@ -187,7 +187,7 @@ static gcc_rvalue_t *math_binop_rec(
         struct_t = rhs_t;
     } else {
         if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
-            compile_err(env, ast, "I don't know how to do math operations between %s and %s",
+            compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (numtype_priority(lhs_t) < numtype_priority(rhs_t)) {
@@ -244,7 +244,7 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
     case Subtract: op = GCC_BINOP_MINUS; break;
     case Multiply: op = GCC_BINOP_MULT; break;
     case Divide: op = GCC_BINOP_DIVIDE; break;
-    default: compile_err(env, ast, "Unsupported math operation");
+    default: compiler_err(env, ast, "Unsupported math operation");
     }
 
     // Unsafe! This assumes each of these types has the same tagged union struct layout. It saves some duplicated code.
@@ -267,7 +267,7 @@ void math_update_rec(
     if (lhs_t->tag == PointerType) {
         auto ptr = Match(lhs_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+            compiler_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
 
         if (Match(lhs_t, PointerType)->pointed->tag == ArrayType)
             check_cow(env, block, Match(lhs_t, PointerType)->pointed, gcc_rval(lhs));
@@ -279,14 +279,14 @@ void math_update_rec(
     if (rhs_t->tag == PointerType) {
         auto ptr = Match(rhs_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
+            compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_update_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
     }
 
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
-        compile_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
+        compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
     else if (type_units(lhs_t) != type_units(rhs_t) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
-        compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
+        compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
 
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
@@ -370,7 +370,7 @@ void math_update_rec(
         *block = loop_end;
     } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (with_units(lhs_t, NULL) != with_units(rhs_t, NULL))
-            compile_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
+            compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
         auto struct_ = Match(lhs_t, StructType);
@@ -398,11 +398,11 @@ void math_update_rec(
         if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
             rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
         else if (numtype_priority(lhs_t) < numtype_priority(rhs_t))
-            compile_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
+            compiler_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));
         return gcc_update(*block, loc, lhs, op, rhs);
     } else {
-        compile_err(env, ast, "I don't know how to do math update operations between %s and %s",
+        compiler_err(env, ast, "I don't know how to do math update operations between %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
 }
@@ -415,7 +415,7 @@ void math_update(env_t *env, gcc_block_t **block, ast_t *ast)
 
     switch (get_type(env, lhs)->tag) {
     case ArrayType: case TableType:
-        compile_err(env, lhs, "This is an immutable value and it can't be updated");
+        compiler_err(env, lhs, "This is an immutable value and it can't be updated");
     default: break;
     }
     gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs, true);
@@ -427,7 +427,7 @@ void math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     case SubtractUpdate: op = GCC_BINOP_MINUS; break;
     case MultiplyUpdate: op = GCC_BINOP_MULT; break;
     case DivideUpdate: op = GCC_BINOP_DIVIDE; break;
-    default: compile_err(env, ast, "Unsupported math operation");
+    default: compiler_err(env, ast, "Unsupported math operation");
     }
 
     math_update_rec(env, block, ast, get_type(env, lhs), lhs_val, op, get_type(env, rhs), rhs_val);

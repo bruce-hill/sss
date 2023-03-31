@@ -63,7 +63,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
     if (t != item_type)
         if (!promote(env, t, &item_val, item_type))
-            compile_err(env, item, "I can't convert this type (%s) to %s", type_to_string(t), type_to_string(item_type));
+            compiler_err(env, item, "I can't convert this type (%s) to %s", type_to_string(t), type_to_string(item_type));
 
     gcc_assign(*block, NULL, item_home, item_val);
 }
@@ -77,14 +77,14 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
     while (t->tag == PointerType) {
         auto ptr = Match(t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, array, "This is an optional pointer, which can't be safely dereferenced.");
+            compiler_err(env, array, "This is an optional pointer, which can't be safely dereferenced.");
         array_val = gcc_rval(gcc_rvalue_dereference(array_val, NULL));
         t = ptr->pointed;
     }
 
     bl_type_t *item_type = get_type(env, member);
     if (!type_is_a(item_type, Match(t, ArrayType)->item_type))
-        compile_err(env, member, "This value has type %s, but you're checking an array of type %s for membership",
+        compiler_err(env, member, "This value has type %s, but you're checking an array of type %s for membership",
                     type_to_string(item_type), type_to_string(t));
 
     gcc_loc_t *loc = ast_loc(env, member);
@@ -183,7 +183,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     while (arr_t->tag == PointerType) {
         auto ptr = Match(arr_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
+            compiler_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
 
         // Copy on write
         if (ptr->pointed->tag == ArrayType) {
@@ -275,7 +275,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index, access));
         return slice;
     } else if (!is_integral(index_t)) {
-        compile_err(env, index, "This array index should be an Int or a Range, not %s", type_to_string(index_t));
+        compiler_err(env, index, "This array index should be an Int or a Range, not %s", type_to_string(index_t));
     }
 
     bl_type_t *arr_t = get_type(env, arr_ast);
@@ -283,7 +283,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     while (arr_t->tag == PointerType) {
         auto ptr = Match(arr_t, PointerType);
         if (ptr->is_optional)
-            compile_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
+            compiler_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
 
         // Copy on write
         if (ptr->pointed->tag == ArrayType && access == ACCESS_WRITE)
@@ -294,7 +294,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     }
 
     if (arr_t->tag != ArrayType)
-        compile_err(env, arr_ast, "Only arrays may be indexed, but this value is a %s", type_to_string(arr_t));
+        compiler_err(env, arr_ast, "Only arrays may be indexed, but this value is a %s", type_to_string(arr_t));
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, arr_t);
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
