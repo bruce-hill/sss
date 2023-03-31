@@ -21,22 +21,29 @@ typedef struct {
     gcc_rvalue_t *table_ptr;
 } table_insert_info_t;
 
-gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
+gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, ast_t *key_ast)
 {
     gcc_type_t *entry_t = bl_type_to_gcc(env, table_entry_type(t));
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, fresh("entry"));
 
-    bl_type_t *key_t = Match(t, TableType)->key_type;
-    gcc_type_t *key_gcc_t = bl_type_to_gcc(env, key_t);
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, key_gcc_t, fresh("key"));
+    bl_type_t *needed_key_t = Match(t, TableType)->key_type;
+    gcc_type_t *needed_key_gcc_t = bl_type_to_gcc(env, needed_key_t);
+
+    gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
+    if (!block) return NULL;
+    if (!promote(env, get_type(env, key_ast), &key_val, needed_key_t))
+        compile_err(env, key_ast, "This key has type %s, but to work in this table, it needs type %s",
+                    type_to_string(get_type(env, key_ast)), type_to_string(needed_key_t));
+
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, fresh("key"));
     gcc_assign(*block, NULL, key_lval, key_val);
-    flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, NULL));
+    flatten_arrays(env, block, needed_key_t, gcc_lvalue_address(key_lval, NULL));
     gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
 
     gcc_func_t *hashmap_lvalue_fn = hashmap_gets(env->global_funcs, "bl_hashmap_lvalue");
-    gcc_func_t *key_hash = get_hash_func(env, key_t);
-    gcc_func_t *key_cmp = get_indirect_compare_func(env, key_t);
+    gcc_func_t *key_hash = get_hash_func(env, needed_key_t);
+    gcc_func_t *key_cmp = get_indirect_compare_func(env, needed_key_t);
     gcc_rvalue_t *call = gcc_callx(
         env->ctx, NULL, hashmap_lvalue_fn,
         gcc_cast(env->ctx, NULL, table, gcc_type(env->ctx, VOID_PTR)),
@@ -48,7 +55,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(entry_t), fresh("dest"));
     gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(entry_t)));
 
-    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_rval(dest), gcc_get_ptr_type(key_gcc_t)), NULL), key_val);
+    gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_rval(dest), gcc_get_ptr_type(needed_key_gcc_t)), NULL), key_val);
     gcc_field_t *value_field = gcc_get_field(gcc_type_if_struct(entry_t), 1);
     return gcc_rvalue_dereference_field(gcc_rval(dest), NULL, value_field);
 }
