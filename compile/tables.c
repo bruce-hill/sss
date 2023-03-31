@@ -55,6 +55,8 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(entry_t), fresh("dest"));
     gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(entry_t)));
 
+    gcc_assign(*block, NULL, gcc_rvalue_dereference_field(gcc_rval(dest), NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
+
     gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_rval(dest), gcc_get_ptr_type(needed_key_gcc_t)), NULL), key_val);
     gcc_field_t *value_field = gcc_get_field(gcc_type_if_struct(entry_t), 1);
     return gcc_rvalue_dereference_field(gcc_rval(dest), NULL, value_field);
@@ -173,7 +175,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         gcc_cast(env->ctx, loc, gcc_lvalue_address(table_var, loc), gcc_type(env->ctx, VOID_PTR)),
         gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
         gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
-        gcc_rvalue_size(env->ctx, gcc_sizeof(env, expected_key_t)),
+        gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t)),
         gcc_lvalue_address(key_lval, loc));
     gcc_type_t *entry_ptr_gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, entry_t));
     entry = gcc_cast(env->ctx, loc, entry, entry_ptr_gcc_t);

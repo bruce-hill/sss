@@ -1,8 +1,9 @@
+#include <bhash.h>
 #include <gc/cord.h>
 #include <intern.h>
 
-#include "util.h"
 #include "types.h"
+#include "util.h"
 
 static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
     switch (t->tag) {
@@ -374,9 +375,17 @@ bool can_leave_uninitialized(bl_type_t *t)
 
 bl_type_t *table_entry_type(bl_type_t *table_t)
 {
-    return Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
-                .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
-                                  Match(table_t, TableType)->value_type));
+    static hashmap_t cache = {0};
+    bl_type_t *t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+                        .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
+                                          Match(table_t, TableType)->value_type));
+    bl_type_t *cached = hashmap_get(&cache, type_to_string(t));
+    if (cached) {
+        return cached;
+    } else {
+        hashmap_set(&cache, type_to_string(t), t);
+        return t;
+    }
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

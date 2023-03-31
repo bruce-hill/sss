@@ -63,7 +63,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
     if (t != item_type)
         if (!promote(env, t, &item_val, item_type))
-            compile_err(env, item, "I can't convert this type to %s", type_to_string(item_type));
+            compile_err(env, item, "I can't convert this type (%s) to %s", type_to_string(t), type_to_string(item_type));
 
     gcc_assign(*block, NULL, item_home, item_val);
 }
