@@ -465,11 +465,11 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 hashmap_t *get_namespace(env_t *env, bl_type_t *t)
 {
-    hashmap_t *ns = hashmap_get(env->type_namespaces, t);
+    hashmap_t *ns = hashmap_get(env->type_namespaces, type_to_string(t));
     if (!ns) {
         ns = hashmap_new();
         ns->fallback = env->global_bindings;
-        hashmap_set(env->type_namespaces, t, ns);
+        hashmap_set(env->type_namespaces, type_to_string(t), ns);
     }
     return ns;
 }

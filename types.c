@@ -334,6 +334,12 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
         return true;
     }
 
+    // String <-> c string promotion
+    if (actual == Type(PointerType, .pointed=Type(CharType)) && needed == Type(ArrayType, .item_type=Type(CharType)))
+        return true;
+    else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CharType)))
+        return true;
+
     // TODO: Struct promotion?
 
     return false;

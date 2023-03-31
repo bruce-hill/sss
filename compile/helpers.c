@@ -333,6 +333,17 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
 {
     if (!can_promote(actual, needed))
         return false;
+
+    // String <-> c string promotion
+    if (actual == Type(PointerType, .pointed=Type(CharType)) && needed == Type(ArrayType, .item_type=Type(CharType))) {
+        binding_t *b = get_from_namespace(env, needed, "from_pointer");
+        *val = gcc_callx(env->ctx, NULL, b->func, *val);
+        return true;
+    } else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CharType))) {
+        binding_t *b = get_from_namespace(env, actual, "c_string");
+        *val = gcc_callx(env->ctx, NULL, b->func, *val);
+        return true;
+    }
     
     if (actual != needed)
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
