@@ -460,7 +460,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             bl_type_t *index_t = get_type(env, indexing->index);
             switch (index_t->tag) {
             case RangeType: return indexed_t;
-            case IntType: case CharType:
+            case IntType: case CharType: case CStringCharType:
                 return Match(indexed_t, ArrayType)->item_type;
             default: compile_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
             }

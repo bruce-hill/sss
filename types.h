@@ -14,7 +14,7 @@ struct bl_type_s {
     enum {
         UnknownType,
         AbortType, VoidType,
-        BoolType, CharType,
+        BoolType, CharType, CStringCharType,
         IntType, NumType,
         TypeType,
         RangeType,
@@ -32,7 +32,7 @@ struct bl_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, BoolType, CharType, FileType;
+        } UnknownType, AbortType, VoidType, BoolType, CharType, CStringCharType, FileType;
         struct {
             istr_t units;
             uint16_t bits;

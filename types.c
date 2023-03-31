@@ -21,6 +21,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             return name;
         }
         case CharType: return "Char";
+        case CStringCharType: return "CStringChar";
         case FileType: return "File";
         case NumType: {
             auto num = Match(t, NumType);
@@ -228,7 +229,7 @@ bl_type_t *with_units(bl_type_t *t, istr_t units)
 bool is_integral(bl_type_t *t)
 {
     switch (t->tag) {
-    case IntType: case CharType:
+    case IntType: case CharType: case CStringCharType:
         return true;
     default:
         return false;
@@ -240,7 +241,7 @@ bool is_numeric(bl_type_t *t)
     switch (t->tag) {
     case IntType: case NumType:
         return true;
-    case CharType: return false;
+    case CharType: case CStringCharType: return false;
     default:
         return false;
     }
@@ -250,7 +251,7 @@ int numtype_priority(bl_type_t *t)
 {
     switch (t->tag) {
     case BoolType: return 1;
-    case CharType: return 2;
+    case CharType: case CStringCharType: return 2;
     case IntType:
         switch (Match(t, IntType)->bits) {
         case 8: return 3;
@@ -335,9 +336,9 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     }
 
     // String <-> c string promotion
-    if (actual == Type(PointerType, .pointed=Type(CharType)) && needed == Type(ArrayType, .item_type=Type(CharType)))
+    if (actual == Type(PointerType, .pointed=Type(CStringCharType)) && needed == Type(ArrayType, .item_type=Type(CharType)))
         return true;
-    else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CharType)))
+    else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CStringCharType)))
         return true;
 
     // TODO: Struct promotion?
@@ -349,7 +350,7 @@ bool can_leave_uninitialized(bl_type_t *t)
 {
     switch (t->tag) {
     case PointerType: return Match(t, PointerType)->is_optional;
-    case ArrayType: case IntType: case NumType: case CharType: case BoolType: case RangeType:
+    case ArrayType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType: case RangeType:
         return true;
     case StructType: {
         auto struct_ = Match(t, StructType);

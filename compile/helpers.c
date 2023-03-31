@@ -188,7 +188,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         }
         break;
     }
-    case CharType: gcc_t = gcc_type(env->ctx, CHAR); break;
+    case CharType: case CStringCharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case FileType: gcc_t = gcc_type(env->ctx, FILE_PTR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
@@ -335,11 +335,11 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         return false;
 
     // String <-> c string promotion
-    if (actual == Type(PointerType, .pointed=Type(CharType)) && needed == Type(ArrayType, .item_type=Type(CharType))) {
+    if (actual == Type(PointerType, .pointed=Type(CStringCharType)) && needed == Type(ArrayType, .item_type=Type(CharType))) {
         binding_t *b = get_from_namespace(env, needed, "from_pointer");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
         return true;
-    } else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CharType))) {
+    } else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CStringCharType))) {
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
         return true;
@@ -473,7 +473,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_return(no_block, NULL, WRITE_LITERAL("no"));
         break;
     }
-    case CharType: {
+    case CharType: case CStringCharType: {
         gcc_func_t *fputc_fn = hashmap_gets(env->global_funcs, "fputc");
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, f));
         break;
@@ -608,7 +608,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
         gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
 
-        if (pointed_type->tag == CharType) {
+        if (pointed_type->tag == CStringCharType) {
             gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
             gcc_return(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, f));
             return func;
@@ -813,7 +813,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         }
         goto memory_hash;
     }
-    case PointerType: case IntType: case NumType: case CharType: case BoolType:
+    case PointerType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType:
     case RangeType: case FunctionType: {
       memory_hash:
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, t));
@@ -867,7 +867,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
 gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
 {
     // (int)((a > b) - (a < b))
-    if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == BoolType) {
+    if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType) {
         gcc_type_t *int_t = gcc_type(env->ctx, INT);
         return gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int_t,
                              gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, a, b), int_t),
@@ -1071,7 +1071,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         break;
     }
     default: {
-        if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == BoolType) {
+        if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType) {
             gcc_return(block, NULL, compare_values(env, t, lhs, rhs));
             break;
         }

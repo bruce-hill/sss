@@ -145,6 +145,7 @@ static void load_global_functions(env_t *env)
 static bl_type_t *define_string_type(env_t *env)
 {
     bl_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
+    bl_type_t *c_str_type = Type(PointerType, .pointed=Type(CStringCharType));
     gcc_rvalue_t *rval = gcc_str(env->ctx, "String");
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
     hashmap_set(env->global_bindings, intern_str("String"), binding);
@@ -157,7 +158,7 @@ static bl_type_t *define_string_type(env_t *env)
     load_method(env, ns, "bl_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_quoted", "quoted", str_type,
                 ARG("str",str_type,0),
-                ARG("dsl", Type(PointerType, .pointed=Type(CharType), .is_optional=true), FakeAST(Nil, .type=FakeAST(Var, .name=intern_str("Char")))),
+                ARG("dsl", c_str_type, FakeAST(Nil, .type=FakeAST(Var, .name=intern_str("Char")))),
                 ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
     load_method(env, ns, "bl_string_starts_with", "starts_with", str_type, ARG("str",str_type,0), ARG("prefix",str_type,0));
     load_method(env, ns, "bl_string_ends_with", "ends_with", str_type, ARG("str",str_type,0), ARG("suffix",str_type,0));
@@ -169,13 +170,13 @@ static bl_type_t *define_string_type(env_t *env)
     load_method(env, ns, "bl_string_replace", "replace", str_type,
                 ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
 
-    bl_type_t *c_str = Type(PointerType, .pointed=Type(CharType), .is_optional=true);
-    load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CharType), .is_optional=false), ARG("str",str_type,0));
+    bl_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
+    load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_type,0));
     load_method(env, ns, "from_c_string", "from_pointer", str_type, ARG("str",c_str,0));
     hashmap_t *ns2 = get_namespace(env, c_str);
     assert(ns2 == get_namespace(env, c_str));
     load_method(env, ns2, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
-    hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CharType), .is_optional=false));
+    hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
     load_method(env, ns3, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
     return str_type;
 }
@@ -389,7 +390,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
 #define DEFTYPE(t) hashmap_set(env->global_bindings, intern_str(#t), new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
-    DEFTYPE(Char);
+    DEFTYPE(Char); DEFTYPE(CStringChar);
     DEFTYPE(File);
 #undef DEFTYPE
     define_int_types(env);
