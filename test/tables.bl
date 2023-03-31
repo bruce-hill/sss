@@ -24,6 +24,8 @@ else
 >>> t["new_key"] = 3
 >>> t
 === @{"abc"=>11, "def"=>2, "new_key"=>3}
+>>> t["new_key"]
+=== 3
 
 >>> del t["abc"]
 >>> t
