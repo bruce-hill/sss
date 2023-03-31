@@ -79,20 +79,43 @@ void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *t
 
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)
 {
-    bl_type_t *entry_t = get_type(env, entry); // entry type
-    if (entry_t->tag == GeneratorType) {
+    bl_type_t *raw_entry_t = get_type(env, entry);
+    if (raw_entry_t->tag == GeneratorType) {
         gcc_rvalue_t *val = compile_expr(env, block, entry);
         assert(!val);
         return;
     }
 
-    // This comes first, because the entry may short-circuit
-    gcc_rvalue_t *entry_val = compile_expr(env, block, entry);
+    ast_t *key_ast = Match(entry, TableEntry)->key,
+          *value_ast = Match(entry, TableEntry)->value;
+    bl_type_t *raw_key_t = get_type(env, key_ast),
+              *raw_value_t = get_type(env, value_ast);
+    bl_type_t *needed_key_t = Match(info->table_type, TableType)->key_type,
+              *needed_value_t = Match(info->table_type, TableType)->value_type;
+
+    gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!*block) return;
+    if (!promote(env, raw_key_t, &key_val, needed_key_t))
+        compile_err(env, key_ast, "This key was expected to be a %s, but was actually %s",
+                    type_to_string(needed_key_t), type_to_string(raw_key_t));
+
+    gcc_rvalue_t *value_val = compile_expr(env, block, value_ast);
+    if (!*block) return;
+    if (!promote(env, raw_value_t, &value_val, needed_value_t))
+        compile_err(env, value_ast, "This value was expected to be a %s, but was actually %s",
+                    type_to_string(needed_value_t), type_to_string(raw_value_t));
+
+    bl_type_t *needed_entry_t = table_entry_type(info->table_type);
+    gcc_type_t *needed_entry_gcc_t = bl_type_to_gcc(env, needed_entry_t);
+    gcc_struct_t *needed_struct = gcc_type_if_struct(needed_entry_gcc_t);
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, bl_type_to_gcc(env, entry_t), fresh("entry"));
-    gcc_assign(*block, NULL, entry_lval, entry_val);
+    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, needed_entry_gcc_t, fresh("entry"));
+    gcc_assign(*block, NULL, entry_lval, gcc_struct_constructor(
+        env->ctx, NULL, needed_entry_gcc_t, 2, (gcc_field_t*[]){
+            gcc_get_field(needed_struct, 0),
+            gcc_get_field(needed_struct, 1),
+        }, (gcc_rvalue_t*[]){key_val, value_val}));
 
     gcc_func_t *hashmap_set_fn = hashmap_gets(env->global_funcs, "bl_hashmap_set");
     gcc_func_t *key_hash = get_hash_func(env, Match(info->table_type, TableType)->key_type);
@@ -101,7 +124,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                                      gcc_cast(env->ctx, NULL, info->table_ptr, gcc_type(env->ctx, VOID_PTR)),
                                      gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
                                      gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t)),
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, needed_entry_t)),
                                      gcc_lvalue_address(entry_lval, NULL)));
 }
 
