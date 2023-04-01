@@ -26,6 +26,22 @@ typedef struct { const char *data; int32_t len, stride; } array_t;
 #define hdebug(...) (void)0
 #endif
 
+#include "../SipHash/halfsiphash.h"
+static uint8_t hash_random_vector[16] = {42,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+uint32_t hash_64bits(const void *x) {
+    uint32_t hash;
+    halfsiphash(x, 64, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    return hash;
+}
+int compare_64bits(const void *x, const void *y) {
+    return memcmp(x,y,64);
+}
+uint32_t hash_str(const void *x) {
+    uint32_t hash;
+    halfsiphash(x, strlen((char*)x), hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    return hash;
+}
+
 static inline void hshow(bl_hashmap_t *h)
 {
     hdebug("{");
@@ -55,6 +71,7 @@ void bl_hashmap_mark_cow(bl_hashmap_t *h)
     h->copy_on_write = true;
 }
 
+// Return address of entry
 void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
   recurse:

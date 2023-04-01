@@ -10,6 +10,7 @@
 #include "ast.h"
 #include "files.h"
 #include "compile/libgccjit_abbrev.h"
+#include "libblang/hashmap.h"
 #include "libblang/list.h"
 #include "types.h"
 #include "units.h"
@@ -63,7 +64,7 @@ typedef struct env_s {
     hashmap_t *union_fields; // name -> [gcc_field]
     hashmap_t *global_funcs; // name -> func
     hashmap_t *type_namespaces; // bl_type -> name -> binding_t
-    hashmap_t *tuple_types; // istr_t -> bl_type_t
+    bl_hashmap_t *tuple_types; // istr_t -> bl_type_t
     bl_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;

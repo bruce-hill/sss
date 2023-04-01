@@ -20,6 +20,16 @@ typedef struct bl_hashmap_s {
     bool copy_on_write;
 } bl_hashmap_t;
 
+uint32_t hash_64bits(const void *x);
+int compare_64bits(const void *x, const void *y);
+uint32_t hash_str(const void *x);
+#define HASH_FN(t) _Generic(t, char*:hash_str, const char*:hash_str, ast_t*:hash_64bits, bl_type_t*:hash_64bits, int64_t:hash_64bits)
+#define COMPARE_FN(t) _Generic(t, char*:(int32_t(*)(const void*,const void*))strcmp, const char*:(int32_t(*)(const void*,const void*))strcmp, ast_t*:compare_64bits, bl_type_t*:compare_64bits, int64_t:compare_64bits)
+#define hset(h, key, val) bl_hashmap_set(h, HASH_FN(key), COMPARE_FN(key), sizeof(struct{ __typeof__ (key) _k; __typeof__ (val) _v; }), &(struct{ __typeof__ (key) _k; __typeof__ (val) _v; }){key, val})
+#define hget(h, key, val_t) ({ struct{ __typeof__ (key) _k; val_t _v; } *_e = bl_hashmap_get(h, HASH_FN(key), COMPARE_FN(key), sizeof(struct{ __typeof__ (key) _k; val_t _v; }), &(__typeof__(key)){key}); _e ? _e->_v : 0;})
+#define hremove(h, key, val_t) bl_hashmap_remove(h, HASH_FN(key), COMPARE_FN(key), sizeof(struct{ __typeof__ (key) _k; val_t _v; }), &key)
+#define hnth(h, i, key_t, val_t) bl_hashmap_nth(h, sizeof(struct{ key_t _k; val_t _v; }), &key)
+
 void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry);
 void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry);
 void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key);

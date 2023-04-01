@@ -1,7 +1,7 @@
-#include <bhash.h>
 #include <gc/cord.h>
 #include <intern.h>
 
+#include "libblang/hashmap.h"
 #include "types.h"
 #include "util.h"
 
@@ -382,15 +382,15 @@ bool can_leave_uninitialized(bl_type_t *t)
 
 bl_type_t *table_entry_type(bl_type_t *table_t)
 {
-    static hashmap_t cache = {0};
+    static bl_hashmap_t cache = {0};
     bl_type_t *t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
                         .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
                                           Match(table_t, TableType)->value_type));
-    bl_type_t *cached = hashmap_get(&cache, type_to_string(t));
+    bl_type_t *cached = hget(&cache, type_to_string(t), bl_type_t*);
     if (cached) {
         return cached;
     } else {
-        hashmap_set(&cache, type_to_string(t), t);
+        hset(&cache, type_to_string(t), t);
         return t;
     }
 }

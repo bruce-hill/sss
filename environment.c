@@ -361,7 +361,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .exports = LIST(export_t*),
         .bindings = hashmap_new(),
         .type_namespaces = hashmap_new(),
-        .tuple_types = hashmap_new(),
+        .tuple_types = new(bl_hashmap_t),
         .gcc_types = hashmap_new(),
         .union_fields = hashmap_new(),
         .global_funcs = hashmap_new(),

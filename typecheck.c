@@ -106,11 +106,11 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
         }
-        bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+        bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
         if (memoized) {
             t = memoized;
         } else {
-            hashmap_set(env->tuple_types, type_to_string(t), t);
+            hset(env->tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -365,11 +365,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto entry = Match(ast, TableEntry);
         bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
                             .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
-        bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+        bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
         if (memoized) {
             t = memoized;
         } else {
-            hashmap_set(env->tuple_types, type_to_string(t), t);
+            hset(env->tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -748,11 +748,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
 
             bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
-            bl_type_t *memoized = hashmap_get(env->tuple_types, type_to_string(t));
+            bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
             if (memoized) {
                 t = memoized;
             } else {
-                hashmap_set(env->tuple_types, type_to_string(t), t);
+                hset(env->tuple_types, type_to_string(t), t);
             }
             return t;
         }
