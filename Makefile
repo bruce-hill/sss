@@ -30,7 +30,7 @@ OBJFILES=$(CFILES:.c=.o)
 
 all: blang blangc blang.1
 
-$(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o
+$(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o SipHash/halfsiphash.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
