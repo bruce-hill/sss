@@ -28,15 +28,18 @@ say "$:(n+n) $:(100*n)"
 
 
 // Recursive struct
+say "Recursive struct test:"
 def Tree {
     value:Int
     left,right:?@Tree
 }
 
-t := @Tree{5, left=@Tree{0}}
-// t.right = t
-// say "Recursive struct with cyclical references: $t"
-
+>>> l := @Tree{6}
+>>> t := @Tree{5, left=l}
+>>> t.right = t
+>>> l.left = l
+>>> t
+=== @Tree{value=5, left=@Tree{value=6, left=@Tree#2, right=!Tree}, right=@Tree#1}
 
 // Inline structs
 // do
