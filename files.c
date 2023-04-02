@@ -4,7 +4,6 @@
 
 #include <err.h>
 #include <gc.h>
-#include <intern.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -14,7 +13,7 @@
 #include "files.h"
 #include "util.h"
 
-static bl_file_t *_load_file(istr_t filename, FILE *file)
+static bl_file_t *_load_file(const char* filename, FILE *file)
 {
     if (!file) return NULL;
 
@@ -46,7 +45,7 @@ static bl_file_t *_load_file(istr_t filename, FILE *file)
 //
 // Read an entire file into memory.
 //
-bl_file_t *bl_load_file(istr_t filename)
+bl_file_t *bl_load_file(const char* filename)
 {
     FILE *file = filename[0] ? fopen(filename, "r") : stdin;
     return _load_file(filename, file);
@@ -55,7 +54,7 @@ bl_file_t *bl_load_file(istr_t filename)
 //
 // Create a virtual file from a string.
 //
-bl_file_t *bl_spoof_file(istr_t filename, const char *text)
+bl_file_t *bl_spoof_file(const char* filename, const char *text)
 {
     FILE *file = fmemopen((char*)text, strlen(text)+1, "r");
     return _load_file(filename, file);

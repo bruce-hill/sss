@@ -1,7 +1,6 @@
 #pragma once
 #include <gc/gc.h>
 #include <libgccjit.h>
-#include <intern.h>
 #include <signal.h>
 #include <stdio.h>
 
@@ -42,7 +41,7 @@ typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t 
 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
-istr_t fresh(istr_t name);
+const char *fresh(const char *name);
 // Data layout information:
 ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t);
 ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t);
@@ -89,7 +88,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 
 // ============================== functions.c ===========================
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
-gcc_func_t *get_function_def(env_t *env, ast_t *def, istr_t name, bool is_global);
+gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name, bool is_global);
 
 // ============================== blocks.c ==============================
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
@@ -99,7 +98,7 @@ ast_t *globalize_decls(ast_t *block_ast);
 
 // ============================== loops.c ================================
 void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast);
-void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t *condition, ast_t *body, ast_t *between);
+void compile_while_loop(env_t *env, gcc_block_t **block, const char *loop_name, ast_t *condition, ast_t *body, ast_t *between);
 
 // ============================== math.c ================================
 gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast);

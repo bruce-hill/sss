@@ -229,7 +229,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *entry_done = gcc_new_block(func, fresh("entry_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = LIST(istr_t, intern_str("[]")),
+                .names = LIST(const char*, "[]"),
                 .skip_label = entry_done,
                 .stop_label = table_done,
             };
@@ -256,7 +256,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             fallback = WrapAST(fallback, HeapAllocate, .value=fallback);
             fallback_t = get_type(env, fallback);
         }
-        if (Match(fallback_t, PointerType)->pointed != t)
+        if (!type_eq(Match(fallback_t, PointerType)->pointed, t))
             compiler_err(env, fallback, "This fallback has type %s, which doesn't match the table's type: %s",
                         type_to_string(fallback_t), type_to_string(t));
 

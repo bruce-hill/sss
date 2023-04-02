@@ -60,7 +60,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     // array.items[array.length-1] = item
     gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), one32);
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
-    if (t != item_type)
+    if (!type_eq(t, item_type))
         if (!promote(env, t, &item_val, item_type))
             compiler_err(env, item, "I can't convert this type (%s) to %s", type_to_string(t), type_to_string(item_type));
 
@@ -381,7 +381,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = LIST(istr_t, intern_str("[]")),
+                .names = LIST(const char*, "[]"),
                 .skip_label = item_done,
                 .stop_label = array_done,
             };
@@ -412,7 +412,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_assign(*block, NULL, written_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
 
     bl_type_t *item_type = Match(t, ArrayType)->item_type;
-    bool is_string = (item_type == Type(CharType));
+    bool is_string = (item_type->tag == CharType);
     if (!is_string)
         ADD_WRITE(*block, WRITE_LITERAL("["));
 
@@ -495,9 +495,9 @@ static void define_array_insert(env_t *env, bl_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array"))), .rhs=FakeAST(Int, .i=1, .precision=64));
+    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("item"), intern_str("index")),
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "item", "index"),
                                   .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), item_t, Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
@@ -524,9 +524,9 @@ static void define_array_insert_all(env_t *env, bl_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array"))), .rhs=FakeAST(Int, .i=1, .precision=64));
+    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("other"), intern_str("index")),
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "other", "index"),
                                   .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), t, Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
@@ -553,9 +553,9 @@ static void define_array_remove(env_t *env, bl_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name=intern_str("array")));
+    ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array"), intern_str("index"), intern_str("count")),
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index", "count"),
                                   .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t), Type(IntType, .bits=64), Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, len, FakeAST(Int, .precision=64, .i=1)),
                                   .ret=Type(VoidType)));
@@ -579,7 +579,7 @@ static void define_array_shuffle(env_t *env, bl_type_t *t)
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array")),
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
                                   .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "shuffle", b);
@@ -607,7 +607,7 @@ static void define_array_sort(env_t *env, bl_type_t *t)
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(istr_t, intern_str("array")),
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
                                   .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "sort", b);

@@ -20,7 +20,7 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lgccjit -lcord -lintern -lm -L. -lblang
+LIBS=-lgc -lgccjit -lcord -lm -L. -lblang
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS)
 
 LIBFILE=lib$(NAME).so

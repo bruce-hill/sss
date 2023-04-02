@@ -16,7 +16,7 @@
 #include "../types.h"
 #include "../util.h"
 
-static istr_t loop_var_name(ast_t *var)
+static const char* loop_var_name(ast_t *var)
 {
     if (var->tag == Dereference)
         return loop_var_name(Match(var, Dereference)->value);
@@ -265,8 +265,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         auto struct_ = Match(iter_t, StructType);
         int64_t field_index;
         for (field_index = 0; field_index < length(struct_->field_names); field_index++) {
-            if (ith(struct_->field_names, field_index) == intern_str("next")
-                && ith(struct_->field_types, field_index) == Type(PointerType, .pointed=iter_t, .is_optional=true)) {
+            if (streq(ith(struct_->field_names, field_index), "next")
+                && type_eq(ith(struct_->field_types, field_index), Type(PointerType, .pointed=iter_t, .is_optional=true))) {
                 // Bingo: found a obj->next : @?Obj
                 goto found_next_field;
             }
@@ -305,7 +305,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
         item_shadow = gcc_local(func, NULL, bl_type_to_gcc(env, item_t), fresh("item"));
-        gcc_rvalue_t *to_assign = item_t == iter_var_t ? gcc_rval(iter_var)
+        gcc_rvalue_t *to_assign = type_eq(item_t, iter_var_t) ? gcc_rval(iter_var)
             : gcc_rval(gcc_rvalue_dereference(gcc_rval(iter_var), NULL));
         gcc_assign(for_body, NULL, item_shadow, to_assign);
         if (for_first)
@@ -335,7 +335,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     env_t *loop_env = fresh_scope(env);
 
-    auto label_names = LIST(istr_t, intern_str("for"));
+    auto label_names = LIST(const char*, "for");
     if (for_->key) {
         append(label_names, loop_var_name(for_->key));
         hset(loop_env->bindings, loop_var_name(for_->key),
@@ -400,7 +400,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     *block = for_end;
 }
 
-void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t *condition, ast_t *body, ast_t *between)
+void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, ast_t *condition, ast_t *body, ast_t *between)
 {
     gcc_func_t *func = gcc_block_func(*block);
 
@@ -415,7 +415,7 @@ void compile_while_loop(env_t *env, gcc_block_t **block, istr_t loop_name, ast_t
     env_t loop_env = *env;
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-        .names = LIST(istr_t, loop_name),
+        .names = LIST(const char*, loop_name),
         .skip_label = loop_top,
         .stop_label = loop_end,
         .deferred = env->deferred,

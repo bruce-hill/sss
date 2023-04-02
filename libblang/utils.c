@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <gc.h>
 #include <gc/cord.h>
-#include <intern.h>
 #include <limits.h>
 #include <math.h>
 #include <signal.h>
@@ -17,9 +16,37 @@
 #include "string.h"
 #include "range.h"
 
+const char *heap_strn(const char *str, size_t len)
+{
+    if (!str) return NULL;
+    if (len == 0) return "";
+    char *heaped = GC_MALLOC_ATOMIC(len + 1);
+    memcpy(heaped, str, len);
+    heaped[len] = '\0';
+    return heaped;
+}
+
+const char *heap_str(const char *str)
+{
+    return heap_strn(str, strlen(str));
+}
+
+const char *heap_strf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char *tmp = NULL;
+    int len = vasprintf(&tmp, fmt, args);
+    if (len < 0) return NULL;
+    va_end(args);
+    const char *ret = heap_strn(tmp, (size_t)len);
+    free(tmp);
+    return ret;
+}
+
 string_t first_arg(char *argv[]) {
     return (string_t){
-        .data=intern_str(argv[0]),
+        .data=heap_str(argv[0]),
         .length=(int32_t)strlen(argv[0]),
         .stride=1,
     };
@@ -32,7 +59,7 @@ str_array_t arg_list(int argc, char *argv[]) {
     str_array_t args = {.length=argc, .stride=1, .items=GC_MALLOC(sizeof(string_t)*argc)};
     for (int i = 0; i < argc; i++) {
         args.items[i] = (string_t){
-            .data=intern_str(argv[i]),
+            .data=heap_str(argv[i]),
             .length=(int32_t)strlen(argv[i]),
             .stride=1,
         };
@@ -90,13 +117,13 @@ double sane_fmod(double num, double modulus)
 const char *readdir_str(DIR* dir)
 {
     struct dirent *ent = readdir(dir);
-    return ent ? intern_str(ent->d_name) : NULL;
+    return ent ? heap_str(ent->d_name) : NULL;
 }
 
 string_t last_err()
 {
     const char *str = strerror(errno);
-    return (string_t){.data=intern_str(str), .length=strlen(str), .stride=1};
+    return (string_t){.data=heap_str(str), .length=strlen(str), .stride=1};
 }
 
 typedef struct {

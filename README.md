@@ -57,8 +57,6 @@ following libraries:
 
 - Garbage collection: [Boehm garbage collector](https://www.hboehm.info/gc/)
     - Available from your package manager of choice: `pacman -S gc`
-- String interning: [intern](https://github.com/bruce-hill/intern/)
-    - Install via `git clone https://github.com/bruce-hill/intern/ && cd intern && make && sudo make install`
 
 ## Usage
 

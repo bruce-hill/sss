@@ -1,7 +1,6 @@
 // A compilation environment representing contextual state
 #pragma once
 
-#include <intern.h>
 #include <libgccjit.h>
 #include <setjmp.h>
 #include <stdbool.h>
@@ -25,7 +24,7 @@ typedef struct defer_s {
 typedef struct loop_label_s {
     struct loop_label_s *enclosing;
     gcc_block_t *skip_label, *stop_label;
-    List(istr_t) names;
+    List(const char*) names;
     defer_t *deferred;
 } loop_label_t;
 
@@ -33,7 +32,7 @@ typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
     bl_type_t *type;
-    istr_t sym_name;
+    const char* sym_name;
     union {
         gcc_jit_rvalue *tag_rval;
         gcc_jit_function *func;
@@ -48,7 +47,7 @@ typedef struct conversions_s {
 } conversions_t;
 
 typedef struct export_t {
-    istr_t qualified_name;
+    const char* qualified_name;
     binding_t *binding;
 } export_t;
 
@@ -63,7 +62,7 @@ typedef struct env_s {
     bl_hashmap_t *union_fields; // name -> [gcc_field]
     bl_hashmap_t *global_funcs; // name -> func
     bl_hashmap_t *type_namespaces; // bl_type -> name -> binding_t
-    bl_hashmap_t *tuple_types; // istr_t -> bl_type_t
+    bl_hashmap_t *tuple_types; // const char* -> bl_type_t
     bl_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;

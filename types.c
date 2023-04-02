@@ -1,5 +1,4 @@
 #include <gc/cord.h>
-#include <intern.h>
 
 #include "libblang/hashmap.h"
 #include "types.h"
@@ -26,9 +25,9 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
-                return num->units ? intern_strf("Num<%s>", num->units) : "Num";
+                return num->units ? heap_strf("Num<%s>", num->units) : "Num";
             else
-                return num->units ? intern_strf("Num32<%s>", num->units) : "Num32";
+                return num->units ? heap_strf("Num32<%s>", num->units) : "Num32";
         }
         case TypeType: {
             CORD ret;
@@ -38,7 +37,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         case RangeType: return "Range";
         case ArrayType: {
             auto list = Match(t, ArrayType);
-            if (list->item_type == Type(CharType)) {
+            if (list->item_type->tag == CharType) {
                 if (list->dsl)
                     return CORD_cat("$", list->dsl);
                 return "String";
@@ -80,7 +79,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             c = CORD_cat(c, "{");
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 bl_type_t *ft = LIST_ITEM(struct_->field_types, i);
-                istr_t fname = LIST_ITEM(struct_->field_names, i);
+                const char* fname = LIST_ITEM(struct_->field_names, i);
                 if (i > 0)
                     c = CORD_cat(c, ",");
 
@@ -119,14 +118,14 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             for (int64_t i = 0, len = LIST_LEN(tags->names); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, ",");
-                istr_t name = LIST_ITEM(tags->names, i);
+                const char* name = LIST_ITEM(tags->names, i);
                 if (LIST_ITEM(tags->values, i) == i)
                     c = CORD_cat(c, name);
                 else
                     CORD_sprintf(&c, "%r%s=%ld", c, name, LIST_ITEM(tags->values, i));
 
                 for (int64_t j = 0, jlen = LIST_LEN(union_->field_names); j < jlen; j++) {
-                    if (LIST_ITEM(union_->field_names, j) == name) {
+                    if (streq(LIST_ITEM(union_->field_names, j), name)) {
                         CORD_sprintf(&c, "%r:%r", c, type_to_cord(LIST_ITEM(union_->field_types, j), true));
                         break;
                     }
@@ -141,7 +140,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             for (int64_t i = 0, len = LIST_LEN(union_->field_names); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, ",");
-                istr_t name = LIST_ITEM(union_->field_names, i);
+                const char* name = LIST_ITEM(union_->field_names, i);
                 CORD_sprintf(&c, "%r%s:%r", c, name, type_to_cord(LIST_ITEM(union_->field_types, i), true));
             }
             c = CORD_cat(c, ")");
@@ -155,17 +154,24 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
     }
 }
 
-istr_t type_to_string(bl_type_t *t) {
-    return intern_str(CORD_to_char_star(type_to_cord(t, false)));
+const char* type_to_string(bl_type_t *t) {
+    return CORD_to_char_star(type_to_cord(t, false));
+}
+
+bool type_eq(bl_type_t *a, bl_type_t *b)
+{
+    if (a == b) return true;
+    if (a->tag != b->tag) return false;
+    return streq(type_to_string(a), type_to_string(b));
 }
 
 bool type_is_a(bl_type_t *t, bl_type_t *req)
 {
-    if (t == req) return true;
+    if (type_eq(t, req)) return true;
     if (t->tag == PointerType && req->tag == PointerType) {
         auto t_ptr = Match(t, PointerType);
         auto req_ptr = Match(req, PointerType);
-        if (t_ptr->pointed == req_ptr->pointed && req_ptr->is_optional)
+        if (type_eq(t_ptr->pointed, req_ptr->pointed) && req_ptr->is_optional)
             return true;
     }
     return false;
@@ -193,7 +199,7 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     return NULL;
 }
 
-istr_t type_units(bl_type_t *t)
+const char* type_units(bl_type_t *t)
 {
     switch (t->tag) {
     case IntType: return Match(t, IntType)->units;
@@ -205,7 +211,7 @@ istr_t type_units(bl_type_t *t)
     }
 }
 
-bl_type_t *with_units(bl_type_t *t, istr_t units)
+bl_type_t *with_units(bl_type_t *t, const char* units)
 {
     switch (t->tag) {
     case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits, .is_unsigned=Match(t, IntType)->is_unsigned);
@@ -308,37 +314,37 @@ bool has_heap_memory(bl_type_t *t)
 bool can_promote(bl_type_t *actual, bl_type_t *needed)
 {
     // No promotion necessary:
-    if (actual == needed)
+    if (type_eq(actual, needed))
         return true;
 
     // Numeric promotion:
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) <= numtype_priority(needed))
-        return type_units(actual) == type_units(needed);
+        return streq(type_units(actual), type_units(needed));
 
     // Optional promotion:
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
-        return needed_ptr->pointed == actual_ptr->pointed && needed_ptr->is_optional;
+        return type_eq(needed_ptr->pointed, actual_ptr->pointed) && needed_ptr->is_optional;
     }
 
     // Function promotion:
     if (needed->tag == FunctionType && actual->tag == FunctionType) {
         auto needed_fn = Match(needed, FunctionType);
         auto actual_fn = Match(actual, FunctionType);
-        if (LIST_LEN(needed_fn->arg_types) != LIST_LEN(actual_fn->arg_types) || needed_fn->ret != actual_fn->ret)
+        if (LIST_LEN(needed_fn->arg_types) != LIST_LEN(actual_fn->arg_types) || !type_eq(needed_fn->ret, actual_fn->ret))
             return false;
         for (int64_t i = 0, len = LIST_LEN(needed_fn->arg_types); i < len; i++) {
-            if (LIST_ITEM(actual_fn->arg_types, i) != LIST_ITEM(needed_fn->arg_types, i))
+            if (!type_eq(LIST_ITEM(actual_fn->arg_types, i), LIST_ITEM(needed_fn->arg_types, i)))
                 return false;
         }
         return true;
     }
 
     // String <-> c string promotion
-    if (actual == Type(PointerType, .pointed=Type(CStringCharType)) && needed == Type(ArrayType, .item_type=Type(CharType)))
+    if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType))))
         return true;
-    else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CStringCharType)))
+    else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType))))
         return true;
 
     // TODO: Struct promotion?
@@ -367,9 +373,9 @@ bool can_leave_uninitialized(bl_type_t *t)
             if (LIST_ITEM(tag->values, i) != 0)
                 continue;
 
-            istr_t name = LIST_ITEM(tag->names, i);
+            const char* name = LIST_ITEM(tag->names, i);
             for (int64_t j = 0; j < LIST_LEN(union_->field_names); j++) {
-                if (LIST_ITEM(union_->field_names, j) == name)
+                if (streq(LIST_ITEM(union_->field_names, j), name))
                     return can_leave_uninitialized(LIST_ITEM(union_->field_types, j));
             }
             return true;
@@ -383,7 +389,7 @@ bool can_leave_uninitialized(bl_type_t *t)
 bl_type_t *table_entry_type(bl_type_t *table_t)
 {
     static bl_hashmap_t cache = {0};
-    bl_type_t *t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+    bl_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                         .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
                                           Match(table_t, TableType)->value_type));
     bl_type_t *cached = hget(&cache, type_to_string(t), bl_type_t*);

@@ -12,8 +12,8 @@
 #include "files.h"
 #include "typecheck.h"
 #include "compile/compile.h"
+#include "util.h"
 
-#define streq(a,b) (strcmp(a,b) == 0)
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
 #define BLANG_VERSION "0.1.0"
@@ -163,15 +163,15 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
                 auto str = Match(t, ArrayType);
                 if (str->dsl)
                     ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=ast)));
-                List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(ast, Bool, .b=true)));
-                ast = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=ast, .field=intern_str("quoted")), .args=args);
+                List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=heap_str("colorize"), .arg=WrapAST(ast, Bool, .b=true)));
+                ast = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=ast, .field=heap_str("quoted")), .args=args);
             }
-            ast_t *prefix = WrapAST(ast, StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
-            ast_t *type_info = WrapAST(ast, StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
+            ast_t *prefix = WrapAST(ast, StringLiteral, .str=heap_str("\x1b[0;2m= \x1b[0;35m"));
+            ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
             // Stringify and add type info:
             ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=ast), type_info));
             // Call say(str):
-            ast = WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, ast))));
+            ast = WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=heap_str("say")), .args=LIST(ast_t*, ast))));
         }
 
         if (verbose)
@@ -183,7 +183,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         bl_hashmap_t old_globals = {0};
         for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
-            auto entry = hnth(env->global_bindings, i, istr_t, binding_t*);
+            auto entry = hnth(env->global_bindings, i, const char*, binding_t*);
             hset(&old_globals, entry->key, entry->value);
         }
 
@@ -209,7 +209,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         // Copy out the global variables to GC memory
         for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
-            auto entry = hnth(env->global_bindings, i, istr_t, binding_t*);
+            auto entry = hnth(env->global_bindings, i, const char*, binding_t*);
             if (hget(&old_globals, entry->key, binding_t*))
                 continue;
 
@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
     assert(ctx != NULL);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-lintern", "-ldl", "-L.", "-lblang",
+        "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-lblang",
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)

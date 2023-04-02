@@ -3,7 +3,6 @@
 //
 #pragma once
 
-#include <intern.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -16,7 +15,7 @@ typedef struct {
 } bl_line_t;
 
 typedef struct {
-    istr_t filename;
+    const char* filename;
     const char *text;
     List(bl_line_t) lines;
 } bl_file_t;

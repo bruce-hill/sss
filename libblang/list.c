@@ -1,6 +1,5 @@
 #include <err.h>
 #include <gc.h>
-#include <intern.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

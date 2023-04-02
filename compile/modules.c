@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <intern.h>
 
 #include "modules.h"
 #include "../files.h"
@@ -22,7 +21,7 @@ bl_hashmap_t *get_qualified_ns(env_t *env, const char *qualified_name)
     const char *segment = qualified_name;
     while (strchr(segment, '.')) {
         size_t len = strcspn(segment, ".");
-        istr_t name = intern_strn(segment, len);
+        const char* name = heap_strn(segment, len);
         binding_t *b = hget(ns, name, binding_t*);
         assert(b);
         bl_type_t *t = Match(b->type, TypeType)->type;
@@ -85,7 +84,7 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
         // printf("Parsed type into: %s\n", type_to_string(t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
 
-        istr_t sym_name = intern_strf(import.name);
+        const char* sym_name = heap_strf(import.name);
         gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
         gcc_rvalue_t *rval = gcc_callx(env->ctx, loc, dlsym_fn, gcc_rval(handle), gcc_str(env->ctx, import.symbol));
         if (import.needs_deref)
@@ -100,7 +99,7 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
         const char *name = strrchr(import.name, '.');
         if (name) ++name;
         else name = import.name;
-        hset(ns, intern_str(name), new(binding_t, .type=t, .rval=gcc_rval(lval), .sym_name=sym_name));
+        hset(ns, name, new(binding_t, .type=t, .rval=gcc_rval(lval), .sym_name=sym_name));
     }
     // dlclose(dl_handle);
 }

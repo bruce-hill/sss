@@ -1,5 +1,4 @@
 // Code related to the ambient state/environment used in compilation
-#include <intern.h>
 #include <limits.h>
 #include <math.h>
 #include <setjmp.h>
@@ -23,7 +22,7 @@
                  (gcc_param_t*[]){__VA_ARGS__}, 1)
 
 static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
-    hset(env->global_funcs, intern_str(name),
+    hset(env->global_funcs, heap_str(name),
          gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
 }
 
@@ -38,12 +37,12 @@ static inline void _load_method(
     env_t *env, bl_hashmap_t *ns, const char *extern_name, const char *method_name, bl_type_t *ret_t, int nargs, bl_arg_t args[nargs]
 ) {
     gcc_param_t *params[nargs];
-    NEW_LIST(istr_t, arg_name_list);
+    NEW_LIST(const char*, arg_name_list);
     NEW_LIST(bl_type_t*, arg_type_list);
     NEW_LIST(ast_t*, arg_default_list);
     for (int i = 0; i < nargs; i++) {
         params[i] = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, args[i].t), args[i].name);
-        APPEND(arg_name_list, intern_str(args[i].name));
+        APPEND(arg_name_list, args[i].name);
         APPEND(arg_type_list, args[i].t);
         APPEND(arg_default_list, args[i].default_val);
     }
@@ -51,7 +50,7 @@ static inline void _load_method(
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, ret_t),
                                     extern_name, nargs, params, 0);
     bl_type_t *fn_type = Type(FunctionType, .arg_types=arg_type_list, .arg_names=arg_name_list, .arg_defaults=arg_default_list, .ret=ret_t);
-    hset(ns, intern_str(method_name), new(binding_t, .type=fn_type, .func=func));
+    hset(ns, heap_str(method_name), new(binding_t, .type=fn_type, .func=func));
 }
 
 #define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
@@ -89,16 +88,15 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
-    load_global_func(env, t_str, "intern_str", PARAM(t_str, "str"));
-    load_global_func(env, t_str, "intern_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
-    load_global_var_func(env, t_str, "intern_strf", PARAM(t_str, "fmt"));
-    load_global_func(env, t_size, "intern_len", PARAM(t_str, "str"));
+    load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
+    load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
+    load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
-    gcc_func_t *range_print = hget(env->global_funcs, intern_str("range_print"), gcc_func_t*);
+    gcc_func_t *range_print = hget(env->global_funcs, "range_print", gcc_func_t*);
     hset(get_namespace(env, Type(RangeType)), "__print",
-         new(binding_t, .func=range_print, .sym_name=intern_str("range_print")));
+         new(binding_t, .func=range_print, .sym_name="range_print"));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
@@ -159,13 +157,13 @@ static bl_type_t *define_string_type(env_t *env)
     load_method(env, ns, "bl_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_quoted", "quoted", str_type,
                 ARG("str",str_type,0),
-                ARG("dsl", c_str_type, FakeAST(Nil, .type=FakeAST(Var, .name=intern_str("Char")))),
+                ARG("dsl", c_str_type, FakeAST(Nil, .type=FakeAST(Var, .name="Char"))),
                 ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
     load_method(env, ns, "bl_string_starts_with", "starts_with", str_type, ARG("str",str_type,0), ARG("prefix",str_type,0));
     load_method(env, ns, "bl_string_ends_with", "ends_with", str_type, ARG("str",str_type,0), ARG("suffix",str_type,0));
     load_method(env, ns, "bl_string_trimmed", "trimmed", str_type,
                 ARG("str",str_type,0),
-                ARG("chars",str_type,FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=intern_str(" \t\r\n"))))),
+                ARG("chars",str_type,FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))),
                 ARG("trim_left",Type(BoolType),FakeAST(Bool,.b=true)),
                 ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
     load_method(env, ns, "bl_string_replace", "replace", str_type,
@@ -217,7 +215,7 @@ static void define_num_types(env_t *env)
         const char *alias = unary_methods[i].bl_name;
         if (!alias) alias = c_name;
         load_method(env, ns64, c_name, alias, num64_type, ARG("num",num64_type,0));
-        load_method(env, ns32, intern_strf("%sf", c_name), alias, num32_type, ARG("num",num32_type,0));
+        load_method(env, ns32, heap_strf("%sf", c_name), alias, num32_type, ARG("num",num32_type,0));
     }
 
     struct { const char *c_name, *bl_name, *arg1, *arg2; } binary_methods[] = {
@@ -235,7 +233,7 @@ static void define_num_types(env_t *env)
         const char *arg1 = binary_methods[i].arg1;
         const char *arg2 = binary_methods[i].arg2;
         load_method(env, ns64, c_name, alias, num64_type, ARG(arg1,num64_type,0), ARG(arg2,num64_type,0));
-        load_method(env, ns32, intern_strf("%sf", c_name), alias, num32_type, ARG(arg1,num32_type,0), ARG(arg2,num32_type,0));
+        load_method(env, ns32, heap_strf("%sf", c_name), alias, num32_type, ARG(arg1,num32_type,0), ARG(arg2,num32_type,0));
     }
 
     const char *bool_methods[][2] = {
@@ -246,7 +244,7 @@ static void define_num_types(env_t *env)
         const char *alias = bool_methods[i][1];
         if (!alias) alias = c_name;
         load_method(env, ns64, c_name, alias, Type(BoolType), ARG("num",num64_type,0));
-        load_method(env, ns32, intern_strf("%sf", c_name), alias, Type(BoolType), ARG("num",num32_type,0));
+        load_method(env, ns32, heap_strf("%sf", c_name), alias, Type(BoolType), ARG("num",num32_type,0));
     }
 
     static struct {const char *name; double val;} constants[] = {
@@ -335,7 +333,7 @@ static void define_int_types(env_t *env)
     bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     for (size_t i = 0; i < sizeof(types)/sizeof(types[0]); i++) {
         uint16_t bits = Match(types[i], IntType)->bits;
-        istr_t name = bits == 64 ? intern_str("Int") : intern_strf("Int%d", Match(types[i], IntType)->bits);
+        const char* name = bits == 64 ? "Int" : heap_strf("Int%d", Match(types[i], IntType)->bits);
         hset(env->global_bindings, name,
                     new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=types[i])));
         bl_hashmap_t *ns = get_namespace(env, types[i]);
@@ -373,9 +371,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     bl_type_t *string_type = define_string_type(env);
     bl_type_t *say_type = Type(
         FunctionType,
-        .arg_names=LIST(istr_t, intern_str("str"), intern_str("end")),
+        .arg_names=LIST(const char*, "str", "end"),
         .arg_types=LIST(bl_type_t*, string_type, string_type),
-        .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringLiteral, .str=intern_str("\n"))),
+        .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringLiteral, .str="\n")),
         .ret=Type(VoidType));
 
     gcc_param_t *gcc_say_params[] = {
@@ -499,7 +497,7 @@ binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name)
 
 void set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value)
 {
-    hset(get_namespace(env, t), intern_str(name), value);
+    hset(get_namespace(env, t), heap_str(name), value);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

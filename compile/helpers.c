@@ -17,19 +17,18 @@
 #include "../types.h"
 #include "../util.h"
 
-istr_t fresh(istr_t name)
+const char *fresh(const char *name)
 {
     static bl_hashmap_t seen = {0};
     // static int id = 0;
-    char *tmp = strdup(name);
+    char *tmp = (char*)heap_str(name);
     for (size_t i = 0; i < strlen(tmp); i++) {
         if (!isalpha(name[i]) && !isdigit(name[i]) && name[i] != '_')
             tmp[i] = '_';
     }
-    name = intern_str(tmp);
-    free(tmp);
+    name = (const char*)tmp;
     int64_t count = hget(&seen, name, int64_t);
-    istr_t ret = intern_strf("%s__%ld", name, count++);
+    const char *ret = heap_strf("%s__%ld", name, count++);
     hset(&seen, name, count+1);
     return ret;
 }
@@ -220,7 +219,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case TableType: {
         gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
         auto table = Match(t, TableType);
-        bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+        bl_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                                   .field_types=LIST(bl_type_t*, table->key_type, table->value_type));
 
         gcc_field_t *bucket_fields[] = {
@@ -336,17 +335,17 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         return false;
 
     // String <-> c string promotion
-    if (actual == Type(PointerType, .pointed=Type(CStringCharType)) && needed == Type(ArrayType, .item_type=Type(CharType))) {
+    if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType)))) {
         binding_t *b = get_from_namespace(env, needed, "from_pointer");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
         return true;
-    } else if (actual == Type(ArrayType, .item_type=Type(CharType)) && needed == Type(PointerType, .pointed=Type(CStringCharType))) {
+    } else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType)))) {
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
         return true;
     }
     
-    if (actual != needed)
+    if (!type_eq(actual, needed))
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
     return true;
 }
@@ -366,7 +365,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
 
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_func_t *func = gcc_block_func(*block);
-        istr_t name = Match(decl->var, Var)->name;
+        const char* name = Match(decl->var, Var)->name;
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, fresh(name));
         binding_t *clobbered = get_local_binding(env, name);
         if (clobbered && clobbered->type->tag == TypeType)
@@ -412,7 +411,7 @@ gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val)
     if (t->tag != ArrayType || Match(t, ArrayType)->item_type->tag != CharType)
         return val;
 
-    istr_t dsl = Match(t, ArrayType)->dsl;
+    const char* dsl = Match(t, ArrayType)->dsl;
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, t), "str"),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "dsl"),
@@ -447,10 +446,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, file_t, fresh("file")),
         gcc_new_param(env->ctx, NULL, void_ptr_t, fresh("recursion")),
     };
-    istr_t sym_name = fresh("__print");
+    const char* sym_name = fresh("__print");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(FileType), Type(PointerType, .pointed=Type(VoidType))),
-                           .arg_names=LIST(istr_t, intern_str("obj"), intern_str("file"), intern_str("recursion")),
+                           .arg_names=LIST(const char*, "obj", "file", "recursion"),
                            .arg_defaults=NULL, .ret=Type(IntType));
     hset(get_namespace(env, t), "__print",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
@@ -501,12 +500,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         } else {
             errx(1, "Unreachable");
         }
-        istr_t units = type_units(t);
-        if (units == intern_str("%")) {
-            fmt = intern_strf("%s%%%%", fmt);
+        const char* units = type_units(t);
+        if (streq(units, "%")) {
+            fmt = heap_strf("%s%%%%", fmt);
             obj = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, gcc_t, obj, gcc_rvalue_from_long(env->ctx, gcc_t, 100));
         } else if (units && strlen(units) > 0) {
-            fmt = intern_strf("%s<%s>", fmt, units);
+            fmt = heap_strf("%s<%s>", fmt, units);
         }
         gcc_func_t *fprintf_fn = get_function(env, "fprintf");
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
@@ -518,16 +517,16 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, t);
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            istr_t tag_name = ith(tags->names, i);
+            const char* tag_name = ith(tags->names, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-            gcc_return(tag_block, NULL, WRITE_LITERAL(intern_strf("%s.Tag.%s", tags->name, tag_name)));
+            gcc_return(tag_block, NULL, WRITE_LITERAL(heap_strf("%s.Tag.%s", tags->name, tag_name)));
             int64_t tag_value = ith(tags->values, i);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, WRITE_LITERAL(intern_strf("<Unknown %s value>", tags->name)));
+        gcc_return(default_block, NULL, WRITE_LITERAL(heap_strf("<Unknown %s value>", tags->name)));
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
         break;
     }
@@ -538,26 +537,26 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         auto tagged_t = Match(t, TaggedUnionType);
         auto tags = Match(tagged_t->tag_type, TagType);
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
-        istr_t type_prefix = intern_strf("%s.", tagged_t->name);
+        const char* type_prefix = heap_strf("%s.", tagged_t->name);
         gcc_lvalue_t *printed_var = gcc_local(func, NULL, int_t, "printed");
         gcc_assign(block, NULL, printed_var, WRITE_LITERAL(type_prefix));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            istr_t tag_name = ith(tags->names, i);
+            const char* tag_name = ith(tags->names, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
 
             auto union_t = Match(tagged_t->data, UnionType);
             List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
             for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
-                if (ith(union_t->field_names, u) == tag_name) {
+                if (streq(ith(union_t->field_names, u), tag_name)) {
                     bl_type_t *tag_data_type = ith(union_t->field_types, u);
                     gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                     gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
                     gcc_field_t *union_field = ith(union_fields, u);
                     gcc_func_t *tag_print = get_print_func(env, tag_data_type);
                     if (tag_data_type->tag != StructType)
-                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(intern_strf("%s{", tag_name)));
+                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(heap_strf("%s{", tag_name)));
                     else if (!Match(tag_data_type, StructType)->name)
                         gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(tag_name));
                     gcc_rvalue_t *suffix_len = gcc_callx(
@@ -607,7 +606,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
         // If it's nil, print !Type:
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
-        gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
+        gcc_return(nil_block, NULL, WRITE_LITERAL(heap_strf("!%s", type_to_string(pointed_type))));
 
         if (pointed_type->tag == CStringCharType) {
             gcc_func_t *fputs_fn = get_function(env, "fputs");
@@ -666,7 +665,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
             // If we're in a recursive cycle, print @T#index and return without recursing further
             block = cycle_block;
-            istr_t backref = intern_strf("@%s#%%ld", type_to_string(pointed_type));
+            const char* backref = heap_strf("@%s#%%ld", type_to_string(pointed_type));
             gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref),
                                               gcc_rval(gcc_deref(gcc_rval(index), NULL))));
 
@@ -714,9 +713,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             if (i > 0)
                 written = ADD_INT(written, WRITE_LITERAL(", "));
 
-            istr_t name = ith(struct_t->field_names, i);
+            const char* name = ith(struct_t->field_names, i);
             if (name)
-                written = ADD_INT(written, WRITE_LITERAL(intern_strf("%s=", name)));
+                written = ADD_INT(written, WRITE_LITERAL(heap_strf("%s=", name)));
 
             bl_type_t *member_t = ith(struct_t->field_types, i);
             gcc_func_t *print_fn = get_print_func(env, member_t);
@@ -732,9 +731,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
         written = ADD_INT(written, WRITE_LITERAL("}"));
 
-        istr_t units = type_units(t);
+        const char* units = type_units(t);
         if (units && strlen(units) > 0)
-            written = ADD_INT(written, WRITE_LITERAL(intern_strf("<%s>", units)));
+            written = ADD_INT(written, WRITE_LITERAL(heap_strf("<%s>", units)));
 
         gcc_return(block, NULL, written);
         break;
@@ -805,9 +804,9 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
 
     gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("obj"))};
-    istr_t sym_name = fresh("hash");
+    const char* sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(istr_t, intern_str("obj")), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(const char*, "obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
     hset(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
@@ -909,7 +908,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare"), 2, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hset(get_namespace(env, t), "__compare",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
@@ -954,12 +953,12 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
         NEW_LIST(gcc_case_t*, cases);
         for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            istr_t tag_name = ith(tags->names, i);
+            const char* tag_name = ith(tags->names, i);
 
             auto union_t = Match(tagged_t->data, UnionType);
             List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
             for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
-                if (ith(union_t->field_names, u) == tag_name) {
+                if (streq(ith(union_t->field_names, u), tag_name)) {
                     gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
                     bl_type_t *tag_data_type = ith(union_t->field_types, u);
                     gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
@@ -1114,7 +1113,7 @@ gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare_indirect"), 2, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hset(get_namespace(env, t), "__compare_indirect",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
@@ -1204,7 +1203,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (fielded_ptr->pointed->tag == StructType) {
                 auto fielded_struct = Match(fielded_ptr->pointed, StructType);
                 for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
-                    if (ith(fielded_struct->field_names, i) == access->field) {
+                    if (streq(ith(fielded_struct->field_names, i), access->field)) {
                         gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_ptr->pointed));
                         gcc_field_t *field = gcc_get_field(gcc_struct, i);
                         return gcc_lvalue_access_field(fielded_lval, NULL, field);
@@ -1268,7 +1267,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_size += 4; // Hidden "capacity" field
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
-        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
+        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh(heap_strf("heap_%s", type_to_string(t))));
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), gcc_t));
         gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), rval);
@@ -1299,12 +1298,12 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
     fputc('\0', f);
     fflush(f);
     gcc_func_t *fail = get_function(env, "fail");
-    istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7m%s\x1b[m\n\n%s",
-                                 span.file->filename,
-                                 bl_get_line_number(span.file, span.start),
-                                 bl_get_line_column(span.file, span.start),
-                                 user_fmt,
-                                 info);
+    const char* fmt_str = heap_strf("%s:%ld.%ld: \x1b[31;1;7m%s\x1b[m\n\n%s",
+                                    span.file->filename,
+                                    bl_get_line_number(span.file, span.start),
+                                    bl_get_line_column(span.file, span.start),
+                                    user_fmt,
+                                    info);
     gcc_rvalue_t *fmt_val = gcc_str(env->ctx, fmt_str);
 
     NEW_LIST(gcc_rvalue_t*, args);

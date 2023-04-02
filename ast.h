@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <intern.h>
 #include <libgccjit.h>
 
 #include "libblang/list.h"
@@ -14,7 +13,7 @@
                                                      .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
-#define StringAST(ast, _str) WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, StringLiteral, .str=intern_str(_str))))
+#define StringAST(ast, _str) WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, StringLiteral, .str=heap_str(_str))))
 
 typedef enum {INDEX_NORMAL, INDEX_FAIL, INDEX_UNCHECKED} index_type_e;
 
@@ -82,18 +81,18 @@ struct ast_s {
             bool b;
         } Bool;
         struct {
-            istr_t name;
+            const char *name;
         } Var;
         struct {
             int64_t i;
             uint8_t precision;
             bool is_unsigned;
-            istr_t units;
+            const char * units;
         } Int;
         struct {
             double n;
             uint8_t precision;
-            istr_t units;
+            const char *units;
         } Num;
         struct {
             ast_t *first, *last, *step;
@@ -102,14 +101,14 @@ struct ast_s {
             char c;
         } Char;
         struct {
-            istr_t str;
+            const char *str;
         } StringLiteral;
         struct {
-            istr_t dsl;
+            const char *dsl;
             List(ast_t*) children;
         } StringJoin;
         struct {
-            istr_t name;
+            const char *name;
             ast_t *str;
         } DSL;
         struct {
@@ -146,8 +145,8 @@ struct ast_s {
             ast_t *key, *value;
         } TableEntry;
         struct {
-            istr_t name;
-            List(istr_t) arg_names;
+            const char *name;
+            List(const char*) arg_names;
             List(ast_t*) arg_types;
             List(ast_t*) arg_defaults;
             ast_t *ret_type;
@@ -156,7 +155,7 @@ struct ast_s {
             bool is_inline;
         } FunctionDef;
         struct {
-            List(istr_t) arg_names;
+            List(const char*) arg_names;
             List(ast_t*) arg_types;
             ast_t *body;
         } Lambda;
@@ -165,14 +164,14 @@ struct ast_s {
             List(ast_t*) args;
         } FunctionCall;
         struct {
-            istr_t name;
+            const char *name;
             ast_t *arg;
         } KeywordArg;
         struct {
             List(ast_t*) statements;
         } Block;
         struct {
-            istr_t label;
+            const char *label;
             ast_t *body, *else_body;
         } Do;
         struct {
@@ -197,7 +196,7 @@ struct ast_s {
             ast_t *default_body;
         } When;
         struct {
-            istr_t target;
+            const char *target;
         } Skip, Stop;
         struct {
             ast_t *value;
@@ -206,7 +205,7 @@ struct ast_s {
             ast_t *message;
         } Fail;
         struct {
-            istr_t name, bl_name;
+            const char *name, *bl_name;
             ast_t *type;
         } Extern;
         struct {
@@ -216,12 +215,12 @@ struct ast_s {
             ast_t *key_type, *value_type;
         } TypeTable;
         struct {
-            istr_t name;
-            List(istr_t) member_names;
+            const char *name;
+            List(const char*) member_names;
             List(ast_t*) member_types;
         } TypeStruct;
         struct {
-            List(istr_t) arg_names;
+            List(const char*) arg_names;
             List(ast_t*) arg_types;
             ast_t *ret_type;
         } TypeFunction;
@@ -233,10 +232,10 @@ struct ast_s {
         } TypeOptional;
         struct {
             ast_t *type;
-            istr_t units;
+            const char *units;
         } TypeMeasure;
         struct {
-            istr_t name;
+            const char *name;
         } TypeDSL;
         struct {
             ast_t *type;
@@ -247,27 +246,27 @@ struct ast_s {
         struct {
             ast_t *type;
             List(ast_t *) members;
-            istr_t units;
+            const char *units;
         } Struct;
         struct {
-            istr_t name;
-            List(istr_t) field_names;
+            const char *name;
+            List(const char*) field_names;
             List(ast_t*) field_types;
             List(ast_t*) field_defaults;
             List(ast_t*) definitions;
         } StructDef;
         struct {
-            istr_t name;
+            const char *name;
             ast_t *value;
         } StructField;
         struct {
-            istr_t name;
-            List(istr_t) tag_names;
+            const char *name;
+            List(const char*) tag_names;
             List(int64_t) tag_values;
             List(ast_t *) tag_types;
         } TaggedUnionDef, TypeTaggedUnion;
         struct {
-            istr_t name;
+            const char *name;
             ast_t *value;
         } TaggedUnionField;
         struct {
@@ -276,13 +275,13 @@ struct ast_s {
         } Index;
         struct {
             ast_t *fielded;
-            istr_t field;
+            const char *field;
         } FieldAccess;
         struct {
             ast_t *derived, *base;
         } UnitDef;
         struct {
-            istr_t var;
+            const char *var;
             ast_t *source_type, *target_type, *body;
         } ConvertDef;
         struct {
@@ -290,7 +289,7 @@ struct ast_s {
         } Reduction;
         struct {
             ast_t *expr;
-            istr_t output;
+            const char *output;
         } DocTest;
         struct {
             ast_t *body;
@@ -302,10 +301,10 @@ struct ast_s {
             ast_t *type, *body;
         } Extend;
         struct {
-            istr_t path;
+            const char *path;
         } Use;
         struct {
-            List(istr_t) vars;
+            List(const char*) vars;
         } Export;
         struct {} Ellipsis;
         struct {

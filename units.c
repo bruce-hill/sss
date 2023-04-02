@@ -1,16 +1,16 @@
 #include <ctype.h>
 #include <gc.h>
-#include <intern.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 #include "units.h"
+#include "util.h"
 #include "libblang/list.h"
 
 typedef struct {
     int exponent;
-    istr_t name;
+    const char* name;
 } component_t;
 
 typedef struct {
@@ -32,7 +32,7 @@ static int cmp_component_names(const void *v1, const void *v2)
     return strcmp(a->name, b->name);
 }
 
-static istr_t unit_to_string(Unit *u)
+static const char* unit_to_string(Unit *u)
 {
     if (u->len == 0) return NULL;
     char *buf;
@@ -63,7 +63,7 @@ static istr_t unit_to_string(Unit *u)
             fprintf(f, "^%d", abs(u->components[i].exponent));
     }
     fflush(f);
-    istr_t ret = intern_strn(buf, len);
+    const char* ret = heap_strn(buf, len);
     fclose(f);
     free(buf);
     return ret;
@@ -82,9 +82,9 @@ static Unit *make_unit(size_t len, component_t components[len])
     bool has_percent = false;
     size_t merge_len = 0;
     for (size_t i = 0; i < len; ) {
-        istr_t name = buf[i].name;
+        const char* name = buf[i].name;
         int exponent = 0;
-        for (; i < len && buf[i].name == name; ++i)
+        for (; i < len && streq(buf[i].name, name); ++i)
             exponent += buf[i].exponent;
 
         if (strcmp(name, "%") == 0) {
@@ -101,7 +101,7 @@ static Unit *make_unit(size_t len, component_t components[len])
 
     if (merge_len == 0 && has_percent) {
         buf[0].exponent = 1;
-        buf[0].name = intern_str("%");
+        buf[0].name = "%";
         ++merge_len;
     }
 
@@ -120,7 +120,7 @@ static Unit *unit_from_string(const char *str)
         if (isalpha(*p) || *p == '_' || *p == '%') {
             const char *name = p;
             while (isalpha(*p) || *p == '_' || *p == '%') ++p;
-            name = intern_strn(name, (size_t)(p - name));
+            name = heap_strn(name, (size_t)(p - name));
 
             int exponent = 1;
             while (isspace(*p)) ++p;
@@ -163,22 +163,22 @@ static Unit *unit_div(Unit *a, Unit *b)
     return make_unit(len, buf);
 }
 
-istr_t unit_string(const char *str)
+const char* unit_string(const char *str)
 {
     return unit_to_string(unit_from_string(str));
 }
 
-istr_t unit_string_mul(const char *a, const char *b)
+const char* unit_string_mul(const char *a, const char *b)
 {
     return unit_to_string(unit_mul(unit_from_string(a), unit_from_string(b)));
 }
 
-istr_t unit_string_div(const char *a, const char *b)
+const char* unit_string_div(const char *a, const char *b)
 {
     return unit_to_string(unit_div(unit_from_string(a), unit_from_string(b)));
 }
 
-istr_t unit_derive(istr_t unit_str, double *d, derived_units_t *conversions)
+const char* unit_derive(const char* unit_str, double *d, derived_units_t *conversions)
 {
     Unit *unit = unit_from_string(unit_str);
     for ( ; conversions; conversions = conversions->next) {
@@ -186,7 +186,7 @@ istr_t unit_derive(istr_t unit_str, double *d, derived_units_t *conversions)
         int exponent = 999;
         for (size_t d = 0; d < derived->len; d++) {
             for (size_t u = 0; u < unit->len; u++) {
-                if (unit->components[u].name == derived->components[d].name) {
+                if (streq(unit->components[u].name, derived->components[d].name)) {
                     int e = unit->components[u].exponent / derived->components[d].exponent;
                     if (e*e < exponent*exponent)
                         exponent = e;

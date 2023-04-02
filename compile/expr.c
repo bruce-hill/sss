@@ -29,7 +29,7 @@ gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *tagged_union_t, bl_type_t 
 
     int64_t field_index = 0;
     for (int64_t i = 0, len = length(union_->field_types); i < len; i++) {
-        if (ith(union_->field_types, i) == field_type) {
+        if (type_eq(ith(union_->field_types, i), field_type)) {
             field_index = i;
             break;
         }
@@ -90,7 +90,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         auto intval = Match(ast, Int);
         int64_t i = intval->i;
         double n = (double)i;
-        istr_t units = intval->units;
+        const char* units = intval->units;
         if (units) {
             units = unit_derive(units, &n, env->derived_units);
             if ((double)((int64_t)n) == n) // no floating point rounding
@@ -131,7 +131,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     case Num: {
         gcc_type_t *gcc_t = bl_type_to_gcc(env, get_type(env, ast));
         double n = Match(ast, Num)->n;
-        istr_t units = Match(ast, Num)->units;
+        const char* units = Match(ast, Num)->units;
         units = unit_derive(units, &n, env->derived_units);
         return gcc_rvalue_from_double(env->ctx, gcc_t, n);
     }
@@ -140,7 +140,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     compiler_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
 }
 
-static void export(env_t *env, istr_t name, binding_t *b)
+static void export(env_t *env, const char* name, binding_t *b)
 {
     export_t *exp = new(export_t, .qualified_name=name, .binding=b);
     APPEND(env->exports, exp);
@@ -148,8 +148,8 @@ static void export(env_t *env, istr_t name, binding_t *b)
     if (b->type->tag == TypeType) {
         bl_hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
         for (uint32_t i = 1; i <= ns->count; i++) {
-            auto entry = hnth(ns, i, istr_t, binding_t*);
-            export(env, intern_strf("%s.%s", name, entry->key), entry->value);
+            auto entry = hnth(ns, i, const char*, binding_t*);
+            export(env, heap_strf("%s.%s", name, entry->key), entry->value);
         }
     }
 }
@@ -189,7 +189,7 @@ static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, 
             return gcc_rval(len_var);
         }
 
-        if (ptr->pointed == Type(CharType)) {
+        if (ptr->pointed->tag == CharType) {
             // String length
             gcc_func_t *len_func = hget(env->global_funcs, "strlen", gcc_func_t*);
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
@@ -239,8 +239,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
-        istr_t name = Match(decl->var, Var)->name;
-        istr_t sym_name = fresh(name);
+        const char* name = Match(decl->var, Var)->name;
+        const char* sym_name = fresh(name);
         if (decl->is_global) {
             lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
         } else {
@@ -269,7 +269,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             NEW_LIST(gcc_param_t*, params);
             for (int64_t i = 0, len = length(fn->arg_types); i < len; i++) {
                 gcc_type_t *arg_t = bl_type_to_gcc(env, ith(fn->arg_types, i));
-                istr_t arg_name = fn->arg_names ? ith(fn->arg_names, i) : fresh("arg");
+                const char* arg_name = fn->arg_names ? ith(fn->arg_names, i) : fresh("arg");
                 APPEND(params, gcc_new_param(env->ctx, loc, arg_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
@@ -365,7 +365,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         
         do_env->loop_label = &(loop_label_t){
             .enclosing = env->loop_label,
-            .names = LIST(istr_t, do_->label),
+            .names = LIST(const char*, do_->label),
             .skip_label = do_else,
             .stop_label = do_else,
             .deferred = do_env->deferred,
@@ -417,8 +417,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         defer_env->bindings->fallback = env->bindings->fallback;
         gcc_func_t *func = gcc_block_func(*block);
         for (uint32_t i = 1; i <= env->bindings->count; i++) {
-            auto entry = hnth(env->bindings, i , istr_t, binding_t*);
-            gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, entry->value->type), fresh(intern_strf("deferred_%s", entry->key)));
+            auto entry = hnth(env->bindings, i , const char*, binding_t*);
+            gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, entry->value->type), fresh(heap_strf("deferred_%s", entry->key)));
             gcc_assign(*block, loc, cached, entry->value->rval);
             binding_t *cached_binding = new(binding_t);
             *cached_binding = *entry->value;
@@ -433,11 +433,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case With: { // with var := expr, cleanup(var) ...
         auto with = Match(ast, With);
         NEW_LIST(ast_t*, statements);
-        ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name=intern_str("with"));
+        ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name="with");
         APPEND(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
         ast_t *cleanup = with->cleanup;
         if (!cleanup)
-            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field=intern_str("close")), .args=LIST(ast_t*));
+            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field="close"), .args=LIST(ast_t*));
         APPEND(statements, WrapAST(ast, Defer, .body=cleanup));
         APPEND(statements, with->body);
         return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
@@ -520,7 +520,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                           stride_rval, \
                                       })
     case StringLiteral: {
-        istr_t str = Match(ast, StringLiteral)->str;
+        const char* str = Match(ast, StringLiteral)->str;
         gcc_rvalue_t *str_rval = gcc_str(env->ctx, str);
         gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
         gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT32));
@@ -567,7 +567,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (chunks, chunk, _) {
             gcc_loc_t *chunk_loc = ast_loc(env, *chunk);
             if ((*chunk)->tag == StringLiteral) {
-                istr_t str = Match(*chunk, StringLiteral)->str;
+                const char* str = Match(*chunk, StringLiteral)->str;
                 gcc_eval(*block, chunk_loc,
                          gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, str), file));
                 continue;
@@ -641,7 +641,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto entry = Match(ast, TableEntry);
         bl_type_t *key_t = get_type(env, entry->key);
         bl_type_t *value_t = get_type(env, entry->value);
-        bl_type_t *entry_t = Type(StructType, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+        bl_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                                   .field_types=LIST(bl_type_t*, key_t, value_t));
         gcc_type_t *entry_gcc_t = bl_type_to_gcc(env, entry_t);
         gcc_field_t *fields[] = {
@@ -673,7 +673,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *def = NewAST(
             env->file, ast->span.start, ast->span.end,
             FunctionDef,
-            .arg_names=LIST(istr_t, convert->var),
+            .arg_names=LIST(const char*, convert->var),
             .arg_types=LIST(ast_t*, convert->source_type),
             .ret_type=convert->target_type,
             .body=convert->body);
@@ -702,8 +702,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 bl_type_t *t = get_type(env, decl->value);
                 assert(t);
                 gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-                istr_t name = Match(decl->var, Var)->name;
-                istr_t sym_name = fresh(name);
+                const char* name = Match(decl->var, Var)->name;
+                const char* sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
                 hset(env->bindings, name,
                             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
@@ -794,7 +794,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto member = Match(member_ast, StructField);
             if (!member->name) continue;
             for (size_t field_index = 0; field_index < num_fields; field_index++) {
-                if (ith(struct_type->field_names, field_index) != member->name)
+                if (!streq(ith(struct_type->field_names, field_index), member->name))
                     continue;
 
                 gcc_field_t *field = unused_fields[field_index];
@@ -901,11 +901,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
             bl_type_t *self_t = get_type(env, self);
-            if (access->field == intern_str("__hash"))
+            if (streq(access->field, "__hash"))
                 (void)get_hash_func(env, self_t); 
-            else if (access->field == intern_str("__compare"))
+            else if (streq(access->field, "__compare"))
                 (void)get_compare_func(env, self_t); 
-            else if (access->field == intern_str("__print"))
+            else if (streq(access->field, "__print"))
                 (void)get_print_func(env, self_t); 
             bl_type_t *value_type = self_t;
             while (value_type->tag == PointerType)
@@ -940,7 +940,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 gcc_rvalue_t *self_val = compile_expr(env, block, self);
                 bl_type_t *expected_self = ith(fn_info->arg_types, 0);
-                if (self_t != expected_self && !promote(env, self_t, &self_val, expected_self))
+                if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self))
                     compiler_err(env, ast, "The method %s.%s(...) is being called on a %s, but it wants a %s.",
                           type_to_string(self_t), access->field, type_to_string(self_t), type_to_string(expected_self));
                 arg_vals[0] = self_val;
@@ -957,8 +957,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         const int64_t MASK = -1; // mask is because the hashmap api returns 0 for missing keys
         bl_hashmap_t arg_positions = {0};
         if (fn_t->arg_names) {
-            for (int64_t i = 0; i < num_args; i++)
-                hset(&arg_positions, ith(fn_t->arg_names, i), (void*)(i^MASK));
+            for (int64_t i = 0; i < num_args; i++) {
+                int64_t masked = i ^ MASK;
+                hset(&arg_positions, ith(fn_t->arg_names, i), masked);
+            }
         }
 
         // // First: keyword args
@@ -1032,7 +1034,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *arg_t = ith(fn_t->arg_types, pos);
             if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional)
                 compiler_err(env, ast, "The non-optional argument %s was not provided",
-                      fn_t->arg_names ? ith(fn_t->arg_names, pos) : intern_strf("%ld", pos));
+                      fn_t->arg_names ? ith(fn_t->arg_names, pos) : heap_strf("%ld", pos));
             arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
         }
 
@@ -1061,7 +1063,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_size += 4; // Hidden "capacity" field
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
-        gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
+        gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(heap_strf("heap_%s", type_to_string(t))));
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
@@ -1114,7 +1116,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
             auto struct_type = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
-                if (ith(struct_type->field_names, i) == access->field) {
+                if (streq(ith(struct_type->field_names, i), access->field)) {
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, loc, field);
                 }
@@ -1134,7 +1136,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             auto struct_type = Match(array->item_type, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
-                if (ith(struct_type->field_names, i) != access->field)  continue;
+                if (!streq(ith(struct_type->field_names, i), access->field))  continue;
                 bl_type_t *field_type = ith(struct_type->field_types, i);
 
                 // items = &(array.items->field)
@@ -1179,12 +1181,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *union_type = Match(fielded_t, TaggedUnionType)->data;
             auto union_ = Match(union_type, UnionType);
             for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
-                if (ith(union_->field_names, i) == access->field) {
+                if (streq(ith(union_->field_names, i), access->field)) {
                     // Step 1: check tag and fail if it's the wrong one:
                     gcc_rvalue_t *tagged_tag = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
                     gcc_rvalue_t *field_tag = NULL;
                     for (int64_t tag_index = 0, len = length(tag_type->names); tag_index < len; tag_index++) {
-                        if (ith(tag_type->names, tag_index) == access->field) {
+                        if (streq(ith(tag_type->names, tag_index), access->field)) {
                             gcc_type_t *tag_t = bl_type_to_gcc(env, tag_bl_type);
                             field_tag = gcc_rvalue_from_long(env->ctx, tag_t, ith(tag_type->values, i));
                             break;
@@ -1205,11 +1207,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
                     gcc_func_t *fail = get_function(env, "fail");
-                    istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s",
-                                                 ast->span.file->filename,
-                                                 bl_get_line_number(ast->span.file, ast->span.start),
-                                                 bl_get_line_column(ast->span.file, ast->span.start),
-                                                 access->field);
+                    const char* fmt_str = heap_strf("%s:%ld.%ld: \x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s",
+                                                    ast->span.file->filename,
+                                                    bl_get_line_number(ast->span.file, ast->span.start),
+                                                    bl_get_line_column(ast->span.file, ast->span.start),
+                                                    access->field);
                     gcc_rvalue_t *fmt = gcc_str(env->ctx, fmt_str);
                     gcc_rvalue_t *failure = gcc_callx(env->ctx, loc, fail, fmt, callstack);
                     gcc_eval(tag_wrong, loc, failure);
@@ -1314,9 +1316,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
-        gcc_func_t *intern_str_func = get_function(env, "intern_str");
         bl_type_t *t = get_type(env, value);
-        return gcc_callx(env->ctx, loc, intern_str_func, gcc_str(env->ctx, type_to_string(t)));
+        return gcc_str(env->ctx, type_to_string(t));
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;
@@ -1331,7 +1332,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *cast_t = get_type(env, ast);
 
         for (auto convert = env->conversions; convert; convert = convert->next) {
-            if (convert->src == src_t && convert->dest == cast_t) {
+            if (type_eq(convert->src, src_t) && type_eq(convert->dest, cast_t)) {
                 return gcc_callx(env->ctx, loc, convert->func, val);
             }
         }
@@ -1395,7 +1396,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
         coerce_numbers(env, &lhs_t, &lhs_val, &rhs_t, &rhs_val);
-        if (lhs_t != rhs_t)
+        if (!type_eq(lhs_t, rhs_t))
             compiler_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (is_ordered && !is_orderable(lhs_t))
@@ -1680,7 +1681,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         List(gcc_field_t*) union_fields = get_union_fields(env, union_type);
         NEW_LIST(gcc_case_t*, gcc_cases);
         foreach (when->cases, case_, _) {
-            istr_t tag_name = Match(case_->tag, Var)->name;
+            const char* tag_name = Match(case_->tag, Var)->name;
             gcc_loc_t *case_loc = ast_loc(env, case_->tag);
             env_t *case_env = env;
             if (case_->var) {
@@ -1689,7 +1690,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *case_rval = NULL;
                 bl_type_t *case_t = NULL;
                 for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
-                    if (ith(union_->field_names, i) == tag_name) {
+                    if (streq(ith(union_->field_names, i), tag_name)) {
                         gcc_rvalue_t *data = gcc_rvalue_access_field(subject, case_loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
                         case_rval = gcc_rvalue_access_field(data, case_loc, ith(union_fields, i));
                         case_t = ith(union_->field_types, i);
@@ -1703,7 +1704,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 hset(case_env->bindings, Match(case_->var, Var)->name, case_binding);
             }
 
-            gcc_block_t *case_block = gcc_new_block(func, fresh(intern_strf("case_%s", tag_name)));
+            gcc_block_t *case_block = gcc_new_block(func, fresh(heap_strf("case_%s", tag_name)));
             gcc_rvalue_t *tag_rval = get_from_namespace(env, tag_t, tag_name)->rval;
             gcc_case_t *gcc_case = gcc_new_case(env->ctx, tag_rval, tag_rval, case_block);
             APPEND(gcc_cases, gcc_case);
@@ -1756,12 +1757,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Ellipsis: return compile_range(env, block, WrapAST(ast, Range));
     case Repeat: {
         auto loop = Match(ast, Repeat);
-        compile_while_loop(env, block, intern_str("repeat"), NULL, loop->body, loop->between);
+        compile_while_loop(env, block, "repeat", NULL, loop->body, loop->between);
         return NULL;
     }
     case While: {
         auto loop = Match(ast, While);
-        compile_while_loop(env, block, intern_str("while"), loop->condition, loop->body, loop->between);
+        compile_while_loop(env, block, "while", loop->condition, loop->body, loop->between);
         return NULL;
     }
     case For: {
@@ -1774,11 +1775,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_block_t *jump_dest = NULL;
         defer_t *prev_deferred = env->deferred;
-        istr_t target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
+        const char* target = ast->tag == Skip ? Match(ast, Skip)->target : Match(ast, Stop)->target;
         if (target) {
             for (loop_label_t *lbl = env->loop_label; lbl; lbl = lbl->enclosing) {
                 foreach (lbl->names, name, _) {
-                    if (*name == target) {
+                    if (streq(*name, target)) {
                         if (ast->tag == Skip)
                             jump_dest = lbl->skip_label;
                         else
@@ -1810,21 +1811,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Reduction: {
         auto reduction = Match(ast, Reduction);
         bl_type_t *t = get_type(env, ast);
-        istr_t name = fresh("reduction");
+        const char* name = fresh("reduction");
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *ret = gcc_local(func, loc, bl_type_to_gcc(env, t), name);
 
         env = fresh_scope(env);
 
-        hset(env->bindings, intern_str("x"), new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
-        ast_t *prev_var = WrapAST(ast, Var, .name=intern_str("x"));
-        ast_t *iter_var = WrapAST(ast, Var, .name=intern_str("y"));
+        hset(env->bindings, "x", new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        ast_t *prev_var = WrapAST(ast, Var, .name="x");
+        ast_t *iter_var = WrapAST(ast, Var, .name="y");
         ast_t *first_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, iter_var));
         ast_t *between_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->combination));
         ast_t *empty_block = NULL;
         if (reduction->fallback) {
             bl_type_t *empty_type = get_type(env, reduction->fallback);
-            if (empty_type == t) {
+            if (type_eq(empty_type, t)) {
                 empty_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->fallback));
             } else if (empty_type->tag == AbortType) {
                 empty_block = reduction->fallback;
@@ -1861,10 +1862,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7m%s: %.*s\x1b[m\n\n%s");
         gcc_rvalue_t *loc_info = gcc_str(
-            env->ctx, intern_strf("%s:%ld.%ld",
-                                  ast->span.file->filename,
-                                  bl_get_line_number(ast->span.file, ast->span.start),
-                                  bl_get_line_column(ast->span.file, ast->span.start)));
+            env->ctx, heap_strf("%s:%ld.%ld",
+                                ast->span.file->filename,
+                                bl_get_line_number(ast->span.file, ast->span.start),
+                                bl_get_line_column(ast->span.file, ast->span.start)));
 
         char *info = NULL;
         size_t size = 0;
@@ -1887,8 +1888,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *expr = test->expr;
 
         // Print test:
-        istr_t src = intern_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-        ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, StringAST(expr, src)));
+        const char* src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+        ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, StringAST(expr, src)));
         compile_statement(env, block, say_src);
 
         bl_type_t *t = get_type(env, expr);
@@ -1899,20 +1900,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, block, expr);
             return NULL;
         }
-        if (t == Type(ArrayType, .item_type=Type(CharType))) {
+        if (type_eq(t, Type(ArrayType, .item_type=Type(CharType)))) {
             if (Match(t, ArrayType)->dsl)
                 expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=intern_str("colorize"), .arg=WrapAST(ast, Bool, .b=false)));
-            expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field=intern_str("quoted")), .args=args);
+            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=false)));
+            expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"), .args=args);
         }
 
-        ast_t *prefix = WrapAST(ast, StringLiteral, .str=intern_str("\x1b[0;2m= \x1b[0;35m"));
-        ast_t *type_info = WrapAST(ast, StringLiteral, .str=intern_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
+        ast_t *prefix = WrapAST(ast, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
+        ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
         // Stringify and add type info:
         ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=expr), type_info));
 
         // Call say(str):
-        ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=intern_str("say")), .args=LIST(ast_t*, result_str));
+        ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, result_str));
         compile_statement(env, block, say_result);
 
         if (test->output) {
@@ -1921,9 +1922,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *message = WrapAST(
                 ast, StringJoin, .children=LIST(
                     ast_t*,
-                    WrapAST(ast, StringLiteral, .str=intern_str("Test failed, expected: ")), 
+                    WrapAST(ast, StringLiteral, .str="Test failed, expected: "), 
                     WrapAST(ast, Interp, .value=expected),
-                    WrapAST(ast, StringLiteral, .str=intern_str(", but got: ")), 
+                    WrapAST(ast, StringLiteral, .str=", but got: "), 
                     WrapAST(ast, Interp, .value=result_str_plain)));
             compile_statement(
                 env, block, WrapAST(

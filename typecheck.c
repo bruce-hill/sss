@@ -72,10 +72,10 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
         bl_type_t *raw = parse_type_ast(env, measure->type);
-        istr_t raw_units = type_units(raw);
+        const char* raw_units = type_units(raw);
         if (raw_units)
             compiler_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
-        istr_t units = unit_derive(measure->units, NULL, env->derived_units);
+        const char* units = unit_derive(measure->units, NULL, env->derived_units);
         return with_units(raw, units);
     }
     case TypeFunction: {
@@ -92,7 +92,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto struct_ = Match(ast, TypeStruct);
         // binding_t *b = struct_->name ? hashmap_get(env->bindings, struct_->name) : NULL;
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
-        NEW_LIST(istr_t, member_names);
+        NEW_LIST(const char*, member_names);
         NEW_LIST(bl_type_t*, member_types);
         bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
@@ -100,7 +100,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
         }
         for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
-            istr_t member_name = ith(struct_->member_names, i);
+            const char* member_name = ith(struct_->member_names, i);
             APPEND(member_names, member_name);
             bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
@@ -116,12 +116,12 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeTaggedUnion: {
         auto tu = Match(ast, TypeTaggedUnion);
         NEW_LIST(bl_type_t*, union_field_types);
-        NEW_LIST(istr_t, union_field_names);
+        NEW_LIST(const char*, union_field_names);
         bl_type_t *tag_t = Type(TagType, .name=tu->name, .names=tu->tag_names, .values=tu->tag_values);
         bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types);
         bl_type_t *t = Type(TaggedUnionType, .name=tu->name, .tag_type=tag_t, .data=union_t);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
-            istr_t tag_name = ith(tu->tag_names, i);
+            const char* tag_name = ith(tu->tag_names, i);
             ast_t *field_type_ast = ith(tu->tag_types, i);
             if (field_type_ast) {
                 APPEND(union_field_names, tag_name);
@@ -174,13 +174,13 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     while (rhs_t->tag == PointerType)
         rhs_t = Match(rhs_t, PointerType)->pointed;
 
-    istr_t u1 = type_units(lhs_t), u2 = type_units(rhs_t);
+    const char* u1 = type_units(lhs_t), *u2 = type_units(rhs_t);
     u1 = unit_derive(u1, NULL, env->derived_units);
     u2 = unit_derive(u2, NULL, env->derived_units);
 
-    istr_t units;
+    const char* units;
     if (tag == Add || tag == Subtract) {
-        if (u1 != u2)
+        if (!streq(u1, u2))
             compiler_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
         units = u1;
     } else if (tag == Divide || tag == Multiply) {
@@ -199,7 +199,7 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
         compiler_err(env, ast, "Unsupported math operation");
     }
 
-    if (lhs_t == rhs_t) {
+    if (type_eq(lhs_t, rhs_t)) {
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         bl_type_t *t = numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
@@ -234,7 +234,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Int: {
         auto i = Match(ast, Int);
-        istr_t units = i->units;
+        const char* units = i->units;
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (i->precision) {
@@ -248,7 +248,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Char: return Type(CharType);
     case Num: {
         auto n = Match(ast, Num);
-        istr_t units = n->units;
+        const char* units = n->units;
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (n->precision) {
@@ -299,7 +299,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(ArrayType, .item_type=Type(CharType));
     }
     case Var: {
-        istr_t name = Match(ast, Var)->name;
+        const char* name = Match(ast, Var)->name;
         binding_t *binding = get_binding(env, name);
         if (!binding)
             compiler_err(env, ast, "I don't know what \"%s\" refers to", name);
@@ -362,7 +362,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
-        bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(istr_t, intern_str("key"), intern_str("value")),
+        bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(const char*, "key", "value"),
                             .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
         bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
         if (memoized) {
@@ -375,11 +375,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env, access->fielded);
-        if (access->field == intern_str("__hash"))
+        if (streq(access->field, "__hash"))
             (void)get_hash_func(env, fielded_t); 
-        else if (access->field == intern_str("__compare"))
+        else if (streq(access->field, "__compare"))
             (void)get_compare_func(env, fielded_t); 
-        else if (access->field == intern_str("__print"))
+        else if (streq(access->field, "__print"))
             (void)get_print_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
         bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
@@ -387,7 +387,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case StructType: {
             auto struct_t = Match(value_t, StructType);
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
-                if (LIST_ITEM(struct_t->field_names, i) == access->field) {
+                if (streq(LIST_ITEM(struct_t->field_names, i), access->field)) {
                     if (is_optional)
                         compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
 
@@ -402,7 +402,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case TaggedUnionType: {
             auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
             for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
-                if (LIST_ITEM(union_t->field_names, i) == access->field) {
+                if (streq(LIST_ITEM(union_t->field_names, i), access->field)) {
                     if (is_optional)
                         compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                     return LIST_ITEM(union_t->field_types, i);
@@ -429,7 +429,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 // vecs.x ==> [v.x for v in vecs]
                 auto struct_ = Match(item_t, StructType);
                 for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
-                    if (LIST_ITEM(struct_->field_names, i) == access->field) {
+                    if (streq(LIST_ITEM(struct_->field_names, i), access->field)) {
                         if (is_optional)
                             compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                         return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
@@ -581,7 +581,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         } else if (lhs_t->tag == PointerType && rhs_t->tag == PointerType) {
             auto lhs_ptr = Match(lhs_t, PointerType);
             auto rhs_ptr = Match(rhs_t, PointerType);
-            if (lhs_ptr->pointed == rhs_ptr->pointed)
+            if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
                 return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
@@ -608,7 +608,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false);
             } else if (rhs_t->tag == PointerType) {
                 auto rhs_ptr = Match(rhs_t, PointerType);
-                if (rhs_ptr->pointed == lhs_ptr->pointed)
+                if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
                     return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional);
             }
         }
@@ -672,12 +672,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
     case Lambda: {
         auto lambda = Match(ast, Lambda);
-        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(const char*, arg_names);
         NEW_LIST(bl_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
             bl_type_t *t = parse_type_ast(env, arg_def);
-            istr_t arg_name = LIST_ITEM(lambda->arg_names, i);
+            const char* arg_name = LIST_ITEM(lambda->arg_names, i);
             APPEND(arg_names, arg_name);
             APPEND(arg_types, t);
         }
@@ -693,7 +693,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
     case FunctionDef: {
         auto def = Match(ast, FunctionDef);
-        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(const char*, arg_names);
         NEW_LIST(bl_type_t*, arg_types);
         NEW_LIST(ast_t*, arg_defaults);
 
@@ -709,7 +709,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(def->arg_types, i);
-            istr_t arg_name = LIST_ITEM(def->arg_names, i);
+            const char* arg_name = LIST_ITEM(def->arg_names, i);
             APPEND(arg_names, arg_name);
             if (arg_def) {
                 bl_type_t *arg_type = parse_type_ast(env, arg_def);
@@ -735,7 +735,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Struct: {
         auto struct_ = Match(ast, Struct);
         if (!struct_->type) {
-            NEW_LIST(istr_t, field_names);
+            NEW_LIST(const char*, field_names);
             NEW_LIST(bl_type_t*, field_types);
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != StructField)
@@ -806,10 +806,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             env_t *case_env = env;
             if (case_->var) {
                 case_env = fresh_scope(env);
-                istr_t tagname = Match(case_->tag, Var)->name;
+                const char* tagname = Match(case_->tag, Var)->name;
                 auto union_ = Match(Match(tagged_t, TaggedUnionType)->data, UnionType);
                 for (int64_t i = 0; i < LIST_LEN(union_->field_names); i++) {
-                    if (ith(union_->field_names, i) == tagname) {
+                    if (streq(ith(union_->field_names, i), tagname)) {
                         hset(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=ith(union_->field_types, i)));
                         goto env_ready;
                     }
@@ -882,8 +882,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Reduction: {
         env = fresh_scope(env);
         bl_type_t *item_type = get_iter_type(env, Match(ast, Reduction)->iter);
-        hset(env->bindings, intern_str("x"), new(binding_t, .type=item_type));
-        hset(env->bindings, intern_str("y"), new(binding_t, .type=item_type));
+        hset(env->bindings, "x", new(binding_t, .type=item_type));
+        hset(env->bindings, "y", new(binding_t, .type=item_type));
         return get_type(env, Match(ast, Reduction)->combination);
     }
     case Defer: {

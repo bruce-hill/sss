@@ -52,8 +52,8 @@ static inline size_t match(const char **pos, const char *target);
 static inline void expect_str(parse_ctx_t *ctx, const char *start, const char **pos, const char *target, const char *fmt, ...);
 static inline void expect_closing(parse_ctx_t *ctx, const char **pos, const char *target, const char *fmt, ...);
 static inline size_t match_word(const char **pos, const char *word);
-static inline istr_t get_word(const char **pos);
-static inline istr_t get_id(const char **pos);
+static inline const char* get_word(const char **pos);
+static inline const char* get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
@@ -128,27 +128,27 @@ static void parser_err(parse_ctx_t *ctx, const char *start, const char *end, con
 //
 // Convert an escape sequence like \n to a string
 //
-istr_t unescape(const char **out) {
+const char *unescape(const char **out) {
     const char **endpos = out;
     const char *escape = *out;
     static const char *unescapes[256] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
     assert(*escape == '\\');
     if (unescapes[(int)escape[1]]) {
         *endpos = escape + 2;
-        return intern_str(unescapes[(int)escape[1]]);
+        return heap_str(unescapes[(int)escape[1]]);
     } else if (escape[1] == 'x' && escape[2] && escape[3]) {
         char *endptr = (char*)&escape[3+1];
         char c = (char)strtol(escape+2, &endptr, 16);
         *endpos = escape + 4;
-        return intern_strn(&c, 1);
+        return heap_strn(&c, 1);
     } else if ('0' <= escape[1] && escape[1] <= '7' && '0' <= escape[2] && escape[2] <= '7' && '0' <= escape[3] && escape[3] <= '7') {
         char *endptr = (char*)&escape[4];
         char c = (char)strtol(escape+1, &endptr, 8);
         *endpos = escape + 4;
-        return intern_strn(&c, 1);
+        return heap_strn(&c, 1);
     } else {
         *endpos = escape + 2;
-        return intern_strn(escape+1, 1);
+        return heap_strn(escape+1, 1);
     }
 }
 
@@ -285,7 +285,7 @@ bool match_group(const char **out, char open) {
     } else return false;
 }
 
-istr_t get_word(const char **inout) {
+const char *get_word(const char **inout) {
     const char *pos = *inout;
     spaces(&pos);
     if (!isalpha(*pos) && *pos != '_')
@@ -295,12 +295,12 @@ istr_t get_word(const char **inout) {
     while (isalpha(*pos) || isdigit(*pos) || *pos == '_')
         ++pos;
     *inout = pos;
-    return intern_strn(word, (size_t)(pos - word));
+    return heap_strn(word, (size_t)(pos - word));
 }
 
-istr_t get_id(const char **inout) {
+const char *get_id(const char **inout) {
     const char *pos = *inout;
-    istr_t word = get_word(&pos);
+    const char* word = get_word(&pos);
     if (!word) return word;
     for (int i = 0; keywords[i]; i++)
         if (strcmp(word, keywords[i]) == 0)
@@ -362,13 +362,13 @@ PARSER(parse_parens) {
                .tag=expr->tag, .__data=expr->__data);
 }
 
-istr_t match_units(const char **out) {
+const char* match_units(const char **out) {
     const char *pos = *out;
     if (!match(&pos, "<")) return NULL;
     pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789- ");
     if (!match(&pos, ">")) return NULL;
-    istr_t buf = intern_strn(*out + 1, (size_t)(pos-1-(*out+1)));
-    istr_t ret = unit_string(buf);
+    const char* buf = heap_strn(*out + 1, (size_t)(pos-1-(*out+1)));
+    const char* ret = unit_string(buf);
     *out = pos;
     return ret;
 }
@@ -423,7 +423,7 @@ PARSER(parse_int) {
 
     if (match(&pos, "%")) {
         double d = (double)i / 100.;
-        return NewAST(ctx->file, start, pos, Num, .n=d, .precision=64, .units=intern_str("%"));
+        return NewAST(ctx->file, start, pos, Num, .n=d, .precision=64, .units="%");
     }
 
     match(&pos, "_");
@@ -440,7 +440,7 @@ PARSER(parse_int) {
 
     // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
-    istr_t units = match_units(&pos);
+    const char* units = match_units(&pos);
     return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units, .is_unsigned=is_unsigned);
 }
 
@@ -460,20 +460,19 @@ PARSER(parse_table_type) {
 
 PARSER(parse_struct_type) {
     const char *start = pos;
-    istr_t name = get_id(&pos);
+    const char *name = get_id(&pos);
     if (!match(&pos, "{")) return NULL;
-    NEW_LIST(istr_t, member_names);
+    NEW_LIST(const char*, member_names);
     NEW_LIST(ast_t*, member_types);
     for (int i = 1; ; i++) {
         whitespace(&pos);
         const char *field_start = pos;
-        istr_t field_name = get_id(&pos);
+        const char *field_name = get_id(&pos);
         whitespace(&pos);
         if (match(&pos, ":")) {
             whitespace(&pos);
-            field_name = intern_str(field_name);
         } else {
-            field_name = intern_strf("_%d", i);
+            field_name = heap_strf("_%d", i);
             pos = field_start;
         }
         ast_t *t = expect_ast(ctx, field_start, &pos, _parse_type, "I couldn't parse the type for this field");
@@ -489,18 +488,18 @@ PARSER(parse_struct_type) {
 
 PARSER(parse_tagged_union_type) {
     const char *start = pos;
-    istr_t name = get_id(&pos);
+    const char* name = get_id(&pos);
     if (!match_word(&pos, "oneof")) return NULL;
     spaces(&pos);
     if (!match(&pos, "{")) return NULL;
-    NEW_LIST(istr_t, tag_names);
+    NEW_LIST(const char*, tag_names);
     NEW_LIST(int64_t, tag_values);
     NEW_LIST(ast_t*, tag_types);
     int64_t next_value = 0;
     for (;;) {
         whitespace(&pos);
         const char *tag_start = pos;
-        istr_t tag_name = get_id(&pos);
+        const char* tag_name = get_id(&pos);
         if (!tag_name) break;
         spaces(&pos);
         if (match(&pos, "=")) {
@@ -590,7 +589,7 @@ PARSER(parse_optional_type) {
 
 PARSER(parse_type_name) {
     const char *start = pos;
-    istr_t id = get_id(&pos);
+    const char* id = get_id(&pos);
     if (!id) return NULL;
     ast_t *ast = NewAST(ctx->file, start, pos, Var, .name=id);
     ast_t *fielded = parse_field_suffix(ctx, ast);
@@ -600,16 +599,16 @@ PARSER(parse_type_name) {
 PARSER(parse_dsl_type) {
     const char *start = pos;
     if (!match(&pos, "$")) return NULL;
-    istr_t id = get_id(&pos);
+    const char* id = get_id(&pos);
     if (!id) return NULL;
     return NewAST(ctx->file, start, pos, TypeDSL, .name=id);
 }
 
-static istr_t get_units(const char **pos) {
+static const char* get_units(const char **pos) {
     // +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (_[`*,/_])
     size_t len = strcspn(*pos, ">");
     // TODO: verify
-    istr_t units = intern_strn(*pos, len);
+    const char* units = heap_strn(*pos, len);
     *pos += len;
     return units;
 }
@@ -645,7 +644,7 @@ PARSER(_parse_type) {
     pos = type->span.end;
     // Measure type
     if (match(&pos, "<")) {
-        istr_t units = get_units(&pos);
+        const char* units = get_units(&pos);
         expect_closing(ctx, &pos, ">", "I expected a closing '>' for these units");
         type = NewAST(ctx->file, type->span.start, pos, TypeMeasure, .type=type, .units=units);
     }
@@ -681,10 +680,10 @@ PARSER(parse_num) {
     if (match(&pos, "f64")) precision = 64;
     else if (match(&pos, "f32")) precision = 32;
 
-    istr_t units;
+    const char* units;
     if (match(&pos, "%")) {
         d /= 100.;
-        units = intern_str("%");
+        units = "%";
     } else {
         units = match_units(&pos);
     }
@@ -713,8 +712,8 @@ PARSER(parse_array) {
             if (item) {
                 ast_t *loop = NewAST(ctx->file, item_start, item->span.end, For,
                                      .iter=item,
-                                     .value=WrapAST(item, Var, .name=intern_str("x")),
-                                     .body=WrapAST(item, Var, .name=intern_str("x")));
+                                     .value=WrapAST(item, Var, .name="x"),
+                                     .body=WrapAST(item, Var, .name="x"));
                 APPEND(items, loop);
                 goto added_item;
             }
@@ -827,11 +826,10 @@ PARSER(parse_struct) {
     for (int i = 1; ; i++) {
         whitespace(&pos);
         const char *field_start = pos;
-        istr_t field_name = NULL;
+        const char* field_name = NULL;
         if ((field_name=get_id(&pos))) {
             whitespace(&pos);
             if (!match(&pos, "=")) goto no_field_name;
-            field_name = intern_str(field_name);
             whitespace(&pos);
         } else {
           no_field_name: field_name = NULL;
@@ -839,7 +837,7 @@ PARSER(parse_struct) {
         }
         ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
         if (!field_name && !type)
-            field_name = intern_strf("_%d", i);
+            field_name = heap_strf("_%d", i);
         if (!value) break;
         APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=field_name, .value=value));
         whitespace(&pos);
@@ -847,7 +845,7 @@ PARSER(parse_struct) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
-    istr_t units = match_units(&pos);
+    const char* units = match_units(&pos);
     return NewAST(ctx->file, start, pos, Struct, .type=type, .members=members, .units=units);
 }
 
@@ -857,7 +855,7 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
     if (*pos == '.') return NULL;
-    istr_t field = get_id(&pos);
+    const char* field = get_id(&pos);
     if (!field) return NULL;
     return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
@@ -996,7 +994,7 @@ PARSER(parse_do) {
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, pos);
-    istr_t label = get_id(&pos);
+    const char* label = get_id(&pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
     ast_t *else_body = NULL;
     const char *else_start = pos;
@@ -1311,7 +1309,7 @@ PARSER(parse_string) {
                 if (pos[len] == '\n') ++len;
 
                 if (len > 0) {
-                    ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
+                    ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=heap_strn(pos, len));
                     APPEND(chunks, chunk);
                 }
 
@@ -1319,7 +1317,7 @@ PARSER(parse_string) {
 
                 if (*pos == escape_char) {
                     const char *start = pos;
-                    istr_t unescaped = unescape(&pos);
+                    const char* unescaped = unescape(&pos);
                     ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                     APPEND(chunks, chunk);
                     ++pos;
@@ -1336,7 +1334,7 @@ PARSER(parse_string) {
             ast_t *last_chunk = LIST_ITEM(chunks, LIST_LEN(chunks)-1);
             if (last_chunk->tag == StringLiteral) {
                 auto str = Match(last_chunk, StringLiteral);
-                istr_t trimmed = intern_strn(str->str, strlen(str->str)-1);
+                const char* trimmed = heap_strn(str->str, strlen(str->str)-1);
                 chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx->file, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
             }
         }
@@ -1347,7 +1345,7 @@ PARSER(parse_string) {
         while (depth > 0 && *pos) {
             size_t len = strcspn(pos, special);
             if (len > 0) {
-                ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=intern_strn(pos, len));
+                ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=heap_strn(pos, len));
                 APPEND(chunks, chunk);
                 pos += len;
             }
@@ -1358,7 +1356,7 @@ PARSER(parse_string) {
                 pos = chunk->span.end;
             } else if (*pos == escape_char) {
                 const char *start = pos;
-                istr_t unescaped = unescape(&pos);
+                const char* unescaped = unescape(&pos);
                 ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
                 APPEND(chunks, chunk);
             } else if (*pos == '\r' || *pos == '\n') {
@@ -1372,7 +1370,7 @@ PARSER(parse_string) {
             } else if (*pos == open) {
                 ++depth;
             } else {
-                ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=intern_strn(pos, 1));
+                ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
                 ++pos;
                 APPEND(chunks, chunk);
             }
@@ -1386,10 +1384,10 @@ PARSER(parse_skip) {
     const char *start = pos;
     if (!match_word(&pos, "skip")) return NULL;
     spaces(&pos);
-    istr_t target;
-    if (match_word(&pos, "for")) target = intern_str("for");
-    else if (match_word(&pos, "while")) target = intern_str("while");
-    else if (match_word(&pos, "repeat")) target = intern_str("repeat");
+    const char* target;
+    if (match_word(&pos, "for")) target = "for";
+    else if (match_word(&pos, "while")) target = "while";
+    else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
     return NewAST(ctx->file, start, pos, Skip, .target=target);
 }
@@ -1398,10 +1396,10 @@ PARSER(parse_stop) {
     const char *start = pos;
     if (!match_word(&pos, "stop")) return NULL;
     spaces(&pos);
-    istr_t target;
-    if (match_word(&pos, "for")) target = intern_str("for");
-    else if (match_word(&pos, "while")) target = intern_str("while");
-    else if (match_word(&pos, "repeat")) target = intern_str("repeat");
+    const char* target;
+    if (match_word(&pos, "for")) target = "for";
+    else if (match_word(&pos, "while")) target = "while";
+    else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
     return NewAST(ctx->file, start, pos, Stop, .target=target);
 }
@@ -1416,14 +1414,14 @@ PARSER(parse_return) {
 
 PARSER(parse_lambda) {
     const char *start = pos;
-    NEW_LIST(istr_t, arg_names);
+    NEW_LIST(const char*, arg_names);
     NEW_LIST(ast_t*, arg_types);
     if (!match(&pos, "(")) {
         if (match(&pos, "->")) goto thunk;
         return NULL;
     }
     for (spaces(&pos); ; spaces(&pos)) {
-        istr_t name = get_id(&pos);
+        const char* name = get_id(&pos);
         if (!name) break;
         APPEND(arg_names, name);
         spaces(&pos);
@@ -1472,7 +1470,7 @@ PARSER(parse_fail) {
 
 PARSER(parse_var) {
     const char *start = pos;
-    istr_t name = get_id(&pos);
+    const char* name = get_id(&pos);
     if (!name) return NULL;
     return NewAST(ctx->file, start, pos, Var, .name=name);
 }
@@ -1559,7 +1557,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     NEW_LIST(ast_t*, args);
     for (;;) {
         const char *arg_start = pos;
-        istr_t name = get_id(&pos);
+        const char* name = get_id(&pos);
         spaces(&pos);
         if (LIST_LEN(args) == 0 && !requires_parens) {
             // Prevent matching infix ops:
@@ -1919,10 +1917,10 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, istr_t name) {
+ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, const char* name) {
     if (!match(pos, "{")) return NULL;
     size_t starting_indent = bl_get_indent(ctx->file, *pos);
-    NEW_LIST(istr_t, field_names);
+    NEW_LIST(const char*, field_names);
     NEW_LIST(ast_t*, field_types);
     NEW_LIST(ast_t*, field_defaults);
     for (;;) {
@@ -1932,7 +1930,7 @@ ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, i
         ast_t *type = NULL;
         for (;;) {
             whitespace(pos);
-            istr_t name = get_id(pos);
+            const char* name = get_id(pos);
             if (!name) break;
             APPEND(field_names, name);
             whitespace(pos);
@@ -1993,7 +1991,7 @@ PARSER(parse_def) {
         parser_err(ctx, start, pos, "Functions can't be both 'inline' and exported");
 
     spaces(&pos);
-    istr_t name = get_id(&pos);
+    const char* name = get_id(&pos);
     if (!name) {
         if (isdigit(*pos)) goto derived_unit;
         parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
@@ -2001,13 +1999,13 @@ PARSER(parse_def) {
     spaces(&pos);
 
     if (match(&pos, "(")) { // Function def foo(...)
-        NEW_LIST(istr_t, arg_names);
+        NEW_LIST(const char*, arg_names);
         NEW_LIST(ast_t*, arg_types);
         NEW_LIST(ast_t*, arg_defaults);
         for (;;) {
             whitespace(&pos);
             const char *arg_start = pos;
-            istr_t arg_name = get_id(&pos);
+            const char* arg_name = get_id(&pos);
             if (!arg_name) break;
             APPEND(arg_names, arg_name);
             spaces(&pos);
@@ -2048,14 +2046,14 @@ PARSER(parse_def) {
     } else if (match_word(&pos, "oneof")) { // tagged union: def Foo oneof {...}
         expect_str(ctx, start, &pos, "{", "I expected a '{' after 'oneof'");
 
-        NEW_LIST(istr_t, tag_names);
+        NEW_LIST(const char*, tag_names);
         NEW_LIST(int64_t, tag_values);
         NEW_LIST(ast_t*, tag_types);
         int64_t next_value = 0;
         for (;;) {
             whitespace(&pos);
             const char *tag_start = pos;
-            istr_t tag_name = get_id(&pos);
+            const char* tag_name = get_id(&pos);
             if (!tag_name) break;
             spaces(&pos);
             if (match(&pos, "=")) {
@@ -2127,13 +2125,13 @@ PARSER(parse_def) {
 
 PARSER(parse_extern) {
     const char *start = pos;
-    istr_t bl_name = get_id(&pos);
+    const char* bl_name = get_id(&pos);
     if (bl_name) {
         spaces(&pos);
         if (!match(&pos, ":=")) return NULL;
     }
     if (!match_word(&pos, "extern")) return NULL;
-    istr_t name = get_id(&pos);
+    const char* name = get_id(&pos);
     if (!bl_name) bl_name = name;
     ast_t *type;
     spaces(&pos);
@@ -2151,14 +2149,14 @@ PARSER(parse_doctest) {
     spaces(&pos);
     ast_t *expr = expect_ast(ctx, start, &pos, parse_statement, "I couldn't parse the expression for this doctest");
     whitespace(&pos);
-    istr_t output = NULL;
+    const char* output = NULL;
     if (match(&pos, "===")) {
         spaces(&pos);
         const char *output_start = pos,
                    *output_end = strchrnul(pos, '\n');
         if (output_end <= output_start)
             parser_err(ctx, output_start, output_end, "You're missing expected output here");
-        output = intern_strn(output_start, (size_t)(output_end - output_start));
+        output = heap_strn(output_start, (size_t)(output_end - output_start));
         pos = output_end;
     }
     return NewAST(ctx->file, start, pos, DocTest, .expr=expr, .output=output);
@@ -2169,7 +2167,7 @@ PARSER(parse_use) {
     if (!match_word(&pos, "use")) return NULL;
     spaces(&pos);
     size_t path_len = strcspn(pos, "\n");
-    istr_t path = intern_strn(pos, path_len);
+    const char* path = heap_strn(pos, path_len);
     pos += path_len;
     return NewAST(ctx->file, start, pos, Use, .path=path);
 }
@@ -2178,9 +2176,9 @@ PARSER(parse_export) {
     const char *start = pos;
     if (!match_word(&pos, "export")) return NULL;
     spaces(&pos);
-    NEW_LIST(istr_t, vars);
+    NEW_LIST(const char*, vars);
     for (;;) {
-        istr_t var = get_id(&pos);
+        const char* var = get_id(&pos);
         if (!var) break;
         APPEND(vars, var);
         spaces(&pos);

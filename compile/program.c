@@ -102,12 +102,12 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_struct_t *gcc_item_struct = gcc_type_if_struct(gcc_item_t);
 
-        gcc_func_t *intern_str_func = get_function(env, "intern_str");
-#define GC_STR(s) gcc_callx(env->ctx, NULL, intern_str_func, gcc_str(env->ctx, (s)))
+        gcc_func_t *heap_str_func = get_function(env, "heap_str");
+#define GC_STR(s) gcc_callx(env->ctx, NULL, heap_str_func, gcc_str(env->ctx, (s)))
         foreach (env->exports, exp, _) {
             // array.items[array.length] = item
             gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, items, gcc_rval(length_field));
-            istr_t sym_name;
+            const char* sym_name;
             binding_t *b = (*exp)->binding;
             if (b->sym_name) {
                 sym_name = b->sym_name;

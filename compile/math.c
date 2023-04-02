@@ -179,7 +179,7 @@ static gcc_rvalue_t *math_binop_rec(
 
     bl_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (lhs_t != rhs_t) compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        if (!type_eq(lhs_t, rhs_t)) compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
         struct_t = lhs_t;
     } else if (lhs_t->tag == StructType) {
         struct_t = lhs_t;
@@ -285,7 +285,7 @@ void math_update_rec(
 
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
         compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
-    else if (type_units(lhs_t) != type_units(rhs_t) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
+    else if (!streq(type_units(lhs_t), type_units(rhs_t)) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
         compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
 
@@ -369,7 +369,7 @@ void math_update_rec(
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
     } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (with_units(lhs_t, NULL) != with_units(rhs_t, NULL))
+        if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
             compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
