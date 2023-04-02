@@ -52,11 +52,10 @@ Additional command line arguments can be found in the manpages (`man
 ## Dependencies
 
 The Blang compiler is written in C and uses
-[libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend. Blang uses the
-following libraries:
-
-- Garbage collection: [Boehm garbage collector](https://www.hboehm.info/gc/)
-    - Available from your package manager of choice: `pacman -S gc`
+[libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend for
+compilation. Blang also uses the [Boehm garbage
+collector](https://www.hboehm.info/gc/) for runtime garbage collection.
+(available from your package manager of choice: `pacman -S gc`).
 
 ## Usage
 
