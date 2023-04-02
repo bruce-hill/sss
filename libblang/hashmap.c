@@ -209,8 +209,15 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
         hashmap_resize(h, key_hash, key_cmp, newsize, entry_size_padded);
     }
 
-    if (!value && (h->fallback || h->default_value))
-        value = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+    if (!value) {
+        for (bl_hashmap_t *iter = h->fallback; iter; iter = iter->fallback) {
+            value = bl_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
+            if (value) break;
+        }
+        for (bl_hashmap_t *iter = h; !value && iter; iter = iter->fallback) {
+            if (iter->default_value) value = iter->default_value;
+        }
+    }
 
     int32_t index1 = ++h->count;
     h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
