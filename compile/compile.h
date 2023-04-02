@@ -14,8 +14,6 @@
 #include "libgccjit_abbrev.h"
 #include "modules.h"
 
-#define hashmap_gets(h, str) hashmap_get(h, intern_str(str))
-
 #define foreach LIST_FOR
 #define length LIST_LEN
 #define ith LIST_ITEM

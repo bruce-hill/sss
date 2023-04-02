@@ -23,8 +23,8 @@
                  (gcc_param_t*[]){__VA_ARGS__}, 1)
 
 static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
-    hashmap_set(env->global_funcs, intern_str(name),
-                gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
+    hset(env->global_funcs, intern_str(name),
+         gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
 }
 
 typedef struct {
@@ -35,7 +35,7 @@ typedef struct {
 #define ARG(...) ((bl_arg_t){__VA_ARGS__})
 
 static inline void _load_method(
-    env_t *env, hashmap_t *ns, const char *extern_name, const char *method_name, bl_type_t *ret_t, int nargs, bl_arg_t args[nargs]
+    env_t *env, bl_hashmap_t *ns, const char *extern_name, const char *method_name, bl_type_t *ret_t, int nargs, bl_arg_t args[nargs]
 ) {
     gcc_param_t *params[nargs];
     NEW_LIST(istr_t, arg_name_list);
@@ -51,7 +51,7 @@ static inline void _load_method(
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, ret_t),
                                     extern_name, nargs, params, 0);
     bl_type_t *fn_type = Type(FunctionType, .arg_types=arg_type_list, .arg_names=arg_name_list, .arg_defaults=arg_default_list, .ret=ret_t);
-    hashmap_set(ns, intern_str(method_name), new(binding_t, .type=fn_type, .func=func));
+    hset(ns, intern_str(method_name), new(binding_t, .type=fn_type, .func=func));
 }
 
 #define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
@@ -96,9 +96,9 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"));
-    gcc_func_t *range_print = hashmap_get(env->global_funcs, intern_str("range_print"));
-    hashmap_set(get_namespace(env, Type(RangeType)), intern_str("__print"),
-                new(binding_t, .func=range_print, .sym_name=intern_str("range_print")));
+    gcc_func_t *range_print = hget(env->global_funcs, intern_str("range_print"), gcc_func_t*);
+    hset(get_namespace(env, Type(RangeType)), "__print",
+         new(binding_t, .func=range_print, .sym_name=intern_str("range_print")));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
@@ -139,6 +139,8 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void, "bl_hashmap_mark_cow", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_int, "bl_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"), PARAM(t_void_ptr, "entry_compare"), PARAM(t_size, "entry_size"));
+    load_global_func(env, t_u32, "hash_64bits", PARAM(t_void_ptr, "ptr"));
+    load_global_func(env, t_u32, "compare_64bits", PARAM(t_void_ptr, "a"), PARAM(t_void_ptr, "b"));
 #undef PARAM
 }
 
@@ -148,10 +150,9 @@ static bl_type_t *define_string_type(env_t *env)
     bl_type_t *c_str_type = Type(PointerType, .pointed=Type(CStringCharType));
     gcc_rvalue_t *rval = gcc_str(env->ctx, "String");
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
-    hashmap_set(env->global_bindings, intern_str("String"), binding);
-    hashmap_set(env->global_bindings, str_type, binding);
+    hset(env->global_bindings, "String", binding);
 
-    hashmap_t *ns = get_namespace(env, str_type);
+    bl_hashmap_t *ns = get_namespace(env, str_type);
     load_method(env, ns, "bl_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
@@ -173,10 +174,10 @@ static bl_type_t *define_string_type(env_t *env)
     bl_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
     load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_type,0));
     load_method(env, ns, "from_c_string", "from_pointer", str_type, ARG("str",c_str,0));
-    hashmap_t *ns2 = get_namespace(env, c_str);
+    bl_hashmap_t *ns2 = get_namespace(env, c_str);
     assert(ns2 == get_namespace(env, c_str));
     load_method(env, ns2, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
-    hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
+    bl_hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
     load_method(env, ns3, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
     return str_type;
 }
@@ -187,20 +188,18 @@ static void define_num_types(env_t *env)
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num64_type));
-        hashmap_set(env->global_bindings, intern_str("Num"), binding);
-        hashmap_set(env->global_bindings, num64_type, binding);
+        hset(env->global_bindings, "Num", binding);
     }
 
     bl_type_t *num32_type = Type(NumType, .bits=32);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num32_type));
-        hashmap_set(env->global_bindings, intern_str("Num32"), binding);
-        hashmap_set(env->global_bindings, num32_type, binding);
+        hset(env->global_bindings, "Num32", binding);
     }
 
-    hashmap_t *ns64 = get_namespace(env, num64_type);
-    hashmap_t *ns32 = get_namespace(env, num32_type);
+    bl_hashmap_t *ns64 = get_namespace(env, num64_type);
+    bl_hashmap_t *ns32 = get_namespace(env, num32_type);
 
     load_method(env, ns64, "drand48", "random", num64_type);
 
@@ -250,7 +249,7 @@ static void define_num_types(env_t *env)
         load_method(env, ns32, intern_strf("%sf", c_name), alias, Type(BoolType), ARG("num",num32_type,0));
     }
 
-    struct {const char *name; double val;} constants[] = {
+    static struct {const char *name; double val;} constants[] = {
         {"E", M_E}, {"Log2_E", M_LOG2E}, {"Log10_E", M_LOG10E}, {"Ln_2", M_LN2}, {"Ln_10", M_LN10},
         {"Pi", M_PI}, {"Tau", 2*M_PI}, {"HalfPi", M_PI_2}, {"QuarterPi", M_PI_4}, {"InversePi", M_1_PI},
         {"DoubleInversePi", M_2_PI}, {"DoubleInverseSqrtPi", M_2_SQRTPI}, {"Sqrt2", M_SQRT2}, {"InverseSqrt2", M_SQRT1_2},
@@ -270,18 +269,18 @@ static void define_num_types(env_t *env)
 
     { // Num NaN and Infinity:
         gcc_type_t *gcc_num_t = bl_type_to_gcc(env, num64_type);
-        hashmap_t *ns = get_namespace(env, num64_type);
+        bl_hashmap_t *ns = get_namespace(env, num64_type);
         for (size_t i = 0; i < sizeof(constants)/sizeof(constants[0]); i++)
-            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .type=num64_type,
-                                                               .rval=gcc_rvalue_from_double(env->ctx, gcc_num_t, constants[i].val)));
+            hset(ns, constants[i].name, new(binding_t, .type=num64_type,
+                                            .rval=gcc_rvalue_from_double(env->ctx, gcc_num_t, constants[i].val)));
     }
 
     { // Num32 NaN and Infinity:
         gcc_type_t *gcc_num32_t = bl_type_to_gcc(env, num32_type);
-        hashmap_t *ns = get_namespace(env, num32_type);
+        bl_hashmap_t *ns = get_namespace(env, num32_type);
         for (size_t i = 0; i < sizeof(constants)/sizeof(constants[0]); i++)
-            hashmap_set(ns, intern_str(constants[i].name), new(binding_t, .type=num32_type,
-                                                               .rval=gcc_rvalue_from_double(env->ctx, gcc_num32_t, constants[i].val)));
+            hset(ns, constants[i].name, new(binding_t, .type=num32_type,
+                                            .rval=gcc_rvalue_from_double(env->ctx, gcc_num32_t, constants[i].val)));
     }
 
     // oddballs: ldexp jn yn llogb lrint lround fma
@@ -291,44 +290,44 @@ static void define_int_types(env_t *env)
 {
     { // Int64 methods
         bl_type_t *i64 = Type(IntType, .bits=64);
-        hashmap_t *ns = get_namespace(env, i64);
+        bl_hashmap_t *ns = get_namespace(env, i64);
         gcc_type_t *gcc_i64 = bl_type_to_gcc(env, i64);
 
         load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
         load_method(env, ns, "arc4random_uniform", "random", i64, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
-        hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
-        hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
+        hset(ns, "Min", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
+        hset(ns, "Max", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
     }
 
     { // Int32 methods
         bl_type_t *i32 = Type(IntType, .bits=32);
-        hashmap_t *ns = get_namespace(env, i32);
+        bl_hashmap_t *ns = get_namespace(env, i32);
         gcc_type_t *gcc_i32 = bl_type_to_gcc(env, i32);
 
         load_method(env, ns, "abs", "abs", i32, ARG("i",i32,0));
         load_method(env, ns, "arc4random_uniform", "random", i32, ARG("max", i32, FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
-        hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
-        hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
+        hset(ns, "Min", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
+        hset(ns, "Max", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
     }
 
     { // Int16 methods
         bl_type_t *i16 = Type(IntType, .bits=16);
-        hashmap_t *ns = get_namespace(env, i16);
+        bl_hashmap_t *ns = get_namespace(env, i16);
         gcc_type_t *gcc_i16 = bl_type_to_gcc(env, i16);
         load_method(env, ns, "arc4random_uniform", "random", i16, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT16_MAX, .precision=32)));
-        hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
-        hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
+        hset(ns, "Min", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
+        hset(ns, "Max", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
     }
 
     { // Int8 methods
         bl_type_t *i8 = Type(IntType, .bits=8);
-        hashmap_t *ns = get_namespace(env, i8);
+        bl_hashmap_t *ns = get_namespace(env, i8);
         gcc_type_t *gcc_i8 = bl_type_to_gcc(env, i8);
         load_method(env, ns, "arc4random_uniform", "random", i8, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT8_MAX, .precision=32)));
-        hashmap_set(ns, intern_str("Min"), new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
-        hashmap_set(ns, intern_str("Max"), new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
+        hset(ns, "Min", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
+        hset(ns, "Max", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
     }
 
     // Stringifying methods
@@ -337,9 +336,9 @@ static void define_int_types(env_t *env)
     for (size_t i = 0; i < sizeof(types)/sizeof(types[0]); i++) {
         uint16_t bits = Match(types[i], IntType)->bits;
         istr_t name = bits == 64 ? intern_str("Int") : intern_strf("Int%d", Match(types[i], IntType)->bits);
-        hashmap_set(env->global_bindings, name,
+        hset(env->global_bindings, name,
                     new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=types[i])));
-        hashmap_t *ns = get_namespace(env, types[i]);
+        bl_hashmap_t *ns = get_namespace(env, types[i]);
         load_method(env, ns, "bl_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",INT_TYPE,0));
         load_method(env, ns, "bl_string_hex", "hex", str_t, ARG("i",types[i],0),
                     ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
@@ -357,14 +356,14 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .ctx = ctx,
         .on_err = on_err,
         .file = f,
-        .global_bindings = hashmap_new(),
+        .global_bindings = new(bl_hashmap_t),
         .exports = LIST(export_t*),
-        .bindings = hashmap_new(),
-        .type_namespaces = hashmap_new(),
+        .bindings = new(bl_hashmap_t),
+        .type_namespaces = new(bl_hashmap_t),
         .tuple_types = new(bl_hashmap_t),
-        .gcc_types = hashmap_new(),
-        .union_fields = hashmap_new(),
-        .global_funcs = hashmap_new(),
+        .gcc_types = new(bl_hashmap_t),
+        .union_fields = new(bl_hashmap_t),
+        .global_funcs = new(bl_hashmap_t),
         .debug = debug,
     );
     env->bindings->fallback = env->global_bindings;
@@ -385,9 +384,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
-    hashmap_set(env->global_bindings, intern_str("say"), new(binding_t, .rval=say_rvalue, .type=say_type));
+    hset(env->global_bindings, "say", new(binding_t, .rval=say_rvalue, .type=say_type));
     define_num_types(env);
-#define DEFTYPE(t) hashmap_set(env->global_bindings, intern_str(#t), new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
+#define DEFTYPE(t) hset(env->global_bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Char); DEFTYPE(CStringChar);
@@ -402,8 +401,7 @@ env_t *fresh_scope(env_t *env)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));
     *fresh = *env;
-    fresh->bindings = hashmap_new();
-    fresh->bindings->fallback = env->bindings;
+    fresh->bindings = new(bl_hashmap_t, .fallback=env->bindings);
     return fresh;
 }
 
@@ -411,8 +409,7 @@ env_t *global_scope(env_t *env)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));
     *fresh = *env;
-    fresh->bindings = hashmap_new();
-    fresh->bindings->fallback = env->global_bindings;
+    fresh->bindings = new(bl_hashmap_t, .fallback=env->global_bindings);
     return fresh;
 }
 
@@ -442,7 +439,20 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 
 binding_t *get_binding(env_t *env, const char *name)
 {
-    return hashmap_get(env->bindings, intern_str(name));
+    return hget(env->bindings, name, binding_t*);
+}
+
+binding_t *get_local_binding(env_t *env, const char *name)
+{
+    bl_hashmap_t *fallback = env->bindings->fallback;
+    binding_t *b = hget(env->bindings, name, binding_t*);
+    env->bindings->fallback = fallback;
+    return b;
+}
+
+gcc_func_t *get_function(env_t *env, const char *name)
+{
+    return hget(env->global_funcs, name, gcc_func_t*);
 }
 
 binding_t *get_ast_binding(env_t *env, ast_t *ast)
@@ -464,13 +474,12 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
     }
 }
 
-hashmap_t *get_namespace(env_t *env, bl_type_t *t)
+bl_hashmap_t *get_namespace(env_t *env, bl_type_t *t)
 {
-    hashmap_t *ns = hashmap_get(env->type_namespaces, type_to_string(t));
+    bl_hashmap_t *ns = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
     if (!ns) {
-        ns = hashmap_new();
-        ns->fallback = env->global_bindings;
-        hashmap_set(env->type_namespaces, type_to_string(t), ns);
+        ns = new(bl_hashmap_t, .fallback=env->global_bindings);
+        hset(env->type_namespaces, type_to_string(t), ns);
     }
     return ns;
 }
@@ -485,12 +494,12 @@ env_t *get_type_env(env_t *env, bl_type_t *t)
 
 binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name)
 {
-    return hashmap_get(get_namespace(env, t), intern_str(name));
+    return hget(get_namespace(env, t), name, binding_t*);
 }
 
-binding_t *set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value)
+void set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value)
 {
-    return hashmap_set(get_namespace(env, t), intern_str(name), value);
+    hset(get_namespace(env, t), intern_str(name), value);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

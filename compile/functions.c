@@ -36,7 +36,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
-        hashmap_set(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
+        hset(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
     gcc_block_t *block = gcc_new_block(func, fresh("func"));

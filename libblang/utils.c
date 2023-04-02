@@ -205,17 +205,6 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
     };
 }
 
-#define toggle(val, nil) ((void*)((int64_t)(val) ^ (int64_t)(nil)))
-void bl_table_set(hashmap_t *h, const void *key, const void *value, const void *key_nil, const void *value_nil) {
-    hashmap_set(h, toggle(key,key_nil), toggle(value,value_nil));
-}
-void *bl_table_get(hashmap_t *h, const void *key, const void *key_nil, const void *value_nil) {
-    return toggle(hashmap_get(h, toggle(key,key_nil)), value_nil);
-}
-const void *bl_table_next(hashmap_t *h, const void *key, const void *key_nil) {
-    return toggle(hashmap_next(h, toggle(key,key_nil)), key_nil);
-}
-
 // Copy on write for arrays:
 void array_cow(void *voidarr, size_t item_size, bool atomic)
 {

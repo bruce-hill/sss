@@ -49,7 +49,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         NEW_LIST(istr_t, field_names);
         NEW_LIST(bl_type_t*, field_types);
         NEW_LIST(ast_t*, field_defaults);
-        if (hashmap_get(env->bindings, name))
+        if (get_binding(env, name))
             compiler_err(env, def, "Something called %s is already defined.", name);
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
@@ -58,9 +58,9 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
 
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .rval=gcc_rval(lval));
-        hashmap_set(env->global_bindings, name, b);
+        hset(env->global_bindings, name, b);
         env_t *struct_env = fresh_scope(env);
-        hashmap_set(env->type_namespaces, t, struct_env->bindings);
+        hset(env->type_namespaces, name, struct_env->bindings);
 
         foreach (struct_def->definitions, def, _)
             predeclare_def_types(struct_env, *def);
@@ -68,7 +68,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         istr_t tu_name = tu_def->name;
-        if (hashmap_get(env->bindings, tu_name))
+        if (get_binding(env, tu_name))
             compiler_err(env, def, "Something called %s is already defined.", tu_name);
         NEW_LIST(bl_type_t*, union_field_types);
         NEW_LIST(istr_t, union_field_names);
@@ -77,20 +77,20 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         bl_type_t *t = Type(TaggedUnionType, .name=tu_name, .tag_type=tag_t, .data=union_t);
         gcc_rvalue_t *rval = gcc_str(env->ctx, tu_name);
 
-        hashmap_t *type_ns = get_namespace(env, t);
+        bl_hashmap_t *type_ns = get_namespace(env, t);
         type_ns->fallback = env->bindings;
 
         // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval);
-        hashmap_set(env->global_bindings, tu_name, binding);
-        hashmap_set(env->type_namespaces, t, type_ns);
+        hset(env->global_bindings, tu_name, binding);
+        hset(env->type_namespaces, tu_name, type_ns);
 
-        hashmap_t *tag_namespace = get_namespace(env, tag_t);
+        bl_hashmap_t *tag_namespace = get_namespace(env, tag_t);
         tag_namespace->fallback = type_ns;
         binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t),
                                      .rval=gcc_str(env->ctx, intern_strf("%s.__Tag", tu_name)));
-        hashmap_set(type_ns, intern_str("__Tag"), tag_binding);
-        hashmap_set(env->type_namespaces, tag_t, tag_namespace);
+        hset(type_ns, intern_str("__Tag"), tag_binding);
+        hset(env->type_namespaces, type_to_string(tag_t), tag_namespace);
 
         gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
 
@@ -101,7 +101,7 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
             istr_t tag_name = ith(tu_def->tag_names, i);
             gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(tu_def->tag_values, i));
             // Bind the tag:
-            hashmap_set(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .rval=tag_val));
+            hset(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .rval=tag_val));
 
             ast_t *field_type_ast = ith(tu_def->tag_types, i);
             if (field_type_ast) {
@@ -115,9 +115,9 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
                 // Bind the struct type:
                 binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .tag_rval=tag_val,
                                    .rval=gcc_str(env->ctx, intern_strf("%s.%s", tu_name, tag_name)));
-                hashmap_set(type_ns, tag_name, b);
+                hset(type_ns, tag_name, b);
                 // Also visible in the enclosing namespace:
-                // hashmap_set(env->bindings, tag_name, b);
+                // hset(env->bindings, tag_name, b);
             }
         }
         return t;
@@ -139,7 +139,7 @@ static void populate_def_members(env_t *env, ast_t *def)
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
         istr_t name = struct_def->name;
-        binding_t *binding = hashmap_get(env->bindings, name);
+        binding_t *binding = get_binding(env, name);
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
 
@@ -163,7 +163,7 @@ static void populate_def_members(env_t *env, ast_t *def)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         istr_t name = tu_def->name;
-        binding_t *binding = hashmap_get(env->bindings, name);
+        binding_t *binding = get_binding(env, name);
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
         if (length(tu_def->tag_names) == 0)
@@ -197,8 +197,8 @@ static void populate_def_members(env_t *env, ast_t *def)
             gcc_rvalue_t *singleton = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, &tag_field, &tag_val);
             binding_t *singleton_binding = new(binding_t, .type=t, .rval=singleton);
             istr_t tag_name = ith(tu_def->tag_names, i);
-            hashmap_set(inner_env.bindings, tag_name, singleton_binding);
-            // hashmap_set(env->bindings, tag_name, singleton_binding);
+            hset(inner_env.bindings, tag_name, singleton_binding);
+            // hset(env->bindings, tag_name, singleton_binding);
         }
     }
 }
@@ -211,12 +211,12 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         istr_t sym_name = fresh(fndef->name);
         gcc_func_t *func = get_function_def(env, def, sym_name, fndef->is_exported);
         gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-        hashmap_set(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
+        hset(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
     } else if (def->tag == StructDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
             auto struct_def = Match(def, StructDef);
-            binding_t *b = hashmap_get(env->bindings, struct_def->name);
+            binding_t *b = get_binding(env, struct_def->name);
             env = get_type_env(env, Match(b->type, TypeType)->type);
             members = struct_def->definitions;
         } else {
@@ -231,7 +231,7 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
                 istr_t sym_name = fresh(fndef->name);
                 gcc_func_t *func = get_function_def(env, *member, sym_name, true);
                 gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
+                hset(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
             } else {
                 predeclare_def_funcs(env, *member);
             }

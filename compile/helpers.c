@@ -20,8 +20,7 @@
 
 istr_t fresh(istr_t name)
 {
-    static hashmap_t *seen = NULL;
-    if (!seen) seen = hashmap_new();
+    static bl_hashmap_t seen = {0};
     // static int id = 0;
     char *tmp = strdup(name);
     for (size_t i = 0; i < strlen(tmp); i++) {
@@ -30,9 +29,9 @@ istr_t fresh(istr_t name)
     }
     name = intern_str(tmp);
     free(tmp);
-    int64_t count = (int64_t)hashmap_get(seen, name);
+    int64_t count = hget(&seen, name, int64_t);
     istr_t ret = intern_strf("%s__%ld", name, count++);
-    hashmap_set(seen, name, (void*)(count+1));
+    hset(&seen, name, count+1);
     return ret;
 }
 
@@ -143,7 +142,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
 List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
 {
     // This is memoized to preserve GCC equality:
-    List(gcc_field_t*) fields = hashmap_get(env->union_fields, type_to_string(t));
+    List(gcc_field_t*) fields = hget(env->union_fields, type_to_string(t), List(gcc_field_t*));
     if (fields) return fields;
 
     fields = LIST(gcc_field_t*);
@@ -154,7 +153,7 @@ List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(union_->field_names, i));
         append(fields, field);
     }
-    hashmap_set(env->union_fields, type_to_string(t), fields);
+    hset(env->union_fields, type_to_string(t), fields);
     return fields;
 }
 
@@ -162,7 +161,7 @@ List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {
     t = with_units(t, NULL);
-    gcc_type_t *gcc_t = hashmap_get(env->gcc_types, type_to_string(t));
+    gcc_type_t *gcc_t = hget(env->gcc_types, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
 
     switch (t->tag) {
@@ -241,6 +240,9 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             [TABLE_COUNT_FIELD]=gcc_new_field(env->ctx, NULL, u32, "count"),
             [TABLE_LASTFREE_FIELD]=gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
             [TABLE_COW_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
+#ifdef DEBUG_HASHTABLE
+            [TABLE_COW_FIELD+1]=gcc_new_field(env->ctx, NULL, u32, "entry_size"),
+#endif
         };
         gcc_set_fields(gcc_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(gcc_struct);
@@ -259,7 +261,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         auto struct_t = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
+        hset(env->gcc_types, type_to_string(t), gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
         foreach (struct_t->field_types, bl_ft, _) {
@@ -296,7 +298,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         bl_type_t *tag_t = tagged->tag_type;
         gcc_field_t *tag_field = gcc_new_field(env->ctx, NULL, bl_type_to_gcc(env, tag_t), "tag");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
+        hset(env->gcc_types, type_to_string(t), gcc_t);
 
         gcc_type_t *gcc_data_t = bl_type_to_gcc(env, tagged->data);
         if (gcc_data_t) {
@@ -325,7 +327,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     }
 
-    hashmap_set(env->gcc_types, type_to_string(t), gcc_t);
+    hset(env->gcc_types, type_to_string(t), gcc_t);
     return gcc_t;
 }
 
@@ -367,12 +369,12 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         gcc_func_t *func = gcc_block_func(*block);
         istr_t name = Match(decl->var, Var)->name;
         gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, fresh(name));
-        binding_t *clobbered = hashmap_get_raw(env->bindings, name);
+        binding_t *clobbered = get_local_binding(env, name);
         if (clobbered && clobbered->type->tag == TypeType)
             compiler_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        hashmap_set(env->bindings, name,
-                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
+        hset(env->bindings, name,
+             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
         assert(rval);
         gcc_assign(*block, ast_loc(env, obj), lval, rval);
 
@@ -451,8 +453,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(FileType), Type(PointerType, .pointed=Type(VoidType))),
                            .arg_names=LIST(istr_t, intern_str("obj"), intern_str("file"), intern_str("recursion")),
                            .arg_defaults=NULL, .ret=Type(IntType));
-    hashmap_set(get_namespace(env, t), intern_str("__print"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
+    hset(get_namespace(env, t), "__print",
+         new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
@@ -460,7 +462,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_rvalue_t *f = gcc_param_as_rvalue(params[1]);
     gcc_rvalue_t *rec = gcc_param_as_rvalue(params[2]);
 
-    gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+    gcc_func_t *fputs_fn = get_function(env, "fputs");
 
 #define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), f)
 
@@ -474,7 +476,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case CharType: case CStringCharType: {
-        gcc_func_t *fputc_fn = hashmap_gets(env->global_funcs, "fputc");
+        gcc_func_t *fputc_fn = get_function(env, "fputc");
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, f));
         break;
     }
@@ -507,7 +509,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         } else if (units && strlen(units) > 0) {
             fmt = intern_strf("%s<%s>", fmt, units);
         }
-        gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
+        gcc_func_t *fprintf_fn = get_function(env, "fprintf");
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
         break;
     }
@@ -609,58 +611,73 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_return(nil_block, NULL, WRITE_LITERAL(intern_strf("!%s", type_to_string(pointed_type))));
 
         if (pointed_type->tag == CStringCharType) {
-            gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+            gcc_func_t *fputs_fn = get_function(env, "fputs");
             gcc_return(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, f));
             return func;
         }
 
-        // If it's non-nil, check for cycles:
-        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-        gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-        gcc_param_t *gcc_hash_get_params[] = {
-            gcc_new_param(env->ctx, NULL, void_star, "h"),
-            gcc_new_param(env->ctx, NULL, void_star, "key"),
-        };
-        gcc_func_t *hash_get_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, i64, "hashmap_get", 2, gcc_hash_get_params, 0);
+        gcc_func_t *fprintf_fn = get_function(env, "fprintf");
 
-        // index = hashmap_get(rec, obj)
-        block = nonnil_block;
-        gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
-        gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
-        gcc_lvalue_t *index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("index"));
-        gcc_assign(block, NULL, index, gcc_callx(
-                env->ctx, NULL, hash_get_func, rec, gcc_cast(env->ctx, NULL, obj, void_star)));
+        { // If it's non-nil, check for cycles:
+            // Summary of the approach:
+            //     entry = hashmap_lvalue(cycle_checker, &obj)
+            //     if (entry->value == 0) (i.e. uninitialized, i.e. this is the first time we've seen this)
+            //         entry->value = ++cycle_checker->default_value;
+            //         ...proceed...
+            //     else
+            //         print("@#%d", entry->value)
+            gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+            gcc_func_t *hash_lvalue_func = get_function(env, "bl_hashmap_lvalue");
+            gcc_func_t *hash_func = get_function(env, "hash_64bits");
+            gcc_func_t *cmp_func = get_function(env, "compare_64bits");
 
-        // if (index > 0) goto cycle else goto noncycle
-        gcc_jump_condition(block, NULL,
-                           gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index), gcc_zero(env->ctx, i64)),
-                           cycle_block, noncycle_block);
+            // entry = &bl_hashmap_lvalue(rec, ..., obj, ...)->value
+            block = nonnil_block;
+            gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
+            gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
+            bl_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            gcc_type_t *rec_entry_gcc_t = bl_type_to_gcc(env, table_entry_type(rec_t));
+            gcc_rvalue_t *lookup = gcc_callx(
+                env->ctx, NULL, hash_lvalue_func, rec,
+                gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_star),
+                gcc_cast(env->ctx, NULL, gcc_get_func_address(cmp_func, NULL), void_star),
+                gcc_rvalue_size(env->ctx, sizeof(struct{void* key; int64_t value;})), 
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_star));
+            gcc_lvalue_t *lookup_var = gcc_local(func, NULL, gcc_get_ptr_type(rec_entry_gcc_t), fresh("lookup"));
+            gcc_assign(block, NULL, lookup_var, gcc_cast(env->ctx, NULL, lookup, gcc_get_ptr_type(rec_entry_gcc_t)));
+            gcc_assign(block, NULL, gcc_rvalue_dereference_field(gcc_rval(lookup_var), NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 0)),
+                       gcc_cast(env->ctx, NULL, obj, void_star));
 
-        // If we're in a recursive cycle, print @T#index and return without recursing further
-        block = cycle_block;
-        gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
-        istr_t backref = intern_strf("@%s#%%ld", type_to_string(pointed_type));
-        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref), gcc_rval(index)));
+            gcc_lvalue_t *index = gcc_local(func, NULL, gcc_get_ptr_type(i64), fresh("entry"));
+            gcc_assign(block, NULL, index, gcc_lvalue_address(
+                    gcc_deref_field(gcc_cast(env->ctx, NULL, gcc_rval(lookup_var), gcc_get_ptr_type(rec_entry_gcc_t)),
+                                    NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 1)), NULL));
 
-        // If this is a nonrecursive situation
-        block = noncycle_block;
-        gcc_assign(block, NULL, index, gcc_callx(
-                env->ctx, NULL, hash_get_func, rec, gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "max_index"), void_star)));
-        gcc_update(block, NULL, index, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
+            gcc_type_t *rec_gcc_t = bl_type_to_gcc(env, rec_t);
+            gcc_lvalue_t *rec_default = gcc_deref(gcc_rval(gcc_deref_field(
+                gcc_cast(env->ctx, NULL, rec, gcc_get_ptr_type(rec_gcc_t)), NULL,
+                gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, rec_t)), TABLE_DEFAULT_FIELD))), NULL);
 
-        gcc_param_t *gcc_hash_set_params[] = {
-            gcc_new_param(env->ctx, NULL, void_star, "h"),
-            gcc_new_param(env->ctx, NULL, void_star, "key"),
-            gcc_new_param(env->ctx, NULL, i64, "value"),
-        };
-        gcc_func_t *hash_set_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, VOID), "hashmap_set", 3, gcc_hash_set_params, 0);
-        gcc_eval(block, NULL, gcc_callx(
-                env->ctx, NULL, hash_set_func, rec, gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "max_index"), void_star), gcc_rval(index)));
-        gcc_eval(block, NULL, gcc_callx(
-                env->ctx, NULL, hash_set_func, rec, gcc_cast(env->ctx, NULL, obj, void_star), gcc_rval(index)));
+            // if (entry == NULL) goto cycle else goto noncycle
+            gcc_jump_condition(block, NULL,
+                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, gcc_rval(gcc_deref(gcc_rval(index), NULL)),
+                                              gcc_zero(env->ctx, gcc_type(env->ctx, INT64))),
+                               cycle_block, noncycle_block);
+
+            // If we're in a recursive cycle, print @T#index and return without recursing further
+            block = cycle_block;
+            istr_t backref = intern_strf("@%s#%%ld", type_to_string(pointed_type));
+            gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref),
+                                              gcc_rval(gcc_deref(gcc_rval(index), NULL))));
+
+            // If this is a nonrecursive situation
+            block = noncycle_block;
+            gcc_update(block, NULL, rec_default, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
+            gcc_assign(block, NULL, gcc_rvalue_dereference_field(gcc_rval(lookup_var), NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 1)), gcc_rval(rec_default));
+        }
 
         if (pointed_type->tag == VoidType) {
-            gcc_func_t *fprintf_fn = hashmap_gets(env->global_funcs, "fprintf");
             gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, "@Void<0x%X>"), obj));
             // gcc_return(noncycle_block, NULL, WRITE_LITERAL("@Void"));
         } else {
@@ -674,7 +691,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                 quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
                 gcc_param_as_rvalue(params[1]),
                 rec);
-            gcc_return(noncycle_block, NULL,
+            gcc_return(block, NULL,
                        gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
         }
 
@@ -766,7 +783,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t 
                        gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT32))),
                        needs_flattening, already_flat);
     *block = needs_flattening;
-    gcc_func_t *flatten = hashmap_gets(env->global_funcs, "array_flatten");
+    gcc_func_t *flatten = get_function(env, "array_flatten");
     gcc_eval(*block, NULL, gcc_callx(
             env->ctx, NULL, flatten,
             gcc_cast(env->ctx, NULL, array_ptr, gcc_get_type(env->ctx, GCC_T_VOID_PTR)),
@@ -792,11 +809,11 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     istr_t sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(istr_t, intern_str("obj")), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
-    hashmap_set(get_namespace(env, t), intern_str("__hash"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
+    hset(get_namespace(env, t), "__hash",
+         new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
 
-    gcc_func_t *halfsiphash = hashmap_gets(env->global_funcs, "halfsiphash");
+    gcc_func_t *halfsiphash = get_function(env, "halfsiphash");
 
     gcc_type_t *t_void_ptr = gcc_get_type(env->ctx, GCC_T_VOID_PTR);
     gcc_rvalue_t *k = gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "My secret key!!!"), t_void_ptr);
@@ -827,7 +844,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     }
     case TableType: {
         // uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded);
-        gcc_func_t *hash_fn = hashmap_gets(env->global_funcs, "bl_hashmap_hash");
+        gcc_func_t *hash_fn = get_function(env, "bl_hashmap_hash");
         bl_type_t *entry_t = table_entry_type(t);
         gcc_func_t *entry_hash = get_hash_func(env, entry_t);
         gcc_assign(block, NULL, hashval, gcc_callx(env->ctx, NULL, hash_fn, gcc_param_as_rvalue(params[0]),
@@ -895,8 +912,8 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare"), 2, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
-    hashmap_set(get_namespace(env, t), intern_str("__compare"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
+    hset(get_namespace(env, t), "__compare",
+         new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
 
     gcc_block_t *block = gcc_new_block(func, fresh("compare"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare(a,b) for type: ", type_to_string(t))));
@@ -1054,7 +1071,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         break;
     }
     case TableType: {
-        gcc_func_t *compare_fn = hashmap_gets(env->global_funcs, "bl_hashmap_compare");
+        gcc_func_t *compare_fn = get_function(env, "bl_hashmap_compare");
         bl_type_t *entry_t = table_entry_type(t);
         gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
         gcc_func_t *key_compare = get_indirect_compare_func(env, Match(t, TableType)->key_type);
@@ -1100,8 +1117,8 @@ gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare_indirect"), 2, params, 0);
     bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(istr_t, intern_str("lhs"), intern_str("rhs")),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
-    hashmap_set(get_namespace(env, t), intern_str("__compare_indirect"),
-                new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
+    hset(get_namespace(env, t), "__compare_indirect",
+         new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
 
     gcc_block_t *block = gcc_new_block(func, fresh("compare_indirect"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("compare_indirect(a,b) for type: ", type_to_string(t))));
@@ -1149,7 +1166,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     (void)block;
     switch (ast->tag) {
     case Var: {
-        binding_t *binding = hashmap_get(env->bindings, Match(ast, Var)->name);
+        binding_t *binding = get_binding(env, Match(ast, Var)->name);
         if (binding) {
             if (!binding->lval)
                 compiler_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
@@ -1253,7 +1270,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
-        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), gcc_t));
         gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), rval);
         return tmp;
@@ -1282,7 +1299,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
     fprint_span(f, span, "\x1b[31;1m", 2, true);
     fputc('\0', f);
     fflush(f);
-    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+    gcc_func_t *fail = get_function(env, "fail");
     istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7m%s\x1b[m\n\n%s",
                                  span.file->filename,
                                  bl_get_line_number(span.file, span.start),

@@ -17,14 +17,14 @@
 #include "compile.h"
 
 // Get nested namespaces for stuff like Foo.Baz.Qux => Foo[Baz]
-hashmap_t *get_qualified_ns(env_t *env, const char *qualified_name)
+bl_hashmap_t *get_qualified_ns(env_t *env, const char *qualified_name)
 {
-    hashmap_t *ns = env->bindings;
+    bl_hashmap_t *ns = env->bindings;
     const char *segment = qualified_name;
     while (strchr(segment, '.')) {
         size_t len = strcspn(segment, ".");
         istr_t name = intern_strn(segment, len);
-        binding_t *b = hashmap_get(ns, name);
+        binding_t *b = hget(ns, name, binding_t*);
         assert(b);
         bl_type_t *t = Match(b->type, TypeType)->type;
         ns = get_namespace(env, t);
@@ -52,7 +52,7 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
     gcc_rvalue_t *rtld_lazy = gcc_rvalue_from_long(env->ctx, i32_t, RTLD_LAZY);
     gcc_type_t *void_star = gcc_get_type(env->ctx, GCC_T_VOID_PTR);
     gcc_lvalue_t *handle = gcc_local(func, loc, void_star, fresh("handle"));
-    gcc_func_t *dlopen_fn = hashmap_gets(env->global_funcs, "dlopen");
+    gcc_func_t *dlopen_fn = get_function(env, "dlopen");
     gcc_assign(*block, loc, handle, gcc_callx(env->ctx, loc, dlopen_fn, gcc_str(env->ctx, path), rtld_lazy));
 
     gcc_block_t *open_success = gcc_new_block(func, fresh("open_success")),
@@ -60,13 +60,13 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
     gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(handle), gcc_null(env->ctx, void_star)),
                        open_success, open_fail);
     *block = open_fail;
-    gcc_func_t *puts_fn = hashmap_gets(env->global_funcs, "puts");
+    gcc_func_t *puts_fn = get_function(env, "puts");
     gcc_eval(*block, loc, gcc_callx(env->ctx, loc, puts_fn, gcc_str(env->ctx, "FAILED TO OPEN DLL")));
     gcc_jump(*block, loc, open_success);
 
     *block = open_success;
     // Run load_module()
-    gcc_func_t *dlsym_fn = hashmap_gets(env->global_funcs, "dlsym");
+    gcc_func_t *dlsym_fn = get_function(env, "dlsym");
     gcc_type_t *void_fn_t = gcc_new_func_type(env->ctx, NULL, gcc_type(env->ctx, VOID), 0, NULL, 0);
     gcc_rvalue_t *gcc_load_fn = gcc_cast(
         env->ctx, loc, gcc_callx(env->ctx, loc, dlsym_fn, gcc_rval(handle), gcc_str(env->ctx, "get_exports")),
@@ -95,13 +95,13 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
             rval = gcc_cast(env->ctx, loc, rval, gcc_t);
         gcc_assign(*block, loc, lval, rval);
 
-        hashmap_t *ns = get_qualified_ns(env, import.name);
+        bl_hashmap_t *ns = get_qualified_ns(env, import.name);
         assert(ns);
 
         const char *name = strrchr(import.name, '.');
         if (name) ++name;
         else name = import.name;
-        hashmap_set(ns, intern_str(name), new(binding_t, .type=t, .rval=gcc_rval(lval), .sym_name=sym_name));
+        hset(ns, intern_str(name), new(binding_t, .type=t, .rval=gcc_rval(lval), .sym_name=sym_name));
     }
     // dlclose(dl_handle);
 }

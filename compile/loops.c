@@ -67,7 +67,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         if (ptr->pointed->tag == ArrayType)
             mark_array_cow(env, block, iter_rval);
         else if (ptr->pointed->tag == TableType)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), iter_rval));
+            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), iter_rval));
 
         iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
         iter_t = Match(iter_t, PointerType)->pointed;
@@ -339,13 +339,13 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     auto label_names = LIST(istr_t, intern_str("for"));
     if (for_->key) {
         append(label_names, loop_var_name(for_->key));
-        hashmap_set(loop_env->bindings, loop_var_name(for_->key),
-                    new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
+        hset(loop_env->bindings, loop_var_name(for_->key),
+             new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {
         append(label_names, loop_var_name(for_->value));
-        hashmap_set(loop_env->bindings, loop_var_name(for_->value),
-                    new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
+        hset(loop_env->bindings, loop_var_name(for_->value),
+             new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
     }
     loop_env->loop_label = &(loop_label_t){
         .enclosing = env->loop_label,

@@ -18,28 +18,31 @@
 
 typedef struct { const char *data; int32_t len, stride; } array_t;
 
-// #define DEBUG_HASHTABLE 1
-
 #ifdef DEBUG_HASHTABLE
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
+#define CHECK_SIZE(h, val) do { if ((h)->entry_size == 0) { (h)->entry_size = (uint32_t)val; } else { assert((size_t)(h)->entry_size == val); }} while (0)
 #else
 #define hdebug(...) (void)0
+#define CHECK_SIZE(...) (void)0
 #endif
 
 #include "../SipHash/halfsiphash.h"
 static uint8_t hash_random_vector[16] = {42,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 uint32_t hash_64bits(const void *x) {
     uint32_t hash;
-    halfsiphash(x, 64, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    halfsiphash(*(char**)x, 64, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
     return hash;
 }
 int compare_64bits(const void *x, const void *y) {
-    return memcmp(x,y,64);
+    return memcmp(*(char**)x,*(char**)y,64);
 }
 uint32_t hash_str(const void *x) {
     uint32_t hash;
-    halfsiphash(x, strlen((char*)x), hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    halfsiphash(*(void**)x, strlen(*(char**)x), hash_random_vector, (uint8_t*)&hash, sizeof(hash));
     return hash;
+}
+int32_t compare_str(const void *x, const void *y) {
+    return (int32_t)strcmp(*(char**)x, *(char**)y);
 }
 
 static inline void hshow(bl_hashmap_t *h)
@@ -47,7 +50,7 @@ static inline void hshow(bl_hashmap_t *h)
     hdebug("{");
     for (uint32_t i = 0; i < h->capacity; i++) {
         if (i > 0) hdebug(" ");
-        hdebug("%d", h->buckets[i].index1);
+        hdebug("[%d]=%d(%d)", i, h->buckets[i].index1, h->buckets[i].next1);
     }
     hdebug("}\n");
 }
@@ -59,6 +62,7 @@ uint32_t bl_hashmap_len(bl_hashmap_t *h)
 
 static void copy_on_write(bl_hashmap_t *h, size_t entry_size_padded)
 {
+    CHECK_SIZE(h, entry_size_padded);
     if (h->entries)
         h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
     if (h->buckets)
@@ -74,28 +78,29 @@ void bl_hashmap_mark_cow(bl_hashmap_t *h)
 // Return address of entry
 void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
+    CHECK_SIZE(h, entry_size_padded);
   recurse:
-    if (!h || !key || h->capacity == 0) return NULL;
+    if (!h || !key) return NULL;
 
-    uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
-    hshow(h);
-    hdebug("Getting with initial probe at %u\n", hash);
-    for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
-        char *entry = h->entries + entry_size_padded*(h->buckets[i].index1-1);
-        if (key_cmp(entry, key) == 0)
-            return entry;
-        if (h->buckets[i].next1 == 0)
-            break;
+    if (h->capacity > 0) {
+        uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
+        hshow(h);
+        hdebug("Getting with initial probe at %u\n", hash);
+        for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
+            char *entry = h->entries + entry_size_padded*(h->buckets[i].index1-1);
+            if (key_cmp(entry, key) == 0)
+                return entry;
+            if (h->buckets[i].next1 == 0)
+                break;
+        }
     }
-    if (h->fallback) {
-        h = h->fallback;
-        goto recurse;
-    }
-    return NULL;
+    h = h->fallback;
+    goto recurse;
 }
 
 static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
 {
+    CHECK_SIZE(h, entry_size_padded);
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
     hdebug("Hash value = %u\n", hash);
@@ -149,7 +154,7 @@ static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t 
 
 static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
 {
-    uint32_t old_count = h->count;
+    CHECK_SIZE(h, entry_size_padded);
     hdebug("About to resize from %u to %u\n", h->capacity, new_capacity);
     hshow(h);
     h->buckets = GC_MALLOC_ATOMIC((size_t)new_capacity*sizeof(bl_hash_bucket_t));
@@ -157,7 +162,7 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
     h->capacity = new_capacity;
     h->lastfree_index1 = new_capacity;
     // Rehash:
-    for (uint32_t i = 1; i <= old_count; i++) {
+    for (uint32_t i = 1; i <= h->count; i++) {
         hdebug("Rehashing %u\n", i);
         bl_hashmap_set_bucket(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
     }
@@ -167,6 +172,7 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
 
 void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
 {
+    CHECK_SIZE(h, entry_size_padded);
     if (!h || !entry) return NULL;
     hshow(h);
 
@@ -209,13 +215,17 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
 
 void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
 {
+    CHECK_SIZE(h, entry_size_padded);
+    hdebug("Raw hash of key being set: %u\n", key_hash(entry));
     void *dest = bl_hashmap_lvalue(h, key_hash, key_cmp, entry_size_padded, entry);
     if (dest)
         memcpy(dest, entry, entry_size_padded);
+    hdebug("Hash mod cap of key being set: %u\n", key_hash(entry) % h->capacity);
 }
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
+    CHECK_SIZE(h, entry_size_padded);
     if (!h || !key || h->capacity == 0) return;
 
     if (h->copy_on_write)
@@ -277,7 +287,6 @@ void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
 
     hshow(h);
 
-    // TODO: it should be possible to do a much faster hash removal
     // Steps: look up the bucket for the removed key
     // If missing, then return immediately
     // Swap last key/value into the removed bucket's index1
@@ -296,12 +305,15 @@ void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
 
 void *bl_hashmap_nth(bl_hashmap_t *h, int32_t n, size_t entry_size_padded)
 {
+    CHECK_SIZE(h, entry_size_padded);
+    assert(n >= 1 && n <= (int32_t)h->count);
     if (n < 1 || n > (int32_t)h->count) return NULL;
     return h->entries + (n-1)*entry_size_padded;
 }
 
 uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded)
 {
+    CHECK_SIZE(h, entry_size_padded);
     if (!h) return 0;
 
     uint32_t hash = 0x12345678;
@@ -312,6 +324,8 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
 
 int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, cmp_fn_t entry_cmp, size_t entry_size_padded)
 {
+    CHECK_SIZE(h1, entry_size_padded);
+    CHECK_SIZE(h2, entry_size_padded);
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
         void *entry = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded);

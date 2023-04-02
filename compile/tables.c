@@ -41,7 +41,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     flatten_arrays(env, block, needed_key_t, gcc_lvalue_address(key_lval, NULL));
     gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
 
-    gcc_func_t *hashmap_lvalue_fn = hashmap_gets(env->global_funcs, "bl_hashmap_lvalue");
+    gcc_func_t *hashmap_lvalue_fn = get_function(env, "bl_hashmap_lvalue");
     gcc_func_t *key_hash = get_hash_func(env, needed_key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, needed_key_t);
     gcc_rvalue_t *call = gcc_callx(
@@ -73,7 +73,7 @@ void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *t
     flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
     gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
 
-    gcc_func_t *hashmap_remove_fn = hashmap_gets(env->global_funcs, "bl_hashmap_remove");
+    gcc_func_t *hashmap_remove_fn = get_function(env, "bl_hashmap_remove");
     gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(t, TableType)->key_type);
     gcc_rvalue_t *call = gcc_callx(
@@ -126,7 +126,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
             gcc_get_field(needed_struct, 1),
         }, (gcc_rvalue_t*[]){key_val, value_val}));
 
-    gcc_func_t *hashmap_set_fn = hashmap_gets(env->global_funcs, "bl_hashmap_set");
+    gcc_func_t *hashmap_set_fn = get_function(env, "bl_hashmap_set");
     gcc_func_t *key_hash = get_hash_func(env, Match(info->table_type, TableType)->key_type);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(info->table_type, TableType)->key_type);
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_set_fn,
@@ -157,7 +157,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
 
     bl_type_t *expected_key_t = Match(table_t, TableType)->key_type;
 
-    gcc_func_t *hashmap_get_fn = hashmap_gets(env->global_funcs, "bl_hashmap_get");
+    gcc_func_t *hashmap_get_fn = get_function(env, "bl_hashmap_get");
     gcc_func_t *key_hash = get_hash_func(env, expected_key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, expected_key_t);
     bl_type_t *entry_t = table_entry_type(table_t);
@@ -284,7 +284,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+    gcc_func_t *fputs_fn = get_function(env, "fputs");
 
 #define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
 #define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)

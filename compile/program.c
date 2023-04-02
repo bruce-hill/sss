@@ -47,8 +47,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
             }, 0);
         gcc_assign(block, NULL, program_name, gcc_callx(env->ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
-        hashmap_set(env->global_bindings, intern_str("PROGRAM_NAME"),
-                    new(binding_t, .rval=gcc_rval(program_name), .type=str_type));
+        hset(env->global_bindings, "PROGRAM_NAME",
+             new(binding_t, .rval=gcc_rval(program_name), .type=str_type));
 
         // Set up `args`
         bl_type_t *args_t = Type(ArrayType, .item_type=str_type);
@@ -60,7 +60,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             }, 0);
 
         gcc_lvalue_t *args = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, args_gcc_t, "args");
-        hashmap_set(env->global_bindings, intern_str("args"), new(binding_t, .rval=gcc_rval(args), .type=args_t));
+        hset(env->global_bindings, "args", new(binding_t, .rval=gcc_rval(args), .type=args_t));
         gcc_rvalue_t *arg_list = gcc_callx(env->ctx, NULL, arg_func, 
                                            gcc_param_as_rvalue(main_params[0]),
                                            gcc_param_as_rvalue(main_params[1]));
@@ -87,7 +87,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
 
         int64_t num_exports = LIST_LEN(env->exports);
         bl_type_t *item_t = Match(exports_t, ArrayType)->item_type;
-        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, "GC_malloc");
+        gcc_func_t *alloc_func = get_function(env, "GC_malloc");
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * num_exports));
         gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_assign(block, NULL, exports_var, gcc_struct_constructor(
@@ -103,7 +103,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
         gcc_struct_t *gcc_item_struct = gcc_type_if_struct(gcc_item_t);
 
-        gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
+        gcc_func_t *intern_str_func = get_function(env, "intern_str");
 #define GC_STR(s) gcc_callx(env->ctx, NULL, intern_str_func, gcc_str(env->ctx, (s)))
         foreach (env->exports, exp, _) {
             // array.items[array.length] = item
@@ -130,21 +130,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             gcc_update(block, NULL, length_field, GCC_BINOP_PLUS, one32);
         }
 #undef GC_STR
-
-        // ast_t *debug = FakeAST(FunctionCall, .fn=FakeAST(Var, .name=intern_str("say")), .args=LIST(ast_t*, FakeAST(StringJoin, .children=LIST(ast_t*, FakeAST(StringLiteral, .str=intern_str("loaded"))))));
-        // compile_statement(env, &block, debug);
-
-        // gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-        // gcc_lvalue_t *stdout_var = gcc_jit_context_new_global(env->ctx, NULL, GCC_JIT_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout");
-        // gcc_func_t *print_fn = get_print_func(env, exports_t);
-        // gcc_type_t *hashmap_gcc_t = gcc_array_type(env->ctx, NULL, gcc_type(env->ctx, CHAR), sizeof(hashmap_t));
-        // gcc_lvalue_t *cycle_checker = gcc_local(get_exports, NULL, hashmap_gcc_t, fresh("rec"));
-        // gcc_assign(block, NULL, cycle_checker, gcc_array_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL));
-        // gcc_eval(block, NULL,
-        //          gcc_callx(env->ctx, NULL, print_fn, 
-        //                    gcc_rval(exports_var),
-        //                    gcc_rval(stdout_var),
-        //                    gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star)));
 
         gcc_return(block, NULL, gcc_rval(exports_var));
     }

@@ -182,9 +182,11 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
         block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        hashmap_t *old_globals = hashmap_new();
-        for (const void *key = NULL; (key = hashmap_next(env->global_bindings, key)); )
-            hashmap_set(old_globals, key, hashmap_get(env->global_bindings, key));
+        bl_hashmap_t old_globals = {0};
+        for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
+            auto entry = hnth(env->global_bindings, i, istr_t, binding_t*);
+            hset(&old_globals, entry->key, entry->value);
+        }
 
         env_t *fresh_env = fresh_scope(env);
         compile_statement(fresh_env, &block, ast);
@@ -207,22 +209,23 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         fflush(stdout);
 
         // Copy out the global variables to GC memory
-        for (const void *key = NULL; (key = hashmap_next(env->global_bindings, key)); ) {
-            if (hashmap_get(old_globals, key))
+        for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
+            auto entry = hnth(env->global_bindings, i, istr_t, binding_t*);
+            if (hget(&old_globals, entry->key, binding_t*))
                 continue;
 
-            binding_t *b = hashmap_get(env->global_bindings, key);
+            binding_t *b = entry->value;
             if (b->type->tag == FunctionType)
                 continue;
 
-            void *global = gcc_jit_result_get_global(result, (char*)key);
+            void *global = gcc_jit_result_get_global(result, (char*)entry->key);
             gcc_type_t *gcc_t = bl_type_to_gcc(env, b->type);
             char *copy = GC_MALLOC(gcc_sizeof(env, b->type));
             memcpy(copy, (char*)global, gcc_sizeof(env, b->type));
             gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(env->ctx, gcc_get_ptr_type(gcc_t), copy);
             b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
             b->rval = gcc_rval(b->lval);
-            hashmap_set(old_globals, key, hashmap_get(env->global_bindings, key));
+            hset(&old_globals, entry->key, entry->value);
         }
 
         CLEANUP();

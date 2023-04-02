@@ -52,7 +52,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_rvalue_t *new_size = gcc_binary_op(
         env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_rval(length_field), gcc_size_t),
         gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
-    gcc_func_t *gc_realloc_func = hashmap_gets(env->global_funcs, "GC_realloc");
+    gcc_func_t *gc_realloc_func = get_function(env, "GC_realloc");
     gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
                                        gcc_rval(data_field), new_size);
     gcc_assign(*block, NULL, data_field,
@@ -166,7 +166,7 @@ void check_cow(env_t *env, gcc_block_t **block, bl_type_t *arr_t, gcc_rvalue_t *
     gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
     *block = needs_cow;
     // Copy array contents:
-    gcc_func_t *cow_fn = hashmap_gets(env->global_funcs, "array_cow");
+    gcc_func_t *cow_fn = get_function(env, "array_cow");
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
                                      gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
                                      gcc_rvalue_size(env->ctx, gcc_sizeof(env, Match(arr_t, ArrayType)->item_type)),
@@ -253,7 +253,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     // If we're not in the optimized case, fall back to the C function:
     gcc_rvalue_t *index_val = compile_expr(env, block, index);
     gcc_type_t *str_gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-    gcc_func_t *slice_fn = hashmap_gets(env->global_funcs, "range_slice");
+    gcc_func_t *slice_fn = get_function(env, "range_slice");
     return gcc_bitcast(
         env->ctx, loc,
         gcc_callx(
@@ -336,7 +336,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         fputc('\0', f);
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-        gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+        gcc_func_t *fail = get_function(env, "fail");
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fail, fmt, index_val, len64, callstack));
         fclose(f);
         free(info);
@@ -360,7 +360,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
     bl_type_t *item_t = Match(t, ArrayType)->item_type;
-    gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
+    gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
     gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * length(array->items)));
     gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
     gcc_rvalue_t *initial_items = length(array->items) == 0 ? 
@@ -403,7 +403,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
+    gcc_func_t *fputs_fn = get_function(env, "fputs");
 
 #define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
 #define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
@@ -487,7 +487,7 @@ static void define_array_insert(env_t *env, bl_type_t *t)
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("insert"), 3, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("insert"));
-    gcc_func_t *c_insert_func = hashmap_gets(env->global_funcs, "array_insert");
+    gcc_func_t *c_insert_func = get_function(env, "array_insert");
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_insert_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
@@ -516,7 +516,7 @@ static void define_array_insert_all(env_t *env, bl_type_t *t)
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("insert_all"), 3, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("insert_all"));
-    gcc_func_t *c_insert_all_func = hashmap_gets(env->global_funcs, "array_insert_all");
+    gcc_func_t *c_insert_all_func = get_function(env, "array_insert_all");
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_insert_all_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
@@ -545,7 +545,7 @@ static void define_array_remove(env_t *env, bl_type_t *t)
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("remove"), 3, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("remove"));
-    gcc_func_t *c_remove_func = hashmap_gets(env->global_funcs, "array_remove");
+    gcc_func_t *c_remove_func = get_function(env, "array_remove");
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_remove_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_param_as_rvalue(params[1]),
@@ -572,7 +572,7 @@ static void define_array_shuffle(env_t *env, bl_type_t *t)
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("shuffle"), 1, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("shuffle"));
-    gcc_func_t *c_shuffle_func = hashmap_gets(env->global_funcs, "array_shuffle");
+    gcc_func_t *c_shuffle_func = get_function(env, "array_shuffle");
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_shuffle_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
@@ -595,7 +595,7 @@ static void define_array_sort(env_t *env, bl_type_t *t)
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("sort"), 1, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("sort"));
-    gcc_func_t *c_sort_func = hashmap_gets(env->global_funcs, "array_sort");
+    gcc_func_t *c_sort_func = get_function(env, "array_sort");
     bl_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType));
     bl_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
     gcc_type_t *ptr_cmp_fn_gcc_t = bl_type_to_gcc(env, ptr_cmp_fn_t);

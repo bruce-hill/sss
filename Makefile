@@ -45,6 +45,9 @@ blangc:
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 
+%: %.c $(HFILES)
+	$(CC) $(OSFLAGS) $(ALL_FLAGS) $(LDFLAGS) -o $@ $^
+
 tags: $(CFILES) $(HFILES) blang.c
 	ctags $^
 

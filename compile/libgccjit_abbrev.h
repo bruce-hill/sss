@@ -202,7 +202,9 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_lvalue_access_field gcc_jit_lvalue_access_field
 #define gcc_rvalue_access_field gcc_jit_rvalue_access_field
 #define gcc_rvalue_dereference_field gcc_jit_rvalue_dereference_field
+#define gcc_deref_field gcc_jit_rvalue_dereference_field
 #define gcc_rvalue_dereference gcc_jit_rvalue_dereference
+#define gcc_deref gcc_jit_rvalue_dereference
 #define gcc_lvalue_address gcc_jit_lvalue_get_address
 #define gcc_lvalue_set_tls_model gcc_jit_lvalue_set_tls_model
 #define gcc_lvalue_set_link_section gcc_jit_lvalue_set_link_section

@@ -24,7 +24,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Var: {
-        binding_t *b = hashmap_get(env->bindings, Match(ast, Var)->name);
+        binding_t *b = get_binding(env, Match(ast, Var)->name);
         if (!b || b->type->tag != TypeType)
             compiler_err(env, ast, "I don't know any type with this name.");
         return Match(b->type, TypeType)->type;
@@ -98,7 +98,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
             env = fresh_scope(env);
-            hashmap_set(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
+            hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
         }
         for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
             istr_t member_name = ith(struct_->member_names, i);
@@ -510,13 +510,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             case Declare: {
                 auto decl = Match(stmt, Declare);
                 bl_type_t *t = get_type(env, decl->value);
-                hashmap_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
+                hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
                 break;
             }
             case FunctionDef: {
                 bl_type_t *t = get_type(env, stmt);
                 auto fndef = Match(stmt, FunctionDef);
-                hashmap_set(env->bindings, fndef->name, new(binding_t, .type=t));
+                hset(env->bindings, fndef->name, new(binding_t, .type=t));
                 break;
             }
             case StructDef: case TaggedUnionDef:
@@ -686,7 +686,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // Include only global bindings:
         env_t *lambda_env = global_scope(env);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
-            hashmap_set(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
+            hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
         bl_type_t *ret = get_type(lambda_env, lambda->body);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
@@ -705,7 +705,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             ast_t *arg_type_def = LIST_ITEM(def->arg_types, i);
             if (!arg_type_def) continue;
             bl_type_t *arg_type = parse_type_ast(env, arg_type_def);
-            hashmap_set(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
+            hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
         }
         
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
@@ -811,7 +811,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 auto union_ = Match(Match(tagged_t, TaggedUnionType)->data, UnionType);
                 for (int64_t i = 0; i < LIST_LEN(union_->field_names); i++) {
                     if (ith(union_->field_names, i) == tagname) {
-                        hashmap_set(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=ith(union_->field_types, i)));
+                        hset(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=ith(union_->field_types, i)));
                         goto env_ready;
                     }
                 }
@@ -858,7 +858,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 key = Match(key, Dereference)->value;
                 key_type = Type(PointerType, .pointed=key_type, .is_optional=false);
             }
-            hashmap_set(loop_env->bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
+            hset(loop_env->bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
         }
         if (for_loop->value) {
             ast_t *value = for_loop->value;
@@ -866,7 +866,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 value = Match(value, Dereference)->value;
                 value_type = Type(PointerType, .pointed=value_type, .is_optional=false);
             }
-            hashmap_set(loop_env->bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
+            hset(loop_env->bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
         }
         
         if (for_loop->first)
@@ -883,8 +883,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Reduction: {
         env = fresh_scope(env);
         bl_type_t *item_type = get_iter_type(env, Match(ast, Reduction)->iter);
-        hashmap_set(env->bindings, intern_str("x"), new(binding_t, .type=item_type));
-        hashmap_set(env->bindings, intern_str("y"), new(binding_t, .type=item_type));
+        hset(env->bindings, intern_str("x"), new(binding_t, .type=item_type));
+        hset(env->bindings, intern_str("y"), new(binding_t, .type=item_type));
         return get_type(env, Match(ast, Reduction)->combination);
     }
     case Defer: {
@@ -894,7 +894,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto with = Match(ast, With);
         if (with->var) {
             env = fresh_scope(env);
-            hashmap_set(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
+            hset(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
         }
         return get_type(env, with->body);
     }

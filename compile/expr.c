@@ -53,7 +53,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     switch (ast->tag) {
     case Var: {
         auto var = Match(ast, Var);
-        binding_t *binding = hashmap_get(env->bindings, var->name);
+        binding_t *binding = get_binding(env, var->name);
         if (!binding) {
             compiler_err(env, ast, "I can't find a definition for this variable"); 
         } else if (!binding->is_constant) {
@@ -147,10 +147,10 @@ static void export(env_t *env, istr_t name, binding_t *b)
     APPEND(env->exports, exp);
     // Export everything from the inner scope:
     if (b->type->tag == TypeType) {
-        hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
-        for (istr_t inner = NULL; (inner=hashmap_next(ns, inner)); ) {
-            binding_t *b2 = hashmap_get(ns, inner);
-            export(env, intern_strf("%s.%s", name, inner), b2);
+        bl_hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
+        for (uint32_t i = 1; i <= ns->count; i++) {
+            auto entry = hnth(ns, i, istr_t, binding_t*);
+            export(env, intern_strf("%s.%s", name, entry->key), entry->value);
         }
     }
 }
@@ -192,7 +192,7 @@ static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, 
 
         if (ptr->pointed == Type(CharType)) {
             // String length
-            gcc_func_t *len_func = hashmap_gets(env->global_funcs, "strlen");
+            gcc_func_t *len_func = hget(env->global_funcs, "strlen", gcc_func_t*);
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
             return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
         } else {
@@ -218,7 +218,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     switch (ast->tag) {
     case Var: {
         auto var = Match(ast, Var);
-        binding_t *binding = hashmap_get(env->bindings, var->name);
+        binding_t *binding = get_binding(env, var->name);
         if (binding) {
             if (binding->rval)
                 return binding->rval;
@@ -248,14 +248,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *func = gcc_block_func(*block);
             lval = gcc_local(func, ast_loc(env, ast), gcc_t, sym_name);
         }
-        binding_t *clobbered = hashmap_get_raw(env->bindings, name);
+        binding_t *clobbered = get_local_binding(env, name);
         if (clobbered && clobbered->type->tag == TypeType)
             compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
         else if (clobbered && decl->is_global)
             compiler_err(env, ast, "This name is already being used for a global");
-        hashmap_set(decl->is_global ? env->global_bindings : env->bindings, name,
-                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL));
+        hset(decl->is_global ? env->global_bindings : env->bindings, name,
+             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);
@@ -275,11 +275,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             gcc_func_t *func = gcc_new_func(
                 env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
-            hashmap_set(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t));
+            hset(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t));
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
             gcc_rvalue_t *glob = gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
-            hashmap_set(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t));
+            hset(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t));
         }
         return NULL;
     }
@@ -328,7 +328,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (t->tag == ArrayType && ith(targets, i)->tag == Dereference)
                 mark_array_cow(env, block, gcc_lvalue_address(ith(lvals, i), loc));
             else if (t->tag == TableType && ith(targets, i)->tag == Dereference)
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), gcc_lvalue_address(ith(lvals, i), loc)));
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, hget(env->global_funcs, "bl_hashmap_mark_cow", gcc_func_t*), gcc_lvalue_address(ith(lvals, i), loc)));
         }
         return ith(rvals, length(rvals)-1);
     }
@@ -417,15 +417,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t *defer_env = fresh_scope(env);
         defer_env->bindings->fallback = env->bindings->fallback;
         gcc_func_t *func = gcc_block_func(*block);
-        for (istr_t key = NULL; (key=hashmap_next(env->bindings, key)); ) {
-            binding_t *cur_binding = hashmap_get(env->bindings, key);
-            gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, cur_binding->type), fresh(intern_strf("deferred_%s", key)));
-            gcc_assign(*block, loc, cached, cur_binding->rval);
+        for (uint32_t i = 1; i <= env->bindings->count; i++) {
+            auto entry = hnth(env->bindings, i , istr_t, binding_t*);
+            gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, entry->value->type), fresh(intern_strf("deferred_%s", entry->key)));
+            gcc_assign(*block, loc, cached, entry->value->rval);
             binding_t *cached_binding = new(binding_t);
-            *cached_binding = *cur_binding;
+            *cached_binding = *entry->value;
             cached_binding->lval = cached;
             cached_binding->rval = gcc_rval(cached);
-            hashmap_set(defer_env->bindings, key, cached_binding);
+            hset(defer_env->bindings, entry->key, cached_binding);
         }
         defer_env->is_deferred = true;
         env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
@@ -448,9 +448,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t *env2 = global_scope(env);
         for (int64_t i = 0, len = length(using->vars); i < len; i++) {
             ast_t *var = ith(using->vars, i);
-            binding_t *b = hashmap_get(env->bindings, Match(var, Var)->name);
+            binding_t *b = get_binding(env, Match(var, Var)->name);
             if (!b) compiler_err(env, var, "This variable is not defined");
-            hashmap_set(env2->bindings, Match(var, Var)->name, b);
+            hset(env2->bindings, Match(var, Var)->name, b);
         }
         return compile_expr(env2, block, using->body);
     }
@@ -460,7 +460,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FunctionDef: {
         auto fn = Match(ast, FunctionDef);
-        binding_t *binding = hashmap_get(env->bindings, fn->name);
+        binding_t *binding = get_binding(env, fn->name);
         assert(binding && binding->func);
         compile_function(env, binding->func, ast);
         if (fn->is_exported)
@@ -549,11 +549,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return compile_expr(env, block, LIST_ITEM(chunks, 0));
         }
 
-        gcc_func_t *open_memstream_fn = hashmap_gets(env->global_funcs, "open_memstream");
-        gcc_func_t *free_fn = hashmap_gets(env->global_funcs, "free");
-        gcc_func_t *fputs_fn = hashmap_gets(env->global_funcs, "fputs");
-        gcc_func_t *fflush_fn = hashmap_gets(env->global_funcs, "fflush");
-        gcc_func_t *fclose_fn = hashmap_gets(env->global_funcs, "fclose");
+        gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
+        gcc_func_t *free_fn = hget(env->global_funcs, "free", gcc_func_t*);
+        gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
+        gcc_func_t *fflush_fn = hget(env->global_funcs, "fflush", gcc_func_t*);
+        gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
 
         // char *buf; size_t size;
         // FILE *f = open_memstream(&buf, &size);
@@ -595,14 +595,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             
-            // Hack: instead of hashmap_t rec = {0}; print(obj, &rec), I'm using char[sizeof(hashmap_t)] = {0}
-            // and passing that instead. Basically, it's just a zeroed out stack value of the appropriate size
-            // which saves a call to hashmap_new() and an allocation.
-            gcc_type_t *hashmap_gcc_t = gcc_array_type(env->ctx, loc, gcc_type(env->ctx, CHAR), sizeof(hashmap_t));
+            // Do bl_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
+            bl_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            gcc_type_t *hashmap_gcc_t = bl_type_to_gcc(env, cycle_checker_t);
             gcc_lvalue_t *cycle_checker = gcc_local(func, loc, hashmap_gcc_t, fresh("rec"));
-            gcc_assign(*block, loc, cycle_checker, gcc_array_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL));
-            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+            gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
+            gcc_lvalue_t *next_index = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("index"));
+            gcc_assign(*block, loc, next_index, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
+            gcc_assign(*block, loc, gcc_lvalue_access_field(
+                    cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
+                gcc_lvalue_address(next_index, loc));
 
+            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
             gcc_eval(*block, chunk_loc,
                      gcc_callx(env->ctx, chunk_loc, print_fn, 
                                compile_expr(env, block, interp_value),
@@ -614,13 +618,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, fresh("str_final"));
         gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_rval(size_var), i32_t);
 
-        gcc_func_t *alloc_fn = hashmap_gets(env->global_funcs, "GC_malloc_atomic");
+        gcc_func_t *alloc_fn = hget(env->global_funcs, "GC_malloc_atomic", gcc_func_t*);
         gcc_rvalue_t *size = gcc_rval(size_var);
         gcc_rvalue_t *str = gcc_callx(
             env->ctx, loc, alloc_fn,
             gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
                           size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE))));
-        gcc_func_t *memcpy_fn = hashmap_gets(env->global_funcs, "memcpy");
+        gcc_func_t *memcpy_fn = hget(env->global_funcs, "memcpy", gcc_func_t*);
         str = gcc_callx(env->ctx, loc, memcpy_fn, str, gcc_rval(buf_var), size);
         str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
@@ -702,7 +706,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 istr_t name = Match(decl->var, Var)->name;
                 istr_t sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
-                hashmap_set(env->bindings, name,
+                hset(env->bindings, name,
                             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
@@ -952,17 +956,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         const int64_t MASK = -1; // mask is because the hashmap api returns 0 for missing keys
-        hashmap_t *arg_positions = hashmap_new();
+        bl_hashmap_t arg_positions = {0};
         if (fn_t->arg_names) {
             for (int64_t i = 0; i < num_args; i++)
-                hashmap_set(arg_positions, ith(fn_t->arg_names, i), (void*)(i^MASK));
+                hset(&arg_positions, ith(fn_t->arg_names, i), (void*)(i^MASK));
         }
 
         // // First: keyword args
         foreach (call->args, arg, _) {
             if ((*arg)->tag != KeywordArg) continue;
             auto kwarg = Match((*arg), KeywordArg);
-            int64_t arg_index = (int64_t)hashmap_get(arg_positions, kwarg->name);
+            int64_t arg_index = hget(&arg_positions, kwarg->name, int64_t);
             if (arg_index == 0) // missing key
                 compiler_err(env, *arg, "\"%s\" is not the name of any argument for this function that I'm aware of",
                       kwarg->name);
@@ -1012,7 +1016,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             for (int64_t i = 0; i < num_args; i++) {
                 if (arg_vals[i])
-                    hashmap_set(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
+                    hset(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
             }
         }
 
@@ -1059,7 +1063,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, fresh(intern_strf("heap_%s", type_to_string(t))));
-        gcc_func_t *alloc_func = hashmap_gets(env->global_funcs, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
         return gcc_rval(tmp);
@@ -1071,7 +1075,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == ArrayType)
             mark_array_cow(env, block, obj);
         else if (t->tag == TableType)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), obj));
+            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), obj));
         return gcc_rval(gcc_rvalue_dereference(obj, loc));
     }
     case Maybe: {
@@ -1101,7 +1105,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ptr->pointed->tag == ArrayType)
                 mark_array_cow(env, block, obj);
             else if (ptr->pointed->tag == TableType)
-                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_gets(env->global_funcs, "bl_hashmap_mark_cow"), obj));
+                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), obj));
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
@@ -1201,7 +1205,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     fputc('\0', f);
                     fflush(f);
                     gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-                    gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+                    gcc_func_t *fail = get_function(env, "fail");
                     istr_t fmt_str = intern_strf("%s:%ld.%ld: \x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s",
                                                  ast->span.file->filename,
                                                  bl_get_line_number(ast->span.file, ast->span.start),
@@ -1311,7 +1315,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
-        gcc_func_t *intern_str_func = hashmap_gets(env->global_funcs, "intern_str");
+        gcc_func_t *intern_str_func = get_function(env, "intern_str");
         bl_type_t *t = get_type(env, value);
         return gcc_callx(env->ctx, loc, intern_str_func, gcc_str(env->ctx, type_to_string(t)));
     }
@@ -1534,7 +1538,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "The left hand side of this modulus has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
         if (t->tag == NumType) {
-            gcc_func_t *sane_fmod_func = hashmap_gets(env->global_funcs, "sane_fmod");
+            gcc_func_t *sane_fmod_func = get_function(env, "sane_fmod");
             if (Match(t, NumType)->bits != 64) {
                 return gcc_cast(
                     env->ctx, loc,
@@ -1697,7 +1701,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compiler_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
 
                 binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
-                hashmap_set(case_env->bindings, Match(case_->var, Var)->name, case_binding);
+                hset(case_env->bindings, Match(case_->var, Var)->name, case_binding);
             }
 
             gcc_block_t *case_block = gcc_new_block(func, fresh(intern_strf("case_%s", tag_name)));
@@ -1813,7 +1817,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         env = fresh_scope(env);
 
-        hashmap_set(env->bindings, intern_str("x"), new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        hset(env->bindings, intern_str("x"), new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
         ast_t *prev_var = WrapAST(ast, Var, .name=intern_str("x"));
         ast_t *iter_var = WrapAST(ast, Var, .name=intern_str("y"));
         ast_t *first_block = WrapAST(ast, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, iter_var));
@@ -1870,7 +1874,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         fputc('\0', f);
         fflush(f);
         gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-        gcc_func_t *fail = hashmap_gets(env->global_funcs, "fail");
+        gcc_func_t *fail = get_function(env, "fail");
         gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, loc_info, len, msg, callstack);
         gcc_eval(*block, loc, ret);
         fclose(f);
@@ -1935,7 +1939,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Export: {
         foreach (Match(ast, Export)->vars, name, _) {
-            binding_t *b = hashmap_get(env->bindings, *name);
+            binding_t *b = get_binding(env, *name);
             if (!b)
                 compiler_err(env, ast, "I couldn't find the variable '%s'", *name);
             export(env, *name, b);
