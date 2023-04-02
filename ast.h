@@ -205,7 +205,7 @@ struct ast_s {
             ast_t *message;
         } Fail;
         struct {
-            const char *name, *bl_name;
+            const char *name;
             ast_t *type;
         } Extern;
         struct {

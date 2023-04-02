@@ -546,7 +546,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Using: {
         return get_type(env, Match(ast, Using)->body);
     }
-    case Declare: case Extern: case Assign: case Delete: case DocTest: case Use: case Export: {
+    case Extern: {
+        return parse_type_ast(env, Match(ast, Extern)->type);
+    }
+    case Declare: case Assign: case Delete: case DocTest: case Use: case Export: {
         return Type(VoidType);
     }
     case Return: case Fail: case Stop: case Skip: {

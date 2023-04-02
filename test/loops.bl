@@ -16,10 +16,8 @@ say ""
 
 say "$i" for i in 100..102
 
-extern random:()->Int
-
 def retry():Bool
-    r := random()
+    r := Int.random()
     say "rng = $r"
     return r mod 4 != 0
 

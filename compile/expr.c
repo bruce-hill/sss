@@ -274,13 +274,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             gcc_func_t *func = gcc_new_func(
                 env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
-            hset(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .func=func, .type=t));
+            return gcc_get_func_address(func, loc);
         } else {
             gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-            gcc_rvalue_t *glob = gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
-            hset(env->global_bindings, ext->bl_name ? ext->bl_name : ext->name, new(binding_t, .rval=glob, .type=t));
+            return gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
         }
-        return NULL;
     }
 
     case Assign: {

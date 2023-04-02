@@ -536,10 +536,19 @@ PARSER(parse_tagged_union_type) {
 PARSER(parse_func_type) {
     const char *start = pos;
     if (!match(&pos, "(")) return NULL;
+    NEW_LIST(const char*, arg_names);
     NEW_LIST(ast_t*, arg_types);
     for (;;) {
+        const char *arg_start = pos;
+        const char *name = get_word(&pos);
+        spaces(&pos);
+        if (!match(&pos, ":")) {
+            name = NULL;
+            pos = arg_start;
+        }
         ast_t *arg_t = optional_ast(ctx, &pos, _parse_type);
         if (!arg_t) break;
+        APPEND(arg_names, name);
         APPEND(arg_types, arg_t);
         spaces(&pos);
         if (!match(&pos, ",")) break;
@@ -1516,6 +1525,7 @@ PARSER(parse_term) {
         || (term=parse_typeof(ctx, pos))
         || (term=parse_sizeof(ctx, pos))
         || (term=parse_not(ctx, pos))
+        || (term=parse_extern(ctx, pos))
         );
 
     if (!success) return NULL;
@@ -1745,7 +1755,6 @@ PARSER(parse_declaration) {
     spaces(&pos);
     if (!match(&pos, ":=")) return NULL;
     spaces(&pos);
-    if (match_word(&pos, "extern")) return NULL;
     ast_t *val = parse_extended_expr(ctx, pos);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
     pos = val->span.end;
@@ -1818,7 +1827,6 @@ PARSER(parse_deletion) {
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
-        || (stmt=parse_extern(ctx, pos))
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_use(ctx, pos))
         || (stmt=parse_export(ctx, pos))
@@ -2125,22 +2133,13 @@ PARSER(parse_def) {
 
 PARSER(parse_extern) {
     const char *start = pos;
-    const char* bl_name = get_id(&pos);
-    if (bl_name) {
-        spaces(&pos);
-        if (!match(&pos, ":=")) return NULL;
-    }
     if (!match_word(&pos, "extern")) return NULL;
     const char* name = get_id(&pos);
-    if (!bl_name) bl_name = name;
-    ast_t *type;
     spaces(&pos);
-    if (match(&pos, ":")) {
-        type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this extern");
-    } else {
+    if (!match(&pos, ":"))
         parser_err(ctx, start, pos, "I couldn't get a type for this extern");
-    }
-    return NewAST(ctx->file, start, pos, Extern, .name=name, .bl_name=bl_name, .type=type);
+    ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this extern");
+    return NewAST(ctx->file, start, pos, Extern, .name=name, .type=type);
 }
 
 PARSER(parse_doctest) {
