@@ -40,29 +40,3 @@ def Tree {
 >>> l.left = l
 >>> t
 === @Tree{value=5, left=@Tree{value=6, left=@Tree#2, right=!Tree}, right=@Tree#1}
-
-// Inline structs
-// do
-//     struct Inline {
-//         first:String
-//         ..vec:Vec
-//         last:String
-//     }
-
-//     inline := Inline{"hello", Vec{1.,2.}, "bye"}
-//     say "Inline struct: $inline"
-//     fail unless "$inline" == "Inline{first=hello, vec=Vec<1,2>, last=bye}"
-
-//     vec := inline.vec
-//     say "Extracted inline member: $vec"
-//     fail unless "$vec" == "Vec<1,2>"
-
-//     inline.vec = Vec{100.,200.}
-//     say "Updated inline member: $vec"
-//     fail unless "$inline" == "Inline{first=hello, vec=Vec<100,200>, last=bye}"
-
-//     inline = Inline{"xxx", Vec{0.,0.}, "xxx"}
-//     extern GC_gcollect():NilType
-//     GC_gcollect()
-//     say "Extracted inline member persists and keeps updates: $vec"
-//     fail unless "$vec" == "Vec<100,200>"
