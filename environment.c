@@ -125,18 +125,18 @@ static void load_global_functions(env_t *env)
                      PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
 
     load_global_func(env, t_void_ptr, "bl_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
-    load_global_func(env, t_void_ptr, "bl_hashmap_lvalue", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "entry"));
-    load_global_func(env, t_void, "bl_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "entry"));
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"), PARAM(t_size, "value_offset"));
+    load_global_func(env, t_void_ptr, "bl_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"),
+                     PARAM(t_size, "value_offset"), PARAM(t_void_ptr, "value"));
     load_global_func(env, t_void, "bl_hashmap_remove", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
     load_global_func(env, t_u32, "bl_hashmap_hash", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "entry_hash"), PARAM(t_size, "entry_size"));
     load_global_func(env, t_u32, "bl_hashmap_len", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_void, "bl_hashmap_mark_cow", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_int, "bl_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"), PARAM(t_void_ptr, "entry_compare"), PARAM(t_size, "entry_size"));
+                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"), PARAM(t_void_ptr, "entry_compare"),
+                     PARAM(t_size, "entry_size"), PARAM(t_size, "value_offset"));
     load_global_func(env, t_u32, "hash_64bits", PARAM(t_void_ptr, "ptr"));
     load_global_func(env, t_u32, "compare_64bits", PARAM(t_void_ptr, "a"), PARAM(t_void_ptr, "b"));
 #undef PARAM

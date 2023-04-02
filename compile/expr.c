@@ -598,7 +598,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_lvalue_t *cycle_checker = gcc_local(func, loc, hashmap_gcc_t, fresh("rec"));
             gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
             gcc_lvalue_t *next_index = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("index"));
-            gcc_assign(*block, loc, next_index, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
+            gcc_assign(*block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
             gcc_assign(*block, loc, gcc_lvalue_access_field(
                     cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
                 gcc_lvalue_address(next_index, loc));

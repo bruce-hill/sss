@@ -38,6 +38,7 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
 {
     switch (bl_t->tag) {
     case ArrayType: return sizeof(void*);
+    case TableType: return sizeof(void*);
     case StructType: {
         ssize_t align = 0;
         auto struct_type = Match(bl_t, StructType);
@@ -618,39 +619,33 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
         { // If it's non-nil, check for cycles:
             // Summary of the approach:
-            //     entry = hashmap_lvalue(cycle_checker, &obj)
-            //     if (entry->value == 0) (i.e. uninitialized, i.e. this is the first time we've seen this)
-            //         entry->value = ++cycle_checker->default_value;
+            //     index = *hashmap_set(cycle_checker, &obj, NULL)
+            //     if (index == *cycle_checker->default_value) (i.e. uninitialized, i.e. this is the first time we've seen this)
+            //         ++cycle_checker->default_value;
             //         ...proceed...
             //     else
-            //         print("@#%d", entry->value)
+            //         print("@#%d", index)
             gcc_type_t *i64 = gcc_type(env->ctx, INT64);
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_func_t *hash_lvalue_func = get_function(env, "bl_hashmap_lvalue");
+            gcc_func_t *hash_set_func = get_function(env, "bl_hashmap_set");
             gcc_func_t *hash_func = get_function(env, "hash_64bits");
             gcc_func_t *cmp_func = get_function(env, "compare_64bits");
 
-            // entry = &bl_hashmap_lvalue(rec, ..., obj, ...)->value
+            // val = bl_hashmap_set(rec, &obj, NULL)
             block = nonnil_block;
             gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
             gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
             bl_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
-            gcc_type_t *rec_entry_gcc_t = bl_type_to_gcc(env, table_entry_type(rec_t));
-            gcc_rvalue_t *lookup = gcc_callx(
-                env->ctx, NULL, hash_lvalue_func, rec,
+            gcc_rvalue_t *index_ptr = gcc_callx(
+                env->ctx, NULL, hash_set_func, rec,
                 gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_star),
                 gcc_cast(env->ctx, NULL, gcc_get_func_address(cmp_func, NULL), void_star),
                 gcc_rvalue_size(env->ctx, sizeof(struct{void* key; int64_t value;})), 
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_star));
-            gcc_lvalue_t *lookup_var = gcc_local(func, NULL, gcc_get_ptr_type(rec_entry_gcc_t), fresh("lookup"));
-            gcc_assign(block, NULL, lookup_var, gcc_cast(env->ctx, NULL, lookup, gcc_get_ptr_type(rec_entry_gcc_t)));
-            gcc_assign(block, NULL, gcc_rvalue_dereference_field(gcc_rval(lookup_var), NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 0)),
-                       gcc_cast(env->ctx, NULL, obj, void_star));
-
-            gcc_lvalue_t *index = gcc_local(func, NULL, gcc_get_ptr_type(i64), fresh("entry"));
-            gcc_assign(block, NULL, index, gcc_lvalue_address(
-                    gcc_deref_field(gcc_cast(env->ctx, NULL, gcc_rval(lookup_var), gcc_get_ptr_type(rec_entry_gcc_t)),
-                                    NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 1)), NULL));
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_star),
+                gcc_rvalue_size(env->ctx, offsetof(struct{void* key; int64_t value;}, value)), 
+                gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, INT64))));
+            gcc_lvalue_t *index_var = gcc_local(func, NULL, gcc_get_ptr_type(i64), fresh("index"));
+            gcc_assign(block, NULL, index_var, gcc_cast(env->ctx, NULL, index_ptr, gcc_get_ptr_type(i64)));
 
             gcc_type_t *rec_gcc_t = bl_type_to_gcc(env, rec_t);
             gcc_lvalue_t *rec_default = gcc_deref(gcc_rval(gcc_deref_field(
@@ -659,20 +654,19 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
             // if (entry == NULL) goto cycle else goto noncycle
             gcc_jump_condition(block, NULL,
-                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, gcc_rval(gcc_deref(gcc_rval(index), NULL)),
-                                              gcc_zero(env->ctx, gcc_type(env->ctx, INT64))),
+                               gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, gcc_rval(gcc_deref(gcc_rval(index_var), NULL)),
+                                              gcc_rval(rec_default)),
                                cycle_block, noncycle_block);
 
             // If we're in a recursive cycle, print @T#index and return without recursing further
             block = cycle_block;
             const char* backref = heap_strf("@%s#%%ld", type_to_string(pointed_type));
             gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref),
-                                              gcc_rval(gcc_deref(gcc_rval(index), NULL))));
+                                              gcc_rval(gcc_deref(gcc_rval(index_var), NULL))));
 
             // If this is a nonrecursive situation
             block = noncycle_block;
             gcc_update(block, NULL, rec_default, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
-            gcc_assign(block, NULL, gcc_rvalue_dereference_field(gcc_rval(lookup_var), NULL, gcc_get_field(gcc_type_if_struct(rec_entry_gcc_t), 1)), gcc_rval(rec_default));
         }
 
         if (pointed_type->tag == VoidType) {
@@ -806,7 +800,8 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("obj"))};
     const char* sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t), .arg_names=LIST(const char*, "obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t)),
+                           .arg_names=LIST(const char*, "obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
     hset(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
@@ -1075,6 +1070,10 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_func_t *key_compare = get_indirect_compare_func(env, Match(t, TableType)->key_type);
         gcc_func_t *value_compare = get_indirect_compare_func(env, Match(t, TableType)->value_type);
         gcc_func_t *entry_compare = get_indirect_compare_func(env, entry_t);
+        size_t key_size = gcc_sizeof(env, Match(t, TableType)->key_type);
+        size_t value_align = gcc_alignof(env, Match(t, TableType)->value_type);
+        size_t value_offset = key_size;
+        if (value_offset % value_align != 0) value_offset = (value_offset - (value_offset % value_align) + value_align);
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, compare_fn,
                                           gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL),
                                           gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL),
@@ -1082,7 +1081,8 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
                                           gcc_get_func_address(key_compare, NULL),
                                           gcc_get_func_address(value_compare, NULL),
                                           gcc_get_func_address(entry_compare, NULL),
-                                          gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t))));
+                                          gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t)),
+                                          gcc_rvalue_size(env->ctx, value_offset)));
         break;
     }
     default: {

@@ -75,27 +75,35 @@ void bl_hashmap_mark_cow(bl_hashmap_t *h)
     h->copy_on_write = true;
 }
 
-// Return address of entry
-void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
+// Return address of value or NULL
+static void *bl_hashmap_get_raw(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
 {
     CHECK_SIZE(h, entry_size_padded);
-  recurse:
-    if (!h || !key) return NULL;
+    if (!h || !key || h->capacity == 0) return NULL;
 
-    if (h->capacity > 0) {
-        uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
-        hshow(h);
-        hdebug("Getting with initial probe at %u\n", hash);
-        for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
-            char *entry = h->entries + entry_size_padded*(h->buckets[i].index1-1);
-            if (key_cmp(entry, key) == 0)
-                return entry;
-            if (h->buckets[i].next1 == 0)
-                break;
-        }
+    uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
+    hshow(h);
+    hdebug("Getting with initial probe at %u\n", hash);
+    for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
+        char *entry = h->entries + entry_size_padded*(h->buckets[i].index1-1);
+        if (key_cmp(entry, key) == 0)
+            return entry + value_offset;
+        if (h->buckets[i].next1 == 0)
+            break;
     }
-    h = h->fallback;
-    goto recurse;
+    return NULL;
+}
+
+void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
+{
+    for (bl_hashmap_t *iter = h; iter; iter = iter->fallback) {
+        void *ret = bl_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
+        if (ret) return ret;
+    }
+    for (bl_hashmap_t *iter = h; iter; iter = iter->fallback) {
+        if (iter->default_value) return iter->default_value;
+    }
+    return NULL;
 }
 
 static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
@@ -170,10 +178,12 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
     hdebug("Finished resizing\n");
 }
 
-void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
+// Return address of value
+void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value)
 {
     CHECK_SIZE(h, entry_size_padded);
-    if (!h || !entry) return NULL;
+    hdebug("Raw hash of key being set: %u\n", key_hash(entry));
+    if (!h || !key) return NULL;
     hshow(h);
 
     if (h->copy_on_write)
@@ -182,13 +192,14 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
     if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
-    bl_hashmap_t *fallback = h->fallback;
-    h->fallback = NULL;
+    void *value_home = bl_hashmap_get_raw(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+    if (value_home) {
+        if (!value && (h->fallback || h->default_value))
+            value = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
 
-    void *entry_home = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, entry);
-    if (entry_home) {
-        h->fallback = fallback;
-        return entry_home;
+        if (value)
+            memcpy(value_home, value, entry_size_padded - value_offset);
+        return value_home;
     }
 
     if (h->count >= h->capacity) {
@@ -198,29 +209,18 @@ void *bl_hashmap_lvalue(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, s
         hashmap_resize(h, key_hash, key_cmp, newsize, entry_size_padded);
     }
 
+    if (!value && (h->fallback || h->default_value))
+        value = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+
     int32_t index1 = ++h->count;
     h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
-    entry_home = h->entries + (index1-1)*entry_size_padded;
+    void *entry = h->entries + (index1-1)*entry_size_padded;
+    memcpy(entry, key, value_offset);
     bl_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
 
-    if (fallback) {
-        void *fallback_entry = bl_hashmap_get(fallback, key_hash, key_cmp, entry_size_padded, entry);
-        if (fallback_entry)
-            memcpy(entry_home, fallback_entry, entry_size_padded);
-        h->fallback = fallback;
-    }
-
-    return entry_home;
-}
-
-void bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *entry)
-{
-    CHECK_SIZE(h, entry_size_padded);
-    hdebug("Raw hash of key being set: %u\n", key_hash(entry));
-    void *dest = bl_hashmap_lvalue(h, key_hash, key_cmp, entry_size_padded, entry);
-    if (dest)
-        memcpy(dest, entry, entry_size_padded);
-    hdebug("Hash mod cap of key being set: %u\n", key_hash(entry) % h->capacity);
+    if (value)
+        memcpy(entry + value_offset, value, entry_size_padded - value_offset);
+    return entry + value_offset;
 }
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
@@ -319,23 +319,26 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
     uint32_t hash = 0x12345678;
     for (uint32_t i = 0; i < h->count; i++)
         hash ^= entry_hash(h->entries + i*entry_size_padded);
+
+    if (h->fallback)
+        hash ^= bl_hashmap_hash(h->fallback, entry_hash, entry_size_padded);
     return hash;
 }
 
-int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, cmp_fn_t entry_cmp, size_t entry_size_padded)
+int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, size_t entry_size_padded, size_t value_offset)
 {
     CHECK_SIZE(h1, entry_size_padded);
     CHECK_SIZE(h2, entry_size_padded);
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
-        void *entry = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded);
-        if (!entry) return 1;
-        int32_t diff = entry_cmp(h1->entries + i*entry_size_padded, entry);
+        void *val = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded, value_offset);
+        if (!val) return 1;
+        int32_t diff = value_cmp(h1->entries + i*entry_size_padded + value_offset, val);
         if (diff) return diff;
     }
     if (h1->fallback != h2->fallback) {
         if (h1->fallback && h2->fallback) {
-            int32_t diff = bl_hashmap_compare(h1->fallback, h2->fallback, key_hash, key_cmp, value_cmp, entry_cmp, entry_size_padded);
+            int32_t diff = bl_hashmap_compare(h1->fallback, h2->fallback, key_hash, key_cmp, value_cmp, entry_size_padded, value_offset);
             if (diff) return diff;
         } else {
             return 1;
