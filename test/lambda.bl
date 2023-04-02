@@ -1,15 +1,21 @@
-addOne := (x:Int)-> x + 1
-addTwo := (x:Int)-> x + 2
-addThree := (x:Int)->
+>>> addOne := (x:Int)-> x + 1
+>>> addOne
+=== (Int)->Int
+>>> addTwo := (x:Int)-> x + 2
+>>> addThree := (x:Int)->
     if x == 1
         return x + 3
     x + 2
 
-say "Lambda returns: $(addOne(1)) $(addTwo(1)) $(addThree(1))"
+>>> addOne(1)
+=== 2
+>>> addTwo(1)
+=== 3
+>>> addThree(1)
+=== 4
 
-// say "Method call syntax: $(1|addOne)"
-
-thunk := -> "Double arrow thunks work"
-say thunk()
-thunk2 := -> say("Single arrow thunks work")
-thunk2()
+>>> thunk := -> "Arrow thunks work"
+>>> thunk
+=== ()->String
+>>> thunk()
+=== "Arrow thunks work"
