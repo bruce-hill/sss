@@ -1,5 +1,4 @@
 // Logic for getting a Blang type from an AST node
-#include <bhash.h>
 #include <gc.h>
 #include <stdarg.h>
 #include <stdlib.h>

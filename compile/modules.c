@@ -1,5 +1,4 @@
 // Loading of external modules
-#include <bhash.h>
 #include <dlfcn.h>
 #include <err.h>
 #include <gc.h>

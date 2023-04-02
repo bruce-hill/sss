@@ -2,7 +2,6 @@
 #include <gc/gc.h>
 #include <libgccjit.h>
 #include <intern.h>
-#include <bhash.h>
 #include <signal.h>
 #include <stdio.h>
 

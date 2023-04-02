@@ -1,5 +1,4 @@
 // The main program
-#include <bhash.h>
 #include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
@@ -247,7 +246,6 @@ int main(int argc, char *argv[])
 #endif
 
     GC_INIT();
-    hashmap_set_allocator(GC_malloc, NULL);
     bool verbose = false;
     char *prog_name = strrchr(argv[0], '/');
     prog_name = prog_name ? prog_name + 1 : argv[0];
@@ -258,7 +256,7 @@ int main(int argc, char *argv[])
     assert(ctx != NULL);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-lintern", "-lbhash", "-ldl", "-L.", "-lblang",
+        "-lgc", "-lcord", "-lm", "-lintern", "-ldl", "-L.", "-lblang",
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)

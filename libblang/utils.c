@@ -1,4 +1,3 @@
-#include <bhash.h>
 #include <dirent.h>
 #include <errno.h>
 #include <gc.h>

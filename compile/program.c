@@ -1,6 +1,5 @@
 // Logic for compile a file containing a Blang program
 #include <assert.h>
-#include <bhash.h>
 #include <ctype.h>
 #include <err.h>
 #include <libgccjit.h>

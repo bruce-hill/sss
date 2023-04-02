@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <bhash.h>
 
 #include "ast.h"
 #include "compile/compile.h"

@@ -1,6 +1,5 @@
 // Compilation logic for while/repeat/loop loops
 #include <assert.h>
-#include <bhash.h>
 #include <libgccjit.h>
 #include <ctype.h>
 #include <err.h>

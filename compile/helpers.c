@@ -1,6 +1,5 @@
 // Helper functions used for compiling
 #include <assert.h>
-#include <bhash.h>
 #include <libgccjit.h>
 #include <ctype.h>
 #include <err.h>

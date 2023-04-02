@@ -1,7 +1,6 @@
 // A compilation environment representing contextual state
 #pragma once
 
-#include <bhash.h>
 #include <intern.h>
 #include <libgccjit.h>
 #include <setjmp.h>

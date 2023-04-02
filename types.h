@@ -1,5 +1,4 @@
 #pragma once
-#include <bhash.h>
 #include <intern.h>
 #include <libgccjit.h>
 #include <stdlib.h>

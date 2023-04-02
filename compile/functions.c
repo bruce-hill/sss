@@ -1,6 +1,5 @@
 // Logic for compiling Blang functions
 #include <assert.h>
-#include <bhash.h>
 #include <libgccjit.h>
 #include <ctype.h>
 #include <err.h>
