@@ -20,10 +20,8 @@ typedef struct { const char *data; int32_t len, stride; } array_t;
 
 #ifdef DEBUG_HASHTABLE
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
-#define CHECK_SIZE(h, val) do { if ((h)->entry_size == 0) { (h)->entry_size = (uint32_t)val; } else { assert((size_t)(h)->entry_size == val); }} while (0)
 #else
 #define hdebug(...) (void)0
-#define CHECK_SIZE(...) (void)0
 #endif
 
 #include "../SipHash/halfsiphash.h"
@@ -62,7 +60,6 @@ uint32_t bl_hashmap_len(bl_hashmap_t *h)
 
 static void copy_on_write(bl_hashmap_t *h, size_t entry_size_padded)
 {
-    CHECK_SIZE(h, entry_size_padded);
     if (h->entries)
         h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
     if (h->buckets)
@@ -78,7 +75,6 @@ void bl_hashmap_mark_cow(bl_hashmap_t *h)
 // Return address of value or NULL
 static void *bl_hashmap_get_raw(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
 {
-    CHECK_SIZE(h, entry_size_padded);
     if (!h || !key || h->capacity == 0) return NULL;
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
@@ -108,7 +104,6 @@ void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
 
 static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
 {
-    CHECK_SIZE(h, entry_size_padded);
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
     hdebug("Hash value = %u\n", hash);
@@ -162,7 +157,6 @@ static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t 
 
 static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
 {
-    CHECK_SIZE(h, entry_size_padded);
     hdebug("About to resize from %u to %u\n", h->capacity, new_capacity);
     hshow(h);
     h->buckets = GC_MALLOC_ATOMIC((size_t)new_capacity*sizeof(bl_hash_bucket_t));
@@ -181,7 +175,6 @@ static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp
 // Return address of value
 void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value)
 {
-    CHECK_SIZE(h, entry_size_padded);
     hdebug("Raw hash of key being set: %u\n", key_hash(entry));
     if (!h || !key) return NULL;
     hshow(h);
@@ -232,7 +225,6 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
 
 void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
-    CHECK_SIZE(h, entry_size_padded);
     if (!h || !key || h->capacity == 0) return;
 
     if (h->copy_on_write)
@@ -312,7 +304,6 @@ void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
 
 void *bl_hashmap_nth(bl_hashmap_t *h, int32_t n, size_t entry_size_padded)
 {
-    CHECK_SIZE(h, entry_size_padded);
     assert(n >= 1 && n <= (int32_t)h->count);
     if (n < 1 || n > (int32_t)h->count) return NULL;
     return h->entries + (n-1)*entry_size_padded;
@@ -320,7 +311,6 @@ void *bl_hashmap_nth(bl_hashmap_t *h, int32_t n, size_t entry_size_padded)
 
 uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded)
 {
-    CHECK_SIZE(h, entry_size_padded);
     if (!h) return 0;
 
     uint32_t hash = 0x12345678;
@@ -334,8 +324,6 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
 
 int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, size_t entry_size_padded, size_t value_offset)
 {
-    CHECK_SIZE(h1, entry_size_padded);
-    CHECK_SIZE(h2, entry_size_padded);
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
         void *val = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded, value_offset);

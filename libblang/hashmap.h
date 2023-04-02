@@ -20,9 +20,6 @@ typedef struct bl_hashmap_s {
     void *default_value;
     uint32_t capacity, count, lastfree_index1;
     bool copy_on_write;
-#ifdef DEBUG_HASHTABLE
-    uint32_t entry_size;
-#endif
 } bl_hashmap_t;
 
 uint32_t hash_64bits(const void *x);
