@@ -543,9 +543,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
         return t;
     }
-    case Using: {
-        return get_type(env, Match(ast, Using)->body);
-    }
     case Extern: {
         return parse_type_ast(env, Match(ast, Extern)->type);
     }

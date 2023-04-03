@@ -440,17 +440,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         APPEND(statements, with->body);
         return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
     }
-    case Using: {
-        auto using = Match(ast, Using);
-        env_t *env2 = global_scope(env);
-        for (int64_t i = 0, len = length(using->vars); i < len; i++) {
-            ast_t *var = ith(using->vars, i);
-            binding_t *b = get_binding(env, Match(var, Var)->name);
-            if (!b) compiler_err(env, var, "This variable is not defined");
-            hset(env2->bindings, Match(var, Var)->name, b);
-        }
-        return compile_expr(env2, block, using->body);
-    }
     case Block: {
         // Create scope:
         return compile_block_expr(fresh_scope(env), block, ast);
