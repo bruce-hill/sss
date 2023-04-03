@@ -217,6 +217,7 @@ struct ast_s {
         } TypeStruct;
         struct {
             List(const char*) arg_names;
+            List(ast_t*) arg_defaults;
             List(ast_t*) arg_types;
             ast_t *ret_type;
         } TypeFunction;

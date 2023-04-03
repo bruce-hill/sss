@@ -481,7 +481,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     }
     case IntType: case NumType: {
         const char *fmt;
-        if (t->tag == IntType && Match(t, IntType)->bits == 64) {
+        if (t->tag == IntType && (Match(t, IntType)->bits == 64 || Match(t, IntType)->bits == 0)) {
             fmt = Match(t, IntType)->is_unsigned ? "%lu" : "%ld";
         } else if (t->tag == IntType && Match(t, IntType)->bits == 32) {
             fmt = Match(t, IntType)->is_unsigned ? "%u_u32" : "%d_i32";
@@ -492,7 +492,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         } else if (t->tag == IntType && Match(t, IntType)->bits == 8) {
             obj = gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, INT));
             fmt = Match(t, IntType)->is_unsigned ? "%u_u8" : "%d_i8";
-        } else if (t->tag == NumType && Match(t, NumType)->bits == 64) {
+        } else if (t->tag == NumType && (Match(t, NumType)->bits == 64 || Match(t, NumType)->bits == 0)) {
             fmt = "%g";
         } else if (t->tag == NumType && Match(t, NumType)->bits == 32) {
             // I'm not sure why, but printf() gets confused if you pass a 'float' here instead of a 'double'

@@ -269,7 +269,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             NEW_LIST(gcc_param_t*, params);
             for (int64_t i = 0, len = length(fn->arg_types); i < len; i++) {
                 gcc_type_t *arg_t = bl_type_to_gcc(env, ith(fn->arg_types, i));
-                const char* arg_name = fn->arg_names ? ith(fn->arg_names, i) : fresh("arg");
+                const char* arg_name = fn->arg_names ? ith(fn->arg_names, i) : NULL;
+                if (!arg_name) arg_name = fresh("arg");
                 APPEND(params, gcc_new_param(env->ctx, loc, arg_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
@@ -945,6 +946,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_hashmap_t arg_positions = {0};
         if (fn_t->arg_names) {
             for (int64_t i = 0; i < num_args; i++) {
+                if (!ith(fn_t->arg_names, i)) continue;
                 int64_t masked = i ^ MASK;
                 hset(&arg_positions, ith(fn_t->arg_names, i), masked);
             }
@@ -997,13 +999,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *func = gcc_block_func(*block);
             for (int64_t i = 0; i < num_args; i++) {
                 if (arg_vals[i]) {
-                    gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, ith(fn_t->arg_types, i)), fresh(ith(fn_t->arg_names, i)));
+                    const char *arg_name = ith(fn_t->arg_names, i);
+                    gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, ith(fn_t->arg_types, i)), fresh(arg_name ? arg_name : "arg"));
                     gcc_assign(*block, loc, tmp, arg_vals[i]);
                     arg_vals[i] = gcc_rval(tmp);
                 }
             }
             for (int64_t i = 0; i < num_args; i++) {
-                if (arg_vals[i])
+                if (arg_vals[i] && ith(fn_t->arg_names, i))
                     hset(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
             }
         }
@@ -1019,9 +1022,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 }
             }
             bl_type_t *arg_t = ith(fn_t->arg_types, pos);
-            if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional)
+            if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional) {
+                const char *arg_name = fn_t->arg_names ? ith(fn_t->arg_names, pos) : NULL;
                 compiler_err(env, ast, "The non-optional argument %s was not provided",
-                      fn_t->arg_names ? ith(fn_t->arg_names, pos) : heap_strf("%ld", pos));
+                      arg_name ? arg_name : heap_strf("%ld", pos));
+            }
             arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
         }
 
@@ -1712,7 +1717,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_eval(case_block, case_loc, branch_val);
                 }
             }
-            gcc_jump(case_block, case_loc, end_when);
+            if (case_block)
+                gcc_jump(case_block, case_loc, end_when);
         }
         gcc_block_t *default_block;
         if (when->default_body) {

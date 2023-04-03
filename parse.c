@@ -537,18 +537,29 @@ PARSER(parse_func_type) {
     if (!match(&pos, "(")) return NULL;
     NEW_LIST(const char*, arg_names);
     NEW_LIST(ast_t*, arg_types);
+    NEW_LIST(ast_t*, arg_defaults);
     for (;;) {
         const char *arg_start = pos;
         const char *name = get_word(&pos);
         spaces(&pos);
-        if (!match(&pos, ":")) {
-            name = NULL;
+        if (match(&pos, "=")) {
+            APPEND(arg_names, name);
+            APPEND(arg_types, NULL);
+            ast_t *def = expect_ast(ctx, arg_start, &pos, parse_expr, "I expected a default value for this argument");
+            APPEND(arg_defaults, def);
+        } else if (match(&pos, ":")) {
+            APPEND(arg_names, name);
+            ast_t *arg_t = expect_ast(ctx, arg_start, &pos, _parse_type, "I expected a type for this argument");
+            APPEND(arg_types, arg_t);
+            APPEND(arg_defaults, NULL);
+        } else {
             pos = arg_start;
+            ast_t *arg_t = optional_ast(ctx, &pos, _parse_type);
+            if (!arg_t) break;
+            APPEND(arg_names, NULL);
+            APPEND(arg_defaults, NULL);
+            APPEND(arg_types, arg_t);
         }
-        ast_t *arg_t = optional_ast(ctx, &pos, _parse_type);
-        if (!arg_t) break;
-        APPEND(arg_names, name);
-        APPEND(arg_types, arg_t);
         spaces(&pos);
         if (!match(&pos, ",")) break;
     }
@@ -556,7 +567,7 @@ PARSER(parse_func_type) {
     spaces(&pos);
     if (!match(&pos, "->")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, _parse_type);
-    return NewAST(ctx->file, start, pos, TypeFunction, .arg_types=arg_types, .ret_type=ret);
+    return NewAST(ctx->file, start, pos, TypeFunction, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret_type=ret);
 }
 
 PARSER(parse_array_type) {

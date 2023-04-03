@@ -81,12 +81,21 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
         bl_type_t *ret_t = parse_type_ast(env, fn->ret_type);
+        NEW_LIST(const char*, arg_names);
+        NEW_LIST(ast_t*, arg_defaults);
         NEW_LIST(bl_type_t*, arg_types);
-        LIST_FOR (fn->arg_types, arg_t, _) {
-            bl_type_t *bl_arg_t = parse_type_ast(env, *arg_t);
-            APPEND(arg_types, bl_arg_t);
+        for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
+            APPEND(arg_names, ith(fn->arg_names, i));
+            if (ith(fn->arg_types, i)) {
+                APPEND(arg_types, parse_type_ast(env, ith(fn->arg_types, i)));
+                APPEND(arg_defaults, NULL);
+            } else {
+                bl_type_t *arg_t = get_type(env, ith(fn->arg_defaults, i));
+                APPEND(arg_types, arg_t);
+                APPEND(arg_defaults, ith(fn->arg_defaults, i));
+            }
         }
-        return Type(FunctionType, .arg_types=arg_types, .ret=ret_t);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t);
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);

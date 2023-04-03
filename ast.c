@@ -43,7 +43,10 @@ const char *str_list_to_str(const char *name, List(const char*) strs)
         fputs("[", mem);
         for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
             if (i > 0) fputs(", ", mem);
-            fputs(LIST_ITEM(strs, i), mem);
+            if (LIST_ITEM(strs, i))
+                fputs(LIST_ITEM(strs, i), mem);
+            else
+                fputs("(NULL)", mem);
         }
         fputs("]", mem);
     } else {
