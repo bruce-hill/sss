@@ -451,7 +451,10 @@ void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, 
             // gcc_jump_condition(*block, NULL, yes, between_block, loop_end);
         }
         *block = between_block;
-        compile_block_statement(&loop_env, block, between);
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, between, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, between);
         gcc_jump(*block, NULL, loop_body);
     } else {
         gcc_jump(*block, NULL, loop_top);
