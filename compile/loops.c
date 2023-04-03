@@ -432,8 +432,12 @@ void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, 
     }
 
     *block = loop_body;
-    if (body)
-        compile_block_statement(&loop_env, block, body);
+    if (body) {
+        if (loop_env.comprehension_callback)
+            loop_env.comprehension_callback(&loop_env, block, body, loop_env.comprehension_userdata);
+        else
+            compile_block_statement(&loop_env, block, body);
+    }
 
     if (between) {
         gcc_block_t *between_block = gcc_new_block(func, fresh("loop_between"));
