@@ -1653,13 +1653,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, when->subject, "'when' blocks must use enums, but this is a %s", type_to_string(subject_t));
         gcc_type_t *gcc_t = bl_type_to_gcc(env, subject_t);
 
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, fresh("when_subject"));
+        gcc_assign(*block, loc, subject_var, subject);
+        subject = gcc_rval(subject_var);
+
         binding_t *tags_binding = get_from_namespace(env, subject_t, "__Tag");
         assert(tags_binding);
         bl_type_t *tag_t = Match(tags_binding->type, TypeType)->type;
 
         bl_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
-        gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
         gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
