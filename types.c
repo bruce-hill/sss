@@ -21,7 +21,6 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         }
         case CharType: return "Char";
         case CStringCharType: return "CStringChar";
-        case FileType: return "File";
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
@@ -276,7 +275,7 @@ bool is_orderable(bl_type_t *t)
 {
     switch (t->tag) {
     case ArrayType: return is_orderable(Match(t, ArrayType)->item_type);
-    case PointerType: case FunctionType: case FileType: case TableType: return false;
+    case PointerType: case FunctionType: case TableType: return false;
     case StructType: case UnionType: {
         auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {

@@ -20,7 +20,6 @@ struct bl_type_s {
         TableType,
         FunctionType,
         PointerType,
-        FileType,
         GeneratorType,
         StructType,
         TagType,
@@ -30,7 +29,7 @@ struct bl_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, BoolType, CharType, CStringCharType, FileType;
+        } UnknownType, AbortType, VoidType, BoolType, CharType, CStringCharType;
         struct {
             const char* units;
             uint16_t bits;

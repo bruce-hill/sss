@@ -187,7 +187,6 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     case CharType: case CStringCharType: gcc_t = gcc_type(env->ctx, CHAR); break;
-    case FileType: gcc_t = gcc_type(env->ctx, FILE_PTR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
@@ -440,16 +439,15 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
-    gcc_type_t *file_t = bl_type_to_gcc(env, Type(FileType));
     gcc_type_t *void_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
-        gcc_new_param(env->ctx, NULL, file_t, fresh("file")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
         gcc_new_param(env->ctx, NULL, void_ptr_t, fresh("recursion")),
     };
     const char* sym_name = fresh("__print");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(FileType), Type(PointerType, .pointed=Type(VoidType))),
+    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(PointerType, .pointed=Type(VoidType)), Type(PointerType, .pointed=Type(VoidType))),
                            .arg_names=LIST(const char*, "obj", "file", "recursion"),
                            .arg_defaults=NULL, .ret=Type(IntType));
     hset(get_namespace(env, t), "__print",
