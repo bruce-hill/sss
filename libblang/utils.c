@@ -132,13 +132,13 @@ typedef struct {
     int64_t seconds, nanoseconds;
 } bl_time_t;
 
-string_t bl_time_format(bl_time_t bl_time)
+string_t bl_time_format(bl_time_t bl_time, string_t fmt)
 {
     static char buf[256];
     time_t time = (time_t)bl_time.seconds;
     struct tm my_time;
     localtime_r(&time, &my_time);
-    size_t len = strftime(buf, sizeof(buf), "%c", &my_time);
+    size_t len = strftime(buf, sizeof(buf), c_string(fmt), &my_time);
     char *copy = GC_MALLOC_ATOMIC(len+1);
     memcpy(copy, buf, len);
     copy[len] = '\0';
