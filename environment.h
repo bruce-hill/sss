@@ -58,11 +58,8 @@ typedef struct env_s {
     bl_hashmap_t *bindings; // name -> binding_t
     bl_hashmap_t *global_bindings; // name -> binding_t
     List(export_t*) exports; // Ordered list of exports
-    bl_hashmap_t *gcc_types; // name -> bl_type
-    bl_hashmap_t *union_fields; // name -> [gcc_field]
     bl_hashmap_t *global_funcs; // name -> func
     bl_hashmap_t *type_namespaces; // bl_type -> name -> binding_t
-    bl_hashmap_t *tuple_types; // const char* -> bl_type_t
     bl_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;

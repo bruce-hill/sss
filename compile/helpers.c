@@ -141,7 +141,8 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
 List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
 {
     // This is memoized to preserve GCC equality:
-    List(gcc_field_t*) fields = hget(env->union_fields, type_to_string(t), List(gcc_field_t*));
+    static bl_hashmap_t cache = {0};
+    List(gcc_field_t*) fields = hget(&cache, type_to_string(t), List(gcc_field_t*));
     if (fields) return fields;
 
     fields = LIST(gcc_field_t*);
@@ -152,15 +153,16 @@ List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(union_->field_names, i));
         append(fields, field);
     }
-    hset(env->union_fields, type_to_string(t), fields);
+    hset(&cache, type_to_string(t), fields);
     return fields;
 }
 
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 {
+    static bl_hashmap_t cache = {0};
     t = with_units(t, NULL);
-    gcc_type_t *gcc_t = hget(env->gcc_types, type_to_string(t), gcc_type_t*);
+    gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
 
     switch (t->tag) {
@@ -259,7 +261,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         auto struct_t = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(env->gcc_types, type_to_string(t), gcc_t);
+        hset(&cache, type_to_string(t), gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
         foreach (struct_t->field_types, bl_ft, _) {
@@ -296,7 +298,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         bl_type_t *tag_t = tagged->tag_type;
         gcc_field_t *tag_field = gcc_new_field(env->ctx, NULL, bl_type_to_gcc(env, tag_t), "tag");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(env->gcc_types, type_to_string(t), gcc_t);
+        hset(&cache, type_to_string(t), gcc_t);
 
         gcc_type_t *gcc_data_t = bl_type_to_gcc(env, tagged->data);
         if (gcc_data_t) {
@@ -325,7 +327,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     }
 
-    hset(env->gcc_types, type_to_string(t), gcc_t);
+    hset(&cache, type_to_string(t), gcc_t);
     return gcc_t;
 }
 

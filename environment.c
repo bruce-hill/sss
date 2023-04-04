@@ -358,9 +358,6 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .exports = LIST(export_t*),
         .bindings = new(bl_hashmap_t),
         .type_namespaces = new(bl_hashmap_t),
-        .tuple_types = new(bl_hashmap_t),
-        .gcc_types = new(bl_hashmap_t),
-        .union_fields = new(bl_hashmap_t),
         .global_funcs = new(bl_hashmap_t),
         .debug = debug,
     );

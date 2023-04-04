@@ -12,6 +12,9 @@
 #include "units.h"
 #include "util.h"
 
+// Cache of type string -> tuple type
+static bl_hashmap_t tuple_types = {0};
+
 static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
 {
     if (condition && condition->tag == Declare)
@@ -114,11 +117,11 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
             bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
         }
-        bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
+        bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
         if (memoized) {
             t = memoized;
         } else {
-            hset(env->tuple_types, type_to_string(t), t);
+            hset(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -373,11 +376,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto entry = Match(ast, TableEntry);
         bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(const char*, "key", "value"),
                             .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
-        bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
+        bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
         if (memoized) {
             t = memoized;
         } else {
-            hset(env->tuple_types, type_to_string(t), t);
+            hset(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -756,11 +759,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
 
             bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
-            bl_type_t *memoized = hget(env->tuple_types, type_to_string(t), bl_type_t*);
+            bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
             if (memoized) {
                 t = memoized;
             } else {
-                hset(env->tuple_types, type_to_string(t), t);
+                hset(&tuple_types, type_to_string(t), t);
             }
             return t;
         }
