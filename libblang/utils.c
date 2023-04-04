@@ -389,6 +389,7 @@ void blang_file_finalizer(void *obj, void *_)
     (void)_;
     BlangFile *f = (BlangFile*)obj;
     if (f->file) fclose(f->file);
+    f->file = NULL;
 }
 
 #include <assert.h>
@@ -409,6 +410,34 @@ FileResult blang_fopen(string_t path, string_t mode)
         ret.__data.Failure = last_err();
     }
     return ret;
+}
+
+BlangFile *blang_tmpfile(void)
+{
+    BlangFile *bf = GC_MALLOC_ATOMIC(sizeof(BlangFile));
+    bf->file = tmpfile();
+    GC_REGISTER_FINALIZER(bf, blang_file_finalizer, NULL, NULL, NULL);
+    return bf;
+}
+
+string_t blang_readfile(BlangFile *bf, int64_t bytes)
+{
+    const size_t chunk_size = 1000;
+    if (!bf || !bf->file || bytes <= 0) return (string_t){.stride=1};
+    size_t to_read = (size_t)bytes;
+    size_t buf_len = 0, buf_cap = to_read < chunk_size ? to_read : chunk_size;
+    char *buf = GC_MALLOC_ATOMIC(buf_cap);
+    while (to_read > 0) {
+        char chunk[chunk_size];
+        size_t got = fread(chunk, 1, to_read < chunk_size ? to_read : chunk_size, bf->file);
+        if (got == 0) break;
+        if (buf_len + got > buf_cap)
+            buf = GC_REALLOC(buf, (buf_cap += got));
+        memcpy(buf + buf_len, chunk, got);
+        buf_len += got;
+        to_read -= got;
+    }
+    return (string_t){.data=buf, .stride=1, .length=(int32_t)buf_len};
 }
 
 string_t get_line(FILE *f)
