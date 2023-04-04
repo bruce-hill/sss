@@ -10,7 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include "utils.h"
 #include "string.h"
@@ -130,42 +132,56 @@ typedef struct {
     int64_t seconds, nanoseconds;
 } bl_time_t;
 
+string_t bl_time_format(bl_time_t bl_time)
+{
+    static char buf[256];
+    time_t time = (time_t)bl_time.seconds;
+    struct tm my_time;
+    localtime_r(&time, &my_time);
+    size_t len = strftime(buf, sizeof(buf), "%c", &my_time);
+    char *copy = GC_MALLOC_ATOMIC(len+1);
+    memcpy(copy, buf, len);
+    copy[len] = '\0';
+    return (string_t){.data=copy, .length=(int32_t)len, .stride=1};
+}
+
 typedef struct {
     int64_t device, rdevice;
     int64_t inode, mode, links, user, group;
     int64_t size, block_size, block_count;
-    bl_time_t *accessed, *modified, *moved;
+    bl_time_t accessed, modified, moved;
 } bl_fileinfo_t;
 
-bl_fileinfo_t *bl_fstat(FILE* f)
+bl_fileinfo_t bl_fstat(FILE* f)
 {
     struct stat buf;
     if (fstat(fileno(f), &buf) != 0)
-        return NULL;
-    bl_fileinfo_t *ret = GC_malloc(sizeof(bl_fileinfo_t));
-    ret->device = buf.st_dev;
-    ret->rdevice = buf.st_rdev;
-    ret->inode = buf.st_ino;
-    ret->mode = buf.st_mode;
-    ret->links = buf.st_nlink;
-    ret->user = buf.st_uid;
-    ret->group = buf.st_gid;
-    ret->size = buf.st_size;
-    ret->block_size = buf.st_blksize;
-    ret->block_count = buf.st_blocks;
+        return (bl_fileinfo_t){0};
 
-    ret->accessed = GC_malloc(sizeof(bl_time_t));
-    ret->accessed->seconds = buf.st_atim.tv_sec;
-    ret->accessed->nanoseconds = buf.st_atim.tv_nsec;
-
-    ret->modified = GC_malloc(sizeof(bl_time_t));
-    ret->modified->seconds = buf.st_mtim.tv_sec;
-    ret->modified->nanoseconds = buf.st_mtim.tv_nsec;
-
-    ret->moved = GC_malloc(sizeof(bl_time_t));
-    ret->moved->seconds = buf.st_ctim.tv_sec;
-    ret->moved->nanoseconds = buf.st_ctim.tv_nsec;
-
+    bl_fileinfo_t ret = {
+        .device = buf.st_dev,
+        .rdevice = buf.st_rdev,
+        .inode = buf.st_ino,
+        .mode = buf.st_mode,
+        .links = buf.st_nlink,
+        .user = buf.st_uid,
+        .group = buf.st_gid,
+        .size = buf.st_size,
+        .block_size = buf.st_blksize,
+        .block_count = buf.st_blocks,
+        .accessed = {
+            .seconds=buf.st_atim.tv_sec,
+            .nanoseconds = buf.st_atim.tv_nsec,
+        },
+        .modified = {
+            .seconds = buf.st_mtim.tv_sec,
+            .nanoseconds = buf.st_mtim.tv_nsec,
+        },
+        .moved = {
+            .seconds = buf.st_ctim.tv_sec,
+            .nanoseconds = buf.st_ctim.tv_nsec,
+        },
+    };
     return ret;
 }
 
@@ -356,4 +372,65 @@ void array_shuffle(void *voidarr, size_t item_size, bool atomic)
         memcpy(arr->data + i*item_size, arr->data + j*item_size, item_size);
         memcpy(arr->data + j*item_size, tmp, item_size);
     }
+}
+
+typedef struct { FILE *file; } BlangFile;
+
+typedef struct {
+    enum { Failure, Success } tag;
+    union {
+        string_t Failure;
+        BlangFile *Success;
+    } __data;
+} FileResult;
+
+void blang_file_finalizer(void *obj, void *_)
+{
+    (void)_;
+    BlangFile *f = (BlangFile*)obj;
+    if (f->file) fclose(f->file);
+}
+
+#include <assert.h>
+#define STR_LITERAL(s) (string_t){.data=s, .stride=1, .length=(int32_t)strlen(s)}
+FileResult blang_fopen(string_t path, string_t mode)
+{
+    if (path.length > PATH_MAX)
+        return (FileResult){.tag=Failure, .__data.Failure=STR_LITERAL("Path name is too long!")};
+    FILE *f = fopen(c_string(path), c_string(mode));
+    FileResult ret;
+    if (f) {
+        ret.tag = Success;
+        ret.__data.Success = GC_MALLOC_ATOMIC(sizeof(BlangFile));
+        ret.__data.Success->file = f;
+        GC_REGISTER_FINALIZER(ret.__data.Success, blang_file_finalizer, NULL, NULL, NULL);
+    } else {
+        ret.tag = Failure;
+        ret.__data.Failure = last_err();
+    }
+    return ret;
+}
+
+string_t get_line(FILE *f)
+{
+    char *buf = NULL; size_t len = 0;
+    ssize_t got = getline(&buf, &len, f);
+    string_t ret = {.stride=1};
+    if (got > 0) {
+        if (buf[got-1] == '\n') --got;
+        ret.length = (int32_t)got;
+        ret.data = GC_MALLOC_ATOMIC(got + 1);
+        memcpy((char*)ret.data, buf, got);
+        *(char*)(ret.data+got) = '\0';
+
+        // Trigger feof when there isn't some kind of waiting happening
+        struct pollfd pfd = {
+            .fd=fileno(f),
+            .events=POLLIN,
+        };
+        if (poll(&pfd, 1, 0) > 0)
+            ungetc(getc(f), f);
+    }
+    if (buf) free(buf);
+    return ret;
 }
