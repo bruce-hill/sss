@@ -87,10 +87,10 @@ void load_module(env_t *env, gcc_block_t **block, ast_t *use)
         const char* sym_name = heap_strf(import.name);
         gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
         gcc_rvalue_t *rval = gcc_callx(env->ctx, loc, dlsym_fn, gcc_rval(handle), gcc_str(env->ctx, import.symbol));
-        if (import.needs_deref)
-            rval = gcc_rval(gcc_rvalue_dereference(gcc_cast(env->ctx, loc, rval, bl_type_to_gcc(env, Type(PointerType, .pointed=t))), loc));
-        else
+        if (t->tag == FunctionType)
             rval = gcc_cast(env->ctx, loc, rval, gcc_t);
+        else
+            rval = gcc_rval(gcc_rvalue_dereference(gcc_cast(env->ctx, loc, rval, bl_type_to_gcc(env, Type(PointerType, .pointed=t))), loc));
         gcc_assign(*block, loc, lval, rval);
 
         bl_hashmap_t *ns = get_qualified_ns(env, import.name);

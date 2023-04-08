@@ -5,8 +5,6 @@
 
 typedef struct {
     const char *name, *signature, *symbol;
-    bool needs_deref;
-    const char *docs;
 } import_t;
 
 typedef struct {

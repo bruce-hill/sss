@@ -80,7 +80,7 @@ void define_array_methods(env_t *env, bl_type_t *t);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, bool standalone, gcc_jit_result **result);
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_output_kind_e output_kind, gcc_jit_result **result);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);

@@ -18,7 +18,7 @@
 
 #define BLANG_VERSION "0.1.0"
 
-int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, int argc, char *argv[])
+int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, gcc_output_kind_e output_kind, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -31,8 +31,9 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, NULL, f, ast, true, !dll, &result);
-    if (!run && !dll) errx(1, "run func is NULL");
+    main_func_t run = compile_file(ctx, NULL, f, ast, true, output_kind, &result);
+    if (!run && output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE)
+        errx(1, "run func is NULL");
 
     CORD binary_name;
     int i = 0;
@@ -42,13 +43,15 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
     } else {
         binary_name = CORD_from_char_star(argv[i]);
         size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
-        if (i == CORD_NOT_FOUND && !dll) {
+        if (i == CORD_NOT_FOUND && (output_kind == GCC_JIT_OUTPUT_KIND_OBJECT_FILE || output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE)) {
             binary_name = CORD_cat(binary_name, ".o");
         } else {
             if (i != CORD_NOT_FOUND)
                 binary_name = CORD_substr(binary_name, 0, i);
 
-            if (dll) {
+            if (output_kind == GCC_JIT_OUTPUT_KIND_OBJECT_FILE) {
+                binary_name = CORD_cat(binary_name, ".o");
+            } else if (output_kind == GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY) {
                 const char *path = CORD_to_char_star(binary_name);
                 const char *slash = strrchr(path, '/');
                 if (slash) {
@@ -66,7 +69,7 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool dll, bool verbose, 
         binary_name = CORD_cat("./", binary_name);
 
     binary_name = CORD_to_char_star(binary_name);
-    gcc_jit_context_compile_to_file(ctx, dll ? GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY : GCC_JIT_OUTPUT_KIND_EXECUTABLE, binary_name);
+    gcc_jit_context_compile_to_file(ctx, output_kind, binary_name);
     printf("\x1b[0;1;32mSuccessfully compiled %s to %s\x1b[m\n", argv[i], binary_name);
     gcc_jit_result_release(result);
 
@@ -86,7 +89,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, 
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, true, &result);
+    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, GCC_OUTPUT_KIND_EXECUTABLE, &result);
     if (!main_fn) errx(1, "run func is NULL");
 
     if (verbose)
@@ -250,7 +253,7 @@ int main(int argc, char *argv[])
     char *prog_name = strrchr(argv[0], '/');
     prog_name = prog_name ? prog_name + 1 : argv[0];
     bool run_program = !strstr(prog_name, "blangc");
-    bool dll = false;
+    gcc_output_kind_e output_kind = GCC_OUTPUT_KIND_EXECUTABLE;
 
     gcc_jit_context *ctx = gcc_jit_context_acquire();
     assert(ctx != NULL);
@@ -283,7 +286,10 @@ int main(int argc, char *argv[])
             verbose = true;
             continue;
         } else if (streq(argv[i], "-c")) {
-            dll = true;
+            output_kind = GCC_OUTPUT_KIND_OBJECT_FILE;
+            continue;
+        } else if (streq(argv[i], "-shared")) {
+            output_kind = GCC_OUTPUT_KIND_DYNAMIC_LIBRARY;
             continue;
         } else if (strncmp(argv[i], "-O", 2) == 0) {
             int opt = atoi(argv[i]+2);
@@ -303,7 +309,7 @@ int main(int argc, char *argv[])
         if (run_program)
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
         else
-            return compile_to_file(ctx, f, dll, verbose, argc-i, &argv[i]);
+            return compile_to_file(ctx, f, output_kind, verbose, argc-i, &argv[i]);
     }
 
     run_repl(ctx, verbose);

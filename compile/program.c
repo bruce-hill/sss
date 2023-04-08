@@ -16,7 +16,7 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, bool standalone, gcc_jit_result **result)
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_output_kind_e output_kind, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, debug);
 
@@ -27,7 +27,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
     (void)fresh("get_exports");
     (void)fresh("prepare_exports");
 
-    if (standalone) {
+    if (output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE) {
         // Compile main() function
         gcc_param_t* main_params[] = {
             gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT), "argc"),
@@ -70,7 +70,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
             gcc_return(block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
     } else {
         // Create the module loading function
-        bl_file_t *type_file = bl_spoof_file("<load signature>", "[{path:@Char,signature:@Char,symbol:@Char,deref:Bool,docs:@Char}]");
+        bl_file_t *type_file = bl_spoof_file("<load signature>", "[{path:@CStringChar,signature:@CStringChar,symbol:@CStringChar}]");
         ast_t *type_ast = parse_type(type_file, env->on_err);
         bl_type_t *exports_t = parse_type_ast(env, type_ast);
         gcc_type_t *gcc_t = bl_type_to_gcc(env, exports_t);
@@ -118,11 +118,10 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
                 gcc_assign(block, NULL, lval, b->rval);
             }
 
-            gcc_rvalue_t *deref = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), b->type->tag != FunctionType);
             gcc_rvalue_t *item_val = gcc_struct_constructor(
-                env->ctx, NULL, gcc_item_t, 4,
-                (gcc_field_t*[]){gcc_get_field(gcc_item_struct, 0), gcc_get_field(gcc_item_struct, 1), gcc_get_field(gcc_item_struct, 2), gcc_get_field(gcc_item_struct, 3)},
-                (gcc_rvalue_t*[]){GC_STR((*exp)->qualified_name), GC_STR(type_to_string(b->type)), GC_STR(sym_name), deref});
+                env->ctx, NULL, gcc_item_t, 3,
+                (gcc_field_t*[]){gcc_get_field(gcc_item_struct, 0), gcc_get_field(gcc_item_struct, 1), gcc_get_field(gcc_item_struct, 2)},
+                (gcc_rvalue_t*[]){GC_STR((*exp)->qualified_name), GC_STR(type_to_string(b->type)), GC_STR(sym_name)});
             gcc_assign(block, NULL, item_home, item_val);
 
             // array.length += 1
@@ -138,7 +137,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
         compiler_err(env, NULL, "Compilation failed");
 
     // Extract the generated code from "result".   
-    main_func_t main_fn = standalone ? (main_func_t)gcc_jit_result_get_code(*result, "main") : NULL;
+    main_func_t main_fn = output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE ? (main_func_t)gcc_jit_result_get_code(*result, "main") : NULL;
     return main_fn;
 }
 
