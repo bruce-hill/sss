@@ -48,12 +48,26 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
         }
         return align;
     }
-    case UnionType: {
+    case TaggedUnionType: {
+        auto tagged = Match(bl_t, TaggedUnionType);
+        int64_t max_tag = 0;
+        foreach (tagged->members, member, _) {
+            if (member->tag_value > max_tag)
+                max_tag = member->tag_value;
+        }
         ssize_t align = 0;
-        auto union_type = Match(bl_t, UnionType);
-        foreach (union_type->field_types, ftype, _) {
-            ssize_t field_align = gcc_alignof(env, *ftype);
-            if (field_align > align) align = field_align;
+        if (max_tag > INT32_MAX)
+            align = 8;
+        else if (max_tag > INT16_MAX)
+            align = 4;
+        else if (max_tag > INT8_MAX)
+            align = 2;
+        else
+            align = 1;
+
+        foreach (tagged->members, member, _) {
+            ssize_t member_align = gcc_alignof(env, member->type);
+            if (member_align > align) align = member_align;
         }
         return align;
     }
@@ -93,68 +107,76 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
             size += max_align - (size % max_align); // padding
         return size;
     }
-    case UnionType: {
-        ssize_t size = 0;
-        ssize_t max_align = 0;
-        auto union_type = Match(bl_t, UnionType);
-        foreach (union_type->field_types, ftype, _) {
-            ssize_t field_align = gcc_alignof(env, *ftype);
-            if (field_align > 1 && size % field_align)
-                size += (field_align - size) % field_align; // padding
-            ssize_t field_size = gcc_sizeof(env, *ftype);
-            if (field_size > size) size = field_size;
-            if (field_align > max_align) max_align = field_align;
-        }
-        if (max_align > 1 && size % max_align)
-            size += (max_align - size) % max_align; // padding
-        return size;
-    }
-    case TagType: {
-        auto tag = Match(bl_t, TagType);
-        int64_t max = 0;
-        for (int64_t i = 0, len = length(tag->values); i < len; i++) {
-            if (ith(tag->values, i) > max)
-                max = ith(tag->values, i);
-        }
-        if (max > INT32_MAX)
-            return 8;
-        else if (max > INT16_MAX)
-            return 4;
-        else if (max > INT8_MAX)
-            return 2;
-        else
-            return 1;
-    }
     case TaggedUnionType: {
         auto tagged = Match(bl_t, TaggedUnionType);
-        ssize_t size = gcc_sizeof(env, tagged->tag_type);
-        ssize_t data_align = gcc_alignof(env, tagged->data);
-        if (data_align > 1 && size % data_align)
-            size += (data_align - size) % data_align; // padding
-        size += gcc_sizeof(env, tagged->data);
+        int64_t max_tag = 0;
+        foreach (tagged->members, member, _) {
+            if (member->tag_value > max_tag)
+                max_tag = member->tag_value;
+        }
+        ssize_t size = 0;
+        if (max_tag > INT32_MAX)
+            size = 8;
+        else if (max_tag > INT16_MAX)
+            size = 4;
+        else if (max_tag > INT8_MAX)
+            size = 2;
+        else
+            size = 1;
+
+        ssize_t union_align = size;
+        ssize_t union_size = 0;
+        foreach (tagged->members, member, _) {
+            if (!member->type) continue;
+            ssize_t member_align = gcc_alignof(env, member->type);
+            if (member_align > union_align) union_align = member_align;
+            ssize_t member_size = gcc_sizeof(env, member->type);
+            if (member_size > union_size) union_size = member_size;
+        }
+        // Padding for union:
+        if (size % union_align != 0) size = (size - (size % union_align)) + union_align;
+        size += union_size;
         return size;
     }
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
     }
 }
 
-List(gcc_field_t*) get_union_fields(env_t *env, bl_type_t *t)
+gcc_type_t *get_tag_type(env_t *env, bl_type_t *t)
 {
-    // This is memoized to preserve GCC equality:
-    static bl_hashmap_t cache = {0};
-    List(gcc_field_t*) fields = hget(&cache, type_to_string(t), List(gcc_field_t*));
-    if (fields) return fields;
+    auto tagged = Match(t, TaggedUnionType);
+    int64_t max_tag = 0;
+    foreach (tagged->members, member, _) {
+        if (member->tag_value > max_tag)
+            max_tag = member->tag_value;
+    }
 
-    fields = LIST(gcc_field_t*);
-    auto union_ = Match(t, UnionType);
-    for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
-        bl_type_t *ft = ith(union_->field_types, i);
-        gcc_type_t *gcc_ft = bl_type_to_gcc(env, ft);
-        gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(union_->field_names, i));
+    if (max_tag > INT32_MAX)
+        return gcc_type(env->ctx, INT64);
+    else if (max_tag > INT16_MAX)
+        return gcc_type(env->ctx, INT32);
+    else if (max_tag > INT8_MAX)
+        return gcc_type(env->ctx, INT16);
+    else
+        return gcc_type(env->ctx, INT8);
+}
+
+gcc_type_t *get_union_type(env_t *env, bl_type_t *t)
+{
+    static bl_hashmap_t cache = {0};
+    gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
+    if (gcc_t) return gcc_t;
+    auto tagged = Match(t, TaggedUnionType);
+    auto fields = LIST(gcc_field_t*);
+    foreach (tagged->members, member, _) {
+        gcc_type_t *gcc_ft = member->type ? bl_type_to_gcc(env, member->type)
+            : gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, member->name, 0, NULL)); // empty struct
+        gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, member->name);
         append(fields, field);
     }
-    hset(&cache, type_to_string(t), fields);
-    return fields;
+    gcc_type_t *union_gcc_t = gcc_union(env->ctx, NULL, "data_union", length(fields), fields[0]);
+    hset(&cache, type_to_string(t), union_gcc_t);
+    return union_gcc_t;
 }
 
 // This must be memoized because GCC JIT doesn't do structural equality
@@ -275,47 +297,16 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_struct_as_type(gcc_struct);
         break;
     }
-    case TagType: {
-        auto tag = Match(t, TagType);
-        int64_t max = 0;
-        for (int64_t i = 0, len = length(tag->values); i < len; i++) {
-            if (ith(tag->values, i) > max)
-                max = ith(tag->values, i);
-        }
-        if (max > INT32_MAX)
-            gcc_t = gcc_type(env->ctx, INT64);
-        else if (max > INT16_MAX)
-            gcc_t = gcc_type(env->ctx, INT32);
-        else if (max > INT8_MAX)
-            gcc_t = gcc_type(env->ctx, INT16);
-        else
-            gcc_t = gcc_type(env->ctx, INT8);
-        break;
-    }
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
-        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name);
-        bl_type_t *tag_t = tagged->tag_type;
-        gcc_field_t *tag_field = gcc_new_field(env->ctx, NULL, bl_type_to_gcc(env, tag_t), "tag");
+        // gcc_union(env->ctx, NULL, "data_u", length(fields), fields[0])
+        gcc_struct_t *gcc_struct = gcc_new_struct_type(
+            env->ctx, NULL, tagged->name, 2, (gcc_field_t*[]){
+                gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
+                gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
+            });
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, type_to_string(t), gcc_t);
-
-        gcc_type_t *gcc_data_t = bl_type_to_gcc(env, tagged->data);
-        if (gcc_data_t) {
-            gcc_field_t *data_field = gcc_new_field(env->ctx, NULL, gcc_data_t, "data");
-            gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){tag_field, data_field});
-        } else {
-            gcc_set_fields(gcc_struct, NULL, 1, &tag_field);
-        }
-        break;
-    }
-    case UnionType: {
-        List(gcc_field_t*) fields = get_union_fields(env, t);
-        if (length(fields) > 0) {
-            gcc_t = gcc_union(env->ctx, NULL, "data_u", length(fields), fields[0]);
-        } else {
-            gcc_t = NULL;
-        }
         break;
     }
     case TypeType: {
@@ -512,70 +503,38 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
         break;
     }
-    case TagType: {
-        gcc_rvalue_t *tag = obj;
-        auto tags = Match(t, TagType);
-        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, t);
-        NEW_LIST(gcc_case_t*, cases);
-        for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            const char* tag_name = ith(tags->names, i);
-            gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-            gcc_return(tag_block, NULL, WRITE_LITERAL(heap_strf("%s.Tag.%s", tags->name, tag_name)));
-            int64_t tag_value = ith(tags->values, i);
-            gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
-            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
-            APPEND(cases, case_);
-        }
-        gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_return(default_block, NULL, WRITE_LITERAL(heap_strf("<Unknown %s value>", tags->name)));
-        gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
-        break;
-    }
     case TaggedUnionType: {
         gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
-        auto tagged_t = Match(t, TaggedUnionType);
-        auto tags = Match(tagged_t->tag_type, TagType);
-        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
-        const char* type_prefix = heap_strf("%s.", tagged_t->name);
+        auto tagged = Match(t, TaggedUnionType);
+        const char* type_prefix = heap_strf("%s.", tagged->name);
         gcc_lvalue_t *printed_var = gcc_local(func, NULL, int_t, "printed");
         gcc_assign(block, NULL, printed_var, WRITE_LITERAL(type_prefix));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
+        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+        gcc_type_t *union_gcc_t = get_union_type(env, t);
         NEW_LIST(gcc_case_t*, cases);
-        for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            const char* tag_name = ith(tags->names, i);
-            gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-
-            auto union_t = Match(tagged_t->data, UnionType);
-            List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
-            for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
-                if (streq(ith(union_t->field_names, u), tag_name)) {
-                    bl_type_t *tag_data_type = ith(union_t->field_types, u);
-                    gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
-                    gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
-                    gcc_field_t *union_field = ith(union_fields, u);
-                    gcc_func_t *tag_print = get_print_func(env, tag_data_type);
-                    if (tag_data_type->tag != StructType)
-                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(heap_strf("%s{", tag_name)));
-                    else if (!Match(tag_data_type, StructType)->name)
-                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(tag_name));
-                    gcc_rvalue_t *suffix_len = gcc_callx(
-                        env->ctx, NULL, tag_print,
-                        quote_string(env, tag_data_type, gcc_rvalue_access_field(data, NULL, union_field)),
-                        f,
-                        gcc_param_as_rvalue(params[2]));
-                    gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, suffix_len);
-                    if (tag_data_type->tag != StructType)
-                        gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("}"));
-                    goto found_struct;
-                }
+        for (int64_t i = 0; i < length(tagged->members); i++) {
+            auto member = ith(tagged->members, i);
+            gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
+            gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(member.name));
+            if (member.type) {
+                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("("));
+                gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
+                gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
+                gcc_field_t *union_field = gcc_get_union_field(union_gcc_t, i);
+                gcc_func_t *tag_print = get_print_func(env, member.type);
+                gcc_rvalue_t *len = gcc_callx(
+                    env->ctx, NULL, tag_print,
+                    quote_string(env, member.type, gcc_rvalue_access_field(data, NULL, union_field)),
+                    f,
+                    gcc_param_as_rvalue(params[2]));
+                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, len);
+                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(")"));
             }
-            gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(tag_name));
-          found_struct:;
             gcc_jump(tag_block, NULL, done);
-            int64_t tag_value = ith(tags->values, i);
-            gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
+            gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
@@ -943,34 +902,25 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         // Otherwise, switch to a comparison of the union member
         gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
 
-        auto tagged_t = Match(t, TaggedUnionType);
-        auto tags = Match(tagged_t->tag_type, TagType);
-        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tagged_t->tag_type);
+        auto tagged = Match(t, TaggedUnionType);
+        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+        gcc_type_t *union_gcc_t = get_union_type(env, t);
+        gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
         NEW_LIST(gcc_case_t*, cases);
-        for (int64_t i = 0, len = length(tags->names); i < len; i++) {
-            const char* tag_name = ith(tags->names, i);
+        for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
+            auto member = ith(tagged->members, i);
+            if (!member.type) continue;
+            gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
+            gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, data_field);
+            gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, data_field);
+            gcc_field_t *union_field = gcc_get_union_field(union_gcc_t, i);
+            gcc_rvalue_t *lhs_field = gcc_rvalue_access_field(lhs_data, NULL, union_field);
+            gcc_rvalue_t *rhs_field = gcc_rvalue_access_field(rhs_data, NULL, union_field);
+            gcc_return(tag_block, NULL, compare_values(env, member.type, lhs_field, rhs_field));
 
-            auto union_t = Match(tagged_t->data, UnionType);
-            List(gcc_field_t*) union_fields = get_union_fields(env, tagged_t->data);
-            for (int64_t u = 0, len = length(union_t->field_names); u < len; u++) {
-                if (streq(ith(union_t->field_names, u), tag_name)) {
-                    gcc_block_t *tag_block = gcc_new_block(func, fresh(tag_name));
-                    bl_type_t *tag_data_type = ith(union_t->field_types, u);
-                    gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
-                    gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, data_field);
-                    gcc_rvalue_t *rhs_data = gcc_rvalue_access_field(rhs, NULL, data_field);
-                    gcc_field_t *union_field = ith(union_fields, u);
-                    gcc_rvalue_t *lhs_field = gcc_rvalue_access_field(lhs_data, NULL, union_field);
-                    gcc_rvalue_t *rhs_field = gcc_rvalue_access_field(rhs_data, NULL, union_field);
-                    gcc_return(tag_block, NULL, compare_values(env, tag_data_type, lhs_field, rhs_field));
-
-                    int64_t tag_value = ith(tags->values, i);
-                    gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, tag_value);
-                    gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
-                    APPEND(cases, case_);
-                    break;
-                }
-            }
+            gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
+            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
+            APPEND(cases, case_);
         }
 
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);

@@ -127,20 +127,16 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypeTaggedUnion: {
         auto tu = Match(ast, TypeTaggedUnion);
-        NEW_LIST(bl_type_t*, union_field_types);
-        NEW_LIST(const char*, union_field_names);
-        bl_type_t *tag_t = Type(TagType, .name=tu->name, .names=tu->tag_names, .values=tu->tag_values);
-        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types);
-        bl_type_t *t = Type(TaggedUnionType, .name=tu->name, .tag_type=tag_t, .data=union_t);
+        NEW_LIST(bl_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
-            const char* tag_name = ith(tu->tag_names, i);
-            ast_t *field_type_ast = ith(tu->tag_types, i);
-            if (field_type_ast) {
-                APPEND(union_field_names, tag_name);
-                APPEND(union_field_types, parse_type_ast(env, field_type_ast));
-            }
+            bl_tagged_union_member_t member = {
+                .name=ith(tu->tag_names, i),
+                .tag_value=ith(tu->tag_values, i),
+                .type=parse_type_ast(env, ith(tu->tag_types, i)),
+            };
+            APPEND_STRUCT(members, member);
         }
-        return t;
+        return Type(TaggedUnionType, .name=tu->name, .members=members);
     }
     case TypeDSL: {
         auto dsl = Match(ast, TypeDSL);
@@ -407,17 +403,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                     if (struct_t->units)
                         field_t = with_units(field_t, struct_t->units);
                     return field_t;
-                }
-            }
-            goto class_lookup;
-        }
-        case TaggedUnionType: {
-            auto union_t = Match(Match(fielded_t, TaggedUnionType)->data, UnionType);
-            for (int64_t i = 0, len = LIST_LEN(union_t->field_names); i < len; i++) {
-                if (streq(LIST_ITEM(union_t->field_names, i), access->field)) {
-                    if (is_optional)
-                        compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
-                    return LIST_ITEM(union_t->field_types, i);
                 }
             }
             goto class_lookup;
@@ -819,10 +804,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             if (case_->var) {
                 case_env = fresh_scope(env);
                 const char* tagname = Match(case_->tag, Var)->name;
-                auto union_ = Match(Match(tagged_t, TaggedUnionType)->data, UnionType);
-                for (int64_t i = 0; i < LIST_LEN(union_->field_names); i++) {
-                    if (streq(ith(union_->field_names, i), tagname)) {
-                        hset(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=ith(union_->field_types, i)));
+                auto members = Match(tagged_t, TaggedUnionType)->members;
+                foreach (members, member, _) {
+                    if (streq(member->name, tagname)) {
+                        hset(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=member->type));
                         goto env_ready;
                     }
                 }

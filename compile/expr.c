@@ -18,35 +18,6 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
-gcc_rvalue_t *add_tag_to_value(env_t *env, bl_type_t *tagged_union_t, bl_type_t *field_type, gcc_rvalue_t *rval, gcc_rvalue_t *tag_rval)
-{
-    gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, tagged_union_t);
-    gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
-
-    auto tagged = Match(tagged_union_t, TaggedUnionType);
-    bl_type_t *union_type = tagged->data;
-    auto union_ = Match(union_type, UnionType);
-
-    int64_t field_index = 0;
-    for (int64_t i = 0, len = length(union_->field_types); i < len; i++) {
-        if (type_eq(ith(union_->field_types, i), field_type)) {
-            field_index = i;
-            break;
-        }
-    }
-    List(gcc_field_t*) union_fields = get_union_fields(env, tagged->data);
-    gcc_field_t *union_field = ith(union_fields, field_index);
-    gcc_type_t *gcc_union_t = bl_type_to_gcc(env, union_type);
-    gcc_rvalue_t *data_union = gcc_union_constructor(env->ctx, NULL, gcc_union_t, union_field, rval);
-    gcc_field_t *fields[] = {
-        gcc_get_field(gcc_tagged_s, 0),
-        gcc_get_field(gcc_tagged_s, 1),
-    };
-    rval = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 2, fields, (gcc_rvalue_t*[]){tag_rval, data_union});
-    assert(rval);
-    return rval;
-}
-
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -719,28 +690,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         size_t num_values = length(struct_->members);
 
-        bl_type_t *tagged_union_t = NULL;
-        if (struct_->type && struct_->type->tag == FieldAccess) {
-            bl_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
-            if (fielded_t->tag == TypeType && Match(fielded_t, TypeType)->type->tag == TaggedUnionType)
-                tagged_union_t = Match(fielded_t, TypeType)->type;
-        }
-
-        if (t->tag != StructType) {
-            // For tagged enums, you can initialize with curly brace syntax (`Foo.Text{"hi"}`)
-            // when it's just a value and not a struct
-            if (num_values != 1)
-                compiler_err(env, ast, "I expected this to have exactly one value");
-            ast_t *member_ast = ith(struct_->members, 0);
-            ast_t *value = Match(member_ast, StructField)->value;
-            gcc_rvalue_t *rval = compile_expr(env, block, value);
-            if (!promote(env, get_type(env, value), &rval, t))
-                compiler_err(env, value, "I couldn't promote this value to %s, which is what this struct needs", type_to_string(t));
-            if (tagged_union_t)
-                rval = add_tag_to_value(env, tagged_union_t, t, rval, binding->tag_rval);
-            return rval;
-        }
-
         auto struct_type = Match(t, StructType);
         if (length(struct_type->field_names) == 0) {
             // GCC doesn't allow empty constructors for empty structs, but for
@@ -867,10 +816,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_values, populated_fields, rvalues);
         assert(rval);
-
-        if (tagged_union_t)
-            rval = add_tag_to_value(env, tagged_union_t, t, rval, binding->tag_rval);
-
         return rval;
     }
     case FunctionCall: {
@@ -952,7 +897,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
         }
 
-        // // First: keyword args
+        // First: keyword args
         foreach (call->args, arg, _) {
             if ((*arg)->tag != KeywordArg) continue;
             auto kwarg = Match((*arg), KeywordArg);
@@ -1163,61 +1108,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 };
 
                 return gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 3, fields, rvals);
-            }
-            break;
-        }
-        case TaggedUnionType: {
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, fielded_t);
-            bl_type_t* tag_bl_type = Match(fielded_t, TaggedUnionType)->tag_type;
-            auto tag_type = Match(tag_bl_type, TagType);
-            bl_type_t *union_type = Match(fielded_t, TaggedUnionType)->data;
-            auto union_ = Match(union_type, UnionType);
-            for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
-                if (streq(ith(union_->field_names, i), access->field)) {
-                    // Step 1: check tag and fail if it's the wrong one:
-                    gcc_rvalue_t *tagged_tag = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
-                    gcc_rvalue_t *field_tag = NULL;
-                    for (int64_t tag_index = 0, len = length(tag_type->names); tag_index < len; tag_index++) {
-                        if (streq(ith(tag_type->names, tag_index), access->field)) {
-                            gcc_type_t *tag_t = bl_type_to_gcc(env, tag_bl_type);
-                            field_tag = gcc_rvalue_from_long(env->ctx, tag_t, ith(tag_type->values, i));
-                            break;
-                        }
-                    }
-                    gcc_func_t *func = gcc_block_func(*block);
-                    gcc_block_t *tag_ok = gcc_new_block(func, fresh("tag_ok")),
-                                *tag_wrong = gcc_new_block(func, fresh("tag_wrong"));
-                    gcc_rvalue_t *is_ok = gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, tagged_tag, field_tag);
-                    gcc_jump_condition(*block, loc, is_ok, tag_ok, tag_wrong);
-
-                    *block = tag_wrong;
-                    char *info = NULL;
-                    size_t size = 0;
-                    FILE *f = open_memstream(&info, &size);
-                    fprint_span(f, ast->span, "\x1b[31;1m", 2, true);
-                    fputc('\0', f);
-                    fflush(f);
-                    gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-                    gcc_func_t *fail = get_function(env, "fail");
-                    const char* fmt_str = heap_strf("%s:%ld.%ld: \x1b[31;1;7mError: this tagged union is not a %s\x1b[m\n\n%%s",
-                                                    ast->span.file->filename,
-                                                    bl_get_line_number(ast->span.file, ast->span.start),
-                                                    bl_get_line_column(ast->span.file, ast->span.start),
-                                                    access->field);
-                    gcc_rvalue_t *fmt = gcc_str(env->ctx, fmt_str);
-                    gcc_rvalue_t *failure = gcc_callx(env->ctx, loc, fail, fmt, callstack);
-                    gcc_eval(tag_wrong, loc, failure);
-                    fclose(f);
-                    free(info);
-                    gcc_jump(tag_wrong, loc, tag_wrong);
-
-                    // Step 2: access tagged.__data.TagName
-                    *block = tag_ok;
-                    List(gcc_field_t*) union_fields = get_union_fields(env, union_type);
-                    gcc_field_t *field = ith(union_fields, i);
-                    gcc_rvalue_t *data = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
-                    return gcc_rvalue_access_field(data, loc, field);
-                }
             }
             break;
         }
@@ -1663,45 +1553,55 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, loc, subject_var, subject);
         subject = gcc_rval(subject_var);
 
-        binding_t *tags_binding = get_from_namespace(env, subject_t, "__Tag");
-        assert(tags_binding);
-        bl_type_t *tag_t = Match(tags_binding->type, TypeType)->type;
-
         bl_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, bl_type_to_gcc(env, result_t), fresh("when_value")) : NULL;
         gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
-        bl_type_t *union_type = Match(subject_t, TaggedUnionType)->data;
-        auto union_ = Match(union_type, UnionType);
-        List(gcc_field_t*) union_fields = get_union_fields(env, union_type);
+        gcc_type_t *gcc_union_t = get_union_type(env, subject_t);
+
+        auto tagged = Match(subject_t, TaggedUnionType);
         NEW_LIST(gcc_case_t*, gcc_cases);
         foreach (when->cases, case_, _) {
             const char* tag_name = Match(case_->tag, Var)->name;
             gcc_loc_t *case_loc = ast_loc(env, case_->tag);
             env_t *case_env = env;
+            int64_t tag_value = 0;
             if (case_->var) {
                 case_env = fresh_scope(env);
 
                 gcc_rvalue_t *case_rval = NULL;
                 bl_type_t *case_t = NULL;
-                for (int64_t i = 0, len = length(union_->field_names); i < len; i++) {
-                    if (streq(ith(union_->field_names, i), tag_name)) {
+                for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
+                    auto member = ith(tagged->members, i);
+                    if (streq(member.name, tag_name)) {
+                        if (!member.type)
+                            compiler_err(env, case_->var, "This tagged union tag has no value, so it can't be bound to anything");
                         gcc_rvalue_t *data = gcc_rvalue_access_field(subject, case_loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
-                        case_rval = gcc_rvalue_access_field(data, case_loc, ith(union_fields, i));
-                        case_t = ith(union_->field_types, i);
-                        break;
+                        case_rval = gcc_rvalue_access_field(data, case_loc, gcc_get_union_field(gcc_union_t, i));
+                        case_t = member.type;
+                        tag_value = member.tag_value;
+                        goto found_tag;
                     }
                 }
-                if (!case_rval)
-                    compiler_err(env, case_->var, "I couldn't figure out how to bind this variable (maybe the tag doesn't have a value associated with it)");
+                compiler_err(env, case_->var, "I couldn't find a tag with this name");
 
+              found_tag:
                 binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
                 hset(case_env->bindings, Match(case_->var, Var)->name, case_binding);
+            } else {
+                foreach (tagged->members, member, _) {
+                    if (streq(member->name, tag_name)) {
+                        tag_value = member->tag_value;
+                        goto found_tag_without_value;
+                    }
+                }
+                compiler_err(env, case_->var, "I couldn't find a tag with this name");
+              found_tag_without_value:;
             }
 
             gcc_block_t *case_block = gcc_new_block(func, fresh(heap_strf("case_%s", tag_name)));
-            gcc_rvalue_t *tag_rval = get_from_namespace(env, tag_t, tag_name)->rval;
+            gcc_rvalue_t *tag_rval = gcc_rvalue_from_long(env->ctx, get_tag_type(env, subject_t), tag_value);
             gcc_case_t *gcc_case = gcc_new_case(env->ctx, tag_rval, tag_rval, case_block);
             APPEND(gcc_cases, gcc_case);
 

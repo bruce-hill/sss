@@ -101,10 +101,6 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             auto gen = Match(t, GeneratorType);
             return CORD_cat(type_to_cord(gen->generated, false), "(generator)");
         }
-        case TagType: {
-            auto tag = Match(t, TagType);
-            return CORD_cat(tag->name, ".Tag");
-        }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
             if (!expand_structs)
@@ -112,37 +108,19 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
 
             CORD c = CORD_cat(tagged->name, " oneof{");
 
-            auto tags = Match(tagged->tag_type, TagType);
-            auto union_ = Match(tagged->data, UnionType);
-            for (int64_t i = 0, len = LIST_LEN(tags->names); i < len; i++) {
+            for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, ",");
-                const char* name = LIST_ITEM(tags->names, i);
-                if (LIST_ITEM(tags->values, i) == i)
-                    c = CORD_cat(c, name);
+                auto member = LIST_ITEM(tagged->members, i);
+                if (i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value)
+                    c = CORD_cat(c, member.name);
                 else
-                    CORD_sprintf(&c, "%r%s=%ld", c, name, LIST_ITEM(tags->values, i));
+                    CORD_sprintf(&c, "%r%s=%ld", c, member.name, member.tag_value);
 
-                for (int64_t j = 0, jlen = LIST_LEN(union_->field_names); j < jlen; j++) {
-                    if (streq(LIST_ITEM(union_->field_names, j), name)) {
-                        CORD_sprintf(&c, "%r:%r", c, type_to_cord(LIST_ITEM(union_->field_types, j), true));
-                        break;
-                    }
-                }
+                if (member.type)
+                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, true));
             }
             c = CORD_cat(c, "}");
-            return c;
-        }
-        case UnionType: {
-            CORD c = "Union(";
-            auto union_ = Match(t, UnionType);
-            for (int64_t i = 0, len = LIST_LEN(union_->field_names); i < len; i++) {
-                if (i > 0)
-                    c = CORD_cat(c, ",");
-                const char* name = LIST_ITEM(union_->field_names, i);
-                CORD_sprintf(&c, "%r%s:%r", c, name, type_to_cord(LIST_ITEM(union_->field_types, i), true));
-            }
-            c = CORD_cat(c, ")");
             return c;
         }
         default: {
@@ -276,15 +254,23 @@ bool is_orderable(bl_type_t *t)
     switch (t->tag) {
     case ArrayType: return is_orderable(Match(t, ArrayType)->item_type);
     case PointerType: case FunctionType: case TableType: return false;
-    case StructType: case UnionType: {
-        auto subtypes = t->tag == StructType ? Match(t, StructType)->field_types : Match(t, UnionType)->field_types;
+    case StructType: {
+        auto subtypes = Match(t, StructType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {
             if (!is_orderable(LIST_ITEM(subtypes, i)))
                 return false;
         }
         return true;
     }
-    case TaggedUnionType: return is_orderable(Match(t, TaggedUnionType)->data);
+    case TaggedUnionType: {
+        auto members = Match(t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = LIST_ITEM(members, i);
+            if (member.type && !is_orderable(member.type))
+                return false;
+        }
+        return true;
+    }
     default: return true;
     }
 }
@@ -296,16 +282,23 @@ bool has_heap_memory(bl_type_t *t)
     case TableType: return true;
     case PointerType: return true;
     case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated);
-    case StructType: case UnionType: {
-        auto field_types = t->tag == StructType ? Match(t, StructType)->field_types
-            : Match(t, UnionType)->field_types;
+    case StructType: {
+        auto field_types = Match(t, StructType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
             if (has_heap_memory(LIST_ITEM(field_types, i)))
                 return true;
         }
         return false;
     }
-    case TaggedUnionType: return has_heap_memory(Match(t, TaggedUnionType)->data);
+    case TaggedUnionType: {
+        auto members = Match(t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = LIST_ITEM(members, i);
+            if (member.type && has_heap_memory(member.type))
+                return true;
+        }
+        return false;
+    }
     default: return false;
     }
 }
@@ -365,21 +358,12 @@ bool can_leave_uninitialized(bl_type_t *t)
         return true;
     }
     case TaggedUnionType: {
-        auto tu = Match(t, TaggedUnionType);
-        auto tag = Match(tu->tag_type, TagType);
-        auto union_ = Match(tu->data, UnionType);
-        for (int64_t i = 0; i < LIST_LEN(tag->values); i++) {
-            if (LIST_ITEM(tag->values, i) != 0)
-                continue;
-
-            const char* name = LIST_ITEM(tag->names, i);
-            for (int64_t j = 0; j < LIST_LEN(union_->field_names); j++) {
-                if (streq(LIST_ITEM(union_->field_names, j), name))
-                    return can_leave_uninitialized(LIST_ITEM(union_->field_types, j));
-            }
-            return true;
+        auto members = Match(t, TaggedUnionType)->members;
+        LIST_FOR (members, member, _) {
+            if (member->type && !can_leave_uninitialized(member->type))
+                return false;
         }
-        return false;
+        return true;
     }
     default: return false;
     }

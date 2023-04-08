@@ -22,6 +22,7 @@ void list_remove(list_t *list, size_t item_size, int64_t index, int64_t count, c
 #define NEW_LIST(t, x) t** x = (t**)list_new(sizeof(t), 8)
 #define stringify(x) #x
 #define APPEND(list, item) list_append((list_t*)list, sizeof(list[0][0]), &(__typeof__ (list[0][0])){item})
+#define APPEND_STRUCT(list, item) list_append((list_t*)list, sizeof(list[0][0]), &item)
 #define LIST_LEN(list) (((list_t*)(list))->len)
 #define LIST_ITEM(list, i) (assert(/* Check list index */ (int64_t)i >= 0 && (int64_t)i < LIST_LEN(list)), (list)[0][i])
 #define LIST_FIRST(list) ((list)[0])

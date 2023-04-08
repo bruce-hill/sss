@@ -8,6 +8,12 @@
 
 typedef const struct bl_type_s bl_type_t;
 
+typedef struct {
+    const char *name;
+    int64_t tag_value;
+    bl_type_t *type;
+} bl_tagged_union_member_t;
+
 struct bl_type_s {
     enum {
         UnknownType,
@@ -22,8 +28,6 @@ struct bl_type_s {
         PointerType,
         GeneratorType,
         StructType,
-        TagType,
-        UnionType,
         TaggedUnionType,
     } tag;
 
@@ -72,17 +76,7 @@ struct bl_type_s {
         } StructType;
         struct {
             const char* name;
-            List(const char*) names;
-            List(int64_t) values;
-        } TagType;
-        struct {
-            List(const char*) field_names;
-            List(bl_type_t*) field_types;
-        } UnionType;
-        struct {
-            const char* name;
-            bl_type_t *tag_type;
-            bl_type_t *data;
+            List(bl_tagged_union_member_t) members;
         } TaggedUnionType;
     } __data;
 };

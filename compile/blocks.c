@@ -69,56 +69,66 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
         const char* tu_name = tu_def->name;
         if (get_binding(env, tu_name))
             compiler_err(env, def, "Something called %s is already defined.", tu_name);
-        NEW_LIST(bl_type_t*, union_field_types);
-        NEW_LIST(const char*, union_field_names);
-        bl_type_t *tag_t = Type(TagType, .name=tu_name, .names=tu_def->tag_names, .values=tu_def->tag_values);
-        bl_type_t *union_t = Type(UnionType, .field_names=union_field_names, .field_types=union_field_types);
-        bl_type_t *t = Type(TaggedUnionType, .name=tu_name, .tag_type=tag_t, .data=union_t);
-        gcc_rvalue_t *rval = gcc_str(env->ctx, tu_name);
+        NEW_LIST(bl_tagged_union_member_t, members);
+        for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
+            ast_t *member_type_ast = ith(tu_def->tag_types, i);
+            bl_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            bl_tagged_union_member_t member = {
+                .name=ith(tu_def->tag_names, i),
+                .tag_value=ith(tu_def->tag_values, i),
+                .type=member_t,
+            };
+            APPEND_STRUCT(members, member);
+        }
+
+        bl_type_t *t = Type(TaggedUnionType, .name=tu_name, .members=members);
 
         bl_hashmap_t *type_ns = get_namespace(env, t);
         type_ns->fallback = env->bindings;
+
+        gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, t);
+        gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+        gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+        gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
+        gcc_type_t *union_gcc_t = get_union_type(env, t);
+        for (int64_t i = 0; i < length(members); i++) {
+            auto member = ith(members, i);
+            // Constructor:
+            if (member.type) {
+                gcc_param_t *params[] = {
+                    gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, member.type), fresh(member.name)),
+                };
+                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, bl_type_to_gcc(env, t),
+                                                fresh(member.name), 1, params, 0);
+                gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
+                gcc_return(func_body, NULL, gcc_struct_constructor(
+                        env->ctx, NULL, gcc_tagged_t, 2, (gcc_field_t*[]){
+                            tag_field,
+                            union_field,
+                        }, (gcc_rvalue_t*[]){
+                            gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
+                            gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), gcc_param_as_rvalue(params[0])),
+                        }));
+                hset(type_ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, member.type),
+                                                                     .arg_names=LIST(const char*, member.name),
+                                                                     .ret=t),
+                                               .func=func, .rval=gcc_get_func_address(func, NULL)));
+            } else {
+                gcc_rvalue_t *val = gcc_struct_constructor(
+                    env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
+                        gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
+                    });
+                hset(type_ns, member.name, new(binding_t, .type=t, .rval=val));
+            }
+        }
+        gcc_rvalue_t *rval = gcc_str(env->ctx, tu_name);
 
         // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval);
         hset(env->global_bindings, tu_name, binding);
         hset(env->type_namespaces, tu_name, type_ns);
 
-        bl_hashmap_t *tag_namespace = get_namespace(env, tag_t);
-        tag_namespace->fallback = type_ns;
-        binding_t *tag_binding = new(binding_t, .type=Type(TypeType, .type=tag_t),
-                                     .rval=gcc_str(env->ctx, heap_strf("%s.__Tag", tu_name)));
-        hset(type_ns, "__Tag", tag_binding);
-        hset(env->type_namespaces, type_to_string(tag_t), tag_namespace);
-
-        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
-
-        // Bind tag values:
-        env_t type_env = *env;
-        type_env.bindings = type_ns;
-        for (int64_t i = 0, len = length(tu_def->tag_names); i < len; i++) {
-            const char* tag_name = ith(tu_def->tag_names, i);
-            gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(tu_def->tag_values, i));
-            // Bind the tag:
-            hset(tag_namespace, tag_name, new(binding_t, .type=tag_t, .is_constant=true, .rval=tag_val));
-
-            ast_t *field_type_ast = ith(tu_def->tag_types, i);
-            if (field_type_ast) {
-                bl_type_t *field_t = predeclare_def_types(&type_env, field_type_ast);
-                assert(field_t || field_type_ast->tag != StructDef);
-                APPEND(union_field_names, tag_name);
-                if (!field_t)
-                    field_t = parse_type_ast(env, field_type_ast);
-                APPEND(union_field_types, field_t);
-
-                // Bind the struct type:
-                binding_t *b = new(binding_t, .type=Type(TypeType, .type=field_t), .is_constant=true, .tag_rval=tag_val,
-                                   .rval=gcc_str(env->ctx, heap_strf("%s.%s", tu_name, tag_name)));
-                hset(type_ns, tag_name, b);
-                // Also visible in the enclosing namespace:
-                // hset(env->bindings, tag_name, b);
-            }
-        }
         return t;
     } else if (def->tag == UnitDef) {
         auto unit_def = Match(def, UnitDef);
@@ -180,24 +190,6 @@ static void populate_def_members(env_t *env, ast_t *def)
 
             populate_def_members(&inner_env, field_type_ast);
             ++field_index;
-        }
-
-        bl_type_t *tag_t = Match(t, TaggedUnionType)->tag_type;
-        gcc_type_t *tag_gcc_t = bl_type_to_gcc(env, tag_t);
-
-        // Bind any tagged union fields without data (X is Foo.Tag.X)
-        for (int64_t i = 0, len = length(tu_def->tag_names); i < len; i++) {
-            ast_t *field_type_ast = ith(tu_def->tag_types, i);
-            if (field_type_ast) continue;
-            gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, t);
-            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
-            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-            gcc_rvalue_t *tag_val = gcc_rvalue_from_long(env->ctx, tag_gcc_t, ith(tu_def->tag_values, i));
-            gcc_rvalue_t *singleton = gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, &tag_field, &tag_val);
-            binding_t *singleton_binding = new(binding_t, .type=t, .rval=singleton);
-            const char* tag_name = ith(tu_def->tag_names, i);
-            hset(inner_env.bindings, tag_name, singleton_binding);
-            // hset(env->bindings, tag_name, singleton_binding);
         }
     }
 }
