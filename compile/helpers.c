@@ -331,15 +331,29 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
     if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType)))) {
         binding_t *b = get_from_namespace(env, needed, "from_pointer");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
-        return true;
     } else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType)))) {
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
-        return true;
-    }
-    
-    if (!type_eq(actual, needed))
+    } else if (actual->tag == StructType && needed->tag == StructType) { // Struct promotion
+        gcc_type_t *actual_gcc_t = bl_type_to_gcc(env, actual);
+        gcc_type_t *needed_gcc_t = bl_type_to_gcc(env, needed);
+        auto actual_field_types = Match(actual, StructType)->field_types;
+        auto needed_field_types = Match(needed, StructType)->field_types;
+        if (LIST_LEN(needed_field_types) == 0)
+            return true;
+        NEW_LIST(gcc_field_t*, needed_fields);
+        NEW_LIST(gcc_rvalue_t*, field_vals);
+        for (int64_t i = 0; i < LIST_LEN(actual_field_types); i++) {
+            APPEND(needed_fields, gcc_get_field(gcc_type_if_struct(needed_gcc_t), i));
+            gcc_rvalue_t *field_val = gcc_rvalue_access_field(*val, NULL, gcc_get_field(gcc_type_if_struct(actual_gcc_t), i));
+            if (!promote(env, LIST_ITEM(actual_field_types, i), &field_val, LIST_ITEM(needed_field_types, i)))
+                return false;
+            APPEND(field_vals, field_val);
+        }
+        *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LIST_LEN(needed_fields), needed_fields[0], field_vals[0]);
+    } else if (!type_eq(actual, needed)) {
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
+    }
     return true;
 }
 

@@ -339,7 +339,19 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType))))
         return true;
 
-    // TODO: Struct promotion?
+    if (actual->tag == StructType && needed->tag == StructType) {
+        auto actual_struct = Match(actual, StructType);
+        auto needed_struct = Match(needed, StructType);
+        // TODO: allow promoting with uninitialized or extraneous values?
+        if (LIST_LEN(actual_struct->field_types) != LIST_LEN(needed_struct->field_types))
+            return false;
+        for (int64_t i = 0; i < LIST_LEN(actual_struct->field_types); i++) {
+            // TODO: check field names??
+            if (!can_promote(LIST_ITEM(actual_struct->field_types, i), LIST_ITEM(needed_struct->field_types, i)))
+                return false;
+        }
+        return true;
+    }
 
     return false;
 }
