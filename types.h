@@ -29,6 +29,7 @@ struct bl_type_s {
         GeneratorType,
         StructType,
         TaggedUnionType,
+        ModuleType,
     } tag;
 
     union {
@@ -78,6 +79,9 @@ struct bl_type_s {
             const char* name;
             List(bl_tagged_union_member_t) members;
         } TaggedUnionType;
+        struct {
+            const char *path;
+        } ModuleType;
     } __data;
 };
 

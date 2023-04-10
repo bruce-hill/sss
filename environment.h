@@ -38,6 +38,7 @@ typedef struct {
         gcc_jit_function *func;
     };
     bool is_constant:1;
+    bool visible_in_closures:1;
 } binding_t;
 
 typedef struct conversions_s {
@@ -46,20 +47,15 @@ typedef struct conversions_s {
     gcc_func_t *func;
 } conversions_t;
 
-typedef struct export_t {
-    const char* qualified_name;
-    binding_t *binding;
-} export_t;
-
 typedef struct env_s {
     gcc_ctx_t *ctx;
     bl_file_t *file;
     jmp_buf *on_err;
     bl_hashmap_t *bindings; // name -> binding_t
-    bl_hashmap_t *global_bindings; // name -> binding_t
-    List(export_t*) exports; // Ordered list of exports
+    bl_hashmap_t *global_bindings; // name -> binding_t*
     bl_hashmap_t *global_funcs; // name -> func
-    bl_hashmap_t *type_namespaces; // bl_type -> name -> binding_t
+    bl_hashmap_t *type_namespaces; // bl_type_t* -> name -> binding_t*
+    bl_hashmap_t *def_types; // ast_t* -> binding_t*
     bl_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;

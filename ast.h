@@ -54,7 +54,6 @@ typedef enum {
     With,
     Extend,
     Use,
-    Export,
     Ellipsis,
     Delete,
     In,
@@ -108,10 +107,6 @@ struct ast_s {
             List(ast_t*) children;
         } StringJoin;
         struct {
-            const char *name;
-            ast_t *str;
-        } DSL;
-        struct {
             ast_t *value;
             bool labelled;
         } Interp;
@@ -151,7 +146,6 @@ struct ast_s {
             List(ast_t*) arg_defaults;
             ast_t *ret_type;
             ast_t *body;
-            bool is_exported;
             bool is_inline;
         } FunctionDef;
         struct {
@@ -300,9 +294,6 @@ struct ast_s {
         struct {
             const char *path;
         } Use;
-        struct {
-            List(const char*) vars;
-        } Export;
         struct {} Ellipsis;
         struct {
             ast_t *value;
@@ -314,5 +305,7 @@ struct ast_s {
 };
 
 const char *ast_to_str(ast_t *ast);
+typedef void (*ast_visitor_t)(ast_t*, void*);
+void walk_ast(ast_t *ast, ast_visitor_t visit, void *userdata, bool depth_first);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

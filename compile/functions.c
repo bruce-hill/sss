@@ -48,9 +48,12 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     }
 }
 
-gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name, bool is_global)
+gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    (void)is_global;
+    bl_hashmap_t cache = {0};
+    gcc_func_t *cached = hget(&cache, def, gcc_func_t*);
+    if (cached) return cached;
+
     auto t = Match(get_type(env, def), FunctionType);
     NEW_LIST(gcc_param_t*, params);
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
@@ -62,9 +65,11 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name, bool is_g
     }
 
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
-    return gcc_new_func(
+    cached = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
+    hset(&cache, def, cached);
+    return cached;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

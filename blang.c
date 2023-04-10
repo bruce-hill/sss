@@ -43,15 +43,13 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, gcc_output_kind_e output
     } else {
         binary_name = CORD_from_char_star(argv[i]);
         size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
-        if (i == CORD_NOT_FOUND && (output_kind == GCC_JIT_OUTPUT_KIND_OBJECT_FILE || output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE)) {
+        if (output_kind == GCC_JIT_OUTPUT_KIND_OBJECT_FILE || (i == CORD_NOT_FOUND && output_kind == GCC_JIT_OUTPUT_KIND_EXECUTABLE)) {
             binary_name = CORD_cat(binary_name, ".o");
         } else {
             if (i != CORD_NOT_FOUND)
                 binary_name = CORD_substr(binary_name, 0, i);
 
-            if (output_kind == GCC_JIT_OUTPUT_KIND_OBJECT_FILE) {
-                binary_name = CORD_cat(binary_name, ".o");
-            } else if (output_kind == GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY) {
+            if (output_kind == GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY) {
                 const char *path = CORD_to_char_star(binary_name);
                 const char *slash = strrchr(path, '/');
                 if (slash) {
@@ -294,6 +292,11 @@ int main(int argc, char *argv[])
         } else if (strncmp(argv[i], "-O", 2) == 0) {
             int opt = atoi(argv[i]+2);
             gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
+            continue;
+        }
+
+        if (strncmp(argv[i], "-I", 2) == 0) {
+            gcc_add_driver_opt(ctx, argv[i]+2);
             continue;
         }
 

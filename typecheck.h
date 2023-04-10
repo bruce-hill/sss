@@ -8,6 +8,9 @@
 #include "compile/compile.h"
 #include "types.h"
 
+void predeclare_def_types(env_t *env, ast_t *def);
+void predeclare_def_funcs(env_t *env, ast_t *def);
+void populate_def_members(env_t *env, ast_t *def);
 bl_type_t *parse_type_ast(env_t *env, ast_t *ast);
 bl_type_t *get_type(env_t *env, ast_t *ast);
 bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag, bl_type_t *rhs_t);

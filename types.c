@@ -123,6 +123,11 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             c = CORD_cat(c, "}");
             return c;
         }
+        case ModuleType: {
+            CORD c;
+            CORD_sprintf(&c, "Module(\"%s\")", Match(t, ModuleType)->path);
+            return c;
+        }
         default: {
             CORD c;
             CORD_sprintf(&c, "Unknown type: %d", t->tag);

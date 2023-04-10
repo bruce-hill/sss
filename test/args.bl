@@ -1,11 +1,11 @@
 say "PROGRAM_NAME: $PROGRAM_NAME"
-say "args: $args"
+say "args: $ARGS"
 
-if #args > 0
-    say "args[1] ($(args[1])) == 'one'? $(args[1] == "one")"
+if #ARGS > 0
+    say "ARGS[1] ($(ARGS[1])) == 'one'? $(ARGS[1] == "one")"
 
-def foo(args:Int)
-    fail "Args is: $args" unless args == 5
-    say "Shadowing args works"
+def foo(ARGS:Int)
+    fail "Args is: $ARGS" unless ARGS == 5
+    say "Shadowing ARGS works"
 
 foo(5)

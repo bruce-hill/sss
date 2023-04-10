@@ -15,6 +15,7 @@
 #include "../types.h"
 #include "../units.h"
 #include "../util.h"
+#include "../SipHash/halfsiphash.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
@@ -109,20 +110,6 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     default: break;
     }
     compiler_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
-}
-
-static void export(env_t *env, const char* name, binding_t *b)
-{
-    export_t *exp = new(export_t, .qualified_name=name, .binding=b);
-    APPEND(env->exports, exp);
-    // Export everything from the inner scope:
-    if (b->type->tag == TypeType) {
-        bl_hashmap_t *ns = get_namespace(env, Match(b->type, TypeType)->type);
-        for (uint32_t i = 1; i <= ns->count; i++) {
-            auto entry = hnth(ns, i, const char*, binding_t*);
-            export(env, heap_strf("%s.%s", name, entry->key), entry->value);
-        }
-    }
 }
 
 static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *obj)
@@ -421,12 +408,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *binding = get_binding(env, fn->name);
         assert(binding && binding->func);
         compile_function(env, binding->func, ast);
-        if (fn->is_exported)
-            APPEND(env->exports, new(export_t, .qualified_name=fn->name, .binding=binding));
         return binding->rval;
     }
     case Lambda: {
-        gcc_func_t *func = get_function_def(env, ast, fresh("lambda"), false);
+        gcc_func_t *func = get_function_def(env, ast, fresh("lambda"));
         compile_function(env, func, ast);
         return gcc_get_func_address(func, loc);
     }
@@ -636,7 +621,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             .arg_types=LIST(ast_t*, convert->source_type),
             .ret_type=convert->target_type,
             .body=convert->body);
-        gcc_func_t *func = get_function_def(env, def, fresh("convert"), false);
+        gcc_func_t *func = get_function_def(env, def, fresh("convert"));
         compile_function(env, func, def);
         env->conversions = new(conversions_t, .src=src_t, .dest=target_t, .func=func, .next=env->conversions);
         return NULL;
@@ -647,7 +632,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (ast->tag == StructDef) {
             auto struct_def = Match(ast, StructDef);
             members = struct_def->definitions;
-            t = Match(get_binding(env, struct_def->name)->type, TypeType)->type;
+            binding_t *b = get_binding(env, struct_def->name);
+            if (!b) compiler_err(env, ast, "I couldn't find the type for this struct name");
+            t = Match(b->type, TypeType)->type;
         } else {
             auto extend = Match(ast, Extend);
             members = Match(extend->body, Block)->statements;
@@ -863,7 +850,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)
-                    compiler_err(env, call->fn, "I couldn't find a method with this name defined for a %s.", type_to_string(self_t));
+                    goto non_method_fncall;
                 if (binding->type->tag != FunctionType)
                     compiler_err(env, call->fn, "This value isn't a function, it's a %s", type_to_string(binding->type));
                 auto fn_info = Match(binding->type, FunctionType);
@@ -883,6 +870,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             }
         } else {
+          non_method_fncall:
             fn_ptr = compile_expr(env, block, call->fn);
             fn = NULL;
         }
@@ -1832,16 +1820,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Use: {
-        return NULL;
-    }
-    case Export: {
-        foreach (Match(ast, Export)->vars, name, _) {
-            binding_t *b = get_binding(env, *name);
-            if (!b)
-                compiler_err(env, ast, "I couldn't find the variable '%s'", *name);
-            export(env, *name, b);
-        }
-        return NULL;
+        // TODO: .so shared files
+        const char *path = Match(ast, Use)->path;
+        bl_file_t *f = bl_load_file(path);
+        if (!f) compiler_err(env, ast, "This import isn't compiled. Use `blangc %s` to compile it", path);
+        bl_type_t *t = get_type(env, ast);
+        char hash_random_vector[] = "Blang modulehash---------------------------------------------";
+        uint64_t hash;
+        halfsiphash(f->text, strlen(f->text), hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+        const char *load_fn_name = heap_strf("load_%lx", hash);
+        gcc_func_t *load_fn = gcc_new_func(
+            env->ctx, loc, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, t), load_fn_name, 0, NULL, 0);
+        return gcc_callx(env->ctx, loc, load_fn);
     }
     default: break;
     }

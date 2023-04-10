@@ -355,9 +355,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .on_err = on_err,
         .file = f,
         .global_bindings = new(bl_hashmap_t),
-        .exports = LIST(export_t*),
         .bindings = new(bl_hashmap_t),
         .type_namespaces = new(bl_hashmap_t),
+        .def_types = new(bl_hashmap_t),
         .global_funcs = new(bl_hashmap_t),
         .debug = debug,
     );
@@ -399,11 +399,22 @@ env_t *fresh_scope(env_t *env)
     return fresh;
 }
 
+static void copy_global_bindings(bl_hashmap_t *dest, bl_hashmap_t *src)
+{
+    for (uint32_t i = 1; i <= src->count; i++) {
+        auto entry = hnth(src, i, const char*, binding_t*);
+        if (entry->value->visible_in_closures)
+            hset(dest, entry->key, entry->value);
+    }
+    if (src->fallback) copy_global_bindings(dest, src->fallback);
+}
+
 env_t *global_scope(env_t *env)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));
     *fresh = *env;
     fresh->bindings = new(bl_hashmap_t, .fallback=env->global_bindings);
+    copy_global_bindings(fresh->bindings, env->bindings);
     return fresh;
 }
 

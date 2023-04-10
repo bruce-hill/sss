@@ -71,6 +71,7 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
         }
         return align;
     }
+    case ModuleType: return 1;
     default:
         return gcc_sizeof(env, bl_t);
     }
@@ -138,6 +139,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         size += union_size;
         return size;
     }
+    case ModuleType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
     }
 }
@@ -313,7 +315,19 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         gcc_t = gcc_get_ptr_type(gcc_type(env->ctx, CHAR));
         break;
     }
+    case GeneratorType: {
+        auto generator = Match(t, GeneratorType);
+        switch (generator->generated->tag) {
+        case AbortType: case VoidType: return gcc_type(env->ctx, VOID);
+        default: goto unknown_gcc_type;
+        }
+    }
+    case ModuleType: {
+        gcc_t = gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, "Module", 0, NULL));
+        break;
+    }
     default: {
+      unknown_gcc_type:
         compiler_err(env, NULL, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
     }
     }
@@ -351,7 +365,7 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
             APPEND(field_vals, field_val);
         }
         *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LIST_LEN(needed_fields), needed_fields[0], field_vals[0]);
-    } else if (!type_eq(actual, needed)) {
+    } else if (!type_eq(actual, needed) || actual->tag == FunctionType) {
         *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
     }
     return true;
@@ -724,6 +738,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                              gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), f));
         break;
     }
+    case ModuleType: {
+        gcc_return(block, NULL, WRITE_LITERAL(type_to_string(t)));
+        break;
+    }
     default: {
         fprintf(stderr, "\x1b[31;1mprint(%s) function is not yet implemented!\n", type_to_string(t));
         exit(1);
@@ -1054,7 +1072,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
             gcc_return(block, NULL, compare_values(env, t, lhs, rhs));
             break;
         }
-        fprintf(stderr, "\x1b[31;1mcompare(%s,%s) function is not yet implemented!\n", type_to_string(t), type_to_string(t));
+        fprintf(stderr, "\x1b[31;1mcompare(%s,%s) function is not implemented!\n", type_to_string(t), type_to_string(t));
         exit(1);
     }
     }

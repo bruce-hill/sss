@@ -7,6 +7,7 @@
 
 #include "ast.h"
 #include "environment.h"
+#include "parse.h"
 #include "typecheck.h"
 #include "types.h"
 #include "units.h"
@@ -229,6 +230,7 @@ static bl_type_t *generate(bl_type_t *t)
     else
         return Type(GeneratorType, .generated=t);
 }
+
 
 bl_type_t *get_type(env_t *env, ast_t *ast)
 {
@@ -497,9 +499,22 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             return Type(VoidType);
         default: break;
         }
-        // The compiler hasn't implemented full typechecking for blocks that define new
-        // types, though it does support declaring new variables:
+
         env = fresh_scope(env);
+
+        // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
+        foreach (block->statements, stmt, _) {
+            predeclare_def_types(env, *stmt);
+        }
+        // Populate struct fields:
+        foreach (block->statements, stmt, _) {
+            populate_def_members(env, *stmt);
+        }
+        // Function defs are visible in the entire block (allowing corecursive funcs)
+        foreach (block->statements, stmt, _) {
+            predeclare_def_funcs(env, *stmt);
+        }
+
         for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
             ast_t *stmt = LIST_ITEM(block->statements, i);
             switch (stmt->tag) {
@@ -509,15 +524,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
                 break;
             }
-            case FunctionDef: {
-                bl_type_t *t = get_type(env, stmt);
-                auto fndef = Match(stmt, FunctionDef);
-                hset(env->bindings, fndef->name, new(binding_t, .type=t));
-                break;
-            }
-            case StructDef: case TaggedUnionDef:
-                compiler_err(env, stmt, "I don't currently support defining types inside blocks that are used as expressions");
-                break;
             default:
                 // TODO: bind structs/tagged unions in block typechecking
                 break;
@@ -543,8 +549,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Extern: {
         return parse_type_ast(env, Match(ast, Extern)->type);
     }
-    case Declare: case Assign: case Delete: case DocTest: case Use: case Export: {
+    case Declare: case Assign: case Delete: case DocTest: {
         return Type(VoidType);
+    }
+    case Use: {
+        const char *path = Match(ast, Use)->path;
+        return Type(ModuleType, .path=path);
     }
     case Return: case Fail: case Stop: case Skip: {
         return Type(AbortType);

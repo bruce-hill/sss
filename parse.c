@@ -40,7 +40,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","export","enum","else","do","del",
+    "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","enum","else","do","del",
     "deftype", "defer","def","bitcast","between","as","and", NULL,
 };
 
@@ -86,7 +86,6 @@ static PARSER(parse_extern);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
-static PARSER(parse_export);
 static PARSER(parse_ellipsis);
 
 //
@@ -1520,6 +1519,7 @@ PARSER(parse_term) {
         || (term=parse_sizeof(ctx, pos))
         || (term=parse_not(ctx, pos))
         || (term=parse_extern(ctx, pos))
+        || (term=parse_use(ctx, pos))
         );
 
     if (!success) return NULL;
@@ -1822,8 +1822,6 @@ PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
         || (stmt=parse_def(ctx, pos))
-        || (stmt=parse_use(ctx, pos))
-        || (stmt=parse_export(ctx, pos))
         || (stmt=parse_doctest(ctx, pos)))
         return stmt;
 
@@ -1981,16 +1979,9 @@ ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, c
 
 PARSER(parse_def) {
     const char *start = pos;
-    bool is_exported = false;
-    if (match_word(&pos, "export"))
-        is_exported = true;
-
     if (!match_word(&pos, "def")) return NULL;
 
     bool is_inline = match_word(&pos, "inline");
-    if (is_exported && is_inline)
-        parser_err(ctx, start, pos, "Functions can't be both 'inline' and exported");
-
     spaces(&pos);
     const char* name = get_id(&pos);
     if (!name) {
@@ -2039,7 +2030,7 @@ PARSER(parse_def) {
                                  "This function needs a body block");
         return NewAST(ctx->file, start, pos, FunctionDef,
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .is_exported=is_exported,
+                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body,
                       .is_inline=is_inline);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         --pos;
@@ -2162,21 +2153,6 @@ PARSER(parse_use) {
     const char* path = heap_strn(pos, path_len);
     pos += path_len;
     return NewAST(ctx->file, start, pos, Use, .path=path);
-}
-
-PARSER(parse_export) {
-    const char *start = pos;
-    if (!match_word(&pos, "export")) return NULL;
-    spaces(&pos);
-    NEW_LIST(const char*, vars);
-    for (;;) {
-        const char* var = get_id(&pos);
-        if (!var) break;
-        APPEND(vars, var);
-        spaces(&pos);
-        match(&pos, ",");
-    }
-    return NewAST(ctx->file, start, pos, Export, .vars=vars);
 }
 
 PARSER(parse_inline_block) {

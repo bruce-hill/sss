@@ -40,35 +40,29 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 }
 
-static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
+void predeclare_def_types(env_t *env, ast_t *def)
 {
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
         const char* name = struct_def->name;
-        NEW_LIST(const char*, field_names);
-        NEW_LIST(bl_type_t*, field_types);
-        NEW_LIST(ast_t*, field_defaults);
-        if (get_binding(env, name))
-            compiler_err(env, def, "Something called %s is already defined.", name);
+        // if (get_binding(env, name))
+        //     compiler_err(env, def, "Something called %s is already defined.", name);
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
-        bl_type_t *t = Type(StructType, .name=name, .field_names=field_names, .field_types=field_types, .field_defaults=field_defaults);
-        gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, def), GCC_GLOBAL_EXPORTED, gcc_get_ptr_type(gcc_type(env->ctx, CHAR)), name);
-        lval = gcc_global_set_initializer_rvalue(lval, gcc_str(env->ctx, name));
-
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .rval=gcc_rval(lval));
-        hset(env->global_bindings, name, b);
+        bl_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
+                            .field_types=LIST(bl_type_t*), .field_defaults=LIST(ast_t*));
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t));
+        hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
         hset(env->type_namespaces, name, struct_env->bindings);
 
         foreach (struct_def->definitions, def, _)
             predeclare_def_types(struct_env, *def);
-        return t;
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* tu_name = tu_def->name;
-        if (get_binding(env, tu_name))
-            compiler_err(env, def, "Something called %s is already defined.", tu_name);
+        // if (get_binding(env, tu_name))
+        //     compiler_err(env, def, "Something called %s is already defined.", tu_name);
         NEW_LIST(bl_tagged_union_member_t, members);
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
             ast_t *member_type_ast = ith(tu_def->tag_types, i);
@@ -126,10 +120,8 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
 
         // Populate union fields
         binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval);
-        hset(env->global_bindings, tu_name, binding);
+        hset(env->bindings, tu_name, binding);
         hset(env->type_namespaces, tu_name, type_ns);
-
-        return t;
     } else if (def->tag == UnitDef) {
         auto unit_def = Match(def, UnitDef);
         env->derived_units = new(derived_units_t, 
@@ -137,13 +129,10 @@ static bl_type_t *predeclare_def_types(env_t *env, ast_t *def)
                                  .base=Match(unit_def->base, Num)->units,
                                  .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
                                  .next=env->derived_units);
-        return NULL;
-    } else {
-        return NULL;
     }
 }
 
-static void populate_def_members(env_t *env, ast_t *def)
+void populate_def_members(env_t *env, ast_t *def)
 {
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
@@ -194,15 +183,12 @@ static void populate_def_members(env_t *env, ast_t *def)
     }
 }
 
-static void predeclare_def_funcs(env_t *env, ast_t *def)
+void predeclare_def_funcs(env_t *env, ast_t *def)
 {
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
         bl_type_t *t = get_type(env, def);
-        const char* sym_name = fresh(fndef->name);
-        gcc_func_t *func = get_function_def(env, def, sym_name, fndef->is_exported);
-        gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-        hset(env->global_bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
+        hset(env->bindings, fndef->name, new(binding_t, .type=t));
     } else if (def->tag == StructDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
@@ -217,12 +203,9 @@ static void predeclare_def_funcs(env_t *env, ast_t *def)
         }
         foreach (members, member, _) {
             if ((*member)->tag == FunctionDef) {
-                auto fndef = Match((*member), FunctionDef);
                 bl_type_t *t = get_type(env, *member);
-                const char* sym_name = fresh(fndef->name);
-                gcc_func_t *func = get_function_def(env, *member, sym_name, true);
-                gcc_rvalue_t *fn_ptr = gcc_get_func_address(func, NULL);
-                hset(env->bindings, fndef->name, new(binding_t, .type=t, .func=func, .rval=fn_ptr, .sym_name=sym_name));
+                auto fndef = Match((*member), FunctionDef);
+                hset(env->bindings, fndef->name, new(binding_t, .type=t));
             } else {
                 predeclare_def_funcs(env, *member);
             }
@@ -235,12 +218,22 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
 {
     auto statements = ast->tag == Block ? Match(ast, Block)->statements : LIST(ast_t*, ast);
 
-    // Imports first
-    foreach (statements, stmt, _) {
-        if ((*stmt)->tag == Use) {
-            load_module(env, block, *stmt);
-        }
-    }
+    // Design constraints:
+    // - Struct/oneof members can be struct/oneof values defined earlier in the file
+    // - Struct/oneof members can be pointers to structs/oneofs defined *later* in the file
+    // - Structs can define inner classes, which can be referenced by other classes
+    // - Structs can define inner methods, which can be referenced inside the bodies of functions
+    // - Function arguments can be struct/oneof values/pointers defined anywhere in the file
+    // - Function bodies can have references to functions declared anywhere in the file (corecursion)
+    // Therefore the order of operations is:
+    // 1) Predeclare all structs/oneofs with placeholder opaque structs/oneofs
+    //    1B) Also predeclare all struct/oneofs 
+    // 2) Populate all struct/oneof members
+    // 3) Predeclare all functions
+    //    3B) Also predeclare all inner methods
+    // 4) Populate all function bodies
+    //    4B) Also populate all inner method bodies
+    // 5) Compile each statement
 
     // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
     foreach (statements, stmt, _) {
@@ -252,7 +245,13 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     }
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {
-        predeclare_def_funcs(env, *stmt);
+        if ((*stmt)->tag == FunctionDef) {
+            auto fndef = Match((*stmt), FunctionDef);
+            gcc_func_t *func = get_function_def(env, (*stmt), fresh(fndef->name));
+            binding_t *b =  new(binding_t, .type=get_type(env, (*stmt)),
+                                .func=func, .rval=gcc_get_func_address(func, NULL));
+            hset(env->bindings, fndef->name, b);
+        }
     }
 
     defer_t *prev_deferred = env->deferred;
