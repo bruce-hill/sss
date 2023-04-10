@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "../ast.h"
+#include "../parse.h"
 #include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
@@ -831,6 +832,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
             switch (value_type->tag) {
+            case ModuleType: goto non_method_fncall;
             case TypeType: {
                 if (access->fielded->tag != Var)
                     compiler_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
@@ -1820,18 +1822,57 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Use: {
-        // TODO: .so shared files
-        const char *path = Match(ast, Use)->path;
-        bl_file_t *f = bl_load_file(path);
-        if (!f) compiler_err(env, ast, "This import isn't compiled. Use `blangc %s` to compile it", path);
-        bl_type_t *t = get_type(env, ast);
-        char hash_random_vector[] = "Blang modulehash---------------------------------------------";
-        uint64_t hash;
-        halfsiphash(f->text, strlen(f->text), hash_random_vector, (uint8_t*)&hash, sizeof(hash));
-        const char *load_fn_name = heap_strf("load_%lx", hash);
-        gcc_func_t *load_fn = gcc_new_func(
-            env->ctx, loc, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, t), load_fn_name, 0, NULL, 0);
-        return gcc_callx(env->ctx, loc, load_fn);
+        auto use = Match(ast, Use);
+        // todo: normalize paths
+        bl_type_t *t = Type(ModuleType, .path=use->path);
+
+        bl_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
+        binding_t *b = NULL;
+        if (namespace) {
+            b = hget(namespace, "#load", binding_t*);
+        } else {
+            namespace = new(bl_hashmap_t, .fallback=env->global_bindings);
+            hset(env->type_namespaces, type_to_string(t), namespace);
+        }
+        // Look up old value to avoid recompiling the same module if it's reimported:
+        if (!b) {
+            env_t module_env = *env;
+            module_env.bindings = namespace;
+            gcc_func_t *load_func = gcc_new_func(
+                env->ctx, NULL, GCC_FUNCTION_EXPORTED, bl_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
+            b = new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .ret=t), .func=load_func);
+            hset(namespace, "#load", b);
+
+            gcc_block_t *enter_load = gcc_new_block(load_func, fresh("enter_load")),
+                        *do_loading = gcc_new_block(load_func, fresh("do_loading")),
+                        *finished_loading = gcc_new_block(load_func, fresh("finished_loading"));
+
+            // static is_loaded = false; if (is_loaded) return; is_loaded = true; load...
+            gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
+            gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
+            gcc_jump_condition(enter_load, NULL, gcc_rval(is_loaded), finished_loading, do_loading);
+            gcc_lvalue_t *module_val = gcc_local(load_func, NULL, bl_type_to_gcc(env, t), fresh("module"));
+            gcc_return(finished_loading, NULL, gcc_rval(module_val));
+
+            gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
+            bl_file_t *file = bl_load_file(use->path);
+            module_env.file = file;
+            if (!file) compiler_err(env, ast, "This file doesn't exist");
+            ast_t *module_ast = parse_file(file, env->on_err);
+            gcc_rvalue_t *exported = compile_block_expr(&module_env, &do_loading, module_ast);
+            if (do_loading) {
+                if (exported) gcc_eval(do_loading, NULL, exported);
+                for (uint32_t i = 1; i <= namespace->count; i++) {
+                    auto entry = hnth(namespace, i, const char*, binding_t*);
+                    if (entry->value->func) continue;
+                    gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, bl_type_to_gcc(env, entry->value->type), fresh(entry->key));
+                    gcc_assign(do_loading, NULL, global, entry->value->rval);
+                    hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global));
+                }
+                gcc_return(do_loading, NULL, gcc_rval(module_val));
+            }
+        }
+        return gcc_callx(env->ctx, NULL, b->func);
     }
     default: break;
     }
