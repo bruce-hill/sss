@@ -409,12 +409,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto fn = Match(ast, FunctionDef);
         binding_t *binding = get_binding(env, fn->name);
         assert(binding && binding->func);
-        compile_function(env, binding->func, ast);
+        // compile_function(env, binding->func, ast);
         return binding->rval;
     }
     case Lambda: {
         gcc_func_t *func = get_function_def(env, ast, fresh("lambda"));
-        compile_function(env, func, ast);
+        // compile_function(env, func, ast);
         return gcc_get_func_address(func, loc);
     }
     case Return: {
@@ -624,8 +624,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             .ret_type=convert->target_type,
             .body=convert->body);
         gcc_func_t *func = get_function_def(env, def, fresh("convert"));
-        compile_function(env, func, def);
-        env->conversions = new(conversions_t, .src=src_t, .dest=target_t, .func=func, .next=env->conversions);
+        // compile_function(env, func, def);
+        const char *name = heap_strf("#convert: %s ==> %s", type_to_string(src_t), type_to_string(target_t));
+        hset(env->bindings, name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, src_t), .ret=target_t),
+                                      .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
     case StructDef: case Extend: {
@@ -1204,11 +1206,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *src_t = get_type(env, cast->value);
         bl_type_t *cast_t = get_type(env, ast);
 
-        for (auto convert = env->conversions; convert; convert = convert->next) {
-            if (type_eq(convert->src, src_t) && type_eq(convert->dest, cast_t)) {
-                return gcc_callx(env->ctx, loc, convert->func, val);
-            }
-        }
+        binding_t *convert_b = hget(env->bindings, heap_strf("#convert: %s ==> %s", type_to_string(src_t), type_to_string(cast_t)), binding_t*);
+        if (convert_b)
+            return gcc_callx(env->ctx, loc, convert_b->func, val);
+
         if (!((is_numeric(src_t) && is_numeric(cast_t))
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
@@ -1826,9 +1827,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Use: {
         auto use = Match(ast, Use);
-        // todo: normalize paths
         bl_type_t *t = Type(ModuleType, .path=use->path);
-
         bl_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
         binding_t *b = NULL;
         if (namespace) {
@@ -1860,7 +1859,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
             bl_file_t *file = bl_load_file(use->path);
             module_env.file = file;
-            if (!file) compiler_err(env, ast, "This file doesn't exist");
+            if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
             ast_t *module_ast = parse_file(file, env->on_err);
             gcc_rvalue_t *exported = compile_block_expr(&module_env, &do_loading, module_ast);
             if (do_loading) {
@@ -1870,7 +1869,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     if (entry->value->func) continue;
                     gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, bl_type_to_gcc(env, entry->value->type), fresh(entry->key));
                     gcc_assign(do_loading, NULL, global, entry->value->rval);
-                    hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global));
+                    hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global, .visible_in_closures=true));
                 }
                 gcc_return(do_loading, NULL, gcc_rval(module_val));
             }

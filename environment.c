@@ -359,6 +359,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
         .type_namespaces = new(bl_hashmap_t),
         .def_types = new(bl_hashmap_t),
         .global_funcs = new(bl_hashmap_t),
+        .ast_functions = new(bl_hashmap_t),
         .debug = debug,
     );
     env->bindings->fallback = env->global_bindings;

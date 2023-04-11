@@ -50,8 +50,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    static bl_hashmap_t cache = {0};
-    gcc_func_t *cached = hget(&cache, def, gcc_func_t*);
+    gcc_func_t *cached = hget(env->ast_functions, def, gcc_func_t*);
     if (cached) return cached;
 
     auto t = Match(get_type(env, def), FunctionType);
@@ -68,7 +67,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
     cached = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
-    hset(&cache, def, cached);
+    hset(env->ast_functions, def, cached);
     return cached;
 }
 

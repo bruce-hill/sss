@@ -63,9 +63,18 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
                                        gcc_param_as_rvalue(main_params[1]));
     gcc_assign(main_block, NULL, args, arg_list);
     gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename));
-    // gcc_rvalue_t *val = compile_block_expr(env, &main_block, ast);
     gcc_eval(main_block, NULL, val);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
+
+    // Actually compile the functions:
+    for (uint32_t i = 1; i <= env->ast_functions->count; i++) {
+        auto entry = hnth(env->ast_functions, i, ast_t*, gcc_func_t*);
+        bl_type_t *t = Type(ModuleType, .path=entry->key->span.file->filename);
+        bl_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
+        env_t module_env = *env;
+        module_env.bindings = namespace;
+        compile_function(&module_env, entry->value, entry->key);
+    }
 
     *result = gcc_compile(ctx);
     if (*result == NULL)

@@ -1,10 +1,12 @@
 // Parse Blang code using recursive descent
 #include <ctype.h>
+#include <gc.h>
+#include <libgen.h>
+#include <linux/limits.h>
+#include <setjmp.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
-#include <stdarg.h>
-#include <gc.h>
-#include <setjmp.h>
 
 #include "ast.h"
 #include "parse.h"
@@ -2149,9 +2151,27 @@ PARSER(parse_use) {
     const char *start = pos;
     if (!match_word(&pos, "use")) return NULL;
     spaces(&pos);
-    size_t path_len = strcspn(pos, "\n");
-    const char* path = heap_strn(pos, path_len);
+    size_t path_len = strcspn(pos, " \t\r\n");
+    if (path_len < 1)
+        parser_err(ctx, start, pos, "There is no filename here to use");
+    char *path = (char*)heap_strn(pos, path_len);
     pos += path_len;
+
+    // Resolve the path to an absolute path, assuming it's relative to the file
+    // it was found in:
+    if (path[0] == '/' || path[0] == '~') {
+        // Absolute path:
+        char buf[PATH_MAX] = {0};
+        path = (char*)heap_str(realpath(path, buf));
+    } else {
+        // Relative path:
+        char buf[PATH_MAX] = {0};
+        char *file_path = realpath(ctx->file->filename, buf);
+        char *dir = dirname(file_path);
+        char *rel_path = (char*)heap_strf("%s/%s", dir, path);
+        path = (char*)heap_str(realpath(rel_path, buf));
+    }
+
     return NewAST(ctx->file, start, pos, Use, .path=path);
 }
 
