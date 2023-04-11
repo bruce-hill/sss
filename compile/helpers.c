@@ -233,8 +233,11 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     case ArrayType: {
+        bl_type_t *item_type = Match(t, ArrayType)->item_type;
+        // GCC type is the same for DSL and non-DSLs:
+        if (Match(t, ArrayType)->dsl) return bl_type_to_gcc(env, Type(ArrayType, .item_type=item_type));
         gcc_field_t *fields[3] = {
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, Match(t, ArrayType)->item_type)), "items"),
+            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, item_type)), "items"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "stride"),
         };
