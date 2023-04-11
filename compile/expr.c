@@ -1791,17 +1791,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, block, expr);
             return NULL;
         }
+        ast_t *print_expr = expr;
         if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
             if (Match(t, ArrayType)->dsl)
                 expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=true)));
-            expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"), .args=args);
+            print_expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"),
+                                 .args=LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=true))));
+            expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"),
+                           .args=LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=false))));
         }
 
         ast_t *prefix = WrapAST(ast, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
         ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
         // Stringify and add type info:
-        ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=expr), type_info));
+        ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=print_expr), type_info));
 
         // Call say(str):
         ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, result_str));
