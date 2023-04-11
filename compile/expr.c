@@ -1268,8 +1268,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *rhs_t = get_type(env, rhs);
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        coerce_numbers(env, &lhs_t, &lhs_val, &rhs_t, &rhs_val);
-        if (!type_eq(lhs_t, rhs_t))
+
+
+        if (!promote(env, lhs_t, &lhs_val, rhs_t)
+            && !promote(env, rhs_t, &rhs_val, lhs_t))
             compiler_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (is_ordered && !is_orderable(lhs_t))

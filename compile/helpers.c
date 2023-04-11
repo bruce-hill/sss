@@ -1109,17 +1109,6 @@ gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
     return func;
 }
 
-void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs)
-{
-    if (numtype_priority(*lhs_type) < numtype_priority(*rhs_type)) {
-        *lhs = gcc_cast(env->ctx, NULL, *lhs, bl_type_to_gcc(env, *rhs_type));
-        *lhs_type = *rhs_type;
-    } else if (numtype_priority(*lhs_type) > numtype_priority(*rhs_type)) {
-        *rhs = gcc_cast(env->ctx, NULL, *rhs, bl_type_to_gcc(env, *lhs_type));
-        *rhs_type = *lhs_type;
-    }
-}
-
 gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val)
 {
     gcc_func_t *func = gcc_block_func(*block);

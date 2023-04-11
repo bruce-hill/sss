@@ -45,8 +45,6 @@ void predeclare_def_types(env_t *env, ast_t *def)
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
         const char* name = struct_def->name;
-        // if (get_binding(env, name))
-        //     compiler_err(env, def, "Something called %s is already defined.", name);
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
         bl_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
@@ -61,8 +59,6 @@ void predeclare_def_types(env_t *env, ast_t *def)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* tu_name = tu_def->name;
-        // if (get_binding(env, tu_name))
-        //     compiler_err(env, def, "Something called %s is already defined.", tu_name);
         NEW_LIST(bl_tagged_union_member_t, members);
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
             ast_t *member_type_ast = ith(tu_def->tag_types, i);

@@ -32,12 +32,6 @@
 #define TABLE_LASTFREE_FIELD 6
 #define TABLE_COW_FIELD 7
 
-typedef struct {
-    bl_type_t *key_type, *value_type;
-    gcc_lvalue_t *key_lval, *value_lval;
-} iterator_info_t;
-typedef void (*loop_handler_t)(env_t *env, gcc_block_t **block, iterator_info_t *info, void *userdata);
-
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
 const char *fresh(const char *name);
@@ -64,8 +58,6 @@ gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rval
 gcc_func_t *get_compare_func(env_t *env, bl_type_t *t);
 // Get a function to compare two pointers to values of a type
 gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t);
-// Coerce two numbers into the larger representation
-void coerce_numbers(env_t *env, bl_type_t **lhs_type, gcc_rvalue_t **lhs, bl_type_t **rhs_type, gcc_rvalue_t **rhs);
 // A ternary expression (a ? b : c)
 gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val);
 // Convert an AST into an lvalue
@@ -92,6 +84,9 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name);
 
 // ============================== blocks.c ==============================
+void predeclare_def_types(env_t *env, ast_t *def);
+void predeclare_def_funcs(env_t *env, ast_t *def);
+void populate_def_members(env_t *env, ast_t *def);
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
