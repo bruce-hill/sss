@@ -39,8 +39,10 @@ static bl_file_t *_load_file(const char* filename, FILE *file)
     fclose(mem);
 
     free(file_buf);
-    char path_buf[PATH_MAX] = {0};
-    filename = heap_str(realpath(filename, path_buf));
+    if (filename && !streq(filename, "<repl>")) {
+        char path_buf[PATH_MAX] = {0};
+        filename = heap_str(realpath(filename, path_buf));
+    }
     return new(bl_file_t, .filename=filename, .text=copy, .lines=lines);
 }
 
