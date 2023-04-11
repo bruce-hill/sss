@@ -1368,11 +1368,16 @@ PARSER(parse_string) {
                 parser_err(ctx, string_start, pos, "This line ended without closing the string");
             } else if (*pos == close) { // if open == close, then don't do nesting (i.e. check 'close' first)
                 --depth;
-                if (depth <= 0) {
-                    ++pos;
+                if (depth > 0) {
+                    ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
+                    APPEND(chunks, chunk);
                 }
+                ++pos;
             } else if (*pos == open) {
                 ++depth;
+                ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
+                APPEND(chunks, chunk);
+                ++pos;
             } else {
                 ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
                 ++pos;

@@ -1,4 +1,7 @@
 
+>>> $JSON{{"inner":{"obj":[]}}}
+=== {"inner":{"obj":[]}}
+
 name := "Robert'; drop table students;--"
 
 def s:String as $SQL
