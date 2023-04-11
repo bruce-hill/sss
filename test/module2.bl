@@ -6,3 +6,5 @@ def func():Int
 def Struct{x:Int}
     def method(s:Struct):Int
         return s.x+1
+
+random_val := Int.random()

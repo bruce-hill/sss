@@ -1,5 +1,4 @@
-mod2 := use module2.bl
-
+>>> mod2 := use module2.bl
 >>> mod2.val
 === 123
 >>> mod2.func()
@@ -8,3 +7,6 @@ mod2 := use module2.bl
 === Struct{x=4}
 >>> mod2.Struct{4}.method()
 === 5
+>>> mod2_copy := use ../test/module2.bl
+>>> mod2.random_val == mod2_copy.random_val
+=== yes
