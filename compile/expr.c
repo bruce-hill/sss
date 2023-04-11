@@ -1791,10 +1791,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, block, expr);
             return NULL;
         }
-        if (type_eq(t, Type(ArrayType, .item_type=Type(CharType)))) {
+        if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
             if (Match(t, ArrayType)->dsl)
                 expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=false)));
+            List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=true)));
             expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"), .args=args);
         }
 
