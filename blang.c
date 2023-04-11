@@ -244,7 +244,7 @@ int main(int argc, char *argv[])
     assert(ctx != NULL);
 
     // Set $BLANGPATH (without overriding if it already exists)
-    setenv("BLANGPATH", heap_strf(".:%s/.blang/modules:/usr/local/share/blang/modules", getenv("HOME")), 0);
+    setenv("BLANGPATH", heap_strf(".:%s/.local/share/blang/modules:/usr/local/share/blang/modules", getenv("HOME")), 0);
 
     const char *driver_flags[] = {
         "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-lblang",

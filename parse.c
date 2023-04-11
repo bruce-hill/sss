@@ -2159,9 +2159,12 @@ PARSER(parse_use) {
     size_t path_len = strcspn(pos, " \t\r\n");
     if (path_len < 1)
         parser_err(ctx, start, pos, "There is no filename here to use");
-    char *path = resolve_path(heap_strn(pos, path_len), ctx->file->filename);
+    char *path = heap_strn(pos, path_len);
     pos += path_len;
-    return NewAST(ctx->file, start, pos, Use, .path=path);
+    char *resolved_path = resolve_path(path, ctx->file->filename);
+    if (!resolved_path)
+        parser_err(ctx, start, pos, "No such file exists: \"%s\"", path);
+    return NewAST(ctx->file, start, pos, Use, .path=resolved_path);
 }
 
 PARSER(parse_inline_block) {

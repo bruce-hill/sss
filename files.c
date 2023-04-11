@@ -37,21 +37,22 @@ char *resolve_path(const char *path, const char *relative_to)
         char *blpath = heap_str(getenv("BLANGPATH"));
         char *relative_dir = dirname(heap_str(relative_to));
         for (char *dir; (dir = strsep(&blpath, ":")); ) {
+            printf("Checking %s for %s\n", dir, path);
             if (dir[0] == '/') {
-                char *resolved = resolve_path(path, NULL);
-                if (resolved) return resolved;
+                char *resolved = realpath(heap_strf("%s/%s", dir, path), buf);
+                if (resolved) return heap_str(resolved);
             } else if (dir[0] == '~' && (dir[1] == '\0' || dir[1] == '/')) {
-                char *resolved = resolve_path(heap_strf("%s%s/%s", getenv("HOME"), dir, path), NULL);
-                if (resolved) return resolved;
+                char *resolved = realpath(heap_strf("%s%s/%s", getenv("HOME"), dir, path), buf);
+                if (resolved) return heap_str(resolved);
             } else if (streq(dir, ".") || strncmp(dir, "./", 2) == 0) {
-                char *resolved = resolve_path(heap_strf("%s/%s", relative_dir, path), NULL);
-                if (resolved) return resolved;
+                char *resolved = realpath(heap_strf("%s/%s", relative_dir, path), buf);
+                if (resolved) return heap_str(resolved);
             } else if (streq(dir, ".") || streq(dir, "..") || strncmp(dir, "./", 2) == 0 || strncmp(dir, "../", 3) == 0) {
-                char *resolved = resolve_path(heap_strf("%s/%s/%s", relative_dir, dir, path), NULL);
-                if (resolved) return resolved;
+                char *resolved = realpath(heap_strf("%s/%s/%s", relative_dir, dir, path), buf);
+                if (resolved) return heap_str(resolved);
             } else {
-                char *resolved = resolve_path(heap_strf("%s/%s", dir, path), NULL);
-                if (resolved) return resolved;
+                char *resolved = realpath(heap_strf("%s/%s", dir, path), buf);
+                if (resolved) return heap_str(resolved);
             }
         }
     }
