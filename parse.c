@@ -2167,14 +2167,18 @@ PARSER(parse_use) {
     if (path[0] == '/' || path[0] == '~') {
         // Absolute path:
         char buf[PATH_MAX] = {0};
-        path = (char*)heap_str(realpath(path, buf));
+        char *rp = realpath(path, buf);
+        if (!rp) parser_err(ctx, pos-path_len, pos, "No such file exists");
+        path = (char*)heap_str(rp);
     } else {
         // Relative path:
         char buf[PATH_MAX] = {0};
         char *file_path = realpath(ctx->file->filename, buf);
         char *dir = dirname(file_path);
         char *rel_path = (char*)heap_strf("%s/%s", dir, path);
-        path = (char*)heap_str(realpath(rel_path, buf));
+        char *rp = realpath(rel_path, buf);
+        if (!rp) parser_err(ctx, pos-path_len, pos, "No such file exists");
+        path = (char*)heap_str(rp);
     }
 
     return NewAST(ctx->file, start, pos, Use, .path=path);
