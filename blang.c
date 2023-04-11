@@ -243,6 +243,9 @@ int main(int argc, char *argv[])
     gcc_jit_context *ctx = gcc_jit_context_acquire();
     assert(ctx != NULL);
 
+    // Set $BLANGPATH (without overriding if it already exists)
+    setenv("BLANGPATH", heap_strf(".:%s/.blang/modules:/usr/local/share/blang/modules", getenv("HOME")), 0);
+
     const char *driver_flags[] = {
         "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-lblang",
         "-Wl,-rpath", "-Wl,$ORIGIN",

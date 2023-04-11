@@ -2159,28 +2159,8 @@ PARSER(parse_use) {
     size_t path_len = strcspn(pos, " \t\r\n");
     if (path_len < 1)
         parser_err(ctx, start, pos, "There is no filename here to use");
-    char *path = (char*)heap_strn(pos, path_len);
+    char *path = resolve_path(heap_strn(pos, path_len), ctx->file->filename);
     pos += path_len;
-
-    // Resolve the path to an absolute path, assuming it's relative to the file
-    // it was found in:
-    if (path[0] == '/' || path[0] == '~') {
-        // Absolute path:
-        char buf[PATH_MAX] = {0};
-        char *rp = realpath(path, buf);
-        if (!rp) parser_err(ctx, pos-path_len, pos, "No such file exists");
-        path = (char*)heap_str(rp);
-    } else {
-        // Relative path:
-        char buf[PATH_MAX] = {0};
-        char *file_path = realpath(ctx->file->filename, buf);
-        char *dir = dirname(file_path);
-        char *rel_path = (char*)heap_strf("%s/%s", dir, path);
-        char *rp = realpath(rel_path, buf);
-        if (!rp) parser_err(ctx, pos-path_len, pos, "No such file exists");
-        path = (char*)heap_str(rp);
-    }
-
     return NewAST(ctx->file, start, pos, Use, .path=path);
 }
 

@@ -20,6 +20,7 @@ typedef struct {
     List(bl_line_t) lines;
 } bl_file_t;
 
+char *resolve_path(const char *path, const char *relative_to);
 __attribute__((nonnull))
 bl_file_t *bl_load_file(const char *filename);
 __attribute__((nonnull, returns_nonnull))

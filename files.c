@@ -5,6 +5,7 @@
 #include <err.h>
 #include <gc.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <string.h>
@@ -12,6 +13,50 @@
 
 #include "files.h"
 #include "util.h"
+
+char *resolve_path(const char *path, const char *relative_to)
+{
+    if (!relative_to) relative_to = ".";
+    if (!path || strlen(path) == 0) return NULL;
+
+    // Resolve the path to an absolute path, assuming it's relative to the file
+    // it was found in:
+    char buf[PATH_MAX] = {0};
+    if (streq(path, "~") || strncmp(path, "~/", 2) == 0) {
+        char *resolved = realpath(heap_strf("%s%s", getenv("HOME"), path+1), buf);
+        if (resolved) return heap_str(resolved);
+    } else if (streq(path, ".") || strncmp(path, "./", 2) == 0) {
+        char *resolved = realpath(path, buf);
+        if (resolved) return heap_str(resolved);
+    } else if (path[0] == '/') {
+        // Absolute path:
+        char *resolved = realpath(path, buf);
+        if (resolved) return heap_str(resolved);
+    } else {
+        // Relative path:
+        char *blpath = heap_str(getenv("BLANGPATH"));
+        char *relative_dir = dirname(heap_str(relative_to));
+        for (char *dir; (dir = strsep(&blpath, ":")); ) {
+            if (dir[0] == '/') {
+                char *resolved = resolve_path(path, NULL);
+                if (resolved) return resolved;
+            } else if (dir[0] == '~' && (dir[1] == '\0' || dir[1] == '/')) {
+                char *resolved = resolve_path(heap_strf("%s%s/%s", getenv("HOME"), dir, path), NULL);
+                if (resolved) return resolved;
+            } else if (streq(dir, ".") || strncmp(dir, "./", 2) == 0) {
+                char *resolved = resolve_path(heap_strf("%s/%s", relative_dir, path), NULL);
+                if (resolved) return resolved;
+            } else if (streq(dir, ".") || streq(dir, "..") || strncmp(dir, "./", 2) == 0 || strncmp(dir, "../", 3) == 0) {
+                char *resolved = resolve_path(heap_strf("%s/%s/%s", relative_dir, dir, path), NULL);
+                if (resolved) return resolved;
+            } else {
+                char *resolved = resolve_path(heap_strf("%s/%s", dir, path), NULL);
+                if (resolved) return resolved;
+            }
+        }
+    }
+    return NULL;
+}
 
 static bl_file_t *_load_file(const char* filename, FILE *file)
 {
@@ -39,10 +84,8 @@ static bl_file_t *_load_file(const char* filename, FILE *file)
     fclose(mem);
 
     free(file_buf);
-    if (filename && !streq(filename, "<repl>")) {
-        char path_buf[PATH_MAX] = {0};
-        filename = heap_str(realpath(filename, path_buf));
-    }
+    if (filename && !streq(filename, "<repl>"))
+        filename = resolve_path(filename, ".");
     return new(bl_file_t, .filename=filename, .text=copy, .lines=lines);
 }
 

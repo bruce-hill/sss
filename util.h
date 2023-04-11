@@ -17,8 +17,8 @@
 #define auto __auto_type
 #endif
 
-const char *heap_strn(const char *str, size_t len);
-const char *heap_str(const char *str);
-const char *heap_strf(const char *fmt, ...);
+char *heap_strn(const char *str, size_t len);
+char *heap_str(const char *str);
+char *heap_strf(const char *fmt, ...);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

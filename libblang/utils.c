@@ -18,7 +18,7 @@
 #include "string.h"
 #include "range.h"
 
-const char *heap_strn(const char *str, size_t len)
+char *heap_strn(const char *str, size_t len)
 {
     if (!str) return NULL;
     if (len == 0) return "";
@@ -28,12 +28,12 @@ const char *heap_strn(const char *str, size_t len)
     return heaped;
 }
 
-const char *heap_str(const char *str)
+char *heap_str(const char *str)
 {
     return heap_strn(str, strlen(str));
 }
 
-const char *heap_strf(const char *fmt, ...)
+char *heap_strf(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -41,7 +41,7 @@ const char *heap_strf(const char *fmt, ...)
     int len = vasprintf(&tmp, fmt, args);
     if (len < 0) return NULL;
     va_end(args);
-    const char *ret = heap_strn(tmp, (size_t)len);
+    char *ret = heap_strn(tmp, (size_t)len);
     free(tmp);
     return ret;
 }
