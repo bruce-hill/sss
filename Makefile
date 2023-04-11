@@ -58,10 +58,10 @@ blang.1: blang.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
 
 install: blang $(LIBFILE)
-	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang"
+	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang/modules"
 	cp blang.1 "$(PREFIX)/man/man1/$(NAME).1"
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
-	cp -r stdlib "$(PREFIX)/share/blang/modules"
+	cp -r stdlib/* "$(PREFIX)/share/blang/modules/"
 	rm -f "$(PREFIX)/bin/$(NAME)"
 	cp $(NAME) "$(PREFIX)/bin/"
 

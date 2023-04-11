@@ -37,7 +37,6 @@ char *resolve_path(const char *path, const char *relative_to)
         char *blpath = heap_str(getenv("BLANGPATH"));
         char *relative_dir = dirname(heap_str(relative_to));
         for (char *dir; (dir = strsep(&blpath, ":")); ) {
-            printf("Checking %s for %s\n", dir, path);
             if (dir[0] == '/') {
                 char *resolved = realpath(heap_strf("%s/%s", dir, path), buf);
                 if (resolved) return heap_str(resolved);

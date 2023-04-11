@@ -77,3 +77,9 @@ def remove(path:String):Result
         return Result.Success
     else
         return Result.Failure((extern last_err:()->String)())
+
+def spoof(text:String):@File
+    f := temporary()
+    _ := f.write(text)
+    f.rewind()
+    return f
