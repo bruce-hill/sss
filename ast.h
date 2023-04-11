@@ -306,6 +306,5 @@ struct ast_s {
 
 const char *ast_to_str(ast_t *ast);
 typedef void (*ast_visitor_t)(ast_t*, void*);
-void walk_ast(ast_t *ast, ast_visitor_t visit, void *userdata, bool depth_first);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

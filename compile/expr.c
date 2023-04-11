@@ -377,6 +377,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (uint32_t i = 1; i <= env->bindings->count; i++) {
             auto entry = hnth(env->bindings, i , const char*, binding_t*);
             gcc_lvalue_t *cached = gcc_local(func, loc, bl_type_to_gcc(env, entry->value->type), fresh(heap_strf("deferred_%s", entry->key)));
+            if (!entry->value->rval) continue;
             gcc_assign(*block, loc, cached, entry->value->rval);
             binding_t *cached_binding = new(binding_t);
             *cached_binding = *entry->value;
@@ -653,7 +654,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 const char* sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
                 hset(env->bindings, name,
-                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name));
+                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             } else {

@@ -51,7 +51,7 @@ void predeclare_def_types(env_t *env, ast_t *def)
         // This is necessary because of recursive/corecursive structs.
         bl_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
                             .field_types=LIST(bl_type_t*), .field_defaults=LIST(ast_t*));
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t));
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
         hset(env->type_namespaces, name, struct_env->bindings);
@@ -107,19 +107,20 @@ void predeclare_def_types(env_t *env, ast_t *def)
                 hset(type_ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, member.type),
                                                                      .arg_names=LIST(const char*, member.name),
                                                                      .ret=t),
+                                               .visible_in_closures=true,
                                                .func=func, .rval=gcc_get_func_address(func, NULL)));
             } else {
                 gcc_rvalue_t *val = gcc_struct_constructor(
                     env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
                         gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                     });
-                hset(type_ns, member.name, new(binding_t, .type=t, .rval=val));
+                hset(type_ns, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
             }
         }
         gcc_rvalue_t *rval = gcc_str(env->ctx, tu_name);
 
         // Populate union fields
-        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval);
+        binding_t *binding = new(binding_t, .type=Type(TypeType, .type=t), .rval=rval, .visible_in_closures=true);
         hset(env->bindings, tu_name, binding);
         hset(env->type_namespaces, tu_name, type_ns);
     } else if (def->tag == UnitDef) {
@@ -155,6 +156,7 @@ void populate_def_members(env_t *env, ast_t *def)
             APPEND(struct_type->field_types, ft);
             APPEND(struct_type->field_defaults, default_val);
         }
+        binding->rval = gcc_str(env->ctx, type_to_string(t));
         foreach (struct_def->definitions, def, _) {
             populate_def_members(&inner_env, *def);
         }
@@ -187,8 +189,11 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
 {
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
-        bl_type_t *t = get_type(env, def);
-        hset(env->bindings, fndef->name, new(binding_t, .type=t));
+        gcc_func_t *func = get_function_def(env, def, fresh(fndef->name));
+        binding_t *b =  new(binding_t, .type=get_type(env, def),
+                            .func=func, .rval=gcc_get_func_address(func, NULL),
+                            .visible_in_closures=true);
+        hset(env->bindings, fndef->name, b);
     } else if (def->tag == StructDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
@@ -203,9 +208,12 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         }
         foreach (members, member, _) {
             if ((*member)->tag == FunctionDef) {
-                bl_type_t *t = get_type(env, *member);
-                auto fndef = Match((*member), FunctionDef);
-                hset(env->bindings, fndef->name, new(binding_t, .type=t));
+                auto fndef = Match(*member, FunctionDef);
+                gcc_func_t *func = get_function_def(env, *member, fresh(fndef->name));
+                binding_t *b =  new(binding_t, .type=get_type(env, (*member)),
+                                    .func=func, .rval=gcc_get_func_address(func, NULL),
+                                    .visible_in_closures=true);
+                hset(env->bindings, fndef->name, b);
             } else {
                 predeclare_def_funcs(env, *member);
             }
@@ -245,13 +253,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     }
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {
-        if ((*stmt)->tag == FunctionDef) {
-            auto fndef = Match((*stmt), FunctionDef);
-            gcc_func_t *func = get_function_def(env, (*stmt), fresh(fndef->name));
-            binding_t *b =  new(binding_t, .type=get_type(env, (*stmt)),
-                                .func=func, .rval=gcc_get_func_address(func, NULL));
-            hset(env->bindings, fndef->name, b);
-        }
+        predeclare_def_funcs(env, *stmt);
     }
 
     defer_t *prev_deferred = env->deferred;

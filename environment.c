@@ -401,12 +401,13 @@ env_t *fresh_scope(env_t *env)
 
 static void copy_global_bindings(bl_hashmap_t *dest, bl_hashmap_t *src)
 {
-    for (uint32_t i = 1; i <= src->count; i++) {
-        auto entry = hnth(src, i, const char*, binding_t*);
-        if (entry->value->visible_in_closures)
-            hset(dest, entry->key, entry->value);
+    for (; src; src = src->fallback) {
+        for (uint32_t i = 1; i <= src->count; i++) {
+            auto entry = hnth(src, i, const char*, binding_t*);
+            if (entry->value->visible_in_closures)
+                hset(dest, entry->key, entry->value);
+        }
     }
-    if (src->fallback) copy_global_bindings(dest, src->fallback);
 }
 
 env_t *global_scope(env_t *env)
@@ -484,6 +485,7 @@ bl_hashmap_t *get_namespace(env_t *env, bl_type_t *t)
     bl_hashmap_t *ns = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
     if (!ns) {
         ns = new(bl_hashmap_t, .fallback=env->global_bindings);
+        copy_global_bindings(ns, env->bindings);
         hset(env->type_namespaces, type_to_string(t), ns);
     }
     return ns;

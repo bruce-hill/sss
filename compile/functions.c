@@ -50,7 +50,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    bl_hashmap_t cache = {0};
+    static bl_hashmap_t cache = {0};
     gcc_func_t *cached = hget(&cache, def, gcc_func_t*);
     if (cached) return cached;
 
