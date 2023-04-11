@@ -58,14 +58,15 @@ blang.1: blang.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
 
 install: blang $(LIBFILE)
-	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib"
+	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang"
 	cp blang.1 "$(PREFIX)/man/man1/$(NAME).1"
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
+	cp -r stdlib "$(PREFIX)/share/blang/modules"
 	rm -f "$(PREFIX)/bin/$(NAME)"
 	cp $(NAME) "$(PREFIX)/bin/"
 
 uninstall:
-	rm -rf "$(PREFIX)/bin/$(NAME)" "$(PREFIX)/man/man1/$(NAME).1" "$(PREFIX)/lib/$(LIBFILE)"
+	rm -rf "$(PREFIX)/bin/$(NAME)" "$(PREFIX)/man/man1/$(NAME).1" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"
 
 test: all
 	@for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
