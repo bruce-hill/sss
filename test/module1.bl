@@ -2,3 +2,9 @@ mod2 := use module2.bl
 
 >>> mod2.val
 === 123
+>>> mod2.func()
+=== 456
+>>> mod2.Struct{4}
+=== Struct{x=4}
+>>> mod2.Struct{4}.method()
+=== 5

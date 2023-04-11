@@ -1,2 +1,8 @@
 
 val := 123
+def func():Int
+    return 456
+
+def Struct{x:Int}
+    def method(s:Struct):Int
+        return s.x+1
