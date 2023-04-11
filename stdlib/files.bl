@@ -1,0 +1,79 @@
+def Timestamp{seconds, nanoseconds:Int}
+    format := (extern bl_time_format:(timestamp:Timestamp,format="%c")->String)
+
+def FileInfo {
+    device, rdevice, inode, mode, links, user, group:Int
+    size,block_size:Int<bytes>
+    block_count:Int
+    accessed, modified, moved:Timestamp
+}
+
+def Result oneof {
+    Failure:String
+    Success
+}
+
+// Opaque struct representing C's FILE struct:
+def _CFile{}
+
+def File{raw_c_file:@?_CFile}
+    def line(f:@File):String
+        return (extern get_line:(@_CFile)->String)(f.raw_c_file or fail "File has already been closed")
+
+    def lines(f:@File):[String]
+        return [f.line() while not f.ended()]
+
+    def ended(f:@File):Bool
+        return (extern feof:(@_CFile)->Int32)(f.raw_c_file or fail "File has already been closed") == 1
+
+    def info(f:@File):FileInfo
+        file := f.raw_c_file or fail "File has already been closed"
+        return (extern bl_fstat:(@_CFile)->FileInfo)(file)
+
+    def write(f:@File, text:String):Result
+        t := @{:@_CFile=>Int; default=1}
+        file := f.raw_c_file or fail "File has already been closed"
+        fputc := (extern fputc:(Char,@_CFile)->Int32)
+        for char in text
+            wrote := fputc(char, file)
+            if wrote != char as Int32
+                return Result.Failure((extern last_err:()->String)())
+        return Result.Success
+
+    def flush(f:@File)
+        (extern fflush:(@_CFile)->Void)(f.raw_c_file or return)
+
+    def rewind(f:@File)
+        (extern rewind:(@_CFile)->Void)(f.raw_c_file or return)
+
+    def close(f:@File)
+        file := f.raw_c_file or return
+        (extern fclose:(@_CFile)->Void)(file)
+        f.raw_c_file = !_CFile
+
+stdin := @File{extern stdin:@_CFile}
+stdout := @File{extern stdout:@_CFile}
+stderr := @File{extern stderr:@_CFile}
+
+def OpenResult oneof {
+    Failure:String
+    Success:@File
+}
+
+open := extern blang_fopen:(path:String,mode="r")->OpenResult
+temporary := extern blang_tmpfile:()->@File
+read := extern blang_readfile:(f:@File,bytes=Int.Max)->String
+
+def move(path:String, dest:String):Result
+    result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
+    if result == 0
+        return Result.Success
+    else
+        return Result.Failure((extern last_err:()->String)())
+
+def remove(path:String):Result
+    result := (extern unlink:(path:@CStringChar)->Int32)(path)
+    if result == 0
+        return Result.Success
+    else
+        return Result.Failure((extern last_err:()->String)())
