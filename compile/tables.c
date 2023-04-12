@@ -259,20 +259,19 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_rval(table_var);
 }
 
-void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
+void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, gcc_rvalue_t *color, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *fputs_fn = get_function(env, "fputs");
 
-#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
-#define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
+#define WRITE_LITERAL(block, str) gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
+#define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *written_var = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("written"));
-    gcc_assign(*block, NULL, written_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
 
     bl_type_t *entry_t = table_entry_type(t);
-    ADD_WRITE(*block, WRITE_LITERAL("{"));
+    COLOR_LITERAL(block, "\x1b[m");
+    WRITE_LITERAL(*block, "{");
 
     // i = 0
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
@@ -304,33 +303,40 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_func_t *key_print = get_print_func(env, key_type);
     gcc_struct_t *entry_struct = gcc_type_if_struct(bl_type_to_gcc(env, entry_t));
     gcc_rvalue_t *key = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 0));
-    ADD_WRITE(add_next_entry, gcc_callx(env->ctx, NULL, key_print, quote_string(env, key_type, key), file, rec));
-    ADD_WRITE(add_next_entry, WRITE_LITERAL("=>"));
+    gcc_eval(add_next_entry, NULL, gcc_callx(env->ctx, NULL, key_print, quote_string(env, key_type, key), file, rec, color));
+    gcc_block_t *rest_of_entry = add_next_entry;
+    COLOR_LITERAL(&rest_of_entry, "\x1b[0;33m");
+    WRITE_LITERAL(rest_of_entry, "=>");
+    COLOR_LITERAL(&rest_of_entry, "\x1b[m");
     gcc_rvalue_t *value = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 1));
     bl_type_t *value_type = Match(t, TableType)->value_type;
     gcc_func_t *value_print = get_print_func(env, value_type);
-    ADD_WRITE(add_next_entry, gcc_callx(env->ctx, NULL, value_print, quote_string(env, value_type, value), file, rec));
+    gcc_eval(rest_of_entry, NULL, gcc_callx(env->ctx, NULL, value_print, quote_string(env, value_type, value), file, rec, color));
     
     // i += 1
-    gcc_update(add_next_entry, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+    gcc_update(rest_of_entry, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
     // entry_ptr = &entry_ptr[1]
-    gcc_assign(add_next_entry, NULL, entry_ptr,
+    gcc_assign(rest_of_entry, NULL, entry_ptr,
                gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(entry_ptr), gcc_one(env->ctx, gcc_type(env->ctx, INT))), NULL));
     // if (i < len) goto add_comma;
-    gcc_jump_condition(add_next_entry, NULL, 
+    gcc_jump_condition(rest_of_entry, NULL, 
                   gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
                   add_comma, end);
 
     // add_comma:
-    ADD_WRITE(add_comma, WRITE_LITERAL(", "));
+    COLOR_LITERAL(&add_comma, "\x1b[0;33m");
+    WRITE_LITERAL(add_comma, ", ");
+    COLOR_LITERAL(&add_comma, "\x1b[m");
 
     // goto add_next_entry;
     gcc_jump(add_comma, NULL, add_next_entry);
 
     // end:
-    ADD_WRITE(end, WRITE_LITERAL("}"));
+    COLOR_LITERAL(&end, "\x1b[m");
+    WRITE_LITERAL(end, "}");
 
-    gcc_return(end, NULL, gcc_rval(written_var));
+    gcc_return_void(end, NULL);
 #undef WRITE_LITERAL 
+#undef COLOR_LITERAL 
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

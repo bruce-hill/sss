@@ -105,6 +105,7 @@ struct ast_s {
         struct {
             const char *dsl;
             List(ast_t*) children;
+            bool colorize:1;
         } StringJoin;
         struct {
             ast_t *value;

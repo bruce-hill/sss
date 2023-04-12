@@ -185,23 +185,31 @@ bl_fileinfo_t bl_fstat(FILE* f)
     return ret;
 }
 
-int range_print(range_t range, FILE *f, void *stack) {
+void range_print(range_t range, FILE *f, void *stack, bool color) {
     (void)stack;
-    int printed = 0;
+    if (color) fputs("\x1b[0;35m", f);
     if (range.first != INT64_MIN)
-        printed += fprintf(f, "%ld", range.first);
+        fprintf(f, "%ld", range.first);
 
-    if (range.stride < 0)
-        printed += fprintf(f, "..%ld", range.stride);
-    else if (range.stride != 1)
-        printed += fprintf(f, "..+%ld", range.stride);
+    if (range.stride < 0) {
+        if (color) fputs("\x1b[0;33m", f);
+        fputs("..", f);
+        if (color) fputs("\x1b[35m", f);
+        fprintf(f, "%ld", range.stride);
+    } else if (range.stride != 1) {
+        if (color) fputs("\x1b[0;33m", f);
+        fputs("..", f);
+        if (color) fputs("\x1b[35m", f);
+        fprintf(f, "+%ld", range.stride);
+    }
 
-    if (range.last != INT64_MAX)
-        printed += fprintf(f, "..%ld", range.last);
-    else
-        printed += fprintf(f, "..");
-
-    return printed;
+    if (color) fputs("\x1b[0;33m", f);
+    fprintf(f, "..");
+    if (range.last != INT64_MAX) {
+        if (color) fputs("\x1b[0;35m", f);
+        fprintf(f, "%ld", range.last);
+    }
+    if (color) fputs("\x1b[m", f);
 }
 
 string_t range_slice(string_t array, range_t range, int64_t item_size)

@@ -156,9 +156,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
                 ast = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=ast, .field=heap_str("quoted")), .args=args);
             }
             ast_t *prefix = WrapAST(ast, StringLiteral, .str=heap_str("\x1b[0;2m= \x1b[0;35m"));
-            ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
+            ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m\t:%s\x1b[m", type_to_string(t)));
             // Stringify and add type info:
-            ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=ast), type_info));
+            ast = WrapAST(ast, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=ast), type_info));
             // Call say(str):
             ast = WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=heap_str("say")), .args=LIST(ast_t*, ast))));
         }

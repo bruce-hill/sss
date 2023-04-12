@@ -399,22 +399,22 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_rval(array_var);
 }
 
-void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, bl_type_t *t)
+void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, gcc_rvalue_t *color, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *fputs_fn = get_function(env, "fputs");
 
-#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file)
-#define ADD_WRITE(b, w) gcc_update(b, NULL, written_var, GCC_BINOP_PLUS, w)
+#define WRITE_LITERAL(b, str) gcc_eval(b, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
+#define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *written_var = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("written"));
-    gcc_assign(*block, NULL, written_var, gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
 
     bl_type_t *item_type = Match(t, ArrayType)->item_type;
     bool is_string = (item_type->tag == CharType);
-    if (!is_string)
-        ADD_WRITE(*block, WRITE_LITERAL("["));
+    if (!is_string) {
+        COLOR_LITERAL(block, "\x1b[m");
+        WRITE_LITERAL(*block, "[");
+    }
 
     // i = 1
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
@@ -445,7 +445,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // print(item)
     gcc_func_t *item_print = get_print_func(env, item_type);
     assert(item_print);
-    ADD_WRITE(add_next_item, gcc_callx(env->ctx, NULL, item_print, quote_string(env, item_type, item), file, rec));
+    gcc_eval(add_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, quote_string(env, item_type, item), file, rec, color));
     
     // i += 1
     assert(i);
@@ -459,18 +459,24 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
                   add_comma, end);
 
     // add_comma:
-    if (!is_string)
-        ADD_WRITE(add_comma, WRITE_LITERAL(", "));
+    if (!is_string) {
+        COLOR_LITERAL(&add_comma, "\x1b[0;33m");
+        WRITE_LITERAL(add_comma, ", ");
+        COLOR_LITERAL(&add_comma, "\x1b[m");
+    }
 
     // goto add_next_item;
     gcc_jump(add_comma, NULL, add_next_item);
 
     // end:
-    if (!is_string)
-        ADD_WRITE(end, WRITE_LITERAL("]"));
+    if (!is_string) {
+        COLOR_LITERAL(&end, "\x1b[m");
+        WRITE_LITERAL(end, "]");
+    }
 
-    gcc_return(end, NULL, gcc_rval(written_var));
+    gcc_return_void(end, NULL);
 #undef WRITE_LITERAL 
+#undef COLOR_LITERAL 
 }
 
 #define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))

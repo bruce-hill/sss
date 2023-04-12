@@ -562,7 +562,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                      gcc_callx(env->ctx, chunk_loc, print_fn, 
                                compile_expr(env, block, interp_value),
                                file,
-                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star)));
+                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star),
+                               gcc_rvalue_bool(env->ctx, string_join->colorize)));
 
         }
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
@@ -1809,7 +1810,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *prefix = WrapAST(ast, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
         ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
         // Stringify and add type info:
-        ast_t *result_str = WrapAST(ast, StringJoin, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=print_expr), type_info));
+        ast_t *result_str = WrapAST(ast, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=print_expr), type_info));
 
         // Call say(str):
         ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, result_str));

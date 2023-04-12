@@ -446,6 +446,19 @@ gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val)
     return gcc_callx(env->ctx, NULL, func, val, gcc_str(env->ctx, dsl ? dsl : ""), gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
 }
 
+void maybe_print_str(env_t *env, gcc_block_t **block, gcc_rvalue_t *do_print, gcc_rvalue_t *file, const char *str)
+{
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_block_t *print_block = gcc_new_block(func, fresh("do_print")),
+                *done_block = gcc_new_block(func, fresh("no_print"));
+    gcc_jump_condition(*block, NULL, do_print, print_block, done_block);
+
+    gcc_func_t *fputs_fn = get_function(env, "fputs");
+    gcc_eval(print_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file));
+    gcc_jump(print_block, NULL, done_block);
+    *block = done_block;
+}
+
 gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 {
     // Hash map for tracking recursion: {ptr => index, "__max_index" => max_index}
@@ -461,18 +474,20 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     if (b) return b->func;
 
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
-    gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
     gcc_type_t *void_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
         gcc_new_param(env->ctx, NULL, void_ptr_t, fresh("recursion")),
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, BOOL), fresh("color")),
     };
     const char* sym_name = fresh("__print");
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, sym_name, 3, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, Type(PointerType, .pointed=Type(VoidType)), Type(PointerType, .pointed=Type(VoidType))),
-                           .arg_names=LIST(const char*, "obj", "file", "recursion"),
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), sym_name, 4, params, 0);
+    bl_type_t *fn_t = Type(FunctionType,
+                           .arg_types=LIST(bl_type_t*, t, Type(PointerType, .pointed=Type(VoidType)),
+                                           Type(PointerType, .pointed=Type(VoidType)), Type(BoolType)),
+                           .arg_names=LIST(const char*, "obj", "file", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(IntType));
     hset(get_namespace(env, t), "__print",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
@@ -480,28 +495,37 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
     gcc_rvalue_t *obj = gcc_param_as_rvalue(params[0]);
-    gcc_rvalue_t *f = gcc_param_as_rvalue(params[1]);
+    gcc_rvalue_t *file = gcc_param_as_rvalue(params[1]);
     gcc_rvalue_t *rec = gcc_param_as_rvalue(params[2]);
+    gcc_rvalue_t *color = gcc_param_as_rvalue(params[3]);
 
     gcc_func_t *fputs_fn = get_function(env, "fputs");
 
-#define WRITE_LITERAL(str) gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), f)
+#define WRITE_LITERAL(block, str) gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
+#define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
 
     switch (t->tag) {
     case BoolType: {
         gcc_block_t *yes_block = gcc_new_block(func, fresh("yes"));
         gcc_block_t *no_block = gcc_new_block(func, fresh("no"));
+        COLOR_LITERAL(&block, "\x1b[35m");
+        assert(block);
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
-        gcc_return(yes_block, NULL, WRITE_LITERAL("yes"));
-        gcc_return(no_block, NULL, WRITE_LITERAL("no"));
+        WRITE_LITERAL(yes_block, "yes");
+        gcc_return_void(yes_block, NULL);
+        WRITE_LITERAL(no_block, "no");
+        gcc_return_void(no_block, NULL);
         break;
     }
     case CharType: case CStringCharType: {
+        COLOR_LITERAL(&block, "\x1b[35m");
         gcc_func_t *fputc_fn = get_function(env, "fputc");
-        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, f));
+        gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, file));
+        gcc_return_void(block, NULL);
         break;
     }
     case IntType: case NumType: {
+        COLOR_LITERAL(&block, "\x1b[35m");
         const char *fmt;
         if (t->tag == IntType && (Match(t, IntType)->bits == 64 || Match(t, IntType)->bits == 0)) {
             fmt = Match(t, IntType)->is_unsigned ? "%lu" : "%ld";
@@ -525,13 +549,21 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         }
         const char* units = type_units(t);
         if (streq(units, "%")) {
-            fmt = heap_strf("%s%%%%", fmt);
             obj = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, gcc_t, obj, gcc_rvalue_from_long(env->ctx, gcc_t, 100));
-        } else if (units && strlen(units) > 0) {
-            fmt = heap_strf("%s<%s>", fmt, units);
         }
         gcc_func_t *fprintf_fn = get_function(env, "fprintf");
-        gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, fmt), obj));
+        gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, fmt), obj));
+
+        if (streq(units, "%")) {
+            COLOR_LITERAL(&block, "\x1b[33;2m");
+            WRITE_LITERAL(block, "%");
+            COLOR_LITERAL(&block, "\x1b[m");
+        } else if (units && strlen(units) > 0) {
+            COLOR_LITERAL(&block, "\x1b[33;2m");
+            WRITE_LITERAL(block, heap_strf("<%s>", units));
+            COLOR_LITERAL(&block, "\x1b[m");
+        }
+        gcc_return_void(block, NULL);
         break;
     }
     case TaggedUnionType: {
@@ -539,9 +571,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
         auto tagged = Match(t, TaggedUnionType);
-        const char* type_prefix = heap_strf("%s.", tagged->name);
-        gcc_lvalue_t *printed_var = gcc_local(func, NULL, int_t, "printed");
-        gcc_assign(block, NULL, printed_var, WRITE_LITERAL(type_prefix));
+        COLOR_LITERAL(&block, "\x1b[0;1;36m");
+        WRITE_LITERAL(block, tagged->name);
+        COLOR_LITERAL(&block, "\x1b[0;2;36m");
+        WRITE_LITERAL(block, ".");
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
         gcc_type_t *union_gcc_t = get_union_type(env, t);
@@ -549,33 +582,38 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         for (int64_t i = 0; i < length(tagged->members); i++) {
             auto member = ith(tagged->members, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
-            gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(member.name));
+            gcc_block_t *rest_of_tag_block = tag_block;
+            COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
+            WRITE_LITERAL(rest_of_tag_block, member.name);
             if (member.type) {
-                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("("));
+                WRITE_LITERAL(rest_of_tag_block, "(");
+                COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
                 gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                 gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
                 gcc_field_t *union_field = gcc_get_union_field(union_gcc_t, i);
                 gcc_func_t *tag_print = get_print_func(env, member.type);
-                gcc_rvalue_t *len = gcc_callx(
+                gcc_eval(rest_of_tag_block, NULL, gcc_callx(
                     env->ctx, NULL, tag_print,
                     quote_string(env, member.type, gcc_rvalue_access_field(data, NULL, union_field)),
-                    f,
-                    gcc_param_as_rvalue(params[2]));
-                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, len);
-                gcc_update(tag_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL(")"));
+                    file, rec, color));
+                COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
+                WRITE_LITERAL(rest_of_tag_block, ")");
+                COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
             }
-            gcc_jump(tag_block, NULL, done);
+            gcc_jump(rest_of_tag_block, NULL, done);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_update(default_block, NULL, printed_var, GCC_BINOP_PLUS, WRITE_LITERAL("<Unknown value>"));
+        COLOR_LITERAL(&default_block, "\x1b[31;1m");
+        WRITE_LITERAL(default_block, "<Unknown value>");
+        COLOR_LITERAL(&default_block, "\x1b[m");
         gcc_jump(default_block, NULL, done);
 
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
 
-        gcc_return(done, NULL, gcc_rval(printed_var));
+        gcc_return_void(done, NULL);
         break;
     }
     case VoidType: {
@@ -586,22 +624,27 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         errx(1, "This should be handled by an externally defined function.");
     }
     case PointerType: {
-        gcc_block_t *nil_block = gcc_new_block(func, fresh("nil"));
-        gcc_block_t *nonnil_block = gcc_new_block(func, fresh("nonnil"));
+        gcc_block_t *nil_block = gcc_new_block(func, fresh("nil")),
+                    *nonnil_block = gcc_new_block(func, fresh("nonnil"));
 
         gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
         gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));
 
+        assert(block);
         gcc_jump_condition(block, NULL, is_nil, nil_block, nonnil_block);
         block = NULL;
 
         // If it's nil, print !Type:
         bl_type_t *pointed_type = Match(t, PointerType)->pointed;
-        gcc_return(nil_block, NULL, WRITE_LITERAL(heap_strf("!%s", type_to_string(pointed_type))));
+        COLOR_LITERAL(&nil_block, "\x1b[0;34;1m");
+        WRITE_LITERAL(nil_block, heap_strf("!%s", type_to_string(pointed_type)));
+        COLOR_LITERAL(&nil_block, "\x1b[m");
+        gcc_return_void(nil_block, NULL);
 
         if (pointed_type->tag == CStringCharType) {
             gcc_func_t *fputs_fn = get_function(env, "fputs");
-            gcc_return(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, f));
+            gcc_eval(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, file));
+            gcc_return_void(nonnil_block, NULL);
             return func;
         }
 
@@ -651,8 +694,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             // If we're in a recursive cycle, print @T#index and return without recursing further
             block = cycle_block;
             const char* backref = heap_strf("@%s#%%ld", type_to_string(pointed_type));
-            gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, backref),
-                                              gcc_rval(gcc_deref(gcc_rval(index_var), NULL))));
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, backref),
+                                            gcc_rval(gcc_deref(gcc_rval(index_var), NULL))));
+            gcc_return_void(block, NULL);
 
             // If this is a nonrecursive situation
             block = noncycle_block;
@@ -660,21 +704,23 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         }
 
         if (pointed_type->tag == VoidType) {
-            gcc_return(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, f, gcc_str(env->ctx, "@Void<0x%X>"), obj));
+            COLOR_LITERAL(&block, "\x1b[0;34;1m");
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "@Void<0x%X>"), obj));
+            COLOR_LITERAL(&block, "\x1b[m");
+            gcc_return_void(block, NULL);
             // gcc_return(noncycle_block, NULL, WRITE_LITERAL("@Void"));
         } else {
             // Prepend "@"
-            gcc_rvalue_t *at = WRITE_LITERAL("@");
+            COLOR_LITERAL(&block, "\x1b[0;34;1m");
+            WRITE_LITERAL(block, "@");
+            COLOR_LITERAL(&block, "\x1b[m");
 
             gcc_func_t *print_fn = get_print_func(env, pointed_type);
-            assert(print_fn);
-            gcc_rvalue_t *printed = gcc_callx(
+            gcc_eval(block, NULL, gcc_callx(
                 env->ctx, NULL, print_fn,
                 quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
-                gcc_param_as_rvalue(params[1]),
-                rec);
-            gcc_return(block, NULL,
-                       gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, at, printed));
+                file, rec, color));
+            gcc_return_void(block, NULL);
         }
 
         break;
@@ -686,63 +732,75 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
 #define ADD_INT(a, b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, a, b)
-        gcc_rvalue_t *written = gcc_zero(env->ctx, int_t);
-        if (struct_t->name) {
-            written = ADD_INT(written, WRITE_LITERAL(struct_t->name));
-        }
-        written = ADD_INT(written, WRITE_LITERAL("{"));
+
+        COLOR_LITERAL(&block, "\x1b[0;1m");
+        if (struct_t->name)
+            WRITE_LITERAL(block, struct_t->name);
+        // COLOR_LITERAL(&block, "\x1b[m");
+        WRITE_LITERAL(block, "{");
         
         size_t num_fields = gcc_field_count(gcc_struct);
         for (size_t i = 0; i < num_fields; i++) {
-            if (i > 0)
-                written = ADD_INT(written, WRITE_LITERAL(", "));
+            if (i > 0) {
+                COLOR_LITERAL(&block, "\x1b[0;33m");
+                WRITE_LITERAL(block, ", ");
+            }
 
             const char* name = ith(struct_t->field_names, i);
-            if (name)
-                written = ADD_INT(written, WRITE_LITERAL(heap_strf("%s=", name)));
+            if (name) {
+                COLOR_LITERAL(&block, "\x1b[m");
+                WRITE_LITERAL(block, name);
+                COLOR_LITERAL(&block, "\x1b[33m");
+                WRITE_LITERAL(block, "=");
+            }
 
             bl_type_t *member_t = ith(struct_t->field_types, i);
             gcc_func_t *print_fn = get_print_func(env, member_t);
             assert(print_fn);
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
-            written = ADD_INT(written,
-                              gcc_callx(env->ctx, NULL, print_fn, 
-                                        quote_string(env, member_t, gcc_rvalue_access_field(obj, NULL, field)),
-                                        gcc_param_as_rvalue(params[1]),
-                                        gcc_param_as_rvalue(params[2])
-                              ));
+            gcc_eval(block, NULL, gcc_callx(
+                    env->ctx, NULL, print_fn, 
+                    quote_string(env, member_t, gcc_rvalue_access_field(obj, NULL, field)),
+                    file, rec, color));
         }
 
-        written = ADD_INT(written, WRITE_LITERAL("}"));
+        COLOR_LITERAL(&block, "\x1b[0;1m");
+        WRITE_LITERAL(block, "}");
+        COLOR_LITERAL(&block, "\x1b[m");
 
         const char* units = type_units(t);
-        if (units && strlen(units) > 0)
-            written = ADD_INT(written, WRITE_LITERAL(heap_strf("<%s>", units)));
+        if (units && strlen(units) > 0) {
+            COLOR_LITERAL(&block, "\x1b[33;2m");
+            WRITE_LITERAL(block, heap_strf("<%s>", units));
+            COLOR_LITERAL(&block, "\x1b[m");
+        }
 
-        gcc_return(block, NULL, written);
+        gcc_return_void(block, NULL);
         break;
     }
 #undef ADD_INT
     case ArrayType: {
-        compile_array_print_func(env, &block, obj, rec, f, t);
+        compile_array_print_func(env, &block, obj, rec, file, color, t);
         break;
     }
     case TableType: {
-        compile_table_print_func(env, &block, obj, rec, f, t);
+        compile_table_print_func(env, &block, obj, rec, file, color, t);
         break;
     }
     case FunctionType: {
-        gcc_return(block, NULL, WRITE_LITERAL(type_to_string(t)));
+        WRITE_LITERAL(block, type_to_string(t));
+        gcc_return_void(block, NULL);
         break;
     }
     case TypeType: {
-        gcc_return(block, NULL,
-                   gcc_callx(env->ctx, NULL, fputs_fn,
-                             gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), f));
+        gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn,
+                                        gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), file));
+        gcc_return_void(block, NULL);
         break;
     }
     case ModuleType: {
-        gcc_return(block, NULL, WRITE_LITERAL(type_to_string(t)));
+        WRITE_LITERAL(block, type_to_string(t));
+        gcc_return_void(block, NULL);
         break;
     }
     default: {
@@ -752,6 +810,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     }
     return func;
 #undef WRITE_LITERAL
+#undef COLOR_LITERAL
 }
 
 void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array_ptr)
