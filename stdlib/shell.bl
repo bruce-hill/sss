@@ -2,20 +2,27 @@
 def _POpenFile{}
 
 extend $Sh
-    def run(sh:$Sh):String
+    def run(sh:$Sh):{output:String,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->@?_POpenFile)
-        f := popen("$sh", "r") or return ""
-        pclose := (extern pclose:(@?_POpenFile)->Void)
-        defer pclose(f)
-        return (extern blang_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
+        f := popen("$sh", "r") or return {output="", status=-1i32}
+        output := (extern blang_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
+        pclose := (extern pclose:(@?_POpenFile)->Int32)
+        status := pclose(f)
+        if status >= 0
+            status = (status / 256i32) and 0xFFi32
+        return {output=output, status=status}
 
-    def run_with(sh:$Sh, input:String):Void
+    def run_with(sh:$Sh, input:String):Int32
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->@?_POpenFile)
-        f := popen("$sh", "w") or return
+        f := popen("$sh", "w") or return -1i32
         pclose := (extern pclose:(@?_POpenFile)->Void)
-        defer pclose(f)
         fwrite := (extern fwrite:(text:@CStringChar,element_size=1,len:Int,f:@_POpenFile,bytes=Int.Max)->Void)
         fwrite(input,1,#input,f)
+        pclose := (extern pclose:(@?_POpenFile)->Int32)
+        status := pclose(f)
+        if status >= 0
+            status = (status / 256i32) and 0xFFi32
+        return status
 
 def s:String as $Sh
     return bitcast "'$(s.replace("'",${'"'"'}))'" as $Sh
