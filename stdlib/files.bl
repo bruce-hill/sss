@@ -30,6 +30,8 @@ def File{raw_c_file:@?_CFile}
         file := f.raw_c_file or fail "File has already been closed"
         return (extern bl_fstat:(@_CFile)->FileInfo)(file)
 
+    read := extern blang_readfile:(f:@File,bytes=Int.Max)->String
+
     def write(f:@File, text:String):Result
         t := @{:@_CFile=>Int; default=1}
         file := f.raw_c_file or fail "File has already been closed"
@@ -62,7 +64,6 @@ def OpenResult oneof {
 
 open := extern blang_fopen:(path:String,mode="r")->OpenResult
 temporary := extern blang_tmpfile:()->@File
-read := extern blang_readfile:(f:@File,bytes=Int.Max)->String
 
 def move(path:String, dest:String):Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
