@@ -1,0 +1,35 @@
+// Defines a DSL for shell commands and a way to run them safely
+def _POpenFile{}
+
+extend $Sh
+    def run(sh:$Sh):String
+        popen := (extern popen:(command:@CStringChar, type:@CStringChar)->@?_POpenFile)
+        f := popen("$sh", "r") or return ""
+        pclose := (extern pclose:(@?_POpenFile)->Void)
+        defer pclose(f)
+        return (extern blang_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
+
+    def run_with(sh:$Sh, input:String):Void
+        popen := (extern popen:(command:@CStringChar, type:@CStringChar)->@?_POpenFile)
+        f := popen("$sh", "w") or return
+        pclose := (extern pclose:(@?_POpenFile)->Void)
+        defer pclose(f)
+        fwrite := (extern fwrite:(text:@CStringChar,element_size=1,len:Int,f:@_POpenFile,bytes=Int.Max)->Void)
+        fwrite(input,1,#input,f)
+
+def s:String as $Sh
+    return bitcast "'$(s.replace("'",${'"'"'}))'" as $Sh
+
+def strings:[String] as $Sh
+    return bitcast [
+        for s in strings
+            c for c in $Sh"$s"
+        between
+            ` 
+    ] as $Sh
+
+def i:Int as $Sh
+    return bitcast "$i" as $Sh
+
+def n:Num as $Sh
+    return bitcast "$n" as $Sh
