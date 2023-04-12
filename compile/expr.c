@@ -1300,7 +1300,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env, ast);
         bl_type_t *lhs_t = get_type(env, lhs);
         bl_type_t *rhs_t = get_type(env, rhs);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("and_result"));
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_assign(*block, NULL, result, lhs_val);
+        lhs_val = gcc_rval(result);
         if (t->tag == BoolType && rhs_t->tag == BoolType) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
@@ -1311,10 +1315,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 assert(promote(env, rhs_t, &rhs_val, lhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("and_result"));
         gcc_block_t *if_truthy = gcc_new_block(func, fresh("and_truthy"));
-        gcc_block_t *if_falsey = gcc_new_block(func, fresh("and_falsey"));
         gcc_block_t *done = gcc_new_block(func, fresh("and_done"));
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
@@ -1323,7 +1324,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
         }
-        gcc_jump_condition(*block, loc, bool_val, if_truthy, if_falsey);
+        gcc_jump_condition(*block, loc, bool_val, if_truthy, done);
 
         if (rhs_t->tag == AbortType) {
             compile_statement(env, &if_truthy, rhs);
@@ -1335,9 +1336,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (if_truthy)
             gcc_jump(if_truthy, loc, done);
 
-        gcc_assign(if_falsey, loc, result, lhs_val);
-        gcc_jump(if_falsey, loc, done);
-
         *block = done;
         return gcc_rval(result);
     }
@@ -1347,7 +1345,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *t = get_type(env, ast);
         bl_type_t *lhs_t = get_type(env, lhs);
         bl_type_t *rhs_t = get_type(env, rhs);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("and_result"));
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_assign(*block, loc, result, lhs_val);
+        lhs_val = gcc_rval(result);
         if (t->tag == BoolType && rhs_t->tag == BoolType) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
@@ -1358,9 +1360,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, ast, "I can't figure out how to combine a %s and a %s", type_to_string(lhs_t), type_to_string(rhs_t));
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
         }
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *result = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("and_result"));
-        gcc_block_t *if_truthy = gcc_new_block(func, fresh("or_truthy"));
         gcc_block_t *if_falsey = gcc_new_block(func, fresh("or_falsey"));
         gcc_block_t *done = gcc_new_block(func, fresh("or_done"));
 
@@ -1370,10 +1369,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
             bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
         }
-        gcc_jump_condition(*block, loc, bool_val, if_truthy, if_falsey);
-
-        gcc_assign(if_truthy, loc, result, lhs_val);
-        gcc_jump(if_truthy, loc, done);
+        gcc_jump_condition(*block, loc, bool_val, done, if_falsey);
 
         if (rhs_t->tag == AbortType) {
             compile_statement(env, &if_falsey, rhs);
