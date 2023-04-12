@@ -631,9 +631,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             .body=convert->body);
         gcc_func_t *func = get_function_def(env, def, fresh("convert"));
         // compile_function(env, func, def);
-        const char *name = heap_strf("#convert: %s ==> %s", type_to_string(src_t), type_to_string(target_t));
-        hset(env->bindings, name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, src_t), .ret=target_t),
-                                      .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
+        const char *name = heap_strf("#convert-from:%s", type_to_string(src_t));
+        bl_hashmap_t *ns = get_namespace(env, target_t);
+        hset(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, src_t), .ret=target_t),
+                           .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
     case StructDef: case Extend: {
@@ -1212,7 +1213,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         bl_type_t *src_t = get_type(env, cast->value);
         bl_type_t *cast_t = get_type(env, ast);
 
-        binding_t *convert_b = hget(env->bindings, heap_strf("#convert: %s ==> %s", type_to_string(src_t), type_to_string(cast_t)), binding_t*);
+        binding_t *convert_b = get_from_namespace(env, cast_t, heap_strf("#convert-from:%s", type_to_string(src_t)));
         if (convert_b)
             return gcc_callx(env->ctx, loc, convert_b->func, val);
 
