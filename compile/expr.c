@@ -931,6 +931,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             gcc_rvalue_t *val = compile_expr(env, block, arg);
             bl_type_t *actual = get_type(env, arg);
+            if (pos >= num_args)
+                compiler_err(env, arg, "This is one argument too many for this function call");
             bl_type_t *expected = ith(fn_t->arg_types, pos);
             if (!promote(env, actual, &val, expected))
                 compiler_err(env, arg, "This function expected this argument to have type %s, but this value is a %s",
