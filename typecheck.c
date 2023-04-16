@@ -649,6 +649,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Less: case LessEqual: case Greater: case GreaterEqual: case In: {
         return Type(BoolType);
     }
+    case Min: case Max: {
+        // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
+        ast_t *lhs = ast->__data.Min.lhs, *rhs = ast->__data.Min.rhs;
+        // Okay safe again
+
+        bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
+        return type_or_type(lhs_t, rhs_t);
+    }
 
     case Not: {
         bl_type_t *t = get_type(env, Match(ast, Not)->value);

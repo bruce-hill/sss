@@ -190,6 +190,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Ellipsis)
         T(Delete, F(value))
         T(In, F(member), F(container))
+        T(Min, F(lhs), F(rhs))
+        T(Max, F(lhs), F(rhs))
 #undef BINOP
 #undef UNOP
 #undef F

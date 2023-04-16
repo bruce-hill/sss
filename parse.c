@@ -31,16 +31,18 @@ static int op_tightness[NUM_AST_TAGS+1] = {
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3,
     [Modulus]=4,
-    [Range]=5,
-    [RANGE_STEP]=6,
-    [Cast]=6,
-    [Greater]=7, [GreaterEqual]=7, [Less]=7, [LessEqual]=7,
-    [In]=8,
-    [Equal]=9, [NotEqual]=9,
-    [And]=10, [Or]=10, [Xor]=10,
+    [Min]=5, [Max]=5,
+    [Range]=6,
+    [RANGE_STEP]=7,
+    [Cast]=7,
+    [Greater]=8, [GreaterEqual]=8, [Less]=8, [LessEqual]=8,
+    [In]=9,
+    [Equal]=10, [NotEqual]=10,
+    [And]=11, [Or]=11, [Xor]=11,
 };
 
 static const char *keywords[] = {
+    "min","max",
     "yes","xor","with","while","when","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","enum","else","do","del",
     "deftype", "defer","def","bitcast","between","as","and", NULL,
@@ -58,6 +60,7 @@ static inline const char* get_word(const char **pos);
 static inline const char* get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
+static inline ast_tag_e match_binary_operator(const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
@@ -894,8 +897,19 @@ PARSER(parse_reduction) {
     spaces(&pos);
     if (!match(&pos, ","))
         parser_err(ctx, pos, pos, "I expected a comma and another expression for this Reduction");
-    ast_t *combination = expect_ast(ctx, start, &pos, parse_extended_expr,
-                                    "I expected to find an expression here for how to merge two values");
+
+    spaces(&pos);
+    const char *combo_start = pos;
+    ast_tag_e binop = match_binary_operator(&pos);
+    ast_t *combination;
+    if (binop != Unknown) {
+        combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Add={
+                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y")});
+    } else {
+        combination = expect_ast(ctx, start, &pos, parse_extended_expr,
+                                 "I expected to find an expression here for how to merge two values");
+    }
 
     ast_t *fallback = NULL;
     spaces(&pos);
@@ -1626,6 +1640,40 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
     return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=args);
 }
 
+ast_tag_e match_binary_operator(const char **pos)
+{
+    switch (**pos) {
+    case '+': *pos += 1; return Add;
+    case '-': {
+        *pos += 1;
+        if ((*pos)[0] != ' ' && (*pos)[-2] == ' ') // looks like `fn -5`
+            return Unknown;
+        return Subtract;
+    }
+    case '*': *pos += 1; return Multiply;
+    case '/': *pos += 1; return Divide;
+    case '^': *pos += 1; return Power;
+    case '<': *pos += 1; return match(pos, "=") ? LessEqual : Less;
+    case '>': *pos += 1; return match(pos, "=") ? GreaterEqual : Greater;
+    default: {
+        if (match(pos, "!=")) return NotEqual;
+        else if (match(pos, "==") && **pos != '=') return Equal;
+        else if (match_word(pos, "and")) return And;
+        else if (match_word(pos, "or")) return Or;
+        else if (match_word(pos, "xor")) return Xor;
+        else if (match_word(pos, "mod")) return Modulus;
+        else if (match_word(pos, "as")) return Cast;
+        else if (match_word(pos, "to")) return Range;
+        else if (match_word(pos, "by")) return RANGE_STEP;
+        else if (match_word(pos, "in")) return In;
+        else if (match_word(pos, "min")) return Min;
+        else if (match_word(pos, "max")) return Max;
+        else if (match(pos, "..")) return Range;
+        else return Unknown;
+    }
+    }
+}
+
 ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = parse_term(ctx, pos);
     if (!term) return NULL;
@@ -1636,70 +1684,17 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     NEW_LIST(ast_tag_e, binops);
     for (;;) {
         spaces(&pos);
-        ast_tag_e tag = Unknown;
-        switch (*pos) {
-        case '+': ++pos; tag = Add; break;
-        case '-': ++pos; {
-            if (pos[0] != ' ' && pos[-2] == ' ') // looks like `fn -5`
-                goto no_more_binops;
-            tag = Subtract;
-            break;
-        }
-        case '*': ++pos; tag = Multiply; break;
-        case '/': ++pos; tag = Divide; break;
-        case '^': ++pos; tag = Power; break;
-        case '<': ++pos; tag = match(&pos, "=") ? LessEqual : Less; break;
-        case '>': ++pos; tag = match(&pos, "=") ? GreaterEqual : Greater; break;
-        case '!': {
-            if (!match(&pos, "!=")) goto no_more_binops;
-            tag = NotEqual;
-            break;
-        }
-        case '=': {
-            if (!match(&pos, "==")) goto no_more_binops;
-            tag = Equal;
-            break;
-        }
-        default: {
-            if (match_word(&pos, "and")) {
-                tag = And; break;
-            } else if (match_word(&pos, "or")) {
-                tag = Or; break;
-            } else if (match_word(&pos, "xor")) {
-                tag = Xor; break;
-            } else if (match_word(&pos, "xor")) {
-                tag = Xor; break;
-            } else if (match_word(&pos, "mod")) {
-                tag = Modulus; break;
-            } else if (match_word(&pos, "as")) {
-                tag = Cast; break;
-            } else if (match(&pos, "..")) {
-                tag = Range; break;
-            } else if (match_word(&pos, "to")) {
-                tag = Range; break;
-            } else if (match_word(&pos, "by")) {
-                tag = RANGE_STEP; break;
-            } else if (match_word(&pos, "in")) {
-                tag = In; break;
-            } else {
-                goto no_more_binops;
-            }
-        }
-        }
-
+        ast_tag_e tag = match_binary_operator(&pos);
+        if (tag == Unknown) break;
         assert(op_tightness[tag]);
-
         spaces(&pos);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, pos) : parse_term(ctx, pos);
         if (!rhs && tag == Range) rhs = NewAST(ctx->file, pos, pos, Ellipsis);
-        if (!rhs) goto no_more_binops;
+        if (!rhs) break;
         pos = rhs->span.end;
         APPEND(terms, rhs);
         APPEND(binops, tag);
     }
-
-  no_more_binops:
-    ;
 
     // Sort out the op precedence (everything is left-associative here)
     while (LIST_LEN(terms) > 1) {

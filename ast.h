@@ -57,9 +57,10 @@ typedef enum {
     Ellipsis,
     Delete,
     In,
+    Min, Max,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (In + 1)
+#define NUM_AST_TAGS (Max + 1)
 
 typedef struct ast_s ast_t;
 
@@ -302,6 +303,9 @@ struct ast_s {
         struct {
             ast_t *member, *container;
         } In;
+        struct {
+            ast_t *lhs, *rhs;
+        } Min, Max;
     } __data;
 };
 

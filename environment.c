@@ -222,7 +222,6 @@ static void define_num_types(env_t *env)
         {"atan2",NULL,"y","x"}, {"pow",NULL,"base","exponent"},
         {"hypot",NULL,"x","y"}, {"fmod","modulo","num","modulus"}, {"copysign","copy_sign","num","with_sign"},
         {"nextafter","next_toward","num","toward"}, {"remainder",NULL,"num","divisor"},
-        {"fmax","max","x","y"}, {"fmin", "min","x","y"},
         {"fmaxmag","biggest","x","y"}, {"fminmag","smallest","x","y"},
         {"fdim","distance","x","y"},
     };

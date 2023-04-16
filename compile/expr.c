@@ -1323,7 +1323,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
-
         if (!promote(env, lhs_t, &lhs_val, rhs_t)
             && !promote(env, rhs_t, &rhs_val, lhs_t))
             compiler_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
@@ -1747,6 +1746,59 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump(*block, loc, jump_dest);
         *block = NULL;
         return NULL;
+    }
+    case Min: case Max: {
+        ast_t *lhs_ast, *rhs_ast;
+        gcc_comparison_e cmp;
+        if (ast->tag == Min) {
+            cmp = GCC_COMPARISON_LE;
+            lhs_ast = Match(ast, Min)->lhs;
+            rhs_ast = Match(ast, Min)->rhs;
+        } else {
+            cmp = GCC_COMPARISON_GE;
+            lhs_ast = Match(ast, Max)->lhs;
+            rhs_ast = Match(ast, Max)->rhs;
+        }
+        gcc_func_t *func = gcc_block_func(*block);
+        bl_type_t *t = get_type(env, ast);
+        bl_type_t *lhs_t = get_type(env, lhs_ast),
+                  *rhs_t = get_type(env, rhs_ast);
+        gcc_lvalue_t *lhs = gcc_local(func, loc, bl_type_to_gcc(env, lhs_t), fresh("lhs")),
+                     *rhs = gcc_local(func, loc, bl_type_to_gcc(env, rhs_t), fresh("rhs")),
+                     *result = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("result"));
+
+        gcc_assign(*block, loc, lhs, compile_expr(env, block, lhs_ast));
+        gcc_assign(*block, loc, rhs, compile_expr(env, block, rhs_ast));
+
+        gcc_rvalue_t *lhs_val = gcc_rval(lhs),
+                     *rhs_val = gcc_rval(rhs);
+
+        if (!promote(env, lhs_t, &lhs_val, rhs_t)
+            && !promote(env, rhs_t, &rhs_val, lhs_t))
+            compiler_err(env, ast, "I don't know how to do a comparison between a %s and a %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+
+        if (!is_orderable(lhs_t))
+            compiler_err(env, ast, "I can't do ordered comparisons between values with type %s",
+                  type_to_string(lhs_t));
+
+        gcc_rvalue_t *should_choose_lhs;
+        if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
+            should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
+        else
+            should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
+                                               gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+
+        gcc_block_t *choose_lhs = gcc_new_block(func, fresh("choose_lhs")),
+                    *choose_rhs = gcc_new_block(func, fresh("choose_rhs")),
+                    *done = gcc_new_block(func, fresh("done"));
+
+        gcc_jump_condition(*block, loc, should_choose_lhs, choose_lhs, choose_rhs);
+        gcc_assign(choose_lhs, loc, result, lhs_val);
+        gcc_jump(choose_lhs, loc, done);
+        gcc_assign(choose_rhs, loc, result, rhs_val);
+        gcc_jump(choose_rhs, loc, done);
+        *block = done;
+        return gcc_rval(result);
     }
     case Reduction: {
         auto reduction = Match(ast, Reduction);
