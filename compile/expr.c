@@ -1803,7 +1803,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7m%s: %.*s\x1b[m\n\n%s");
         gcc_rvalue_t *loc_info = gcc_str(
             env->ctx, heap_strf("%s:%ld.%ld",
-                                ast->span.file->filename,
+                                ast->span.file->relative_filename,
                                 bl_get_line_number(ast->span.file, ast->span.start),
                                 bl_get_line_column(ast->span.file, ast->span.start)));
 

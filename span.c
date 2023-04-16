@@ -34,14 +34,14 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
         lineno_fmt = "\x1b[0;2m%*lu\x1b(0\x78\x1b(B\x1b[m ";
         normal_color = "\x1b[m";
         empty_marker = "\x1b(0\x61\x1b(B";
-        printed += fprintf(out, "\x1b[33;4;1m%s\x1b[m\n", span.file->filename);
+        printed += fprintf(out, "\x1b[33;4;1m%s\x1b[m\n", span.file->relative_filename);
     } else {
         lineno_fmt = "%*lu| ";
         hl_color = "";
         normal_color = "";
         empty_marker = " ";
         print_carets = true;
-        printed += fprintf(out, "%s\n", span.file->filename);
+        printed += fprintf(out, "%s\n", span.file->relative_filename);
     }
 
     if (context_lines == 0)

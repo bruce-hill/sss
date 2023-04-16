@@ -15,7 +15,7 @@ typedef struct {
 } bl_line_t;
 
 typedef struct {
-    const char* filename;
+    const char *filename, *relative_filename;
     const char *text;
     List(bl_line_t) lines;
 } bl_file_t;

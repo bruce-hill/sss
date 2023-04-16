@@ -84,9 +84,17 @@ static bl_file_t *_load_file(const char* filename, FILE *file)
     fclose(mem);
 
     free(file_buf);
-    if (filename && !streq(filename, "<repl>"))
+    const char *relative_filename = filename;
+    if (filename && !streq(filename, "<repl>")) {
         filename = resolve_path(filename, ".");
-    return new(bl_file_t, .filename=filename, .text=copy, .lines=lines);
+        // Convert to relative path (if applicable)
+        char buf[PATH_MAX];
+        char *cwd = getcwd(buf, sizeof(buf));
+        size_t cwd_len = strlen(cwd);
+        if (strncmp(cwd, filename, cwd_len) == 0 && filename[cwd_len] == '/')
+            relative_filename = &filename[cwd_len+1];
+    }
+    return new(bl_file_t, .filename=filename, .relative_filename=relative_filename, .text=copy, .lines=lines);
 }
 
 //

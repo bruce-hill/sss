@@ -425,7 +425,7 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
     if (isatty(STDERR_FILENO))
         fputs("\x1b[31;7;1m", stderr);
     if (ast)
-        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->filename, bl_get_line_number(ast->span.file, ast->span.start),
+        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->relative_filename, bl_get_line_number(ast->span.file, ast->span.start),
                 bl_get_line_column(ast->span.file, ast->span.start));
     va_list args;
     va_start(args, fmt);
