@@ -1266,7 +1266,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
             compiler_err(env, ast, "I don't know how to convert %s to %s. "
-                        "Maybe you could use 'bitcast' instead or implement a conversion function.",
+                        "You should implement a `def x:%s->%s` conversion function or use 'bitcast'",
+                        type_to_string(src_t), type_to_string(cast_t),
                         type_to_string(src_t), type_to_string(cast_t));
         return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, cast_t));
     }
