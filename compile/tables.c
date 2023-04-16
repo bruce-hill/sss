@@ -303,7 +303,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_func_t *key_print = get_print_func(env, key_type);
     gcc_struct_t *entry_struct = gcc_type_if_struct(bl_type_to_gcc(env, entry_t));
     gcc_rvalue_t *key = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 0));
-    gcc_eval(add_next_entry, NULL, gcc_callx(env->ctx, NULL, key_print, quote_string(env, key_type, key), file, rec, color));
+    gcc_eval(add_next_entry, NULL, gcc_callx(env->ctx, NULL, key_print, key, file, rec, color));
     gcc_block_t *rest_of_entry = add_next_entry;
     COLOR_LITERAL(&rest_of_entry, "\x1b[0;33m");
     WRITE_LITERAL(rest_of_entry, "=>");
@@ -311,7 +311,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_rvalue_t *value = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 1));
     bl_type_t *value_type = Match(t, TableType)->value_type;
     gcc_func_t *value_print = get_print_func(env, value_type);
-    gcc_eval(rest_of_entry, NULL, gcc_callx(env->ctx, NULL, value_print, quote_string(env, value_type, value), file, rec, color));
+    gcc_eval(rest_of_entry, NULL, gcc_callx(env->ctx, NULL, value_print, value, file, rec, color));
     
     // i += 1
     gcc_update(rest_of_entry, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));

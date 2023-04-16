@@ -131,7 +131,7 @@ static void parser_err(parse_ctx_t *ctx, const char *start, const char *end, con
 const char *unescape(const char **out) {
     const char **endpos = out;
     const char *escape = *out;
-    static const char *unescapes[256] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v"};
+    static const char *unescapes[256] = {['a']="\a",['b']="\b",['e']="\e",['f']="\f",['n']="\n",['r']="\r",['t']="\t",['v']="\v",['_']=" "};
     assert(*escape == '\\');
     if (unescapes[(int)escape[1]]) {
         *endpos = escape + 2;

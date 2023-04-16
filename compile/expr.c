@@ -543,6 +543,48 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                                         TypeDSL, .name=string_join->dsl));
             }
             bl_type_t *t = get_type(env, interp_value);
+
+            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
+                gcc_lvalue_t *interp_var = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("interp_str"));
+                gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
+                gcc_rvalue_t *obj = gcc_rval(interp_var);
+                // i = 1
+                gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+                gcc_lvalue_t *i = gcc_local(func, loc, i32, fresh("i"));
+                gcc_assign(*block, loc, i, gcc_zero(env->ctx, i32));
+                gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+                gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 0));
+                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 1));
+                gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 2));
+
+                gcc_block_t *add_next_item = gcc_new_block(func, fresh("next_item")),
+                            *done = gcc_new_block(func, fresh("done"));
+
+                // if (i < len) goto add_next_item;
+                gcc_jump_condition(*block, loc, 
+                              gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, gcc_rval(i), len),
+                              add_next_item, done);
+
+                // add_next_item:
+                // fputc(items[i*stride], file)
+                gcc_func_t *fputc_fn = get_function(env, "fputc");
+                gcc_eval(add_next_item, loc, gcc_callx(
+                        env->ctx, loc, fputc_fn,
+                        gcc_rval(gcc_array_access(env->ctx, loc, items,
+                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32, gcc_rval(i), stride))),
+                        gcc_rval(file_var)));
+                
+                // i += 1
+                gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+                // if (i < len) goto add_next_item;
+                gcc_jump_condition(add_next_item, loc, 
+                              gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, gcc_rval(i), len),
+                              add_next_item, done);
+
+                *block = done;
+                continue;
+            }
+
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             

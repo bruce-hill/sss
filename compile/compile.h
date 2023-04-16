@@ -46,8 +46,6 @@ gcc_type_t *get_union_type(env_t *env, bl_type_t *t);
 gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t);
 // Check whether a value is truthy or not
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
-// If a value is a string type, quote it:
-gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val);
 // Maybe print a string
 void maybe_print_str(env_t *env, gcc_block_t **block, gcc_rvalue_t *do_print, gcc_rvalue_t *file, const char *str);
 // Get a function to convert an object of a given type to a string

@@ -411,7 +411,10 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     bl_type_t *item_type = Match(t, ArrayType)->item_type;
     bool is_string = (item_type->tag == CharType);
-    if (!is_string) {
+    if (is_string) {
+        COLOR_LITERAL(block, "\x1b[0;35m");
+        WRITE_LITERAL(*block, "\"");
+    } else {
         COLOR_LITERAL(block, "\x1b[m");
         WRITE_LITERAL(*block, "[");
     }
@@ -445,7 +448,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // print(item)
     gcc_func_t *item_print = get_print_func(env, item_type);
     assert(item_print);
-    gcc_eval(add_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, quote_string(env, item_type, item), file, rec, color));
+    gcc_eval(add_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, item, file, rec, color));
     
     // i += 1
     assert(i);
@@ -469,7 +472,11 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_jump(add_comma, NULL, add_next_item);
 
     // end:
-    if (!is_string) {
+    if (is_string) {
+        COLOR_LITERAL(&end, "\x1b[35m");
+        WRITE_LITERAL(end, "\"");
+        COLOR_LITERAL(&end, "\x1b[m");
+    } else {
         COLOR_LITERAL(&end, "\x1b[m");
         WRITE_LITERAL(end, "]");
     }

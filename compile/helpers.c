@@ -430,22 +430,6 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
     *block = NULL;
 }
 
-gcc_rvalue_t *quote_string(env_t *env, bl_type_t *t, gcc_rvalue_t *val)
-{
-    if (t->tag != ArrayType || Match(t, ArrayType)->item_type->tag != CharType)
-        return val;
-
-    const char* dsl = Match(t, ArrayType)->dsl;
-    gcc_param_t *params[] = {
-        gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, t), "str"),
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "dsl"),
-        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, BOOL), "use_color")
-    };
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, bl_type_to_gcc(env, t),
-                                    "bl_string_quoted", 3, params, 0);
-    return gcc_callx(env->ctx, NULL, func, val, gcc_str(env->ctx, dsl ? dsl : ""), gcc_zero(env->ctx, gcc_type(env->ctx, BOOL)));
-}
-
 void maybe_print_str(env_t *env, gcc_block_t **block, gcc_rvalue_t *do_print, gcc_rvalue_t *file, const char *str)
 {
     gcc_func_t *func = gcc_block_func(*block);
@@ -518,10 +502,48 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case CharType: case CStringCharType: {
-        COLOR_LITERAL(&block, "\x1b[35m");
+        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",[' ']="\\_"};
+        NEW_LIST(gcc_case_t*, cases);
+
+        for (int i = 0; i < 128; i++) {
+            char *escape_str = escapes[i];
+            if (!escape_str) continue;
+            gcc_rvalue_t *case_val = gcc_rvalue_from_long(env->ctx, gcc_t, i);
+            gcc_block_t *case_block = gcc_new_block(func, fresh("char_escape"));
+            gcc_case_t *case_ = gcc_new_case(env->ctx, case_val, case_val, case_block);
+            COLOR_LITERAL(&case_block, "\x1b[1;34m");
+            WRITE_LITERAL(case_block, escape_str);
+            COLOR_LITERAL(&case_block, "\x1b[m");
+            gcc_return_void(case_block, NULL);
+            APPEND(cases, case_);
+        }
+
+        // Hex escape:
+        gcc_block_t *hex_block = gcc_new_block(func, fresh("char_hex_escape"));
+        int intervals[][2] = {{'\0','\x06'}, {'\x0E','\x1A'}, {'\x1C','\x1F'},{'\x7F','\x7F'},{CHAR_MIN,-1}};
+        for (size_t i = 0; i < sizeof(intervals)/sizeof(intervals[0]); i++) {
+            gcc_case_t *hex_case = gcc_new_case(
+                env->ctx,
+                gcc_rvalue_from_long(env->ctx, gcc_t, intervals[i][0]),
+                gcc_rvalue_from_long(env->ctx, gcc_t, intervals[i][1]), hex_block);
+            APPEND(cases, hex_case);
+        }
+
+        COLOR_LITERAL(&hex_block, "\x1b[1;34m");
+        gcc_func_t *fprintf_fn = get_function(env, "fprintf");
+        gcc_eval(hex_block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "\\x%02X"), obj));
+        COLOR_LITERAL(&hex_block, "\x1b[m");
+        gcc_return_void(hex_block, NULL);
+
+        gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
+        gcc_switch(block, NULL, obj, default_block, length(cases), cases[0]);
+
+        COLOR_LITERAL(&default_block, "\x1b[35m");
         gcc_func_t *fputc_fn = get_function(env, "fputc");
-        gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, file));
-        gcc_return_void(block, NULL);
+        gcc_eval(default_block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, obj, file));
+        COLOR_LITERAL(&default_block, "\x1b[m");
+        gcc_return_void(default_block, NULL);
+
         break;
     }
     case IntType: case NumType: {
@@ -594,7 +616,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                 gcc_func_t *tag_print = get_print_func(env, member.type);
                 gcc_eval(rest_of_tag_block, NULL, gcc_callx(
                     env->ctx, NULL, tag_print,
-                    quote_string(env, member.type, gcc_rvalue_access_field(data, NULL, union_field)),
+                    gcc_rvalue_access_field(data, NULL, union_field),
                     file, rec, color));
                 COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
                 WRITE_LITERAL(rest_of_tag_block, ")");
@@ -718,7 +740,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_func_t *print_fn = get_print_func(env, pointed_type);
             gcc_eval(block, NULL, gcc_callx(
                 env->ctx, NULL, print_fn,
-                quote_string(env, pointed_type, gcc_rval(gcc_rvalue_dereference(obj, NULL))),
+                gcc_rval(gcc_rvalue_dereference(obj, NULL)),
                 file, rec, color));
             gcc_return_void(block, NULL);
         }
@@ -760,7 +782,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
             gcc_eval(block, NULL, gcc_callx(
                     env->ctx, NULL, print_fn, 
-                    quote_string(env, member_t, gcc_rvalue_access_field(obj, NULL, field)),
+                    gcc_rvalue_access_field(obj, NULL, field),
                     file, rec, color));
         }
 
