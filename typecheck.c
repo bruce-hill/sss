@@ -888,10 +888,15 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Reduction: {
         env = fresh_scope(env);
-        bl_type_t *item_type = get_iter_type(env, Match(ast, Reduction)->iter);
-        hset(env->bindings, "x", new(binding_t, .type=item_type));
-        hset(env->bindings, "y", new(binding_t, .type=item_type));
-        return get_type(env, Match(ast, Reduction)->combination);
+        auto reduction = Match(ast, Reduction);
+        if (reduction->fallback) {
+            return get_type(env, reduction->fallback);
+        } else {
+            bl_type_t *item_type = get_iter_type(env, reduction->iter);
+            hset(env->bindings, "x", new(binding_t, .type=item_type));
+            hset(env->bindings, "y", new(binding_t, .type=item_type));
+            return get_type(env, reduction->combination);
+        }
     }
     case Defer: {
         return Type(VoidType);
