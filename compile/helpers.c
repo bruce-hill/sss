@@ -502,7 +502,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case CharType: case CStringCharType: {
-        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",[' ']="\\_"};
+        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v"};
         NEW_LIST(gcc_case_t*, cases);
 
         for (int i = 0; i < 128; i++) {
