@@ -140,6 +140,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         BINOP(OrUpdate) BINOP(Add) BINOP(Subtract) BINOP(Multiply) BINOP(Divide) BINOP(Power) BINOP(Modulus)
         BINOP(And) BINOP(Or) BINOP(Xor) BINOP(Equal) BINOP(NotEqual) BINOP(Greater) BINOP(GreaterEqual)
         BINOP(Less) BINOP(LessEqual)
+        T(In, F(member), F(container))
+        BINOP(Min) BINOP(Max) BINOP(Concatenate) BINOP(ConcatenateUpdate)
         UNOP(Not) UNOP(Negative) UNOP(Len) UNOP(Maybe) UNOP(TypeOf) UNOP(SizeOf) UNOP(HeapAllocate) UNOP(Dereference)
         T(Array, F(type), F(items))
         T(Table, F(key_type), F(value_type), F(entries))
@@ -189,9 +191,6 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Use, F(path))
         T(Ellipsis)
         T(Delete, F(value))
-        T(In, F(member), F(container))
-        T(Min, F(lhs), F(rhs))
-        T(Max, F(lhs), F(rhs))
 #undef BINOP
 #undef UNOP
 #undef F

@@ -1450,6 +1450,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Add: case Subtract: case Divide: case Multiply: {
         return math_binop(env, block, ast);
     }
+    case ConcatenateUpdate: {
+        auto concat = Match(ast, ConcatenateUpdate);
+        return compile_expr(
+            env, block, WrapAST(ast, FunctionCall,
+                                .fn=WrapAST(concat->lhs, FieldAccess, .fielded=concat->lhs, .field="insert_all"),
+                                .args=LIST(ast_t*, concat->rhs)));
+    }
     case Modulus: {
         ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
         bl_type_t *t = get_type(env, ast);
@@ -1506,6 +1513,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag != NumType)
             ret = gcc_cast(env->ctx, loc, ret, gcc_t);
         return ret;
+    }
+    case Concatenate: {
+        auto concat = Match(ast, Concatenate);
+        ast_t *lhs_loop = WrapAST(concat->lhs, For, .iter=concat->lhs,
+                                  .value=WrapAST(concat->lhs, Var, .name="x"),
+                                  .body=WrapAST(concat->lhs, Var, .name="x"));
+        ast_t *rhs_loop = WrapAST(concat->rhs, For, .iter=concat->rhs,
+                                  .value=WrapAST(concat->rhs, Var, .name="x"),
+                                  .body=WrapAST(concat->rhs, Var, .name="x"));
+        ast_t *concat_ast = WrapAST(ast, Array, .items=LIST(ast_t*, lhs_loop, rhs_loop));
+        return compile_expr(env, block, concat_ast);
     }
     case If: {
         bl_type_t *if_t = get_type(env, ast);

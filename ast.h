@@ -24,10 +24,11 @@ typedef enum {
     StringLiteral, StringJoin, Interp,
     Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-    AndUpdate, OrUpdate,
+    AndUpdate, OrUpdate, ConcatenateUpdate,
     Add, Subtract, Multiply, Divide, Power, Modulus,
-    And, Or, Xor,
+    And, Or, Xor, Min, Max, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
+    In,
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
     HeapAllocate, Dereference,
@@ -56,11 +57,9 @@ typedef enum {
     Use,
     Ellipsis,
     Delete,
-    In,
-    Min, Max,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (Max + 1)
+#define NUM_AST_TAGS (Delete + 1)
 
 typedef struct ast_s ast_t;
 
@@ -123,9 +122,9 @@ struct ast_s {
         struct {
             ast_t *lhs, *rhs;
         } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-            AndUpdate, OrUpdate,
+            AndUpdate, OrUpdate, ConcatenateUpdate,
             Add, Subtract, Multiply, Divide, Power, Modulus,
-            And, Or, Xor,
+            And, Or, Xor, Min, Max, Concatenate,
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
             ast_t *value;
@@ -303,9 +302,6 @@ struct ast_s {
         struct {
             ast_t *member, *container;
         } In;
-        struct {
-            ast_t *lhs, *rhs;
-        } Min, Max;
     } __data;
 };
 

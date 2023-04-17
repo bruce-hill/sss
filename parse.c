@@ -29,7 +29,7 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 static int op_tightness[NUM_AST_TAGS+1] = {
     [Power]=1,
     [Multiply]=2, [Divide]=2,
-    [Add]=3, [Subtract]=3,
+    [Add]=3, [Subtract]=3, [Concatenate]=3,
     [Modulus]=4,
     [Min]=5, [Max]=5,
     [Range]=6,
@@ -1643,7 +1643,10 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 ast_tag_e match_binary_operator(const char **pos)
 {
     switch (**pos) {
-    case '+': *pos += 1; return Add;
+    case '+': {
+        *pos += 1;
+        return match(pos, "+") ? Concatenate : Add;
+    }
     case '-': {
         *pos += 1;
         if ((*pos)[0] != ' ' && (*pos)[-2] == ' ') // looks like `fn -5`
@@ -1764,6 +1767,7 @@ PARSER(parse_update) {
     spaces(&pos);
     ast_tag_e tag;
     if (match(&pos, "+=")) tag = AddUpdate;
+    else if (match(&pos, "++=")) tag = ConcatenateUpdate;
     else if (match(&pos, "-=")) tag = SubtractUpdate;
     else if (match(&pos, "*=")) tag = MultiplyUpdate;
     else if (match(&pos, "/=")) tag = DivideUpdate;
@@ -1778,6 +1782,7 @@ PARSER(parse_update) {
     case DivideUpdate: return NewAST(ctx->file, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
     case AndUpdate: return NewAST(ctx->file, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
     case OrUpdate: return NewAST(ctx->file, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
+    case ConcatenateUpdate: return NewAST(ctx->file, start, pos, ConcatenateUpdate, .lhs=lhs, .rhs=rhs);
     default: return NULL;
     }
 }

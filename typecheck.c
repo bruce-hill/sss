@@ -494,7 +494,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
-        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
         case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
             return Type(VoidType);
         default: break;
@@ -635,7 +635,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate: {
         return Type(VoidType);
     }
     case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
@@ -645,6 +645,17 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
         bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+    }
+    case Concatenate: {
+        auto concat = Match(ast, Concatenate);
+        bl_type_t *lhs_t = get_type(env, concat->lhs),
+                  *rhs_t = get_type(env, concat->rhs);
+        if (!type_eq(lhs_t, rhs_t))
+            compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %s vs. %s",
+                         type_to_string(lhs_t), type_to_string(rhs_t));
+        if (lhs_t->tag != ArrayType)
+            compiler_err(env, ast, "Only array/string value types support concatenation, not %s", type_to_string(lhs_t));
+        return lhs_t;
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: case In: {
         return Type(BoolType);
@@ -927,7 +938,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate:
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
     case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
         return true;
     default: break;
