@@ -1452,10 +1452,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case ConcatenateUpdate: {
         auto concat = Match(ast, ConcatenateUpdate);
-        return compile_expr(
-            env, block, WrapAST(ast, FunctionCall,
-                                .fn=WrapAST(concat->lhs, FieldAccess, .fielded=concat->lhs, .field="insert_all"),
-                                .args=LIST(ast_t*, concat->rhs)));
+        bl_type_t *t_lhs = get_type(env, concat->lhs);
+        if (t_lhs->tag == ArrayType)
+            return compile_expr(
+                env, block, WrapAST(ast, Assign,
+                                    .targets=LIST(ast_t*, concat->lhs),
+                                    .values=LIST(ast_t*, WrapAST(ast, Concatenate, .lhs=concat->lhs, .rhs=concat->rhs))));
+        else if (t_lhs->tag == PointerType)
+            return compile_expr(
+                env, block, WrapAST(ast, FunctionCall,
+                                    .fn=WrapAST(concat->lhs, FieldAccess, .fielded=concat->lhs, .field="insert_all"),
+                                    .args=LIST(ast_t*, concat->rhs)));
+        else
+            compiler_err(env, ast, "Concatenation update is only defined for array types and pointers to array types.");
     }
     case Modulus: {
         ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;

@@ -653,6 +653,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (!type_eq(lhs_t, rhs_t))
             compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %s vs. %s",
                          type_to_string(lhs_t), type_to_string(rhs_t));
+        while (lhs_t->tag == PointerType)
+            lhs_t = Match(lhs_t, PointerType)->pointed;
         if (lhs_t->tag != ArrayType)
             compiler_err(env, ast, "Only array/string value types support concatenation, not %s", type_to_string(lhs_t));
         return lhs_t;
