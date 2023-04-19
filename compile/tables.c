@@ -259,7 +259,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_rval(table_var);
 }
 
-void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *file, gcc_rvalue_t *color, bl_type_t *t)
+void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, bl_type_t *t)
 {
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *fputs_fn = get_function(env, "fputs");
@@ -283,7 +283,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));
     gcc_block_t *add_next_entry = gcc_new_block(func, fresh("next_entry"));
-    gcc_block_t *end = gcc_new_block(func, fresh("done"));
+    gcc_block_t *done_with_entries = gcc_new_block(func, fresh("done_with_entries"));
 
     // entry_ptr = array.entries
     gcc_type_t *gcc_entry_t = bl_type_to_gcc(env, entry_t);
@@ -293,7 +293,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // if (i < len) goto add_next_entry;
     gcc_jump_condition(*block, NULL, 
                   gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
-                  add_next_entry, end);
+                  add_next_entry, done_with_entries);
 
     // add_next_entry:
     // entry = *entry_ptr
@@ -321,7 +321,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // if (i < len) goto add_comma;
     gcc_jump_condition(rest_of_entry, NULL, 
                   gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
-                  add_comma, end);
+                  add_comma, done_with_entries);
 
     // add_comma:
     COLOR_LITERAL(&add_comma, "\x1b[0;33m");
@@ -331,11 +331,45 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // goto add_next_entry;
     gcc_jump(add_comma, NULL, add_next_entry);
 
-    // end:
-    COLOR_LITERAL(&end, "\x1b[m");
-    WRITE_LITERAL(end, "}");
+    // done_with_entries:
+    gcc_block_t *print_fallback = gcc_new_block(func, fresh("print_fallback")),
+                *check_default = gcc_new_block(func, fresh("check_default")),
+                *print_default = gcc_new_block(func, fresh("print_default")),
+                *done_with_metadata = gcc_new_block(func, fresh("done_with_metadata"));
+    gcc_rvalue_t *fallback = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_FALLBACK_FIELD));
+    gcc_rvalue_t *has_fallback = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, fallback, gcc_null(env->ctx, gcc_get_ptr_type(gcc_t)));
+    gcc_jump_condition(done_with_entries, NULL, has_fallback, print_fallback, check_default);
 
-    gcc_return_void(end, NULL);
+    // Print fallback:
+    COLOR_LITERAL(&print_fallback, "\x1b[0;33m");
+    WRITE_LITERAL(print_fallback, "; ");
+    COLOR_LITERAL(&print_fallback, "\x1b[32m");
+    WRITE_LITERAL(print_fallback, "fallback=");
+    COLOR_LITERAL(&print_fallback, "\x1b[m");
+    gcc_eval(print_fallback, NULL, gcc_callx(env->ctx, NULL, func, gcc_rval(gcc_rvalue_dereference(fallback, NULL)), file, rec, color));
+    gcc_jump(print_fallback, NULL, check_default);
+
+    // Check default
+    bl_type_t *default_t = Match(t, TableType)->value_type;
+    gcc_type_t *default_gcc_t = bl_type_to_gcc(env, default_t);
+    gcc_rvalue_t *def = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD));
+    gcc_rvalue_t *has_default = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, def, gcc_null(env->ctx, gcc_get_ptr_type(default_gcc_t)));
+    gcc_jump_condition(check_default, NULL, has_default, print_default, done_with_metadata);
+
+    // Print default:
+    COLOR_LITERAL(&print_default, "\x1b[0;33m");
+    WRITE_LITERAL(print_default, "; ");
+    COLOR_LITERAL(&print_default, "\x1b[32m");
+    WRITE_LITERAL(print_default, "default=");
+    COLOR_LITERAL(&print_default, "\x1b[m");
+    gcc_func_t *def_print_func = get_print_func(env, default_t);
+    gcc_eval(print_default, NULL, gcc_callx(env->ctx, NULL, def_print_func, gcc_rval(gcc_rvalue_dereference(def, NULL)), file, rec, color));
+    gcc_jump(print_default, NULL, done_with_metadata);
+
+    COLOR_LITERAL(&done_with_metadata, "\x1b[m");
+    WRITE_LITERAL(done_with_metadata, "}");
+
+    gcc_return_void(done_with_metadata, NULL);
 #undef WRITE_LITERAL 
 #undef COLOR_LITERAL 
 }

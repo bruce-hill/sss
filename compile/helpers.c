@@ -802,11 +802,11 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     }
 #undef ADD_INT
     case ArrayType: {
-        compile_array_print_func(env, &block, obj, rec, file, color, t);
+        compile_array_print_func(env, &block, obj, file, rec, color, t);
         break;
     }
     case TableType: {
-        compile_table_print_func(env, &block, obj, rec, file, color, t);
+        compile_table_print_func(env, &block, obj, file, rec, color, t);
         break;
     }
     case FunctionType: {
