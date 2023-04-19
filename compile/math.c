@@ -407,7 +407,7 @@ void math_update_rec(
     }
 }
 
-void math_update(env_t *env, gcc_block_t **block, ast_t *ast)
+gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     // Unsafe! This assumes each of these types has the same tagged union struct layout. It saves some duplicated code.
     ast_t *lhs = ast->__data.AddUpdate.lhs, *rhs = ast->__data.AddUpdate.rhs;
@@ -431,5 +431,6 @@ void math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 
     math_update_rec(env, block, ast, get_type(env, lhs), lhs_val, op, get_type(env, rhs), rhs_val);
+    return gcc_rval(lhs_val);
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

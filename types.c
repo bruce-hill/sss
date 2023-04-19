@@ -166,6 +166,13 @@ static bl_type_t *non_optional(bl_type_t *t)
     return ptr->is_optional ? Type(PointerType, .is_optional=false, .pointed=ptr->pointed) : t;
 }
 
+bl_type_t *value_type(bl_type_t *t)
+{
+    while (t->tag == PointerType)
+        t = Match(t, PointerType)->pointed;
+    return t;
+}
+
 bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
 {
     if (!a) return b;

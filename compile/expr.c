@@ -170,6 +170,36 @@ static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, bl_type_t *t, 
     return NULL;
 }
 
+static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *ast, unsigned int desired_level)
+{
+    bl_type_t *t = get_type(env, ast);
+    unsigned int level = 0;
+    for (bl_type_t *tmp = t; tmp->tag == PointerType; tmp = Match(tmp, PointerType)->pointed)
+        ++level;
+
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *lval = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("val"));
+    gcc_assign(*block, NULL, lval, compile_expr(env, block, ast));
+    gcc_rvalue_t *rval = gcc_rval(lval);
+    while (level > desired_level) {
+        auto ptr = Match(t, PointerType);
+        if (ptr->is_optional)
+            compiler_err(env, ast, "This value cannot be safely dereferenced, since it may be nil");
+        t = ptr->pointed;
+        rval = gcc_rval(gcc_rvalue_dereference(rval, NULL));
+        --level;
+    }
+
+    while (level < desired_level) {
+        gcc_lvalue_t *lval = gcc_local(func, NULL, bl_type_to_gcc(env, t), fresh("val"));
+        gcc_assign(*block, NULL, lval, rval);
+        rval = gcc_lvalue_address(lval, NULL);
+        t = Type(PointerType, .pointed=t, .is_optional=false);
+        ++level;
+    }
+    return rval;
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -250,14 +280,53 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (num_values != len)
             compiler_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
 
-        NEW_LIST(gcc_lvalue_t*, lvals);
-        foreach (targets, lhs, _) {
-            append(lvals, get_lvalue(env, block, *lhs, false));
-        }
         gcc_func_t *func = gcc_block_func(*block);
+        typedef struct {
+            bl_type_t *type;
+            bool is_table;
+            union {
+                gcc_lvalue_t *lval;
+                struct {
+                    gcc_rvalue_t *table;
+                    gcc_lvalue_t *key;
+                    bl_type_t *table_type;
+                };
+            };
+        } assign_target_t;
+        NEW_LIST(assign_target_t, lvals);
+        foreach (targets, lhs, _) {
+            bl_type_t *t_lhs = get_type(env, *lhs);
+            assign_target_t target = {.type=t_lhs};
+            if ((*lhs)->tag == Index && value_type(get_type(env, Match(*lhs, Index)->indexed))->tag == TableType) {
+                target.is_table = true;
+                bl_type_t *table_t = get_type(env, Match(*lhs, Index)->indexed);
+                if (table_t->tag != PointerType)
+                    compiler_err(env, *lhs, "This is an immutable table value, it can't be modified");
+
+                target.table = compile_expr(env, block, Match(*lhs, Index)->indexed);
+              carry_on:
+                if (Match(table_t, PointerType)->is_optional)
+                    compiler_err(env, *lhs, "This table pointer might be nil, so it's not safe to dereference it");
+
+                // Check for indirect references like @@@t[x]
+                if (Match(table_t, PointerType)->pointed->tag == PointerType) {
+                    target.table = gcc_rval(gcc_rvalue_dereference(target.table, loc));
+                    table_t = Match(table_t, PointerType)->pointed;
+                    goto carry_on;
+                }
+                target.table_type = value_type(table_t);
+                target.key = gcc_local(func, loc, bl_type_to_gcc(env, Match(target.table_type, TableType)->key_type), fresh("key"));
+                gcc_assign(*block, loc, target.key, compile_expr(env, block, Match(*lhs, Index)->index));
+            } else {
+                target.is_table = false;
+                target.lval = get_lvalue(env, block, *lhs, false);
+            }
+            APPEND_STRUCT(lvals, target);
+        }
         NEW_LIST(gcc_rvalue_t*, rvals);
         for (int64_t i = 0; i < len; i++) {
-            bl_type_t *t_lhs = get_type(env, ith(targets, i));
+            auto target = ith(lvals, i);
+            bl_type_t *t_lhs = target.type;
             ast_t *rhs = ith(values, i);
             bl_type_t *t_rhs = get_type(env, rhs);
             // TODO: maybe allow generators to assign the *last* value, if any
@@ -269,25 +338,53 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
 
-            if (len > 1) {
-                gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, t_rhs), fresh("tmp"));
-                assert(rval);
-                gcc_assign(*block, loc, tmp, rval);
-                append(rvals, gcc_rval(tmp));
-            } else {
-                append(rvals, rval);
-            }
+            gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, t_rhs), fresh("to_assign"));
+            assert(rval);
+            gcc_assign(*block, loc, tmp, rval);
+            append(rvals, gcc_rval(tmp));
         }
+        NEW_LIST(bl_type_t*, target_types);
+        NEW_LIST(const char*, field_names);
         for (int64_t i = 0; i < len; i++) {
-            gcc_assign(*block, ast_loc(env, ast), ith(lvals, i), ith(rvals, i));
+            auto target = ith(lvals, i);
+            if (target.is_table) {
+                bl_type_t *key_t = Match(target.table_type, TableType)->key_type;
+                bl_type_t *value_t = Match(target.table_type, TableType)->value_type;
 
-            bl_type_t *t = get_type(env, ith(targets, i));
-            if (t->tag == ArrayType && ith(targets, i)->tag == Dereference)
-                mark_array_cow(env, block, gcc_lvalue_address(ith(lvals, i), loc));
-            else if (t->tag == TableType && ith(targets, i)->tag == Dereference)
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, hget(env->global_funcs, "bl_hashmap_mark_cow", gcc_func_t*), gcc_lvalue_address(ith(lvals, i), loc)));
+                size_t key_size = gcc_sizeof(env, key_t);
+                size_t value_align = gcc_alignof(env, value_t);
+                size_t value_offset = key_size;
+                if (value_align > 0 && value_offset % value_align != 0) value_offset = (value_offset - (value_offset % value_align) + value_align);
+                gcc_rvalue_t *entry_offset = gcc_rvalue_size(env->ctx, value_offset);
+
+                gcc_func_t *hashmap_set_fn = get_function(env, "bl_hashmap_set");
+                gcc_func_t *key_hash = get_hash_func(env, key_t);
+                gcc_func_t *key_cmp = get_indirect_compare_func(env, key_t);
+                gcc_lvalue_t *val_lval = gcc_local(func, loc, bl_type_to_gcc(env, value_t), fresh("value"));
+                gcc_assign(*block, loc, val_lval, ith(rvals, i));
+                gcc_rvalue_t *call = gcc_callx(
+                    env->ctx, loc, hashmap_set_fn,
+                    gcc_cast(env->ctx, loc, target.table, gcc_type(env->ctx, VOID_PTR)),
+                    gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
+                    gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
+                    gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(target.table_type))),
+                    gcc_cast(env->ctx, loc, gcc_lvalue_address(target.key, loc), gcc_type(env->ctx, VOID_PTR)),
+                    entry_offset,
+                    gcc_cast(env->ctx, loc, gcc_lvalue_address(val_lval, loc), gcc_type(env->ctx, VOID_PTR)));
+                gcc_eval(*block, loc, call);
+            } else {
+                gcc_assign(*block, ast_loc(env, ast), target.lval, ith(rvals, i));
+            }
+
+            APPEND(target_types, target.type);
+            APPEND(field_names, heap_strf("_%ld", i+1));
         }
-        return ith(rvals, length(rvals)-1);
+        bl_type_t *values_tuple = Type(StructType, .field_types=target_types, .field_names=field_names);
+        gcc_type_t *values_gcc_t = bl_type_to_gcc(env, values_tuple);
+        gcc_field_t *fields[len];
+        for (int64_t i = 0; i < len; i++)
+            fields[i] = gcc_get_field(gcc_type_if_struct(values_gcc_t), i);
+        return gcc_struct_constructor(env->ctx, loc, values_gcc_t, len, fields, rvals[0]);
     }
     case Delete: {
         ast_t *to_delete = Match(ast, Delete)->value;
@@ -544,7 +641,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             bl_type_t *t = get_type(env, interp_value);
 
-            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
+            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
                 gcc_lvalue_t *interp_var = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("interp_str"));
                 gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
                 gcc_rvalue_t *obj = gcc_rval(interp_var);
@@ -600,13 +697,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_lvalue_address(next_index, loc));
 
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_eval(*block, chunk_loc,
-                     gcc_callx(env->ctx, chunk_loc, print_fn, 
-                               compile_expr(env, block, interp_value),
-                               file,
-                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star),
-                               gcc_rvalue_bool(env->ctx, string_join->colorize)));
-
+            gcc_rvalue_t *print_call = gcc_callx(
+                env->ctx, chunk_loc, print_fn, 
+                compile_expr(env, block, interp_value),
+                file,
+                gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star),
+                gcc_rvalue_bool(env->ctx, string_join->colorize));
+            assert(print_call);
+            gcc_eval(*block, chunk_loc, print_call);
         }
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, fresh("str_final"));
@@ -1444,8 +1542,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_XOR, bl_type_to_gcc(env, t), lhs_val, rhs_val);
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
-        math_update(env, block, ast);
-        return NULL;
+        return math_update(env, block, ast);
     }
     case Add: case Subtract: case Divide: case Multiply: {
         return math_binop(env, block, ast);
@@ -1465,18 +1562,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case ConcatenateUpdate: {
         auto concat = Match(ast, ConcatenateUpdate);
         bl_type_t *t_lhs = get_type(env, concat->lhs);
-        if (t_lhs->tag == ArrayType)
-            return compile_expr(
-                env, block, WrapAST(ast, Assign,
-                                    .targets=LIST(ast_t*, concat->lhs),
-                                    .values=LIST(ast_t*, WrapAST(ast, Concatenate, .lhs=concat->lhs, .rhs=concat->rhs))));
-        else if (t_lhs->tag == PointerType)
-            return compile_expr(
-                env, block, WrapAST(ast, FunctionCall,
-                                    .fn=WrapAST(concat->lhs, FieldAccess, .fielded=concat->lhs, .field="insert_all"),
-                                    .args=LIST(ast_t*, concat->rhs)));
-        else
+        bl_type_t *array_t = t_lhs;
+        while (array_t->tag == PointerType) array_t = Match(array_t, PointerType)->pointed;
+        define_array_methods(env, array_t);
+        binding_t *b = get_from_namespace(env, array_t, "insert_all");
+        assert(b);
+        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+        if (t_lhs->tag == ArrayType) {
+            gcc_lvalue_t *lval = get_lvalue(env, block, concat->lhs, false);
+            gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);
+            gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, gcc_rval(lval)));
+            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_lvalue_address(lval, loc), rhs_rval, index_rval));
+            return gcc_rval(lval);
+        } else if (t_lhs->tag == PointerType) {
+            gcc_rvalue_t *lhs_rval = set_pointer_level(env, block, concat->lhs, 1);
+            gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);
+            gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, lhs_rval));
+            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, lhs_rval, rhs_rval, index_rval));
+            return lhs_rval;
+        } else {
             compiler_err(env, ast, "Concatenation update is only defined for array types and pointers to array types.");
+        }
     }
     case Modulus: {
         ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
@@ -1911,45 +2017,108 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (test->output)
                 compiler_err(env, ast, "There shouldn't be any output for a Void expression like this");
 
-            compile_statement(env, block, expr);
+            assert(is_discardable(env, ast));
+            gcc_rvalue_t *val = compile_expr(env, block, expr);
+            if (val && *block)
+                gcc_eval(*block, ast_loc(env, expr), val);
+            else
+                return NULL;
+
+            // For declarations, assignment, and updates, even though it
+            // doesn't evaluate to a value, it's helpful to print out the new
+            // values of the variable. (For multi-assignments, the result is a
+            // tuple)
+            bl_type_t *lhs_t = NULL;
+            const char *info = NULL;
+            switch (expr->tag) {
+            case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
+            case Declare: {
+                // UNSAFE: this assumes all these types have the same layout:
+                ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
+                // END UNSAFE
+                lhs_t = get_type(env, lhs_ast);
+                info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(lhs_ast->span.end - lhs_ast->span.start), lhs_ast->span.start);
+                break;
+            }
+            case Assign: {
+                auto assign = Match(expr, Assign);
+                if (length(assign->targets) == 1) {
+                    lhs_t = get_type(env, ith(assign->targets, 0));
+                    expr = WrapAST(expr, FieldAccess, .fielded=expr, .field="_1");
+                    break;
+                }
+                ast_t *first = ith(assign->targets, 0);
+                ast_t *last = ith(assign->targets, length(assign->targets)-1);
+                info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(last->span.end - first->span.start), first->span.start);
+                NEW_LIST(ast_t*, members);
+                for (int64_t i = 0; i < length(assign->targets); i++) {
+                    APPEND(members, WrapAST(ith(assign->targets, i), StructField, .name=heap_strf("_%d", i+1), .value=ith(assign->targets, i)));
+                }
+                lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
+                break;
+            }
+            default: break;
+            }
+
+            if (info && lhs_t) {
+                gcc_rvalue_t *stdout_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout"));
+                gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stdout_val)); 
+                gcc_func_t *print_fn = get_print_func(env, lhs_t);
+                bl_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+                gcc_type_t *hashmap_gcc_t = bl_type_to_gcc(env, cycle_checker_t);
+                gcc_lvalue_t *cycle_checker = gcc_local(gcc_block_func(*block), loc, hashmap_gcc_t, fresh("rec"));
+                gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
+                gcc_lvalue_t *next_index = gcc_local(gcc_block_func(*block), loc, gcc_type(env->ctx, INT64), fresh("index"));
+                gcc_assign(*block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+                gcc_assign(*block, loc, gcc_lvalue_access_field(
+                        cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
+                    gcc_lvalue_address(next_index, loc));
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, val, stdout_val,
+                                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), gcc_type(env->ctx, VOID_PTR)),
+                                               gcc_rvalue_bool(env->ctx, true)));
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\n"), stdout_val)); 
+            }
+            return val;
+        } else {
+            // Print "= <expr>"
+            ast_t *to_print = expr;
+            bl_type_t *t = get_type(env, expr);
+            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
+                to_print = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, FieldAccess, .fielded=expr, .field="quoted"),
+                                   .args=LIST(ast_t*, WrapAST(expr, KeywordArg, .name="colorize", .arg=WrapAST(expr, Bool, .b=false))));
+            }
+
+            ast_t *prefix_ast = WrapAST(expr, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
+            ast_t *type_info = WrapAST(expr, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
+            // Stringify and add type info:
+            ast_t *result_str = WrapAST(expr, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix_ast, WrapAST(expr, Interp, .value=to_print), type_info));
+
+            // Call say(str):
+            ast_t *say_result = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="say"), .args=LIST(ast_t*, result_str));
+            compile_statement(env, block, say_result);
+
+            // Check output
+            if (test->output) {
+                ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
+                if (type_eq(t, Type(ArrayType, .item_type=Type(CharType))))
+                    result_str_plain = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, FieldAccess, .fielded=result_str_plain, .field="quoted"),
+                                               .args=LIST(ast_t*, WrapAST(expr, KeywordArg, .name="colorize", .arg=WrapAST(expr, Bool, .b=false))));
+                ast_t *expected = StringAST(ast, test->output);
+                ast_t *message = WrapAST(
+                    ast, StringJoin, .children=LIST(
+                        ast_t*,
+                        WrapAST(ast, StringLiteral, .str="Test failed, expected: "), 
+                        WrapAST(ast, Interp, .value=expected),
+                        WrapAST(ast, StringLiteral, .str=", but got: "), 
+                        WrapAST(ast, Interp, .value=result_str_plain)));
+                compile_statement(
+                    env, block, WrapAST(
+                        ast, If, .condition=WrapAST(ast, NotEqual, .lhs=result_str_plain, .rhs=expected),
+                        .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=message)))));
+            }
             return NULL;
         }
-        ast_t *print_expr = expr;
-        if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
-            if (Match(t, ArrayType)->dsl)
-                expr = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            print_expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"),
-                                 .args=LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=true))));
-            expr = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=expr, .field="quoted"),
-                           .args=LIST(ast_t*, WrapAST(ast, KeywordArg, .name="colorize", .arg=WrapAST(ast, Bool, .b=false))));
-        }
-
-        ast_t *prefix = WrapAST(ast, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
-        ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
-        // Stringify and add type info:
-        ast_t *result_str = WrapAST(ast, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=print_expr), type_info));
-
-        // Call say(str):
-        ast_t *say_result = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, result_str));
-        compile_statement(env, block, say_result);
-
-        if (test->output) {
-            ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-            ast_t *expected = StringAST(ast, test->output);
-            ast_t *message = WrapAST(
-                ast, StringJoin, .children=LIST(
-                    ast_t*,
-                    WrapAST(ast, StringLiteral, .str="Test failed, expected: "), 
-                    WrapAST(ast, Interp, .value=expected),
-                    WrapAST(ast, StringLiteral, .str=", but got: "), 
-                    WrapAST(ast, Interp, .value=result_str_plain)));
-            compile_statement(
-                env, block, WrapAST(
-                    ast, If, .condition=WrapAST(ast, NotEqual, .lhs=result_str_plain, .rhs=expected),
-                    .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=message)))));
-        }
-
-        return NULL;
     }
     case Use: {
         auto use = Match(ast, Use);

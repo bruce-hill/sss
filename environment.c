@@ -501,7 +501,16 @@ env_t *get_type_env(env_t *env, bl_type_t *t)
 
 binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name)
 {
-    return hget(get_namespace(env, t), name, binding_t*);
+    // Do lookup without fallbacks
+    // (we don't want module.Struct.__print to return module.__print, even
+    // though the namespace may have that set as a fallback so that code
+    // module.Struct can reference things inside the module's namespace)
+    bl_hashmap_t *ns = get_namespace(env, t);
+    bl_hashmap_t *fallback = ns->fallback;
+    ns->fallback = NULL;
+    binding_t *b = hget(ns, name, binding_t*);
+    ns->fallback = fallback;
+    return b;
 }
 
 void set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value)

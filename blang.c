@@ -206,7 +206,8 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             if (b->type->tag == FunctionType)
                 continue;
 
-            void *global = gcc_jit_result_get_global(result, (char*)entry->key);
+            void *global = gcc_jit_result_get_global(result, entry->value->sym_name);
+            assert(global);
             gcc_type_t *gcc_t = bl_type_to_gcc(env, b->type);
             char *copy = GC_MALLOC(gcc_sizeof(env, b->type));
             memcpy(copy, (char*)global, gcc_sizeof(env, b->type));

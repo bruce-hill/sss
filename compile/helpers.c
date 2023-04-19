@@ -473,8 +473,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                                            Type(PointerType, .pointed=Type(VoidType)), Type(BoolType)),
                            .arg_names=LIST(const char*, "obj", "file", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(IntType));
-    hset(get_namespace(env, t), "__print",
-         new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
+    bl_hashmap_t *ns = get_namespace(env, t);
+    hset(ns, "__print", new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("print() for type: ", type_to_string(t))));
@@ -502,7 +502,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case CharType: case CStringCharType: {
-        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v"};
+        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",['"']="\\\""};
         NEW_LIST(gcc_case_t*, cases);
 
         for (int i = 0; i < 128; i++) {

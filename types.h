@@ -93,6 +93,7 @@ const char* type_to_string(bl_type_t *t);
 bool type_eq(bl_type_t *a, bl_type_t *b);
 bool type_is_a(bl_type_t *t, bl_type_t *req);
 bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b);
+bl_type_t *value_type(bl_type_t *a);
 bool is_integral(bl_type_t *t);
 bool is_numeric(bl_type_t *t);
 int numtype_priority(bl_type_t *t);

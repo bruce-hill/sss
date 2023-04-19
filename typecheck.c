@@ -231,7 +231,6 @@ static bl_type_t *generate(bl_type_t *t)
         return Type(GeneratorType, .generated=t);
 }
 
-
 bl_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {

@@ -98,7 +98,7 @@ void compile_while_loop(env_t *env, gcc_block_t **block, const char *loop_name, 
 
 // ============================== math.c ================================
 gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast);
-void math_update(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast);
 void math_update_rec(
     env_t *env, gcc_block_t **block, ast_t *ast, bl_type_t *lhs_t, gcc_lvalue_t *lhs,
     gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs);

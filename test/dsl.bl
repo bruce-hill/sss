@@ -1,6 +1,6 @@
 
 >>> $JSON{{"inner":{"obj":[]}}}
-=== "{\"inner\":{\"obj\":[]}}"
+=== $JSON"{\"inner\":{\"obj\":[]}}"
 
 name := "Robert'; drop table students;--"
 

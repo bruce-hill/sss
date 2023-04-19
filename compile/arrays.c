@@ -409,7 +409,13 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_func_t *func = gcc_block_func(*block);
 
-    bl_type_t *item_type = Match(t, ArrayType)->item_type;
+    auto array = Match(t, ArrayType);
+    if (array->dsl) {
+        COLOR_LITERAL(block, "\x1b[0;35m");
+        WRITE_LITERAL(*block, heap_strf("$%s", array->dsl));
+    }
+
+    bl_type_t *item_type = array->item_type;
     bool is_string = (item_type->tag == CharType);
     if (is_string) {
         COLOR_LITERAL(block, "\x1b[0;35m");
