@@ -2031,7 +2031,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             bl_type_t *lhs_t = NULL;
             const char *info = NULL;
             switch (expr->tag) {
-            case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
+            case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate: case ConcatenateUpdate:
             case Declare: {
                 // UNSAFE: this assumes all these types have the same layout:
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
