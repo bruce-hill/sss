@@ -140,28 +140,18 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         }
 
         ast_t *ast = parse_file(f, &on_err);
-        ast = globalize_decls(ast);
-        if (!is_discardable(env, ast)) {
-            bl_type_t *t = get_type(env, ast);
-            if (t->tag == GeneratorType) {
-                printf("\x1b[31;1mGenerator types can't be used in the REPL\x1b[m\n");
-                CLEANUP();
-                continue;
-            } else if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType) {
-                // Quote the string:
-                auto str = Match(t, ArrayType);
-                if (str->dsl)
-                    ast = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=ast)));
-                List(ast_t*) args = LIST(ast_t*, WrapAST(ast, KeywordArg, .name=heap_str("colorize"), .arg=WrapAST(ast, Bool, .b=true)));
-                ast = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=ast, .field=heap_str("quoted")), .args=args);
-            }
-            ast_t *prefix = WrapAST(ast, StringLiteral, .str=heap_str("\x1b[0;2m= \x1b[0;35m"));
-            ast_t *type_info = WrapAST(ast, StringLiteral, .str=heap_strf("\x1b[0;2m\t:%s\x1b[m", type_to_string(t)));
-            // Stringify and add type info:
-            ast = WrapAST(ast, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix, WrapAST(ast, Interp, .value=ast), type_info));
-            // Call say(str):
-            ast = WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name=heap_str("say")), .args=LIST(ast_t*, ast))));
+
+        // Convert decls to globals and wrap all statements in doctests
+        List(ast_t*) statements = Match(ast, Block)->statements;
+        NEW_LIST(ast_t*, stmts);
+        for (int64_t i = 0; i < LIST_LEN(statements); i++) {
+            ast_t *stmt = LIST_ITEM(statements, i);
+            if (stmt->tag == Declare)
+                stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_global=true);
+            stmt = WrapAST(stmt, DocTest, .expr=stmt, .skip_source=true);
+            APPEND(stmts, stmt);
         }
+        ast = WrapAST(ast, Block, .statements=stmts);
 
         if (verbose)
             fprintf(stderr, "Result: %s\n", ast_to_str(ast));

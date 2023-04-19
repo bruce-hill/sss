@@ -2007,10 +2007,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto test = Match(ast, DocTest);
         ast_t *expr = test->expr;
 
-        // Print test:
-        const char* src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-        ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, StringAST(expr, src)));
-        compile_statement(env, block, say_src);
+        if (!test->skip_source) {
+            // Print source code of the doctest:
+            const char* src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+            ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"), .args=LIST(ast_t*, StringAST(expr, src)));
+            compile_statement(env, block, say_src);
+        }
 
         bl_type_t *t = get_type(env, expr);
         if (t->tag == VoidType) {

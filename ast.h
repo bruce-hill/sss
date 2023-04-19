@@ -282,6 +282,7 @@ struct ast_s {
         struct {
             ast_t *expr;
             const char *output;
+            bool skip_source:1;
         } DocTest;
         struct {
             ast_t *body;
