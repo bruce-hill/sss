@@ -2079,7 +2079,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                gcc_rvalue_bool(env->ctx, true)));
                 gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\n"), stdout_val)); 
             }
-            return val;
+            return NULL;
         } else {
             // Print "= <expr>"
             ast_t *to_print = expr;
