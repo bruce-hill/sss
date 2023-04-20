@@ -556,7 +556,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_constant(env, ast);
     }
     case Interp: {
-        return compile_expr(env, block, Match(ast, Interp)->value);
+        return compile_expr(env, block, WrapAST(ast, StringJoin, .children=LIST(ast_t*, ast)));
     }
 #define STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval) \
         gcc_struct_constructor(env->ctx, loc, gcc_t, 3, (gcc_field_t*[]){ \
@@ -641,7 +641,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             bl_type_t *t = get_type(env, interp_value);
 
-            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
+            if (!interp->quote_string && t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
                 gcc_lvalue_t *interp_var = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("interp_str"));
                 gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
                 gcc_rvalue_t *obj = gcc_rval(interp_var);
@@ -702,7 +702,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compile_expr(env, block, interp_value),
                 file,
                 gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star),
-                gcc_rvalue_bool(env->ctx, string_join->colorize));
+                gcc_rvalue_bool(env->ctx, interp->colorize));
             assert(print_call);
             gcc_eval(*block, chunk_loc, print_call);
         }
@@ -2084,41 +2084,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return NULL;
         } else {
             // Print "= <expr>"
-            ast_t *to_print = expr;
-            bl_type_t *t = get_type(env, expr);
-            if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
-                to_print = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, FieldAccess, .fielded=expr, .field="quoted"),
-                                   .args=LIST(ast_t*, WrapAST(expr, KeywordArg, .name="colorize", .arg=WrapAST(expr, Bool, .b=false))));
-            }
-
-            ast_t *prefix_ast = WrapAST(expr, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m");
-            ast_t *type_info = WrapAST(expr, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)));
-            // Stringify and add type info:
-            ast_t *result_str = WrapAST(expr, StringJoin, .colorize=true, .children=LIST(ast_t*, prefix_ast, WrapAST(expr, Interp, .value=to_print), type_info));
-
-            // Call say(str):
-            ast_t *say_result = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="say"), .args=LIST(ast_t*, result_str));
-            compile_statement(env, block, say_result);
-
-            // Check output
+            NEW_LIST(ast_t*, statements);
+            ast_t *stmt = WrapAST(expr, Declare, .var=WrapAST(expr, Var, .name="=expr"), .value=expr);
+            APPEND(statements, stmt);
+            stmt = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="say"), .args=LIST(ast_t*,
+                WrapAST(expr, StringJoin, .children=LIST(ast_t*, 
+                    WrapAST(expr, StringLiteral, .str="\x1b[0;2m= \x1b[0;35m"),
+                    WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
+                    WrapAST(expr, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)))))));
+            APPEND(statements, stmt);
             if (test->output) {
-                ast_t *result_str_plain = WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, Interp, .value=expr)));
-                if (type_eq(t, Type(ArrayType, .item_type=Type(CharType))))
-                    result_str_plain = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, FieldAccess, .fielded=result_str_plain, .field="quoted"),
-                                               .args=LIST(ast_t*, WrapAST(expr, KeywordArg, .name="colorize", .arg=WrapAST(expr, Bool, .b=false))));
-                ast_t *expected = StringAST(ast, test->output);
                 ast_t *message = WrapAST(
                     ast, StringJoin, .children=LIST(
                         ast_t*,
-                        WrapAST(ast, StringLiteral, .str="Test failed, expected: "), 
-                        WrapAST(ast, Interp, .value=expected),
-                        WrapAST(ast, StringLiteral, .str=", but got: "), 
-                        WrapAST(ast, Interp, .value=result_str_plain)));
-                compile_statement(
-                    env, block, WrapAST(
-                        ast, If, .condition=WrapAST(ast, NotEqual, .lhs=result_str_plain, .rhs=expected),
-                        .body=WrapAST(ast, Block, .statements=LIST(ast_t*, WrapAST(ast, Fail, .message=message)))));
+                        WrapAST(ast, StringLiteral, .str=heap_strf("Test failed, expected: %s, but got: ", test->output)), 
+                        WrapAST(ast, Interp, .value=WrapAST(expr, Var, .name="=expr"))));
+                stmt = WrapAST(expr, If,
+                   .condition=WrapAST(expr, NotEqual, .lhs=WrapAST(expr, Interp, .quote_string=true, .value=WrapAST(expr, Var, .name="=expr")),
+                                                      .rhs=WrapAST(expr, StringLiteral, .str=test->output)),
+                   .body=WrapAST(expr, Fail, .message=message));
+                APPEND(statements, stmt);
             }
+            compile_statement(env, block, WrapAST(expr, Block, .statements=statements));
             return NULL;
         }
     }

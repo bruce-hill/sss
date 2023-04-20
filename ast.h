@@ -13,7 +13,7 @@
                                                      .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
-#define StringAST(ast, _str) WrapAST(ast, StringJoin, .children=LIST(ast_t*, WrapAST(ast, StringLiteral, .str=heap_str(_str))))
+#define StringAST(ast, _str) WrapAST(ast, StringLiteral, .str=heap_str(_str))
 
 typedef enum {INDEX_NORMAL, INDEX_FAIL, INDEX_UNCHECKED} index_type_e;
 
@@ -105,11 +105,10 @@ struct ast_s {
         struct {
             const char *dsl;
             List(ast_t*) children;
-            bool colorize:1;
         } StringJoin;
         struct {
             ast_t *value;
-            bool labelled;
+            bool labelled:1, colorize:1, quote_string:1;
         } Interp;
         struct {
             ast_t *var, *value;

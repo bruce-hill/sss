@@ -298,13 +298,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Range: {
         return Type(RangeType);
     }
-    case Interp: {
-        return get_type(env, Match(ast, Interp)->value);
-    }
     case StringJoin: {
         return Type(ArrayType, .item_type=Type(CharType), .dsl=Match(ast, StringJoin)->dsl);
     }
-    case StringLiteral: {
+    case Interp: case StringLiteral: {
         return Type(ArrayType, .item_type=Type(CharType));
     }
     case Var: {
