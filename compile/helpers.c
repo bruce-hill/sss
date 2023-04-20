@@ -1353,8 +1353,8 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
     fputc('\0', f);
     fflush(f);
     gcc_func_t *fail = get_function(env, "fail");
-    const char* fmt_str = heap_strf("%s:%ld.%ld: \x1b[31;1;7m%s\x1b[m\n\n%s",
-                                    span.file->filename,
+    const char* fmt_str = heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
+                                    span.file->relative_filename,
                                     bl_get_line_number(span.file, span.start),
                                     bl_get_line_column(span.file, span.start),
                                     user_fmt,
