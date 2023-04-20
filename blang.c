@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
     setenv("BLANGPATH", heap_strf(".:%s/.local/share/blang/modules:/usr/local/share/blang/modules", getenv("HOME")), 0);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-lblang",
+        "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-l:libblang.so."BLANG_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)

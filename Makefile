@@ -20,10 +20,10 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lgccjit -lcord -lm -L. -lblang
+LIBS=-lgc -lgccjit -lcord -lm -L. -l:libblang.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS) -DBLANG_VERSION=\"$(VERSION)\"
 
-LIBFILE=libblang.so
+LIBFILE=libblang.so.$(VERSION)
 CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c SipHash/halfsiphash.c
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libblang/list.h libblang/string.h libblang/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
@@ -57,14 +57,24 @@ blang.1: blang.1.md
 
 install: $(BINARY) $(LIBFILE)
 	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang/modules"
-	cp blang.1 "$(PREFIX)/man/man1/blang.1"
+	cp -v blang.1 "$(PREFIX)/man/man1/blang.1"
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
-	cp -r stdlib/* "$(PREFIX)/share/blang/modules/"
+	cp -vr stdlib/* "$(PREFIX)/share/blang/modules/"
 	rm -f "$(PREFIX)/bin/$(BINARY)"
-	cp $(BINARY) blang "$(PREFIX)/bin/"
+	cp -v $(BINARY) blang "$(PREFIX)/bin/"
 
 uninstall:
-	rm -rf "$(PREFIX)/bin/blang" "$(PREFIX)/bin/$(BINARY)" "$(PREFIX)/man/man1/blang.1" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"
+	@rm -rvf "$(PREFIX)/bin/$(BINARY)" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"; \
+	if [[ "`find "$(PREFIX)/bin" -type f -regex '.*/blang[0-9.]+\$$'`" == "" ]]; then \
+		rm -vf "$(PREFIX)/man/man1/blang.1" "$(PREFIX)/bin/blang"; \
+	else \
+		if [ -f "$(PREFIX)/bin/blang" ]; then \
+			read -p $$'\033[1mIt looks like there are other versions of Blang installed. Do you want to uninstall them as well? [Y/n]\033[0m ' ans; \
+			if [[ $$ans =~ ^[Yy] ]]; then \
+				rm -vf "$(PREFIX)/bin"/blang* "$(PREFIX)"/lib/libblang.so* "$(PREFIX)"/man/man1/blang.1 ; \
+			fi; \
+		fi; \
+	fi;
 
 test: all
 	@for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
