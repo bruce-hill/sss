@@ -50,7 +50,7 @@ tags: $(CFILES) $(HFILES) blang.c
 	ctags $^
 
 clean:
-	rm -f $(BINARY) $(OBJFILES) $(LIBFILE)
+	rm -f $(BINARY) $(OBJFILES) blang[0-9]+* libblang.so.*
 
 blang.1: blang.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
