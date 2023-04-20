@@ -16,8 +16,6 @@
 
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
-#define BLANG_VERSION "0.1.0"
-
 int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
@@ -56,7 +54,7 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, 
 
     binary_name = CORD_to_char_star(binary_name);
     gcc_jit_context_compile_to_file(ctx, GCC_OUTPUT_KIND_EXECUTABLE, binary_name);
-    printf("\x1b[0;1;32mSuccessfully compiled %s to %s\x1b[m\n", argv[i], binary_name);
+    printf("\x1b[0;1;32mSuccessfully compiled \x1b[33m%s\x1b[32m -> \x1b[37m%s\x1b[m\n", f->relative_filename, binary_name);
     gcc_jit_result_release(result);
 
     return 0;
@@ -229,7 +227,7 @@ int main(int argc, char *argv[])
     bool verbose = false;
     char *prog_name = strrchr(argv[0], '/');
     prog_name = prog_name ? prog_name + 1 : argv[0];
-    bool run_program = !strstr(prog_name, "blangc");
+    bool run_program = true;
 
     gcc_jit_context *ctx = gcc_jit_context_acquire();
     assert(ctx != NULL);
@@ -248,17 +246,20 @@ int main(int argc, char *argv[])
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
-            if (run_program) {
-                puts("blang - The Blang programming language runner");
-                puts("Usage: blang [-v|--verbose] [-A|--asm] [-O optimization] [file.bl]");
-            } else {
-                puts("blangc - The Blang programming language compiler");
-                puts("Usage: blang [-v|--verbose] [-A|--asm] [-O optimization] [-c] file.bl [-o output]");
-            }
+            puts("blang - The Blang programming language runner");
+            puts("Usage: blang [-h|--help] [-v|--verbose] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.bl]");
             return 0;
+        } else if (streq(argv[i], "-V")) {
+            ++i;
+            continue;
+        } else if (strncmp(argv[i], "-V", 2) == 0) {
+            continue;
         } else if (streq(argv[i], "-v") || streq(argv[i], "--verbose")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
             verbose = true;
+            continue;
+        } else if (streq(argv[i], "-c") || streq(argv[i], "--compile")) {
+            run_program = false;
             continue;
         } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE, 1);
