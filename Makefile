@@ -1,6 +1,6 @@
 CC=cc
 PREFIX=/usr/local
-VERSION=0.2.0
+VERSION=0.2.1
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 CWARN=-Wall -Wextra
@@ -61,8 +61,7 @@ install: $(BINARY) $(LIBFILE)
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
 	cp -r stdlib/* "$(PREFIX)/share/blang/modules/"
 	rm -f "$(PREFIX)/bin/$(BINARY)"
-	cp $(BINARY) "$(PREFIX)/bin/"
-	cp blang_version_picker "$(PREFIX)/bin/blang"
+	cp $(BINARY) blang "$(PREFIX)/bin/"
 
 uninstall:
 	rm -rf "$(PREFIX)/bin/blang" "$(PREFIX)/bin/$(BINARY)" "$(PREFIX)/man/man1/blang.1" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"
