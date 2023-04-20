@@ -29,7 +29,7 @@ HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h co
 OBJFILES=$(CFILES:.c=.o)
 BINARY=blang$(VERSION)
 
-all: $(BINARY) blang.1
+all: $(BINARY) $(LIBFILE) blang.1
 
 $(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o SipHash/halfsiphash.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
