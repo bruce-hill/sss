@@ -10,3 +10,10 @@
 >>> mod2_copy := use ../test/module2.bl
 >>> mod2.random_val == mod2_copy.random_val
 === yes
+>>> def MyType{x:mod2.Struct}
+>>> MyType{mod2.Struct{4}}
+=== MyType{x=Struct{x=4}}
+>>> def foo(s:mod2.Struct):Int
+        return s.x
+>>> foo(mod2.Struct{6})
+=== 6

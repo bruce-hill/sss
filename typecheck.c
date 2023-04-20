@@ -28,9 +28,14 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     switch (ast->tag) {
     case Var: {
         binding_t *b = get_binding(env, Match(ast, Var)->name);
-        if (!b || b->type->tag != TypeType)
-            compiler_err(env, ast, "I don't know any type with this name.");
-        return Match(b->type, TypeType)->type;
+        if (!b)
+            compiler_err(env, ast, "I don't know anything with the name '%s'", Match(ast, Var)->name);
+        else if (b->type->tag == ModuleType)
+            return b->type;
+        else if (b->type->tag == TypeType)
+            return Match(b->type, TypeType)->type;
+        else
+            compiler_err(env, ast, "The only '%s' I know is a %s, not a type", Match(ast, Var)->name, type_to_string(b->type));
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);

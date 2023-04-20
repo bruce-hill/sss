@@ -1,11 +1,10 @@
-def Timestamp{seconds, nanoseconds:Int}
-    format := (extern bl_time_format:(timestamp:Timestamp,format="%c")->String)
+time := use time.bl
 
 def FileInfo {
     device, rdevice, inode, mode, links, user, group:Int
     size,block_size:Int<bytes>
     block_count:Int
-    accessed, modified, moved:Timestamp
+    accessed, modified, moved:time.Timestamp
 }
 
 def Result oneof {
