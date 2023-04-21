@@ -2156,7 +2156,7 @@ PARSER(parse_use) {
     const char *start = pos;
     if (!match_word(&pos, "use")) return NULL;
     spaces(&pos);
-    size_t path_len = strcspn(pos, " \t\r\n");
+    size_t path_len = strcspn(pos, " \t\r\n;");
     if (path_len < 1)
         parser_err(ctx, start, pos, "There is no filename here to use");
     char *path = heap_strn(pos, path_len);
@@ -2164,6 +2164,7 @@ PARSER(parse_use) {
     char *resolved_path = resolve_path(path, ctx->file->filename);
     if (!resolved_path)
         parser_err(ctx, start, pos, "No such file exists: \"%s\"", path);
+    while (match(&pos, ";")) continue;
     return NewAST(ctx->file, start, pos, Use, .path=resolved_path);
 }
 
