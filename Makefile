@@ -27,14 +27,13 @@ LIBFILE=libblang.so.$(VERSION)
 CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c SipHash/halfsiphash.c
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libblang/list.h libblang/string.h libblang/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
-BINARY=blang$(VERSION)
 
-all: $(BINARY) $(LIBFILE) blang.1
+all: blang $(LIBFILE) blang.1
 
 $(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o SipHash/halfsiphash.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
-$(BINARY): $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
+blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
 	$(CC) $(ALL_FLAGS) $(LDFLAGS) -o $@ $(OBJFILES) blang.c
 
 hashtest: libblang/hashmap.o hashtest.c
@@ -50,21 +49,22 @@ tags: $(CFILES) $(HFILES) blang.c
 	ctags $^
 
 clean:
-	rm -f $(BINARY) $(OBJFILES) blang[0-9]+* libblang.so.*
+	rm -f blang $(OBJFILES) blang[0-9]+* libblang.so.*
 
 blang.1: blang.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
 
-install: $(BINARY) $(LIBFILE)
+install: blang $(LIBFILE)
 	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang/modules"
 	cp -v blang.1 "$(PREFIX)/man/man1/blang.1"
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
 	cp -vr stdlib/* "$(PREFIX)/share/blang/modules/"
-	rm -f "$(PREFIX)/bin/$(BINARY)"
-	cp -v $(BINARY) blang "$(PREFIX)/bin/"
+	rm -f "$(PREFIX)/bin/blang" "$(PREFIX)/bin/blang$(VERSION)"
+	cp -v blang "$(PREFIX)/bin/blang$(VERSION)"
+	cp -v blang_version_picker.sh "$(PREFIX)/bin/blang"
 
 uninstall:
-	@rm -rvf "$(PREFIX)/bin/$(BINARY)" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"; \
+	@rm -rvf "$(PREFIX)/bin/blang$(VERSION)" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"; \
 	if [[ "`find "$(PREFIX)/bin" -type f -regex '.*/blang[0-9.]+\$$'`" == "" ]]; then \
 		rm -vf "$(PREFIX)/man/man1/blang.1" "$(PREFIX)/bin/blang"; \
 	else \
