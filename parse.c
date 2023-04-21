@@ -1540,7 +1540,6 @@ PARSER(parse_term) {
         || (term=parse_sizeof(ctx, pos))
         || (term=parse_not(ctx, pos))
         || (term=parse_extern(ctx, pos))
-        || (term=parse_use(ctx, pos))
         );
 
     if (!success) return NULL;
@@ -1754,9 +1753,9 @@ PARSER(parse_declaration) {
     spaces(&pos);
     if (!match(&pos, ":=")) return NULL;
     spaces(&pos);
-    ast_t *val = parse_extended_expr(ctx, pos);
+    ast_t *val = optional_ast(ctx, &pos, parse_use);
+    if (!val) val = optional_ast(ctx, &pos, parse_extended_expr);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
-    pos = val->span.end;
     return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val, .is_global=is_global);
 }
 
