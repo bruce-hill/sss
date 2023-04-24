@@ -60,6 +60,7 @@ struct bl_type_s {
             List(bl_type_t*) arg_types;
             List(ast_t*) arg_defaults;
             bl_type_t *ret;
+            void *env;
         } FunctionType;
         struct {
             bool is_optional;

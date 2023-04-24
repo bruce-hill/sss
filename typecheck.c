@@ -104,7 +104,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
                 APPEND(arg_defaults, ith(fn->arg_defaults, i));
             }
         }
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=global_scope(env));
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);
@@ -752,7 +752,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         }
 
         bl_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
     }
 
     case StructDef: case TaggedUnionDef: case UnitDef: case ConvertDef: {

@@ -1081,7 +1081,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             arg_vals[pos] = val;
         }
 
-        env_t *default_arg_env = global_scope(env);
+        env_t *default_arg_env = fn_t->env ? fn_t->env : global_scope(env);
         if (fn_t->arg_names && fn_t->arg_defaults) {
             // Stash args in local variables so we don't evaluate them multiple times (e.g. def foo(x:Int,y=x)... foo(Int.random()))
             gcc_func_t *func = gcc_block_func(*block);
