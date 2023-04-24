@@ -496,8 +496,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         assert(block);
         gcc_jump_condition(block, NULL, obj, yes_block, no_block);
         WRITE_LITERAL(yes_block, "yes");
+        COLOR_LITERAL(&yes_block, "\x1b[m");
         gcc_return_void(yes_block, NULL);
         WRITE_LITERAL(no_block, "no");
+        COLOR_LITERAL(&no_block, "\x1b[m");
         gcc_return_void(no_block, NULL);
         break;
     }
@@ -583,6 +585,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         } else if (units && strlen(units) > 0) {
             COLOR_LITERAL(&block, "\x1b[33;2m");
             WRITE_LITERAL(block, heap_strf("<%s>", units));
+            COLOR_LITERAL(&block, "\x1b[m");
+        } else {
             COLOR_LITERAL(&block, "\x1b[m");
         }
         gcc_return_void(block, NULL);
@@ -810,18 +814,24 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         break;
     }
     case FunctionType: {
+        COLOR_LITERAL(&block, "\x1b[36m");
         WRITE_LITERAL(block, type_to_string(t));
+        COLOR_LITERAL(&block, "\x1b[m");
         gcc_return_void(block, NULL);
         break;
     }
     case TypeType: {
+        COLOR_LITERAL(&block, "\x1b[36m");
         gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn,
                                         gcc_cast(env->ctx, NULL, obj, gcc_type(env->ctx, STRING)), file));
+        COLOR_LITERAL(&block, "\x1b[m");
         gcc_return_void(block, NULL);
         break;
     }
     case ModuleType: {
+        COLOR_LITERAL(&block, "\x1b[34m");
         WRITE_LITERAL(block, type_to_string(t));
+        COLOR_LITERAL(&block, "\x1b[m");
         gcc_return_void(block, NULL);
         break;
     }

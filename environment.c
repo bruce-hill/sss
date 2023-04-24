@@ -352,6 +352,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug
     env_t *env = new(env_t,
         .ctx = ctx,
         .on_err = on_err,
+        .err_output = stderr,
         .file = f,
         .global_bindings = new(bl_hashmap_t),
         .bindings = new(bl_hashmap_t),
@@ -421,20 +422,21 @@ env_t *global_scope(env_t *env)
 
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
-    if (isatty(STDERR_FILENO))
-        fputs("\x1b[31;7;1m", stderr);
+    bool is_tty = isatty(fileno(env->err_output));
+    if (is_tty)
+        fputs("\x1b[31;7;1m", env->err_output);
     if (ast)
-        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->relative_filename, bl_get_line_number(ast->span.file, ast->span.start),
+        fprintf(env->err_output, "%s:%ld.%ld: ", ast->span.file->relative_filename, bl_get_line_number(ast->span.file, ast->span.start),
                 bl_get_line_column(ast->span.file, ast->span.start));
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+    vfprintf(env->err_output, fmt, args);
     va_end(args);
-    if (isatty(STDERR_FILENO))
-        fputs(" \x1b[m", stderr);
-    fputs("\n\n", stderr);
+    if (is_tty)
+        fputs(" \x1b[m", env->err_output);
+    fputs("\n\n", env->err_output);
     if (ast)
-        fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO));
+        fprint_span(env->err_output, ast->span, "\x1b[31;1m", 2, is_tty);
 
     if (env->on_err)
         longjmp(*env->on_err, 1);

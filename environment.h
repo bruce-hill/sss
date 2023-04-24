@@ -44,6 +44,7 @@ typedef struct {
 typedef struct env_s {
     gcc_ctx_t *ctx;
     bl_file_t *file;
+    FILE *err_output;
     jmp_buf *on_err;
     bl_hashmap_t *bindings; // name -> binding_t
     bl_hashmap_t *global_bindings; // name -> binding_t*

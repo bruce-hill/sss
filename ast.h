@@ -280,7 +280,7 @@ struct ast_s {
         } Reduction;
         struct {
             ast_t *expr;
-            const char *output;
+            const char *output, *expected_error;
             bool skip_source:1;
         } DocTest;
         struct {
