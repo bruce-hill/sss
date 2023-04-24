@@ -727,6 +727,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // In order to allow default values to reference other arguments (e.g. `def foo(x:Foo, y=x)`)
         // we need to create scoped bindings for them here:
         env_t *default_arg_env = global_scope(env);
+        default_arg_env->bindings = new(bl_hashmap_t, .fallback=default_arg_env->bindings);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_type_def = LIST_ITEM(def->arg_types, i);
             if (!arg_type_def) continue;
@@ -748,6 +749,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 bl_type_t *arg_type = get_type(default_arg_env, default_val);
                 APPEND(arg_types, arg_type);
                 APPEND(arg_defaults, default_val);
+                hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
             }
         }
 

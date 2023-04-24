@@ -1081,10 +1081,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             arg_vals[pos] = val;
         }
 
-        env_t *default_arg_env = fn_t->env ? fn_t->env : global_scope(env);
+        env_t default_arg_env = fn_t->env ? *(env_t*)fn_t->env : *global_scope(env);
+        default_arg_env.bindings = new(bl_hashmap_t, .fallback=default_arg_env.bindings);
+        gcc_func_t *func = gcc_block_func(*block);
+
         if (fn_t->arg_names && fn_t->arg_defaults) {
             // Stash args in local variables so we don't evaluate them multiple times (e.g. def foo(x:Int,y=x)... foo(Int.random()))
-            gcc_func_t *func = gcc_block_func(*block);
             for (int64_t i = 0; i < num_args; i++) {
                 if (arg_vals[i]) {
                     const char *arg_name = ith(fn_t->arg_names, i);
@@ -1095,7 +1097,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             for (int64_t i = 0; i < num_args; i++) {
                 if (arg_vals[i] && ith(fn_t->arg_names, i))
-                    hset(default_arg_env->bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
+                    hset(default_arg_env.bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
             }
         }
 
@@ -1105,7 +1107,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (fn_t->arg_defaults) {
                 ast_t *default_val = ith(fn_t->arg_defaults, pos);
                 if (default_val) {
-                    arg_vals[pos] = compile_expr(default_arg_env, block, default_val);
+                    const char *arg_name = ith(fn_t->arg_names, pos);
+                    gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, ith(fn_t->arg_types, pos)), fresh(arg_name ? arg_name : "arg"));
+                    gcc_assign(*block, loc, tmp, compile_expr(&default_arg_env, block, default_val));
+                    arg_vals[pos] = gcc_rval(tmp);
+                    hset(default_arg_env.bindings, ith(fn_t->arg_names, pos), new(binding_t, .type=ith(fn_t->arg_types, pos), .rval=arg_vals[pos]));
                     continue;
                 }
             }
@@ -1116,6 +1122,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                       arg_name ? arg_name : heap_strf("%ld", pos));
             }
             arg_vals[pos] = gcc_null(env->ctx, bl_type_to_gcc(env, arg_t));
+            hset(default_arg_env.bindings, ith(fn_t->arg_names, pos), new(binding_t, .type=ith(fn_t->arg_types, pos), .rval=arg_vals[pos]));
         }
 
         if (fn)
