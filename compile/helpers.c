@@ -66,6 +66,7 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
             align = 1;
 
         foreach (tagged->members, member, _) {
+            if (!member->type) continue;
             ssize_t member_align = gcc_alignof(env, member->type);
             if (member_align > align) align = member_align;
         }
@@ -304,14 +305,13 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
-        // gcc_union(env->ctx, NULL, "data_u", length(fields), fields[0])
-        gcc_struct_t *gcc_struct = gcc_new_struct_type(
-            env->ctx, NULL, tagged->name, 2, (gcc_field_t*[]){
-                gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
-                gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
-            });
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name);
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, type_to_string(t), gcc_t);
+        gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
+            gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
+            gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
+        });
         break;
     }
     case TypeType: {

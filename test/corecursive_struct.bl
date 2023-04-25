@@ -1,5 +1,7 @@
 def Foo { b:?@Baz }
 def Baz { f:?@Foo }
 
-f := @Foo{b=@Baz{}}
-say "$f"
+>>> @Foo{b=@Baz{}}
+
+def Tagged oneof { t:@Tagged, nope }
+>>> Tagged.t(@Tagged.nope)
