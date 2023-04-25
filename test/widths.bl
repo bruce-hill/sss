@@ -1,11 +1,29 @@
-ints := [10, 20, 30]
-say "$(typeof ints) $ints"
+>>> ints := [10, 20, 30]
+>>> typeof ints
+=== [Int]
+>>> ints
+=== [10, 20, 30]
 
-ints := [10i32, 20i32, 30i32]
-say "$(typeof ints) $ints"
+>>> ints := [10_i32, 20_i32, 30_i32]
+>>> typeof ints
+=== [Int32]
+>>> ints
+=== [10_i32, 20_i32, 30_i32]
 
-ints := [10i16, 20i16, 30i16]
-say "$(typeof ints) $ints"
+ints := [10_i16, 20_i16, 30_i16]
+>>> typeof ints
+=== [Int16]
+>>> ints
+=== [10_i16, 20_i16, 30_i16]
+
+ints := [10_i8, 20_i16, 30_i32]
+>>> typeof ints
+=== [Int32]
+>>> ints
+=== [10_i32, 20_i32, 30_i32]
 
 bools := [yes, no, yes, no]
-say "$(typeof bools) $bools"
+>>> typeof bools
+=== [Bool]
+>>> bools
+=== [yes, no, yes, no]
