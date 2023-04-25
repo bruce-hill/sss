@@ -295,12 +295,16 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     if (arr_t->tag != ArrayType)
         compiler_err(env, arr_ast, "Only arrays may be indexed, but this value is a %s", type_to_string(arr_t));
 
+    gcc_func_t *func = gcc_block_func(*block);
     gcc_type_t *gcc_t = bl_type_to_gcc(env, arr_t);
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 0));
     gcc_rvalue_t *index_val = gcc_cast(env->ctx, loc, compile_expr(env, block, index), i64_t);
+    gcc_lvalue_t *index_var = gcc_local(func, loc, i64_t, fresh("index"));
+    gcc_assign(*block, loc, index_var, index_val);
+    index_val = gcc_rval(index_var);
     gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 2)), i64_t);
 
     gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
@@ -315,7 +319,6 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index_val, len64);
     gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
-    gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *bounds_safe = gcc_new_block(func, fresh("bounds_safe")),
                 *bounds_unsafe = gcc_new_block(func, fresh("bounds_unsafe"));
     gcc_jump_condition(*block, loc, ok, bounds_safe, bounds_unsafe);
@@ -327,19 +330,15 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         insert_defers(env, block, env->loop_label->deferred);
         gcc_jump(*block, loc, skip_dest);
     } else {
-        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7mError: index %ld is not inside the array (1..%ld)\x1b[m\n\n%s");
-        char *info = NULL;
-        size_t size = 0;
-        FILE *f = open_memstream(&info, &size);
-        fprint_span(f, index->span, "\x1b[31;1m", 2, true);
-        fputc('\0', f);
-        fflush(f);
-        gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-        gcc_func_t *fail = get_function(env, "fail");
-        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fail, fmt, index_val, len64, callstack));
-        fclose(f);
-        free(info);
-        gcc_jump(*block, loc, bounds_unsafe);
+        gcc_block_t *empty = gcc_new_block(func, fresh("empty")),
+                    *nonempty = gcc_new_block(func, fresh("nonempty"));
+        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, len64, gcc_rvalue_int64(env->ctx, 0)),
+                           nonempty, empty);
+        *block = nonempty;
+        insert_failure(env, block, index->span, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
+                       index_t, index_val, Type(IntType, .bits=64), len64);
+        *block = empty;
+        insert_failure(env, block, index->span, "Error: this is an empty array and it cannot be indexed into");
     }
 
     // Bounds check success:

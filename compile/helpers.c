@@ -1428,11 +1428,9 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             gcc_eval(*block, NULL, print_call);
             gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, fflush_fn, file));
 
-            gcc_rvalue_t *size = gcc_rval(size_var);
-            gcc_rvalue_t *str = gcc_callx(
-                env->ctx, NULL, alloc_fn,
-                gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
-                              size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE))));
+            gcc_rvalue_t *size = gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
+                                               gcc_rval(size_var), gcc_one(env->ctx, gcc_type(env->ctx, SIZE)));
+            gcc_rvalue_t *str = gcc_callx(env->ctx, NULL, alloc_fn, size);
             str = gcc_callx(env->ctx, NULL, memcpy_fn, str, gcc_rval(buf_var), size);
             str = gcc_cast(env->ctx, NULL, str, gcc_type(env->ctx, STRING));
             gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
