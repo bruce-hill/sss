@@ -1367,6 +1367,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (convert_b)
             return gcc_callx(env->ctx, loc, convert_b->func, val);
 
+        if (src_t->tag == TaggedUnionType && cast_t->tag == IntType) {
+            auto tagged = Match(src_t, TaggedUnionType);
+            int64_t max_tag = 0;
+            foreach (tagged->members, member, _) {
+                if (member->tag_value > max_tag)
+                    max_tag = member->tag_value;
+            }
+            ssize_t size = 0;
+            if (max_tag > INT32_MAX) size = 8;
+            else if (max_tag > INT16_MAX) size = 4;
+            else if (max_tag > INT8_MAX) size = 2;
+            else size = 1;
+            if (gcc_sizeof(env, cast_t) < size)
+                compiler_err(env, ast, "This tagged enum cannot be converted to %s without loss of precision", type_to_string(cast_t));
+
+            gcc_struct_t *tagged_struct = gcc_type_if_struct(bl_type_to_gcc(env, src_t));
+            gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
+            gcc_rvalue_t *tag = gcc_rvalue_access_field(val, NULL, tag_field);
+            return gcc_cast(env->ctx, loc, tag, bl_type_to_gcc(env, cast_t));
+        }
+
         if (!((is_numeric(src_t) && is_numeric(cast_t))
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
