@@ -2027,41 +2027,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "This 'fail' is inside a 'defer' block, which is not allowed");
 
         ast_t *message = Match(ast, Fail)->message;
-        gcc_rvalue_t *msg;
-        gcc_rvalue_t *len;
         if (message) {
-            msg = compile_expr(env, block, message);
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-            gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-            len = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 1));
-            msg = gcc_rvalue_access_field(msg, loc, gcc_get_field(array_struct, 0));
+            gcc_rvalue_t *msg = compile_expr(env, block, message);
+            insert_failure(env, block, ast->span, "%#s", get_type(env, message), msg);
         } else {
-            const char *default_msg = "A failure occurred";
-            msg = gcc_str(env->ctx, default_msg);
-            len = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), strlen(default_msg));
+            insert_failure(env, block, ast->span, "A failure occurred");
         }
-
-        gcc_rvalue_t *fmt = gcc_str(env->ctx, "\x1b[31;1;7m%s: %.*s\x1b[m\n\n%s");
-        gcc_rvalue_t *loc_info = gcc_str(
-            env->ctx, heap_strf("%s:%ld.%ld",
-                                ast->span.file->relative_filename,
-                                bl_get_line_number(ast->span.file, ast->span.start),
-                                bl_get_line_column(ast->span.file, ast->span.start)));
-
-        char *info = NULL;
-        size_t size = 0;
-        FILE *f = open_memstream(&info, &size);
-        fprint_span(f, ast->span, "\x1b[31;1m", 2, true);
-        fputc('\0', f);
-        fflush(f);
-        gcc_rvalue_t *callstack = gcc_str(env->ctx, info);
-        gcc_func_t *fail = get_function(env, "fail");
-        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, fail, fmt, loc_info, len, msg, callstack);
-        gcc_eval(*block, loc, ret);
-        fclose(f);
-        free(info);
-        gcc_jump(*block, loc, *block);
-        *block = NULL;
         return NULL;
     }
     case DocTest: {
@@ -2155,6 +2126,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     WrapAST(expr, StringLiteral, .str=heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t)))))));
             APPEND(statements, stmt);
             if (test->output) {
+                // TODO: use insert_failure()
                 ast_t *message = WrapAST(
                     ast, StringJoin, .children=LIST(
                         ast_t*,

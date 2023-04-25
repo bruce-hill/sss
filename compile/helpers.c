@@ -1392,6 +1392,13 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             bl_type_t *t = va_arg(ap, bl_type_t*);
             gcc_rvalue_t *rval = va_arg(ap, gcc_rvalue_t*);
 
+            // Insert strings directly:
+            if (type_eq(t, Type(ArrayType, .item_type=Type(CharType)))) {
+                gcc_func_t *to_c_str = get_from_namespace(env, t, "c_string")->func;
+                append(args, gcc_callx(env->ctx, NULL, to_c_str, rval));
+                continue;
+            }
+
             // char *buf; size_t size;
             // FILE *f = open_memstream(&buf, &size);
             gcc_lvalue_t *buf_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("buf"));
@@ -1449,6 +1456,8 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
     gcc_eval(*block, NULL, failure);
     fclose(f);
     free(info);
+    gcc_jump(*block, NULL, *block);
+    *block = NULL;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
