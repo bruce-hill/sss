@@ -289,7 +289,11 @@ int main(int argc, char *argv[])
 #endif
 
         bl_file_t *f = bl_load_file(argv[i]);
-        if (!f) errx(1, "Couldn't open file: %s", argv[i]);
+        if (!f) {
+            if (argv[i][0] == '-')
+                errx(1, "'%s' is not a recognized command-line argument", argv[i]);
+            errx(1, "Couldn't open file: %s", argv[i]);
+        }
 
         if (run_program)
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
