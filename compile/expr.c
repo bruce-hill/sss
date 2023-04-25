@@ -1183,7 +1183,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env, ast); // typecheck
         auto access = Match(ast, FieldAccess);
         bl_type_t *fielded_t = get_type(env, access->fielded);
-        gcc_rvalue_t *obj = compile_expr(env, block, access->fielded);
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *obj_lval = gcc_local(func, loc, bl_type_to_gcc(env, fielded_t), fresh("fielded"));
+        gcc_assign(*block, loc, obj_lval, compile_expr(env, block, access->fielded));
+        gcc_rvalue_t *obj = gcc_rval(obj_lval);
+
       get_field:
         switch (fielded_t->tag) {
         case PointerType: {
@@ -1261,6 +1265,34 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             break;
         }
+        case TaggedUnionType: {
+            auto tagged = Match(fielded_t, TaggedUnionType);
+            for (int64_t i = 0; i < length(tagged->members); i++) {
+                auto member = ith(tagged->members, i);
+                if (!streq(access->field, member.name)) continue;
+
+                gcc_struct_t *tagged_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_t));
+                gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
+                gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
+                gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
+                            *right_tag = gcc_new_block(func, fresh("right_tag"));
+
+                gcc_type_t *tag_gcc_t = get_tag_type(env, fielded_t);
+                gcc_rvalue_t *correct_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
+                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
+                                   wrong_tag, right_tag);
+                *block = wrong_tag;
+                insert_failure(env, block, ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
+                               fielded_t, obj);
+                if (*block) gcc_jump(*block, loc, *block);
+
+                *block = right_tag;
+                gcc_type_t *gcc_union_t = get_union_type(env, fielded_t);
+                return gcc_rvalue_access_field(gcc_rvalue_access_field(obj, NULL, gcc_get_field(tagged_struct, 1)), loc,
+                                               gcc_get_union_field(gcc_union_t, i));
+            }
+            goto class_lookup;
+        }
         case TypeType: {
             bl_type_t *t = Match(fielded_t, TypeType)->type;
             binding_t *val_binding = get_from_namespace(env, t, access->field);
@@ -1273,6 +1305,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         default: break;
         }
         // Class lookup:
+      class_lookup:
         binding_t *binding = get_from_namespace(env, fielded_t, access->field);
         if (binding)
             return binding->rval;
@@ -1290,7 +1323,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == ArrayType) {
             return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->type, ACCESS_READ));
         } else if (t->tag == TableType) {
-            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index);
+            gcc_rvalue_t *key_rval;
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index, &key_rval);
             if (indexing->type == INDEX_UNCHECKED)
                 return gcc_rval(gcc_rvalue_dereference(val_opt, loc));
 
@@ -1309,9 +1343,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 insert_defers(env, block, env->loop_label->deferred);
                 gcc_jump(*block, loc, skip_dest);
             } else {
-                // ast_t *str_ast = WrapAST(indexing->index, StringJoin, .children=LIST(ast_t*, WrapAST(indexing->index, Interp, .value=indexing->index)));
-                // insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s", NULL, compile_expr(env, block, str_ast));
-                insert_failure(env, block, ast->span, "Error: this table does not have the given key");
+                insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s",
+                               Match(t, TableType)->key_type, key_rval);
                 gcc_jump(*block, loc, done);
             }
 
@@ -1338,7 +1371,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
                             type_to_string(member_t), type_to_string(container_t));
 
-            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member);
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL);
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, member_t))));
         } else if (container_t->tag == ArrayType) {
             return array_contains(env, block, in->container, in->member);

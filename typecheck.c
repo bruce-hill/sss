@@ -410,6 +410,18 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
             goto class_lookup;
         }
+        case TaggedUnionType: {
+            auto tagged = Match(value_t, TaggedUnionType);
+            foreach (tagged->members, member, _) {
+                if (streq(access->field, member->name)) {
+                    if (member->type)
+                        return member->type;
+                    else
+                        compiler_err(env, ast, "This tagged union type doesn't have a value for '%s'", member->name);
+                }
+            }
+            goto class_lookup;
+        }
         case TypeType: {
             binding_t *type_binding = get_ast_binding(env, access->fielded);
             if (!type_binding || type_binding->type->tag != TypeType)

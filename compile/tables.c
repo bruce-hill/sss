@@ -136,7 +136,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
 }
 
 // Returns an optional pointer to a value
-gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast)
+gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out)
 {
     gcc_loc_t *loc = ast_loc(env, key_ast);
     bl_type_t *table_t = get_type(env, table_ast);
@@ -167,6 +167,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
                     type_to_string(raw_key_t), type_to_string(key_t));
     gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), fresh("key"));
     gcc_assign(*block, loc, key_lval, key_val);
+    if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
     flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
     gcc_rvalue_t *val_ptr = gcc_callx(
         env->ctx, loc, hashmap_get_fn,

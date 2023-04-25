@@ -86,6 +86,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_int, "puts", PARAM(t_str, "str"));
     load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
     load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
+    load_global_var_func(env, t_int, "printf", PARAM(t_str, "format"));
     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
     load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
