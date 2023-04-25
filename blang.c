@@ -247,7 +247,7 @@ int main(int argc, char *argv[])
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
             puts("blang - The Blang programming language runner");
-            puts("Usage: blang [-h|--help] [-v|--verbose] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.bl]");
+            puts("Usage: blang [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.bl]");
             return 0;
         } else if (streq(argv[i], "-V")) {
             ++i;
@@ -258,6 +258,9 @@ int main(int argc, char *argv[])
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 1);
             verbose = true;
             continue;
+        } else if (streq(argv[i], "--version")) {
+            puts(BLANG_VERSION);
+            return 0;
         } else if (streq(argv[i], "-c") || streq(argv[i], "--compile")) {
             run_program = false;
             continue;

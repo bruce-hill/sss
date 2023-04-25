@@ -23,13 +23,13 @@ blang - Bruce\[aq]s Language
 .PP
 \f[B]blang\f[R] [\f[I]options\&...\f[R]] \f[I]program.bl\f[R]
 [[\f[B]--\f[R]] \f[I]args\&...\f[R]]
-.PP
-\f[B]blangc\f[R] [\f[I]options\&...\f[R]] \f[I]program.bl\f[R]
 .SH DESCRIPTION
 .PP
-Blang is a small, statically typed, garbage-collected, compiled
-imperative language with ergonomic syntax.
-It uses libgccjit as a backend, which compiles to a binary.
+Blang is a programming language that is statically typed, compiled,
+small, and garbage-collected, with concise syntax and built-in support
+for high-performance, low-overhead datastructures.
+It uses libgccjit as a backend, which can produce compiled binaries or
+run files directly.
 .SH OPTIONS
 .TP
 \f[B]-h\f[R], \f[B]--help\f[R]
@@ -38,14 +38,27 @@ Print the usage and exit.
 \f[B]-v\f[R],\f[B]--verbose\f[R]
 Add verbose output.
 .TP
-\f[B]-a\f[R],\f[B]--asm\f[R]
+\f[B]--version\f[R]
+Print the version and exit.
+.TP
+\f[B]-A\f[R],\f[B]--asm\f[R]
 Output assembly to the console during compilation.
 .TP
 \f[B]-c\f[R]
-Compile the program as a module, rather than a program.
+Compile the program to a file, rather than running it.
 .TP
 \f[B]-O\f[R] \f[I]level\f[R]
 Set the optimization level.
+.TP
+\f[B]-o\f[R] \f[I]file\f[R]
+Specify the output file when compiling to a file.
+.TP
+\f[B]-l...\f[R], \f[B]-W...\f[R]
+Linker flags beginning with \f[B]-l\f[R] or \f[B]-W\f[R] will be passed
+through to the linker.
+.TP
+\f[B]-I...\f[R]
+Add an option for the driver.
 .TP
 \f[I]args\&...\f[R]
 Extra arguments are passed to the compiled blang program when it runs.

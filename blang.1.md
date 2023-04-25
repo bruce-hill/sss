@@ -10,13 +10,12 @@ blang - Bruce\'s Language
 
 `blang` \[*options...*\] *program.bl* \[\[`--`\] *args...*\]
 
-`blangc` \[*options...*\] *program.bl*
-
 # DESCRIPTION
 
-Blang is a small, statically typed, garbage-collected, compiled imperative
-language with ergonomic syntax. It uses libgccjit as a backend, which compiles
-to a binary.
+Blang is a programming language that is statically typed, compiled, small, and
+garbage-collected, with concise syntax and built-in support for
+high-performance, low-overhead datastructures. It uses libgccjit as a backend,
+which can produce compiled binaries or run files directly.
 
 # OPTIONS
 
@@ -26,14 +25,26 @@ to a binary.
 `-v`,`--verbose`
 : Add verbose output.
 
-`-a`,`--asm`
+`--version`
+: Print the version and exit.
+
+`-A`,`--asm`
 : Output assembly to the console during compilation.
 
 `-c`
-: Compile the program as a module, rather than a program.
+: Compile the program to a file, rather than running it.
 
 `-O` *level*
 : Set the optimization level.
+
+`-o` *file*
+: Specify the output file when compiling to a file.
+
+`-l...`, `-W...`
+: Linker flags beginning with `-l` or `-W` will be passed through to the linker.
+
+`-I...`
+: Add an option for the driver.
 
 *args...*
 : Extra arguments are passed to the compiled blang program when it runs.
