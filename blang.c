@@ -96,8 +96,17 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
     // Read lines until we get a blank line
     for (;;) {
+      next_line:
         fputs(prompt, stdout);
         fflush(stdout);
+        gcc_block_t *block = NULL;
+
+        gcc_jit_result *result = NULL;
+#define CLEANUP() do { \
+        if (block) gcc_return_void(block, NULL); \
+        if (result) gcc_jit_result_release(result); \
+        fclose(buf_file); \
+        free(buf); } while (0) \
 
         char *buf = NULL;
         size_t buf_size = 0;
@@ -108,6 +117,31 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         ssize_t nread;
         while ((nread = getline(&line, &len, stdin)) != -1) {
             if (nread <= 1) break;
+
+            if (streq(line, "quit\n") || streq(line, "exit\n")) {
+                printf("\x1b[0;1mGoodbye!\x1b[m\n");
+                CLEANUP();
+                fflush(stdout);
+                return 0;
+            } else if (streq(line, "help\n")) {
+                puts(
+                    "\n\x1b[0;3;36;1m"
+                    "Hello! This is the blang read-evaluate-print-loop (REPL).\n"
+                    "Here, you can type blang statements or expressions to see them evaluted and printed.\n"
+                    "For example:\n\n"
+                    "    \x1b[0;33;1m>>>\x1b[m 1+2\n"
+                    "    \x1b[2m= \x1b[0;35m3\x1b[0;2m : Int\x1b[m\n"
+                    "\n"
+                    "\x1b[0;3;36;1m"
+                    "The REPL reads expressions until it reaches a blank line,\n"
+                    "so press Enter twice after each expression to see it evaluated and printed.\n"
+                    "\n"
+                    "Hit \x1b[0;1mCtrl-D\x1b[0;3;36;1m to exit.\n"
+                    "\x1b[m");
+                CLEANUP();
+                goto next_line;
+            }
+
             fwrite(line, 1, nread, buf_file);
             fputs(continue_prompt, stdout);
             fflush(stdout);
@@ -115,16 +149,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         if (line) free(line);
 
         fflush(buf_file);
-        gcc_block_t *block = NULL;
-
-        gcc_jit_result *result = NULL;
-#define CLEANUP() do { \
-        if (block) gcc_return_void(block, NULL); \
-        if (result) gcc_jit_result_release(result); \
-        fclose(buf_file); \
-        free(buf); } while (0) \
-
-        if (buf_size == 0 || strcmp(buf, "quit\n") == 0 || strcmp(buf, "exit\n") == 0) {
+        if (buf_size == 0) {
             printf("\x1b[A\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
             CLEANUP();
             break;
