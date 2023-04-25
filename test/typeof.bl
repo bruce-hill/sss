@@ -3,8 +3,8 @@ def Vec {
     y:Num
 }
 
-v :=  Vec{0.,0.}
-say "$:v $:(typeof v)"
-say "$:(typeof (typeof v))"
-// say "use \"modules/testmod\" : $(typeof use "modules/testmod")"
-
+>>> v := Vec{0.,0.}
+>>> typeof v
+=== Vec
+>>> typeof (typeof v)
+=== Type(Vec{x:Num,y:Num})
