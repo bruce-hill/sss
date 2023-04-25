@@ -271,8 +271,6 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_func_t *func = gcc_block_func(*block);
 
     bl_type_t *entry_t = table_entry_type(t);
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "{");
 
     // i = 0
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
@@ -280,7 +278,30 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD));
+
+    gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
+                *is_not_empty = gcc_new_block(func, fresh("is_not_empty"));
+    gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, UINT32))),
+                       is_not_empty, is_empty);
+    *block = is_empty;
+    COLOR_LITERAL(block, "\x1b[m");
+    WRITE_LITERAL(*block, "{");
+    COLOR_LITERAL(block, "\x1b[0;2;36m");
+    WRITE_LITERAL(*block, ":");
+    COLOR_LITERAL(block, "\x1b[0;36m");
+    WRITE_LITERAL(*block, type_to_string(Match(t, TableType)->key_type));
+    COLOR_LITERAL(block, "\x1b[33m");
+    WRITE_LITERAL(*block, "=>");
+    COLOR_LITERAL(block, "\x1b[36m");
+    WRITE_LITERAL(*block, type_to_string(Match(t, TableType)->value_type));
+    COLOR_LITERAL(block, "\x1b[m");
+    WRITE_LITERAL(*block, "}");
+    gcc_return_void(*block, NULL);
+
+    *block = is_not_empty;
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
+    COLOR_LITERAL(block, "\x1b[m");
+    WRITE_LITERAL(*block, "{");
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));
     gcc_block_t *add_next_entry = gcc_new_block(func, fresh("next_entry"));
