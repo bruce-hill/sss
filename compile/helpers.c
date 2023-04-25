@@ -759,16 +759,17 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 
 #define ADD_INT(a, b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, a, b)
 
-        COLOR_LITERAL(&block, "\x1b[0;1m");
-        if (struct_t->name)
+        if (struct_t->name) {
+            COLOR_LITERAL(&block, "\x1b[0;1m");
             WRITE_LITERAL(block, struct_t->name);
-        // COLOR_LITERAL(&block, "\x1b[m");
+        }
+        COLOR_LITERAL(&block, "\x1b[m");
         WRITE_LITERAL(block, "{");
         
         size_t num_fields = gcc_field_count(gcc_struct);
         for (size_t i = 0; i < num_fields; i++) {
             if (i > 0) {
-                COLOR_LITERAL(&block, "\x1b[0;33m");
+                COLOR_LITERAL(&block, "\x1b[m");
                 WRITE_LITERAL(block, ", ");
             }
 
@@ -790,9 +791,8 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                     file, rec, color));
         }
 
-        COLOR_LITERAL(&block, "\x1b[0;1m");
-        WRITE_LITERAL(block, "}");
         COLOR_LITERAL(&block, "\x1b[m");
+        WRITE_LITERAL(block, "}");
 
         const char* units = type_units(t);
         if (units && strlen(units) > 0) {

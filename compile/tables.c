@@ -325,9 +325,8 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
                   add_comma, done_with_entries);
 
     // add_comma:
-    COLOR_LITERAL(&add_comma, "\x1b[0;33m");
-    WRITE_LITERAL(add_comma, ", ");
     COLOR_LITERAL(&add_comma, "\x1b[m");
+    WRITE_LITERAL(add_comma, ", ");
 
     // goto add_next_entry;
     gcc_jump(add_comma, NULL, add_next_entry);

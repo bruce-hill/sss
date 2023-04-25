@@ -468,9 +468,8 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // add_comma:
     if (!is_string) {
-        COLOR_LITERAL(&add_comma, "\x1b[0;33m");
-        WRITE_LITERAL(add_comma, ", ");
         COLOR_LITERAL(&add_comma, "\x1b[m");
+        WRITE_LITERAL(add_comma, ", ");
     }
 
     // goto add_next_item;
