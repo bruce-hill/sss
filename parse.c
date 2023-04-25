@@ -2138,24 +2138,17 @@ PARSER(parse_doctest) {
     spaces(&pos);
     ast_t *expr = expect_ast(ctx, start, &pos, parse_statement, "I couldn't parse the expression for this doctest");
     whitespace(&pos);
-    const char* output = NULL, *expected_error = NULL;
+    const char* output = NULL;
     if (match(&pos, "===")) {
         spaces(&pos);
         const char *output_start = pos,
                    *output_end = strchrnul(pos, '\n');
         if (output_end <= output_start)
-            parser_err(ctx, output_start, output_end, "You're missing the expected output here");
+            parser_err(ctx, output_start, output_end, "You're missing expected output here");
         output = heap_strn(output_start, (size_t)(output_end - output_start));
         pos = output_end;
     }
-    if (match(&pos, "!!!")) {
-        spaces(&pos);
-        const char *output_start = pos,
-                   *output_end = strchrnul(pos, '\n');
-        expected_error = heap_strn(output_start, (size_t)(output_end - output_start));
-        pos = output_end;
-    }
-    return NewAST(ctx->file, start, pos, DocTest, .expr=expr, .output=output, .expected_error=expected_error);
+    return NewAST(ctx->file, start, pos, DocTest, .expr=expr, .output=output);
 }
 
 PARSER(parse_use) {

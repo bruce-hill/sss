@@ -2021,40 +2021,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, block, say_src);
         }
 
-        FILE *err_output = NULL;
-        if (test->expected_error) {
-            env_t *original_env = env;
-            env_t env_copy = *env;
-            char *buf; size_t size;
-            err_output = open_memstream(&buf, &size);
-
-            jmp_buf on_err;
-            if (setjmp(on_err) != 0) {
-                // Got an error, as expected
-                fflush(err_output);
-                const char *err_msg = heap_strn(buf, size);
-                fclose(err_output);
-                err_output = NULL;
-
-                char *eol = strchr(err_msg, '\n');
-                char *found = strstr(err_msg, test->expected_error);
-                if (found && found < eol) {
-                    gcc_rvalue_t *stdout_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout"));
-                    gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
-                    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\x1b[32;1mThis expression successfully produced the expected compiler error:\x1b[0;32m\n"), stdout_val)); 
-                    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, err_msg), stdout_val)); 
-                    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\x1b[m\n"), stdout_val)); 
-                } else {
-                    compiler_err(original_env, test->expr, "This expression was expected to give a compiler error containing \"%s\", but instead gave the compiler error \"%.*s\"",
-                                 test->expected_error, (int)(eol - err_msg), err_msg);
-                }
-                return NULL;
-            }
-            env_copy.err_output = err_output;
-            env_copy.on_err = &on_err;
-            env = &env_copy;
-        }
-
         bl_type_t *t = get_type(env, expr);
         if (t->tag == VoidType) {
             if (test->output)
@@ -2065,7 +2031,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (val && *block)
                 gcc_eval(*block, ast_loc(env, expr), val);
             else
-                goto cleanup;
+                return NULL;
 
             // For declarations, assignment, and updates, even though it
             // doesn't evaluate to a value, it's helpful to print out the new
@@ -2122,7 +2088,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                gcc_rvalue_bool(env->ctx, true)));
                 gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\n"), stdout_val)); 
             }
-            goto cleanup;
+            return NULL;
         } else {
             // Print "= <expr>"
             NEW_LIST(ast_t*, statements);
@@ -2147,15 +2113,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 APPEND(statements, stmt);
             }
             compile_statement(env, block, WrapAST(expr, Block, .statements=statements));
-            goto cleanup;
+            return NULL;
         }
-
-      cleanup:
-        if (test->expected_error) {
-            compiler_err(env, ast, "This was expected to produce a compiler error, but no such error was produced");
-        }
-        if (err_output) fclose(err_output);
-        return NULL;
     }
     case Use: {
         return gcc_callx(env->ctx, NULL, prepare_use(env, ast));
