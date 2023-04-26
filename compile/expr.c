@@ -1341,11 +1341,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (indexing->type == INDEX_NORMAL && env->loop_label) {
                 gcc_block_t *skip_dest = env->loop_label->skip_label;
                 insert_defers(env, block, env->loop_label->deferred);
+                assert(*block);
                 gcc_jump(*block, loc, skip_dest);
             } else {
                 insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s",
                                Match(t, TableType)->key_type, key_rval);
-                gcc_jump(*block, loc, done);
             }
 
             *block = if_nonnil;
