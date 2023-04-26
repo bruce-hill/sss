@@ -1255,14 +1255,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
             return slice;
         }
-        gcc_lvalue_t *fielded_lval = get_lvalue(env, block, access->fielded, true);
+        gcc_rvalue_t *fielded_rval = compile_expr(env, block, access->fielded);
       keep_going:
         switch (fielded_t->tag) { 
         case PointerType: {
             auto fielded_ptr = Match(fielded_t, PointerType);
             if (fielded_ptr->is_optional)
                 compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-            fielded_lval = gcc_rvalue_dereference(gcc_rval(fielded_lval), NULL);
 
             if (fielded_ptr->pointed->tag == StructType) {
                 auto fielded_struct = Match(fielded_ptr->pointed, StructType);
@@ -1270,13 +1269,14 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                     if (streq(ith(fielded_struct->field_names, i), access->field)) {
                         gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_ptr->pointed));
                         gcc_field_t *field = gcc_get_field(gcc_struct, i);
-                        return gcc_lvalue_access_field(fielded_lval, NULL, field);
+                        return gcc_rvalue_dereference_field(fielded_rval, NULL, field);
                     }
                 }
                 compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
                       type_to_string(fielded_ptr->pointed), access->field);
             }
 
+            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, NULL));
             fielded_t = fielded_ptr->pointed;
             goto keep_going;
         }
