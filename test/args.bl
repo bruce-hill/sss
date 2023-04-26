@@ -1,5 +1,5 @@
-say "PROGRAM_NAME: $PROGRAM_NAME"
-say "args: $ARGS"
+>>> PROGRAM_NAME
+>>> ARGS
 
 if #ARGS > 0
     say "ARGS[1] ($(ARGS[1])) == 'one'? $(ARGS[1] == "one")"
