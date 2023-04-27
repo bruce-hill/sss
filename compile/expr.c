@@ -2083,12 +2083,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             case Assign: {
                 auto assign = Match(expr, Assign);
+                ast_t *first = ith(assign->targets, 0);
                 if (length(assign->targets) == 1) {
-                    lhs_t = get_type(env, ith(assign->targets, 0));
-                    expr = WrapAST(expr, FieldAccess, .fielded=expr, .field="_1");
+                    lhs_t = get_type(env, first);
+                    info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(first->span.end - first->span.start), first->span.start);
+                    gcc_type_t *gcc_struct_t = bl_type_to_gcc(env, Type(StructType, .field_types=LIST(bl_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
+                    val = gcc_rvalue_access_field(
+                        val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
                     break;
                 }
-                ast_t *first = ith(assign->targets, 0);
                 ast_t *last = ith(assign->targets, length(assign->targets)-1);
                 info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(last->span.end - first->span.start), first->span.start);
                 NEW_LIST(ast_t*, members);
