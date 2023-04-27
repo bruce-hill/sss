@@ -1,6 +1,6 @@
-def CallbackList {fn:(Num)->Void, next:?@CallbackList}
+def CallbackList {fn:(Num)->Void, next:?CallbackList}
 
-def NumberValue {_value:Num, _callbacks:?@CallbackList}
+def NumberValue {_value:Num, _callbacks:?CallbackList}
     def set(self:@NumberValue, value:Num)
         self._value = value
         for cb in self._callbacks

@@ -586,10 +586,16 @@ PARSER(parse_array_type) {
 
 PARSER(parse_pointer_type) {
     const char *start = pos;
-    if (!match(&pos, "@")) return NULL;
+    bool optional;
+    if (match(&pos, "@"))
+        optional = false;
+    else if (match(&pos, "?"))
+        optional = true;
+    else
+        return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
                              "I couldn't parse a pointer type after this point");
-    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type);
+    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional);
 }
 
 PARSER(parse_type_type) {
@@ -601,14 +607,6 @@ PARSER(parse_type_type) {
                              "I couldn't parse a pointer type after this point");
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
     return NewAST(ctx->file, start, pos, TypeTypeAST, .type=type);
-}
-
-PARSER(parse_optional_type) {
-    const char *start = pos;
-    if (!match(&pos, "?")) return NULL;
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
-                             "I couldn't parse a pointer type after this point");
-    return NewAST(ctx->file, start, pos, TypeOptional, .type=type);
 }
 
 PARSER(parse_type_name) {
@@ -641,7 +639,6 @@ PARSER(_parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
     bool success = (false
-        || (type=parse_optional_type(ctx, pos))
         || (type=parse_pointer_type(ctx, pos))
         || (type=parse_type_type(ctx, pos))
         || (type=parse_dsl_type(ctx, pos))

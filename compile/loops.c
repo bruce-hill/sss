@@ -267,7 +267,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         for (field_index = 0; field_index < length(struct_->field_names); field_index++) {
             if (streq(ith(struct_->field_names, field_index), "next")
                 && type_eq(ith(struct_->field_types, field_index), Type(PointerType, .pointed=iter_t, .is_optional=true))) {
-                // Bingo: found a obj->next : @?Obj
+                // Bingo: found a obj->next : ?Obj
                 goto found_next_field;
             }
         }

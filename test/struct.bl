@@ -31,7 +31,7 @@ say "$:(n+n) $:(100*n)"
 say "Recursive struct test:"
 def Tree {
     value:Int
-    left,right:?@Tree
+    left,right:?Tree
 }
 
 >>> l := @Tree{6}

@@ -62,21 +62,8 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
-        if (ptr->pointed->tag == TypeOptional) {
-            bl_type_t *pointed_t = parse_type_ast(env, Match(ptr->pointed, TypeOptional)->type);
-            return Type(PointerType, .is_optional=true, .pointed=pointed_t);
-        } else {
-            bl_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
-            return Type(PointerType, .is_optional=false, .pointed=pointed_t);
-        }
-    }
-    case TypeOptional: {
-        auto opt = Match(ast, TypeOptional);
-        bl_type_t *t = parse_type_ast(env, opt->type);
-        if (t->tag != PointerType)
-            compiler_err(env, ast, "I only know how to do optional types for pointers like @%s (because NULL is used to represent the absence of a value), "
-                        "but this type isn't a pointer", type_to_string(t));
-        return Type(PointerType, .is_optional=true, .pointed=Match(t, PointerType)->pointed);
+        bl_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
+        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t);
     }
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
@@ -281,6 +268,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
+    case Maybe: {
+        bl_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
+        return Type(PointerType, .is_optional=true, .pointed=pointed);
+    }
     case Dereference: {
         bl_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
         if (pointer_t->tag != PointerType)
@@ -290,15 +281,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (ptr->is_optional)
             compiler_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
         return ptr->pointed;
-    }
-    case Maybe: {
-        ast_t *value = Match(ast, Maybe)->value;
-        bl_type_t *pointed = get_type(env, value);
-        if (pointed->tag != PointerType)
-            compiler_err(env, value, "This value isn't a pointer type, so it doesn't make sense to say it's optional. "
-                        "You can use `?@` to make it a potentially nil pointer to a heap allocated value.");
-        pointed = Match(pointed, PointerType)->pointed;
-        return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Range: {
         return Type(RangeType);

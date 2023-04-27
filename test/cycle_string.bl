@@ -1,4 +1,4 @@
-def Foo{str:String, next:@?Foo, self:@?Foo}
+def Foo{str:String, next:?Foo, self:?Foo}
 
 a := @Foo{"A"}
 b := @Foo{"B"}

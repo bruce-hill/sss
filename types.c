@@ -95,7 +95,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
         }
         case PointerType: {
             auto ptr = Match(t, PointerType);
-            return CORD_cat(ptr->is_optional ? "@?" : "@", type_to_cord(ptr->pointed, false));
+            return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, false));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);

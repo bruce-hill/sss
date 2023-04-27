@@ -15,7 +15,7 @@ def Result oneof {
 // Opaque struct representing C's FILE struct:
 def _CFile{}
 
-def File{raw_c_file:@?_CFile}
+def File{raw_c_file:?_CFile}
     def line(f:@File):String
         return (extern get_line:(@_CFile)->String)(f.raw_c_file or fail "File has already been closed")
 

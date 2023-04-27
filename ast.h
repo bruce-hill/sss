@@ -42,7 +42,7 @@ typedef enum {
     Fail,
     Extern,
     TypeArray, TypeTable, TypeStruct,
-    TypeFunction, TypePointer, TypeOptional,
+    TypeFunction, TypePointer,
     TypeMeasure, TypeDSL, TypeTypeAST,
     Cast, Bitcast,
     Struct, StructDef, StructField,
@@ -218,10 +218,8 @@ struct ast_s {
         } TypeFunction;
         struct {
             ast_t *pointed;
+            bool is_optional;
         } TypePointer;
-        struct {
-            ast_t *type;
-        } TypeOptional;
         struct {
             ast_t *type;
             const char *units;

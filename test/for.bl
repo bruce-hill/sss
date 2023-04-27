@@ -19,7 +19,7 @@ doop(xs)
 
 def IntStack {
     i:Int
-    next:@?IntStack
+    next:?IntStack
 }
 
 stack := !IntStack

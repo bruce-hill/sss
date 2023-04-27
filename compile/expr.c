@@ -1138,8 +1138,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Bool: {
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), Match(ast, Bool)->b ? 1 : 0);
     }
-    case HeapAllocate: {
-        ast_t *value = Match(ast, HeapAllocate)->value;
+    case Maybe: case HeapAllocate: {
+        ast_t *value = ast->tag == Maybe ? Match(ast, Maybe)->value : Match(ast, HeapAllocate)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         bl_type_t *t = get_type(env, value);
         if (t->tag == VoidType)
@@ -1165,10 +1165,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else if (t->tag == TableType)
             gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), obj));
         return gcc_rval(gcc_rvalue_dereference(obj, loc));
-    }
-    case Maybe: {
-        ast_t *value = Match(ast, Maybe)->value;
-        return compile_expr(env, block, value);
     }
     case Len: {
         ast_t *value = Match(ast, Len)->value;

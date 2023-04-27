@@ -1,5 +1,5 @@
-def Foo { b:?@Baz }
-def Baz { f:?@Foo }
+def Foo { b:?Baz }
+def Baz { f:?Foo }
 
 >>> @Foo{b=@Baz{}}
 

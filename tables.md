@@ -103,7 +103,7 @@ Special behaviors can be accessed (or modified) by attributes:
 
 ```
 >>> typeof t.default
-=== @?{Int=>Int}
+=== ?{Int=>Int}
 >>> typeof t.fallback
 === ?(Int)->Int
 >>> typeof t.keep
