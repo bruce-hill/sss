@@ -1,0 +1,35 @@
+// Reducers take the form |iterable, reduction, initial|
+// If initial is omitted, the reduction will fail on empty collections
+
+>>> nums := [2,-3,4]
+
+// 'x' and 'y' are implicit variables for the reduction:
+>>> |nums, x+y|
+=== 3
+
+// Infix operators can be used directly:
+>>> |nums,+|
+=== 3
+
+>>> |nums,max|
+=== 4
+>>> |nums,min|
+=== -3
+
+>>> |nums,*|
+=== -24
+
+>>> |nums,x.abs()+y.abs()|
+=== 9
+
+>>> |nums,x if x.abs() < y.abs() else y|
+=== 2
+
+>>> |nums,+,100|
+=== 3
+
+>>> |[:Int],+,100|
+=== 100
+
+>>> |["one","two","three"], x++" "++y, ""|
+=== "one two three"
