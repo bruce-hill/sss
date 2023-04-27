@@ -32,22 +32,22 @@ def s:String as $HTML
 
 def strings:[String] as $HTML
     return bitcast [
-        ..."<ol>\n",
+        ++"<ol>\n",
         for str in strings
             c for c in $HTML[<li>$str</li>]
         between
             "\n"[1]
         ,
-        ..."\n</ol>",
+        ++"\n</ol>",
     ] as $HTML
 
 def table:{String=>String} as $HTML
     return bitcast [
-        ..."<table>\n",
+        ++"<table>\n",
         for e in table
             c for c in $HTML[<tr><td>$e.key</td><td>$e.value</td></tr>\n]
         ,
-        ..."</table>",
+        ++"</table>",
     ] as $HTML
 
 my_strings := ["item one", "I <3 escaping", "all done"]

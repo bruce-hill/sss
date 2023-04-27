@@ -9,7 +9,7 @@ binary.
 
 ```
 def sing_bottles_song(n:Int)
-    for i in n to 0 by -1
+    for i in n..0 by -1
         if i == 0
             say "No more bottles of beer on the wall! :("
         else if i == 1

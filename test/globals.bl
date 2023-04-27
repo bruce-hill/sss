@@ -1,7 +1,7 @@
 
 def sum100():Int
     sum := 0
-    for i in 1 to 100
+    for i in 1..100
         sum += i
     return sum
 

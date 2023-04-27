@@ -13,11 +13,11 @@ say "Fn: $( (x:Int,y:Int)-> x + y )"
 
 toslice := "Hello world"
 char := toslice[1]
-slice := toslice[2 to 6]
+slice := toslice[2..6]
 say "Char: $char Slice: $slice"
 // say "Invalid char: $(toslice[-10]) Invalid slice: '$(toslice[-100..-5])'"
-say "First slice: '$(toslice[.. to 5])' Backwards: '$(toslice[.. to .. by -1])'"
-say "Whole slice: '$(toslice[.. to ..])' Every other: '$(toslice[1 to.. by 2])'"
+say "First slice: '$(toslice[..5])' Backwards: '$(toslice[.. by -1])'"
+say "Whole slice: '$(toslice[..])' Every other: '$(toslice[1.. by 2])'"
 
 say "$:(toslice.replace("o","XXX"))"
 say "|$:("  one two  ".trimmed())|"

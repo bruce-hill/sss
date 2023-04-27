@@ -208,7 +208,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             gcc_func_t *func = gcc_block_func(*block);
             gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 0));
             gcc_rvalue_t *offset;
-            if (range->first && range->first->tag != Ellipsis)
+            if (range->first)
                 offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
             else
                 offset = gcc_zero(env->ctx, i32_t);
@@ -222,7 +222,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
             // len = MIN(array_len, range.last)-first
             gcc_rvalue_t *array_len = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 1));
-            if (range->last && range->last->tag != Ellipsis) {
+            if (range->last) {
                 gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
                             *range_shorter = gcc_new_block(func, "range_shorter"),
                             *len_assigned = gcc_new_block(func, "len_assigned");

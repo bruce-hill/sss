@@ -43,9 +43,9 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "min","max",
-    "yes","xor","with","while","when","use","unless","unit","typeof","to","then","stop","skip","sizeof","return","repeat",
+    "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","enum","else","do","del",
-    "deftype", "defer","def","bitcast","between","as","and", NULL,
+    "deftype", "defer","def","by","bitcast","between","as","and", NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -728,13 +728,13 @@ PARSER(parse_array) {
     for (;;) {
         whitespace(&pos);
         const char *item_start = pos;
-        if (match(&pos, "...")) {
+        if (match(&pos, "++")) {
             ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
             if (item) {
                 ast_t *loop = NewAST(ctx->file, item_start, item->span.end, For,
                                      .iter=item,
-                                     .value=WrapAST(item, Var, .name="x"),
-                                     .body=WrapAST(item, Var, .name="x"));
+                                     .value=WrapAST(item, Var, .name="item"),
+                                     .body=WrapAST(item, Var, .name="item"));
                 APPEND(items, loop);
                 goto added_item;
             }
@@ -884,7 +884,8 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 PARSER(parse_ellipsis) {
     const char *start = pos;
     if (!match(&pos, "..")) return NULL;
-    return NewAST(ctx->file, start, pos, Ellipsis);
+    ast_t *last = optional_ast(ctx, &pos, parse_term);
+    return NewAST(ctx->file, start, pos, Range, .last=last);
 }
 
 PARSER(parse_reduction) {
@@ -1666,7 +1667,6 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "xor")) return Xor;
         else if (match_word(pos, "mod")) return Modulus;
         else if (match_word(pos, "as")) return Cast;
-        else if (match_word(pos, "to")) return Range;
         else if (match_word(pos, "by")) return RANGE_STEP;
         else if (match_word(pos, "in")) return In;
         else if (match_word(pos, "min")) return Min;
@@ -1692,7 +1692,11 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         assert(op_tightness[tag]);
         spaces(&pos);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, pos) : parse_term(ctx, pos);
-        if (!rhs && tag == Range) rhs = NewAST(ctx->file, pos, pos, Ellipsis);
+        if (!rhs && tag == Range) {
+            ast_t *prev = LIST_ITEM(terms, LIST_LEN(terms)-1);
+            terms[0][LIST_LEN(terms)-1] = NewAST(ctx->file, pos, pos, Range, .first=prev);
+            continue;
+        }
         if (!rhs) break;
         pos = rhs->span.end;
         APPEND(terms, rhs);

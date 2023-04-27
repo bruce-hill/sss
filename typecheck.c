@@ -926,7 +926,6 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return get_type(env, with->body);
     }
     case Extend: return Type(VoidType);
-    case Ellipsis: return Type(RangeType);
     default: break;
     }
     compiler_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));

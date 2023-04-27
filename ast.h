@@ -55,7 +55,6 @@ typedef enum {
     With,
     Extend,
     Use,
-    Ellipsis,
     Delete,
     LinkerDirective,
 } ast_tag_e;
@@ -294,7 +293,6 @@ struct ast_s {
         struct {
             const char *path;
         } Use;
-        struct {} Ellipsis;
         struct {
             ast_t *value;
         } Delete;

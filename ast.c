@@ -188,7 +188,6 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(With, F(var), F(expr), F(cleanup), F(body))
         T(Extend, F(type), F(body))
         T(Use, F(path))
-        T(Ellipsis)
         T(Delete, F(value))
         T(LinkerDirective, F(directives))
 #undef BINOP

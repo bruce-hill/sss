@@ -1891,7 +1891,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Range: {
         return compile_range(env, block, ast);
     }
-    case Ellipsis: return compile_range(env, block, WrapAST(ast, Range));
     case Repeat: {
         auto loop = Match(ast, Repeat);
         compile_while_loop(env, block, "repeat", NULL, loop->body, loop->between);
