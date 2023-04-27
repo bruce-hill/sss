@@ -2090,15 +2090,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_type_t *gcc_struct_t = bl_type_to_gcc(env, Type(StructType, .field_types=LIST(bl_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
-                    break;
+                } else {
+                    // TODO: figure out a way to print multi-assigns as comma-separated values instead of as {_1=..., _2=...}
+                    ast_t *last = ith(assign->targets, length(assign->targets)-1);
+                    info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(last->span.end - first->span.start), first->span.start);
+                    NEW_LIST(ast_t*, members);
+                    for (int64_t i = 0; i < length(assign->targets); i++) {
+                        APPEND(members, WrapAST(ith(assign->targets, i), StructField, .name=heap_strf("_%d", i+1), .value=ith(assign->targets, i)));
+                    }
+                    lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
                 }
-                ast_t *last = ith(assign->targets, length(assign->targets)-1);
-                info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(last->span.end - first->span.start), first->span.start);
-                NEW_LIST(ast_t*, members);
-                for (int64_t i = 0; i < length(assign->targets); i++) {
-                    APPEND(members, WrapAST(ith(assign->targets, i), StructField, .name=heap_strf("_%d", i+1), .value=ith(assign->targets, i)));
-                }
-                lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
                 break;
             }
             default: break;
