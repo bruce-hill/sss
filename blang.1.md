@@ -40,12 +40,6 @@ which can produce compiled binaries or run files directly.
 `-o` *file*
 : Specify the output file when compiling to a file.
 
-`-l...`, `-W...`
-: Linker flags beginning with `-l` or `-W` will be passed through to the linker.
-
-`-I...`
-: Add an option for the driver.
-
 *args...*
 : Extra arguments are passed to the compiled blang program when it runs.
 

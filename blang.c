@@ -289,9 +289,6 @@ int main(int argc, char *argv[])
         } else if (streq(argv[i], "-c") || streq(argv[i], "--compile")) {
             run_program = false;
             continue;
-        } else if (strncmp(argv[i], "-l", 2) == 0 || strncmp(argv[i], "-W", 2) == 0 || strncmp(argv[i], "-L", 2) == 0) {
-            gcc_add_driver_opt(ctx, argv[i]);
-            continue;
         } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE, 1);
             verbose = true;
@@ -299,11 +296,6 @@ int main(int argc, char *argv[])
         } else if (strncmp(argv[i], "-O", 2) == 0) {
             int opt = atoi(argv[i]+2);
             gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
-            continue;
-        }
-
-        if (strncmp(argv[i], "-I", 2) == 0) {
-            gcc_add_driver_opt(ctx, argv[i]+2);
             continue;
         }
 
