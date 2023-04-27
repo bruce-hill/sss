@@ -413,11 +413,11 @@ gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     ast_t *lhs = ast->__data.AddUpdate.lhs, *rhs = ast->__data.AddUpdate.rhs;
     // End unsafe
 
-    switch (get_type(env, lhs)->tag) {
-    case ArrayType: case TableType:
-        compiler_err(env, lhs, "This is an immutable value and it can't be updated");
-    default: break;
-    }
+    // switch (get_type(env, lhs)->tag) {
+    // case ArrayType: case TableType:
+    //     compiler_err(env, lhs, "This is an immutable value and it can't be updated");
+    // default: break;
+    // }
     gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs, true);
     gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 

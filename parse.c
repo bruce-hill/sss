@@ -931,11 +931,14 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
                               "I expected to find an expression here to index with");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
     auto access_type = INDEX_NORMAL;
+    const char *endpos = pos;
     spaces(&pos);
     if (match_word(&pos, "unchecked"))
         access_type = INDEX_UNCHECKED;
     else if (match(&pos, "!"))
         access_type = INDEX_FAIL;
+    else
+        pos = endpos;
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .type=access_type);
 }
 

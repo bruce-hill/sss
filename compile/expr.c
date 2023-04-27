@@ -1187,6 +1187,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *obj_lval = gcc_local(func, loc, bl_type_to_gcc(env, fielded_t), fresh("fielded"));
         gcc_assign(*block, loc, obj_lval, compile_expr(env, block, access->fielded));
         gcc_rvalue_t *obj = gcc_rval(obj_lval);
+        gcc_rvalue_t *obj_ptr = NULL;
 
       get_field:
         switch (fielded_t->tag) {
@@ -1198,6 +1199,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 mark_array_cow(env, block, obj);
             else if (ptr->pointed->tag == TableType)
                 gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), obj));
+            obj_ptr = obj;
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
@@ -1228,7 +1230,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto struct_type = Match(array->item_type, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
                 if (!streq(ith(struct_type->field_names, i), access->field))  continue;
-                bl_type_t *field_type = ith(struct_type->field_types, i);
+
+                if (obj_ptr)
+                    check_cow(env, block, fielded_t, obj_ptr);
 
                 // items = &(array.items->field)
                 gcc_field_t *items_field = gcc_get_field(gcc_array_struct, 0);
@@ -1241,6 +1245,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
 
                 // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
+                bl_type_t *field_type = ith(struct_type->field_types, i);
                 gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
                 stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
                                        gcc_rvalue_int32(env->ctx, gcc_sizeof(env, array->item_type)));
@@ -1261,7 +1266,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     stride,
                 };
 
-                return gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 3, fields, rvals);
+                gcc_lvalue_t *result_var = gcc_local(func, loc, slice_gcc_t, fresh("slice"));
+                gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 3, fields, rvals));
+                return gcc_rval(result_var);
             }
             break;
         }

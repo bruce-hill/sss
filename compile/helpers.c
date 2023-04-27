@@ -1248,6 +1248,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         bl_type_t *fielded_t = get_type(env, access->fielded);
         // arr.x => [item.x for x in arr]
         if (fielded_t->tag == ArrayType) {
+            compiler_err(env, ast, "I can't assign to immutable array slice values");
+        } else if (fielded_t->tag == PointerType && Match(fielded_t, PointerType)->pointed->tag == ArrayType) {
             if (!allow_slices)
                 compiler_err(env, ast, "I can't assign to array slices");
             gcc_func_t *func = gcc_block_func(*block);
