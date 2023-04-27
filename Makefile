@@ -1,6 +1,6 @@
 CC=cc
 PREFIX=/usr/local
-VERSION=0.4.0
+VERSION=0.4.1
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 CWARN=-Wall -Wextra
