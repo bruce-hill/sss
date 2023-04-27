@@ -57,9 +57,10 @@ typedef enum {
     Use,
     Ellipsis,
     Delete,
+    LinkerDirective,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (Delete + 1)
+#define NUM_AST_TAGS (LinkerDirective + 1)
 
 typedef struct ast_s ast_t;
 
@@ -302,6 +303,9 @@ struct ast_s {
         struct {
             ast_t *member, *container;
         } In;
+        struct {
+            List(const char*) directives;
+        } LinkerDirective;
     } __data;
 };
 

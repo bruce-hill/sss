@@ -91,6 +91,7 @@ static PARSER(parse_extern);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
+static PARSER(parse_linker);
 static PARSER(parse_ellipsis);
 
 //
@@ -1831,7 +1832,8 @@ PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
         || (stmt=parse_def(ctx, pos))
-        || (stmt=parse_doctest(ctx, pos)))
+        || (stmt=parse_doctest(ctx, pos))
+        || (stmt=parse_linker(ctx,pos)))
         return stmt;
 
     if (!(false 
@@ -2168,6 +2170,22 @@ PARSER(parse_use) {
         parser_err(ctx, start, pos, "No such file exists: \"%s\"", path);
     while (match(&pos, ";")) continue;
     return NewAST(ctx->file, start, pos, Use, .path=resolved_path);
+}
+
+PARSER(parse_linker) {
+    const char *start = pos;
+    if (!match_word(&pos, "!link")) return NULL;
+    NEW_LIST(const char*, directives);
+    for (;;) {
+        const char *p = pos;
+        spaces(&p);
+        size_t len = strcspn(p, " \t\r\n;");
+        if (len < 1) break;
+        char *directive = heap_strn(p, len);
+        APPEND(directives, directive);
+        pos = p + len;
+    }
+    return NewAST(ctx->file, start, pos, LinkerDirective, .directives=directives);
 }
 
 PARSER(parse_inline_block) {

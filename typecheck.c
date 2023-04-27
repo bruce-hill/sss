@@ -562,7 +562,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Extern: {
         return parse_type_ast(env, Match(ast, Extern)->type);
     }
-    case Declare: case Assign: case Delete: case DocTest: {
+    case Declare: case Assign: case Delete: case DocTest: case LinkerDirective: {
         return Type(VoidType);
     }
     case Use: {

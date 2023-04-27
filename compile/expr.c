@@ -2156,6 +2156,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Use: {
         return gcc_callx(env->ctx, NULL, prepare_use(env, ast));
     }
+    case LinkerDirective: {
+        auto directives = Match(ast, LinkerDirective)->directives;
+        foreach (directives, d, _)
+            gcc_add_driver_opt(env->ctx, *d);
+        return NULL;
+    }
     default: break;
     }
     compiler_err(env, ast, "I haven't yet implemented compiling for: %s", ast_to_str(ast)); 

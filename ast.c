@@ -191,6 +191,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Use, F(path))
         T(Ellipsis)
         T(Delete, F(value))
+        T(LinkerDirective, F(directives))
 #undef BINOP
 #undef UNOP
 #undef F
