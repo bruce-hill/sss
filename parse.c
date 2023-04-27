@@ -2210,10 +2210,8 @@ ast_t *parse_file(bl_file_t *file, jmp_buf *on_err) {
     };
 
     const char *pos = file->text;
-    if (match(&pos, "#!")) { // shebang
+    if (match(&pos, "#!")) // shebang
         some_not(&pos, "\r\n");
-        some_of(&pos, "\r\n");
-    }
 
     whitespace(&pos);
     ast_t *ast = parse_block(&ctx, pos);
