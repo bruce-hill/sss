@@ -191,24 +191,21 @@ void range_print(range_t range, FILE *f, void *stack, bool color) {
     if (range.first != INT64_MIN)
         fprintf(f, "%ld", range.first);
 
-    if (range.stride < 0) {
-        if (color) fputs("\x1b[0;33m", f);
-        fputs("..", f);
-        if (color) fputs("\x1b[35m", f);
-        fprintf(f, "%ld", range.stride);
-    } else if (range.stride != 1) {
-        if (color) fputs("\x1b[0;33m", f);
-        fputs("..", f);
-        if (color) fputs("\x1b[35m", f);
-        fprintf(f, "+%ld", range.stride);
-    }
+    if (color) fputs("\x1b[33m", f);
+    fputs("..", f);
 
-    if (color) fputs("\x1b[0;33m", f);
-    fprintf(f, "..");
     if (range.last != INT64_MAX) {
         if (color) fputs("\x1b[0;35m", f);
         fprintf(f, "%ld", range.last);
     }
+
+    if (range.stride != 1) {
+        if (color) fputs("\x1b[0;33m", f);
+        fputs(" by ", f);
+        if (color) fputs("\x1b[35m", f);
+        fprintf(f, "%ld", range.stride);
+    }
+
     if (color) fputs("\x1b[m", f);
 }
 
