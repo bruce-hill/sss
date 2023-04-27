@@ -444,20 +444,16 @@ void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, 
         if (condition) {
             check_truthiness(env, block, condition, between_block, loop_end);
         } else {
-            // GCC isn't happy if `loop_end` is unreachable
-            gcc_jump(*block, NULL, between_block);
-            // gcc_rvalue_t *yes = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1);
-            // assert(*block);
-            // gcc_jump_condition(*block, NULL, yes, between_block, loop_end);
+            if (*block) gcc_jump(*block, NULL, between_block);
         }
         *block = between_block;
         if (loop_env.comprehension_callback)
             loop_env.comprehension_callback(&loop_env, block, between, loop_env.comprehension_userdata);
         else
             compile_block_statement(&loop_env, block, between);
-        gcc_jump(*block, NULL, loop_body);
+        if (*block) gcc_jump(*block, NULL, loop_body);
     } else {
-        gcc_jump(*block, NULL, loop_top);
+        if (*block) gcc_jump(*block, NULL, loop_top);
     }
 
     *block = loop_end;
