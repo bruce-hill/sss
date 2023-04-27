@@ -125,5 +125,6 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *range_len(env_t *env, gcc_type_t *gcc_t, gcc_rvalue_t *range);
+gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_t *member);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
