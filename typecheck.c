@@ -661,7 +661,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         // Okay safe again
 
         bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
-        return type_or_type(lhs_t, rhs_t);
+        bl_type_t *t = type_or_type(lhs_t, rhs_t);
+        if (!t)
+            compiler_err(env, ast, "The two sides of this operation are not compatible: %s vs %s",
+                         type_to_string(lhs_t), type_to_string(rhs_t));
+        return t;
     }
 
     case Not: {
