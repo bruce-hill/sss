@@ -42,7 +42,6 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "min","max",
     "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
     "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","enum","else","do","del",
     "deftype", "defer","def","by","bitcast","between","as","and", NULL,
@@ -1669,8 +1668,8 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "as")) return Cast;
         else if (match_word(pos, "by")) return RANGE_STEP;
         else if (match_word(pos, "in")) return In;
-        else if (match_word(pos, "min")) return Min;
-        else if (match_word(pos, "max")) return Max;
+        else if (match_word(pos, "%min")) return Min;
+        else if (match_word(pos, "%max")) return Max;
         else if (match(pos, "..")) return Range;
         else return Unknown;
     }

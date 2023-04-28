@@ -11,9 +11,9 @@
 >>> |nums,+|
 === 3
 
->>> |nums,max|
+>>> |nums,%max|
 === 4
->>> |nums,min|
+>>> |nums,%min|
 === -3
 
 >>> |nums,*|
