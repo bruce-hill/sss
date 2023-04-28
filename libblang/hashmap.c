@@ -63,7 +63,7 @@ static void copy_on_write(bl_hashmap_t *h, size_t entry_size_padded)
     if (h->entries)
         h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
     if (h->buckets)
-        h->buckets = memcpy(GC_MALLOC(sizeof(bl_hash_bucket_t)*h->capacity), h->entries, sizeof(bl_hash_bucket_t)*h->capacity);
+        h->buckets = memcpy(GC_MALLOC(sizeof(bl_hash_bucket_t)*h->capacity), h->buckets, sizeof(bl_hash_bucket_t)*h->capacity);
     h->copy_on_write = false;
 }
 
