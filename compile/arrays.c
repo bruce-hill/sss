@@ -325,21 +325,15 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
     // Bounds check failure:
     *block = bounds_unsafe;
-    if (index_type == INDEX_NORMAL && env->loop_label) {
-        gcc_block_t *skip_dest = env->loop_label->skip_label;
-        insert_defers(env, block, env->loop_label->deferred);
-        gcc_jump(*block, loc, skip_dest);
-    } else {
-        gcc_block_t *empty = gcc_new_block(func, fresh("empty")),
-                    *nonempty = gcc_new_block(func, fresh("nonempty"));
-        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, len64, gcc_rvalue_int64(env->ctx, 0)),
-                           nonempty, empty);
-        *block = nonempty;
-        insert_failure(env, block, index->span, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
-                       index_t, index_val, Type(IntType, .bits=64), len64);
-        *block = empty;
-        insert_failure(env, block, index->span, "Error: this is an empty array and it cannot be indexed into");
-    }
+    gcc_block_t *empty = gcc_new_block(func, fresh("empty")),
+                *nonempty = gcc_new_block(func, fresh("nonempty"));
+    gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, len64, gcc_rvalue_int64(env->ctx, 0)),
+                       nonempty, empty);
+    *block = nonempty;
+    insert_failure(env, block, index->span, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
+                   index_t, index_val, Type(IntType, .bits=64), len64);
+    *block = empty;
+    insert_failure(env, block, index->span, "Error: this is an empty array and it cannot be indexed into");
 
     // Bounds check success:
     *block = bounds_safe;
