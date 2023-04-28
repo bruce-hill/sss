@@ -49,28 +49,32 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
     gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
     gcc_rvalue_t *original_pointer = NULL;
-    while (iter_t->tag == PointerType) {
+    if (iter_t->tag == PointerType) {
         auto ptr = Match(iter_t, PointerType);
+        if (ptr->pointed->tag == StructType) {
+            if (for_->value && for_->value->tag == Dereference)
+                original_pointer = iter_rval;
 
-        if (ptr->pointed->tag == StructType && for_->value && for_->value->tag == Dereference)
-            original_pointer = iter_rval;
+            if (ptr->is_optional) {
+                gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
+                gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
+                gcc_jump_condition(*block, NULL, is_nil, for_empty ? for_empty : for_end, continued);
+                *block = continued;
+            }
 
-        if (ptr->is_optional) {
-            gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
-            gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
-            gcc_jump_condition(*block, NULL, is_nil, for_empty ? for_empty : for_end, continued);
-            *block = continued;
+            // Arrays and Tables get flagged for copy-on-write when iterating
+            if (ptr->pointed->tag == ArrayType)
+                mark_array_cow(env, block, iter_rval);
+            else if (ptr->pointed->tag == TableType)
+                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), iter_rval));
+
+            iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
+            iter_t = Match(iter_t, PointerType)->pointed;
+            gcc_iter_t = bl_type_to_gcc(env, iter_t);
+        } else {
+            compiler_err(env, iter, "This value is a %s pointer. You must dereference the pointer with *%.*s to access the underlying value to iterate over it.",
+                         type_to_string(iter_t), (int)(iter->span.end - iter->span.start), iter->span.start);
         }
-
-        // Arrays and Tables get flagged for copy-on-write when iterating
-        if (ptr->pointed->tag == ArrayType)
-            mark_array_cow(env, block, iter_rval);
-        else if (ptr->pointed->tag == TableType)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), iter_rval));
-
-        iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
-        iter_t = Match(iter_t, PointerType)->pointed;
-        gcc_iter_t = bl_type_to_gcc(env, iter_t);
     }
 
     // Index tracking is always the same:
@@ -330,7 +334,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         break;
     }
-    default: compiler_err(env, iter, "Iteration not supported yet");
+    default: compiler_err(env, iter, "Iteration isn't supported for %s", type_to_string(iter_t));
     }
 
     env_t *loop_env = fresh_scope(env);
