@@ -68,10 +68,6 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
 {
     gcc_loc_t *loc = ast_loc(env, range);
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_type_t *gcc_range_t = bl_type_to_gcc(env, get_type(env, range));
-    gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
-    gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, fresh("range"));
-    gcc_assign(*block, loc, range_var, compile_range(env, block, range));
 
     bl_type_t *member_t = get_type(env, member);
     gcc_lvalue_t *member_var = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("member"));
@@ -80,6 +76,11 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
         compiler_err(env, member, "The only thing that can be in a range is an Int, not %s", type_to_string(member_t));
     gcc_assign(*block, loc, member_var, member_val);
     member_val = gcc_rval(member_var);
+
+    gcc_type_t *gcc_range_t = bl_type_to_gcc(env, get_type(env, range));
+    gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
+    gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, fresh("range"));
+    gcc_assign(*block, loc, range_var, compile_range(env, block, range));
 
     gcc_lvalue_t *contained_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), fresh("is_contained"));
     gcc_rvalue_t *first = gcc_rvalue_access_field(gcc_rval(range_var), NULL, gcc_get_field(range_struct, 0)),
