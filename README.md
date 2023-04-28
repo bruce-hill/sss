@@ -8,8 +8,8 @@ binary.
 ## Example
 
 ```
-def sing_bottles_song(n:Int)
-    for i in n..0 by -1
+def sing_bottles_song(num:Int)
+    for i in num..0 by -1
         if i == 0
             say "No more bottles of beer on the wall! :("
         else if i == 1
@@ -24,6 +24,16 @@ sing_bottles_song 99
 ```
 
 See [test/\*.bl](test/) for more examples.
+
+## Dependencies
+
+The Blang compiler is written in C and uses
+[libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend for
+compilation. Blang also uses the [Boehm garbage
+collector](https://www.hboehm.info/gc/) for runtime garbage collection. (both
+are available from your package manager of choice, for example: `pacman -S
+libgccjit gc`). The compiler uses a few GCC extensions, so other C compilers
+are not supported.
 
 ## Usage
 
@@ -48,14 +58,6 @@ Additional command line arguments can be found in the manpages (`man
 - Ergonomic optional typing
 - Memory safety (GC and automatic array bounds checking)
 - Percentages
-
-## Dependencies
-
-The Blang compiler is written in C and uses
-[libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend for
-compilation. Blang also uses the [Boehm garbage
-collector](https://www.hboehm.info/gc/) for runtime garbage collection.
-(available from your package manager of choice: `pacman -S gc`).
 
 ## Usage
 

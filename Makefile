@@ -1,4 +1,4 @@
-CC=cc
+CC=gcc
 PREFIX=/usr/local
 VERSION=0.4.3
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
@@ -21,7 +21,7 @@ EXTRA=
 G=-ggdb
 O=-O0
 LIBS=-lgc -lgccjit -lcord -lm -L. -l:libblang.so.$(VERSION)
-ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) $(LIBS) -DBLANG_VERSION=\"$(VERSION)\"
+ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DBLANG_VERSION=\"$(VERSION)\"
 
 LIBFILE=libblang.so.$(VERSION)
 CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c SipHash/halfsiphash.c
@@ -34,16 +34,16 @@ $(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
-	$(CC) $(ALL_FLAGS) $(LDFLAGS) -o $@ $(OBJFILES) blang.c
+	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) blang.c
 
 hashtest: libblang/hashmap.o hashtest.c
-	$(CC) $(ALL_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
 
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 
 %: %.c $(HFILES)
-	$(CC) $(OSFLAGS) $(ALL_FLAGS) $(LDFLAGS) -o $@ $^
+	$(CC) $(OSFLAGS) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
 
 tags: $(CFILES) $(HFILES) blang.c
 	ctags $^

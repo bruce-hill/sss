@@ -1471,7 +1471,7 @@ PARSER(parse_lambda) {
     if (!match(&pos, "->"))
         return NULL;
 
-  thunk:
+  thunk:;
     ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block);
 
     return NewAST(ctx->file, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
