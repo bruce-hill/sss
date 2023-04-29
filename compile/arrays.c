@@ -408,34 +408,36 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     auto array = Match(t, ArrayType);
     bl_type_t *item_type = array->item_type;
+    bool is_string = (item_type->tag == CharType);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1));
 
     gcc_func_t *func = gcc_block_func(*block);
 
-    gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
-                *is_not_empty = gcc_new_block(func, fresh("is_not_empty"));
-    gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, INT32))),
-                       is_not_empty, is_empty);
-    *block = is_empty;
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "[");
-    COLOR_LITERAL(block, "\x1b[0;2;36m");
-    WRITE_LITERAL(*block, ":");
-    COLOR_LITERAL(block, "\x1b[0;36m");
-    WRITE_LITERAL(*block, type_to_string(item_type));
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "]");
-    gcc_return_void(*block, NULL);
+    if (!is_string) {
+        gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
+                    *is_not_empty = gcc_new_block(func, fresh("is_not_empty"));
+        gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, INT32))),
+                           is_not_empty, is_empty);
+        *block = is_empty;
+        COLOR_LITERAL(block, "\x1b[m");
+        WRITE_LITERAL(*block, "[");
+        COLOR_LITERAL(block, "\x1b[0;2;36m");
+        WRITE_LITERAL(*block, ":");
+        COLOR_LITERAL(block, "\x1b[0;36m");
+        WRITE_LITERAL(*block, type_to_string(item_type));
+        COLOR_LITERAL(block, "\x1b[m");
+        WRITE_LITERAL(*block, "]");
+        gcc_return_void(*block, NULL);
 
-    *block = is_not_empty;
+        *block = is_not_empty;
+    }
 
     if (array->dsl) {
         COLOR_LITERAL(block, "\x1b[0;35m");
         WRITE_LITERAL(*block, heap_strf("$%s", array->dsl));
     }
 
-    bool is_string = (item_type->tag == CharType);
     if (is_string) {
         COLOR_LITERAL(block, "\x1b[0;35m");
         WRITE_LITERAL(*block, "\"");
