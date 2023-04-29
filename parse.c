@@ -42,9 +42,9 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","when","use","unless","unit","typeof","then","stop","skip","sizeof","return","repeat",
-    "pass","or","not","no","mod","macro","is","inline","in","if","global","for","fail","extern","extend","enum","else","do","del",
-    "deftype", "defer","def","by","bitcast","between","as","and", NULL,
+    "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat",
+    "or","not","no","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
+    "defer","def","by","bitcast","between","as","and", NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
