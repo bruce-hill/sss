@@ -329,7 +329,7 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
-        return type_eq(needed_ptr->pointed, actual_ptr->pointed) && needed_ptr->is_optional;
+        return (needed_ptr->pointed->tag == VoidType || type_eq(needed_ptr->pointed, actual_ptr->pointed)) && needed_ptr->is_optional;
     }
 
     // Function promotion:
