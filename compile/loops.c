@@ -26,7 +26,7 @@ static const char* loop_var_name(ast_t *var)
 static gcc_rvalue_t *rvalue_in_var(gcc_block_t **block, const char *name, gcc_type_t *gcc_t, gcc_rvalue_t *rval)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *var = gcc_local(func, NULL, gcc_t, fresh(name));
+    gcc_lvalue_t *var = gcc_local(func, NULL, gcc_t, name);
     gcc_assign(*block, NULL, var, rval);
     return gcc_rval(var);
 }
@@ -79,9 +79,9 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     // Index tracking is always the same:
     gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64, fresh("i"));
+    gcc_lvalue_t *index_var = gcc_local(func, NULL, i64, "_i");
     gcc_assign(*block, NULL, index_var, gcc_one(env->ctx, i64));
-    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64, fresh("i"));
+    gcc_lvalue_t *index_shadow = gcc_local(func, NULL, i64, "_i_shadow");
     gcc_assign(for_body, NULL, index_shadow, gcc_rval(index_var));
     if (for_first)
         gcc_assign(for_first, NULL, index_shadow, gcc_rval(index_var));
@@ -95,7 +95,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = Match(iter_t, ArrayType)->item_type;
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
-        gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+        gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
         if (for_->value && for_->value->tag == Dereference) {
             if (!original_pointer)
                 compiler_err(env, for_->value, "You can't iterate by internal pointers to an array value");
@@ -106,11 +106,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 0)));
 
         // len = array->len
-        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), fresh("len"));
+        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
         gcc_assign(*block, NULL, len,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 1)));
 
-        item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
+        item_shadow = gcc_local(func, NULL, gcc_item_t, "_item");
         gcc_rvalue_t *stride = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 2));
 
         // goto (index > len) ? end : body
@@ -150,16 +150,16 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = table_entry_type(iter_t);
         gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
-        gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("entry_ptr"));
+        gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_entry_ptr");
         gcc_assign(*block, NULL, entry_ptr,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_ENTRIES_FIELD)));
 
         // len = table->count
-        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), fresh("len"));
+        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
         gcc_assign(*block, NULL, len,
                    gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_COUNT_FIELD)), gcc_type(env->ctx, INT32)));
 
-        item_shadow = gcc_local(func, NULL, gcc_item_t, fresh("item"));
+        item_shadow = gcc_local(func, NULL, gcc_item_t, "_item");
 
         // goto (index > len) ? end : body
         gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var),
@@ -191,7 +191,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case RangeType: {
-        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, fresh("iter"));
+        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, "_iter");
         gcc_assign(*block, NULL, iter_var, iter_rval);
         iter_rval = gcc_rval(iter_var);
         if (for_->value && for_->value->tag == Dereference)
@@ -199,7 +199,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         // x = range.first
         gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
         assert(range_struct);
-        gcc_lvalue_t *x_var = gcc_local(func, NULL, i64, fresh("_x"));
+        gcc_lvalue_t *x_var = gcc_local(func, NULL, i64, "_x");
         gcc_assign(*block, NULL, x_var,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(range_struct, 0)));
         gcc_rvalue_t *x = gcc_rval(x_var);
@@ -247,7 +247,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
         item_t = Type(IntType, .bits=64);
-        item_shadow = gcc_local(func, NULL, i64, fresh("x"));
+        item_shadow = gcc_local(func, NULL, i64, "_x");
         gcc_assign(for_body, NULL, item_shadow, x);
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, x);
@@ -294,10 +294,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         // iter = obj
         gcc_lvalue_t *tmp = NULL;
         if (!original_pointer) {
-            tmp = gcc_local(func, NULL, gcc_iter_t, fresh("_tmp"));
+            tmp = gcc_local(func, NULL, gcc_iter_t, "_tmp");
             gcc_assign(*block, NULL, tmp, iter_rval);
         }
-        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_var_t, fresh("_iter"));
+        gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_var_t, "_iter");
         gcc_assign(*block, NULL, iter_var, original_pointer ? original_pointer : gcc_lvalue_address(tmp, NULL));
 
         // goto (iter == NULL) ? end : body
@@ -308,7 +308,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
-        item_shadow = gcc_local(func, NULL, bl_type_to_gcc(env, item_t), fresh("item"));
+        item_shadow = gcc_local(func, NULL, bl_type_to_gcc(env, item_t), "_item");
         gcc_rvalue_t *to_assign = type_eq(item_t, iter_var_t) ? gcc_rval(iter_var)
             : gcc_rval(gcc_rvalue_dereference(gcc_rval(iter_var), NULL));
         gcc_assign(for_body, NULL, item_shadow, to_assign);

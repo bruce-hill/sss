@@ -70,7 +70,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
         gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
         gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
         gcc_jump_condition(enter_load, NULL, gcc_rval(is_loaded), finished_loading, do_loading);
-        gcc_lvalue_t *module_val = gcc_local(load_func, NULL, bl_type_to_gcc(env, t), fresh("module"));
+        gcc_lvalue_t *module_val = gcc_local(load_func, NULL, bl_type_to_gcc(env, t), "_module");
         gcc_return(finished_loading, NULL, gcc_rval(module_val));
 
         gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));

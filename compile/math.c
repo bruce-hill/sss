@@ -48,7 +48,7 @@ static gcc_rvalue_t *math_binop_rec(
         bl_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
-        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, fresh("result"));
+        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
         gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
@@ -81,7 +81,7 @@ static gcc_rvalue_t *math_binop_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
         gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
         gcc_jump(*block, NULL, loop_condition);
 
@@ -124,7 +124,7 @@ static gcc_rvalue_t *math_binop_rec(
         bl_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
         gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
-        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, fresh("result"));
+        gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
         gcc_type_t *array_gcc_t = bl_type_to_gcc(env, array_t);
         gcc_struct_t *array_struct = gcc_type_if_struct(array_gcc_t);
@@ -148,7 +148,7 @@ static gcc_rvalue_t *math_binop_rec(
                 (gcc_field_t*[]){gcc_get_field(result_array_struct, 0), gcc_get_field(result_array_struct, 1), gcc_get_field(result_array_struct, 2)},
                 (gcc_rvalue_t*[]){initial_items, len, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
         gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
         gcc_jump(*block, NULL, loop_condition);
 
@@ -318,7 +318,7 @@ void math_update_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
         gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
         gcc_jump(*block, NULL, loop_condition);
 
@@ -352,7 +352,7 @@ void math_update_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, fresh("offset"));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
         gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
         gcc_jump(*block, NULL, loop_condition);
 

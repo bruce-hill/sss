@@ -91,15 +91,15 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
 
     gcc_loc_t *loc = ast_loc(env, member);
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *member_var = gcc_local(func, loc, bl_type_to_gcc(env, item_type), fresh("member"));
+    gcc_lvalue_t *member_var = gcc_local(func, loc, bl_type_to_gcc(env, item_type), "_member");
     gcc_assign(*block, loc, member_var, compile_expr(env, block, member));
-    gcc_lvalue_t *contains_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), fresh("contains"));
+    gcc_lvalue_t *contains_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), "_contains");
     gcc_assign(*block, loc, contains_var, gcc_rvalue_bool(env->ctx, 0));
 
     // i = 1
-    gcc_lvalue_t *array_var = gcc_local(func, loc, bl_type_to_gcc(env, t), fresh("array"));
+    gcc_lvalue_t *array_var = gcc_local(func, loc, bl_type_to_gcc(env, t), "_array");
     gcc_assign(*block, loc, array_var, array_val);
-    gcc_lvalue_t *i = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("i"));
+    gcc_lvalue_t *i = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_i");
     gcc_assign(*block, loc, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
@@ -113,7 +113,7 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
 
     // item_ptr = array.items
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_type);
-    gcc_lvalue_t *item_ptr = gcc_local(func, loc, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+    gcc_lvalue_t *item_ptr = gcc_local(func, loc, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
     gcc_assign(*block, loc, item_ptr, items);
 
     // if (i < len) goto next;
@@ -216,7 +216,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             else
                 offset = gcc_zero(env->ctx, i32_t);
             gcc_rvalue_t *items = gcc_lvalue_address(gcc_array_access(env->ctx, loc, old_items, offset), loc);
-            gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, fresh("slice"));
+            gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, "_slice");
             // assign slice.items and slice.stride
             gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 0)), items);
             gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 2));
@@ -273,7 +273,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         gcc_func_t *func = gcc_block_func(*block);
         bl_type_t *slice_t = get_type(env, arr_ast);
         while (slice_t->tag == PointerType) slice_t = Match(slice_t, PointerType)->pointed;
-        gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, slice_t), fresh("slice"));
+        gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, slice_t), "_slice");
         gcc_assign(*block, NULL, slice, array_slice(env, block, arr_ast, index, access));
         return slice;
     } else if (!is_integral(index_t)) {
@@ -305,7 +305,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 0));
     gcc_rvalue_t *index_val = gcc_cast(env->ctx, loc, compile_expr(env, block, index), i64_t);
-    gcc_lvalue_t *index_var = gcc_local(func, loc, i64_t, fresh("index"));
+    gcc_lvalue_t *index_var = gcc_local(func, loc, i64_t, "_index");
     gcc_assign(*block, loc, index_var, index_val);
     index_val = gcc_rval(index_var);
     gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 2)), i64_t);
@@ -351,7 +351,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_func_t *func = gcc_block_func(*block);
 
     gcc_loc_t *loc = ast_loc(env, ast);
-    gcc_lvalue_t *array_var = gcc_local(func, loc, gcc_t, fresh("array"));
+    gcc_lvalue_t *array_var = gcc_local(func, loc, gcc_t, "_array");
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
     bl_type_t *item_t = Match(t, ArrayType)->item_type;
@@ -447,7 +447,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     }
 
     // i = 1
-    gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
+    gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_i");
     gcc_assign(*block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_rvalue_t *items = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 0));
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
@@ -459,7 +459,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // item_ptr = array.items
     gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_type);
-    gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), fresh("item_ptr"));
+    gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
     gcc_assign(*block, NULL, item_ptr, items);
 
     // if (i < len) goto add_next_item;

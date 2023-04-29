@@ -394,7 +394,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_func_t *func = gcc_block_func(*block);
         const char* name = Match(decl->var, Var)->name;
-        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, fresh(name));
+        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, name);
         binding_t *clobbered = get_local_binding(env, name);
         if (clobbered && clobbered->type->tag == TypeType)
             compiler_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
@@ -707,7 +707,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                 gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_star),
                 gcc_rvalue_size(env->ctx, offsetof(struct{void* key; int64_t value;}, value)), 
                 gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, INT64))));
-            gcc_lvalue_t *index_var = gcc_local(func, NULL, gcc_get_ptr_type(i64), fresh("index"));
+            gcc_lvalue_t *index_var = gcc_local(func, NULL, gcc_get_ptr_type(i64), "_index");
             gcc_assign(block, NULL, index_var, gcc_cast(env->ctx, NULL, index_ptr, gcc_get_ptr_type(i64)));
 
             gcc_type_t *rec_gcc_t = bl_type_to_gcc(env, rec_t);
@@ -899,7 +899,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     gcc_type_t *t_void_ptr = gcc_get_type(env->ctx, GCC_T_VOID_PTR);
     gcc_rvalue_t *k = gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "My secret key!!!"), t_void_ptr);
 
-    gcc_lvalue_t *hashval = gcc_local(func, NULL, gcc_type(env->ctx, UINT32), fresh("hashval"));
+    gcc_lvalue_t *hashval = gcc_local(func, NULL, gcc_type(env->ctx, UINT32), "_hashval");
 
     // int halfsiphash(const void *in, const size_t inlen, const void *k, uint8_t *out, const size_t outlen);
     switch (t->tag) {
@@ -1006,7 +1006,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         auto struct_ = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
-        gcc_lvalue_t *cmp = gcc_local(func, NULL, gcc_type(env->ctx, INT), fresh("cmp"));
+        gcc_lvalue_t *cmp = gcc_local(func, NULL, gcc_type(env->ctx, INT), "_cmp");
         gcc_rvalue_t *zero = gcc_zero(env->ctx, gcc_type(env->ctx, INT));
         gcc_assign(block, NULL, cmp, zero);
         for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
@@ -1094,7 +1094,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
         gcc_type_t *int32 = gcc_type(env->ctx, INT32);
-        gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, fresh("i"));
+        gcc_lvalue_t *index_var = gcc_local(func, NULL, int32, "_i");
         gcc_rvalue_t *index_rval = gcc_rval(index_var);
         gcc_assign(block, NULL, index_var, gcc_zero(env->ctx, int32));
 
@@ -1213,7 +1213,7 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
                 *is_false = gcc_new_block(func, fresh("is_false")),
                 *got_value = gcc_new_block(func, fresh("got_value"));
 
-    gcc_lvalue_t *result = gcc_local(func, NULL, gcc_t, fresh("result"));
+    gcc_lvalue_t *result = gcc_local(func, NULL, gcc_t, "_result");
     gcc_jump_condition(*block, NULL, condition, is_true, is_false);
     *block = NULL;
 
@@ -1257,7 +1257,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (!allow_slices)
                 compiler_err(env, ast, "I can't assign to array slices");
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), fresh("slice"));
+            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), "_slice");
             gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
             return slice;
         }
@@ -1337,7 +1337,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_size += 4; // Hidden "capacity" field
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
-        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, fresh(heap_strf("heap_%s", type_to_string(t))));
+        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), gcc_t));
         gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), rval);
@@ -1407,9 +1407,9 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
 
             // char *buf; size_t size;
             // FILE *f = open_memstream(&buf, &size);
-            gcc_lvalue_t *buf_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("buf"));
-            gcc_lvalue_t *size_var = gcc_local(func, NULL, gcc_type(env->ctx, SIZE), fresh("size"));
-            gcc_lvalue_t *file_var = gcc_local(func, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file"));
+            gcc_lvalue_t *buf_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_buf");
+            gcc_lvalue_t *size_var = gcc_local(func, NULL, gcc_type(env->ctx, SIZE), "_size");
+            gcc_lvalue_t *file_var = gcc_local(func, NULL, gcc_type(env->ctx, FILE_PTR), "_file");
             gcc_assign(*block, NULL, file_var,
                        gcc_callx(env->ctx, NULL, open_memstream_fn, gcc_lvalue_address(buf_var, NULL), gcc_lvalue_address(size_var, NULL)));
             gcc_rvalue_t *file = gcc_rval(file_var);
@@ -1418,9 +1418,9 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             // Do bl_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
             bl_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = bl_type_to_gcc(env, cycle_checker_t);
-            gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, fresh("rec"));
+            gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
             gcc_assign(*block, NULL, cycle_checker, gcc_struct_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL, NULL));
-            gcc_lvalue_t *next_index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("index"));
+            gcc_lvalue_t *next_index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_index");
             gcc_assign(*block, NULL, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
             gcc_assign(*block, NULL, gcc_lvalue_access_field(
                     cycle_checker, NULL, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
@@ -1439,7 +1439,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             gcc_rvalue_t *str = gcc_callx(env->ctx, NULL, alloc_fn, size);
             str = gcc_callx(env->ctx, NULL, memcpy_fn, str, gcc_rval(buf_var), size);
             str = gcc_cast(env->ctx, NULL, str, gcc_type(env->ctx, STRING));
-            gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), fresh("str"));
+            gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_str");
             gcc_assign(*block, NULL, str_var, str);
             gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, fclose_fn, file));
             gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, free_fn, gcc_rval(buf_var)));

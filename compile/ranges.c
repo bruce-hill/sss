@@ -30,7 +30,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     };
     gcc_rvalue_t *range_val = gcc_struct_constructor(env->ctx, loc, range_t, 3, NULL, values);
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *range_var = gcc_local(func, loc, range_t, fresh("range"));
+    gcc_lvalue_t *range_var = gcc_local(func, loc, range_t, "_range");
     gcc_assign(*block, loc, range_var, range_val);
     gcc_block_t *if_zero = gcc_new_block(func, fresh("zero_step")),
                 *done = gcc_new_block(func, fresh("done"));
@@ -70,7 +70,7 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
     gcc_func_t *func = gcc_block_func(*block);
 
     bl_type_t *member_t = get_type(env, member);
-    gcc_lvalue_t *member_var = gcc_local(func, loc, gcc_type(env->ctx, INT64), fresh("member"));
+    gcc_lvalue_t *member_var = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_member");
     gcc_rvalue_t *member_val = compile_expr(env, block, member);
     if (!promote(env, member_t, &member_val, Type(IntType, .bits=64)))
         compiler_err(env, member, "The only thing that can be in a range is an Int, not %s", type_to_string(member_t));
@@ -79,10 +79,10 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
 
     gcc_type_t *gcc_range_t = bl_type_to_gcc(env, get_type(env, range));
     gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
-    gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, fresh("range"));
+    gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, "_range");
     gcc_assign(*block, loc, range_var, compile_range(env, block, range));
 
-    gcc_lvalue_t *contained_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), fresh("is_contained"));
+    gcc_lvalue_t *contained_var = gcc_local(func, loc, gcc_type(env->ctx, BOOL), "_is_contained");
     gcc_rvalue_t *first = gcc_rvalue_access_field(gcc_rval(range_var), NULL, gcc_get_field(range_struct, 0)),
                  *step = gcc_rvalue_access_field(gcc_rval(range_var), NULL, gcc_get_field(range_struct, 1)),
                  *last = gcc_rvalue_access_field(gcc_rval(range_var), NULL, gcc_get_field(range_struct, 2));

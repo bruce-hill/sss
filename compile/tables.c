@@ -41,7 +41,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
         compiler_err(env, key_ast, "This key has type %s, but to work in this table, it needs type %s",
                     type_to_string(get_type(env, key_ast)), type_to_string(needed_key_t));
 
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, fresh("key"));
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, "_key");
     gcc_assign(*block, NULL, key_lval, key_val);
     flatten_arrays(env, block, needed_key_t, gcc_lvalue_address(key_lval, NULL));
 
@@ -59,7 +59,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
         gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)));
 
     gcc_type_t *value_gcc_t = bl_type_to_gcc(env, Match(t, TableType)->value_type);
-    gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), fresh("dest"));
+    gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
     gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(value_gcc_t)));
     return gcc_rvalue_dereference(gcc_rval(dest), NULL);
 }
@@ -68,9 +68,9 @@ void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *t
 {
     gcc_type_t *entry_t = bl_type_to_gcc(env, table_entry_type(t));
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, fresh("entry"));
+    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, "_entry");
 
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, Match(t, TableType)->key_type), fresh("key"));
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, Match(t, TableType)->key_type), "_key");
     gcc_assign(*block, NULL, key_lval, key_val);
     flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
     gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
@@ -117,8 +117,8 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                     type_to_string(needed_value_t), type_to_string(raw_value_t));
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_key_t), fresh("key")),
-                 *value_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_value_t), fresh("value"));
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_key_t), "_key"),
+                 *value_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_value_t), "_value");
     gcc_assign(*block, NULL, key_lval, key_val);
     gcc_assign(*block, NULL, value_lval, value_val);
 
@@ -150,7 +150,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         table_t = ptr->pointed;
     }
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *table_var = gcc_local(func, loc, bl_type_to_gcc(env, table_t), fresh("table"));
+    gcc_lvalue_t *table_var = gcc_local(func, loc, bl_type_to_gcc(env, table_t), "_table");
     gcc_assign(*block, loc, table_var, table);
 
     bl_type_t *key_t = Match(table_t, TableType)->key_type;
@@ -165,7 +165,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     if (!promote(env, raw_key_t, &key_val, key_t))
         compiler_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
                     type_to_string(raw_key_t), type_to_string(key_t));
-    gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), fresh("key"));
+    gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), "_key");
     gcc_assign(*block, loc, key_lval, key_val);
     if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
     flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
@@ -180,7 +180,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     gcc_type_t *val_ptr_gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, value_t));
     val_ptr = gcc_cast(env->ctx, loc, val_ptr, val_ptr_gcc_t);
 
-    gcc_lvalue_t *value_lval = gcc_local(func, loc, val_ptr_gcc_t, fresh("value"));
+    gcc_lvalue_t *value_lval = gcc_local(func, loc, val_ptr_gcc_t, "_value");
     gcc_assign(*block, loc, value_lval, val_ptr);
     return gcc_rval(value_lval);
 }
@@ -197,7 +197,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_func_t *func = gcc_block_func(*block);
 
     gcc_loc_t *loc = ast_loc(env, ast);
-    gcc_lvalue_t *table_var = gcc_local(func, loc, gcc_t, fresh("table"));
+    gcc_lvalue_t *table_var = gcc_local(func, loc, gcc_t, "_table");
 
     gcc_assign(*block, loc, table_var, gcc_struct_constructor(env->ctx, loc, gcc_t, 0, NULL, NULL));
 
@@ -277,7 +277,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     bl_type_t *entry_t = table_entry_type(t);
 
     // i = 0
-    gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), fresh("i"));
+    gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_i");
     gcc_assign(*block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
@@ -313,7 +313,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // entry_ptr = array.entries
     gcc_type_t *gcc_entry_t = bl_type_to_gcc(env, entry_t);
-    gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_entry_t), fresh("entry_ptr"));
+    gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_entry_t), "_entry_ptr");
     gcc_assign(*block, NULL, entry_ptr, entries);
 
     // if (i < len) goto add_next_entry;
