@@ -734,6 +734,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto entry = Match(ast, TableEntry);
         bl_type_t *key_t = get_type(env, entry->key);
         bl_type_t *value_t = get_type(env, entry->value);
+        if (key_t->tag == VoidType || value_t->tag == VoidType)
+            compiler_err(env, ast, "Void values can't be put into a table");
         bl_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                                   .field_types=LIST(bl_type_t*, key_t, value_t));
         gcc_type_t *entry_gcc_t = bl_type_to_gcc(env, entry_t);

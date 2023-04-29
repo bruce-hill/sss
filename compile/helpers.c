@@ -73,6 +73,7 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
         return align;
     }
     case ModuleType: return 1;
+    case VoidType: return 1;
     default:
         return gcc_sizeof(env, bl_t);
     }
@@ -141,6 +142,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         return size;
     }
     case ModuleType: return 0;
+    case VoidType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
     }
 }
@@ -249,6 +251,8 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case TableType: {
         gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
         auto table = Match(t, TableType);
+        if (table->key_type->tag == VoidType || table->value_type->tag == VoidType)
+            compiler_err(env, NULL, "Tables can't hold Void types");
         bl_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                                   .field_types=LIST(bl_type_t*, table->key_type, table->value_type));
 

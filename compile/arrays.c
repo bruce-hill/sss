@@ -22,6 +22,9 @@ typedef struct {
 
 static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_insert_info_t *info)
 {
+    if (Match(info->array_type, ArrayType)->item_type->tag == VoidType)
+        compiler_err(env, item, "Void values can't be put inside an array");
+
     bl_type_t *t = get_type(env, item); // item type
     if (t->tag == GeneratorType) {
         gcc_rvalue_t *val = compile_expr(env, block, item);
@@ -352,6 +355,9 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
     bl_type_t *item_t = Match(t, ArrayType)->item_type;
+    if (item_t->tag == VoidType)
+        compiler_err(env, ast, "Arrays can't be defined with a Void item type");
+
     gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
     gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * length(array->items)));
     gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));

@@ -185,13 +185,14 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
+    size_t value_size = entry_size_padded - value_offset;
     void *value_home = bl_hashmap_get_raw(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
     if (value_home) {
         if (!value && (h->fallback || h->default_value))
             value = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
 
-        if (value)
-            memcpy(value_home, value, entry_size_padded - value_offset);
+        if (value && value_size > 0)
+            memcpy(value_home, value, value_size);
         return value_home;
     }
 
@@ -202,7 +203,7 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
         hashmap_resize(h, key_hash, key_cmp, newsize, entry_size_padded);
     }
 
-    if (!value) {
+    if (!value && value_size > 0) {
         for (bl_hashmap_t *iter = h->fallback; iter; iter = iter->fallback) {
             value = bl_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
             if (value) break;

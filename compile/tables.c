@@ -189,6 +189,10 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto table = Match(ast, Table);
     bl_type_t *t = get_type(env, ast);
+    if (Match(t, TableType)->key_type->tag == VoidType)
+        compiler_err(env, ast, "Tables can't be defined with a Void key type");
+    else if (Match(t, TableType)->value_type->tag == VoidType)
+        compiler_err(env, ast, "Tables can't be defined with a Void value type");
     gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
     gcc_func_t *func = gcc_block_func(*block);
 
