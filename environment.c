@@ -153,7 +153,7 @@ static bl_type_t *define_string_type(env_t *env)
 
     bl_hashmap_t *ns = get_namespace(env, str_type);
     load_method(env, ns, "bl_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
-    load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
+    load_method(env, ns, "bl_string_lowercased", "lowercased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "bl_string_quoted", "quoted", str_type,

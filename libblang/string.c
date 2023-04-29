@@ -33,11 +33,14 @@ string_t bl_string_capitalized(string_t s) {
     for (i = 0; i < s.length; i++) {
         if (isalpha(s.data[i*s.stride])) {
             s2[i] = toupper(s.data[i*s.stride]);
+            ++i;
             break;
+        } else {
+            s2[i] = s.data[i*s.stride];
         }
     }
     for (; i < s.length; i++)
-        s2[i] = tolower(s.data[i*s.stride]);
+        s2[i] = s.data[i*s.stride];
     return (string_t){.data=s2, .length=s.length, .stride=1};
 }
 
@@ -54,6 +57,7 @@ string_t bl_string_titlecased(string_t s) {
             }
         } else {
             should_uppercase = true;
+            s2[i] = s.data[i*s.stride];
         }
     }
     return (string_t){.data=s2, .length=s.length, .stride=1};
