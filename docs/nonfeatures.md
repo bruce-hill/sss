@@ -128,13 +128,13 @@ def QuadTreeItem {
     value:@Void
     xmin,xmax,ymin,ymax:Num
 }
-def QuadTree oneof {
-    subtrees:[QuadTree],
+def QuadTree {|
+    subtrees:[QuadTree]
     bucket:{
         xmin,xmax,ymin,ymax:Num
         items:[QuadTreeItem]
     }
-}
+|}
 extend QuadTree
     def insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
         ...
@@ -319,7 +319,7 @@ errors explicitly. Ignoring return values is also treated as a compiler error,
 so callers must address any error values returned or explicitly discard them:
 
 ```blang
-def IntParseResult oneof {Failure, Success:Int}
+def IntParseResult {|Failure|Success:Int|}
 def parse_int(str:String, base=10):IntParseResult
     return IntParseResult.Failure if #str == 0
     digits := "0123456789"

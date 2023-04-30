@@ -3,5 +3,5 @@ def Baz { f:?Foo }
 
 >>> @Foo{b=@Baz{}}
 
-def Tagged oneof { t:@Tagged, nope }
+def Tagged {| t:@Tagged | nope |}
 >>> Tagged.t(@Tagged.nope)

@@ -187,13 +187,7 @@ v := Vec{3, 4} // Equivalent to Vec{x=3, y=4}
 === "ABC"
 
 // For tagged unions (AKA discriminated unions, sum types)
-def Whatever oneof {
-    count:Int
-    text:String
-    vec:Vec
-    nothing
-    unknown
-}
+def Whatever {|count:Int|text:String|vec:Vec|nothing|unknown|}
 
 // Tagged values are instantiated like this:
 vals := [Whatever.count(5), Whatever.text("xx"), Whatever.vec(Vec{1,2}), Whatever.nothing, Whatever.unknown]

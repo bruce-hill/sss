@@ -493,9 +493,8 @@ PARSER(parse_struct_type) {
 PARSER(parse_tagged_union_type) {
     const char *start = pos;
     const char* name = get_id(&pos);
-    if (!match_word(&pos, "oneof")) return NULL;
     spaces(&pos);
-    if (!match(&pos, "{")) return NULL;
+    if (!match(&pos, "{|")) return NULL;
     NEW_LIST(const char*, tag_names);
     NEW_LIST(int64_t, tag_values);
     NEW_LIST(ast_t*, tag_types);
@@ -529,11 +528,11 @@ PARSER(parse_tagged_union_type) {
         APPEND(tag_types, type);
 
         whitespace(&pos);
-        match(&pos, ",");
+        match(&pos, "|");
 
         ++next_value;
     }
-    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
+    expect_closing(ctx, &pos, "|}", "I wasn't able to parse the rest of this tagged union");
     return NewAST(ctx->file, start, pos, TypeTaggedUnion, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
 }
 
@@ -2049,12 +2048,7 @@ PARSER(parse_def) {
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
                       .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body,
                       .is_inline=is_inline);
-    } else if (match(&pos, "{")) { // Struct def Foo{...}
-        --pos;
-        return parse_struct_def(ctx, start, &pos, name);
-    } else if (match_word(&pos, "oneof")) { // tagged union: def Foo oneof {...}
-        expect_str(ctx, start, &pos, "{", "I expected a '{' after 'oneof'");
-
+    } else if (match(&pos, "{|")) { // tagged union: def Foo{|a|b|...|}
         NEW_LIST(const char*, tag_names);
         NEW_LIST(int64_t, tag_values);
         NEW_LIST(ast_t*, tag_types);
@@ -2088,12 +2082,15 @@ PARSER(parse_def) {
             APPEND(tag_types, type);
 
             whitespace(&pos);
-            match(&pos, ",");
+            match(&pos, "|");
 
             ++next_value;
         }
-        expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this 'oneof'");
+        expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
         return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+    } else if (match(&pos, "{")) { // Struct def Foo{...}
+        --pos;
+        return parse_struct_def(ctx, start, &pos, name);
     } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
         ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
         expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");

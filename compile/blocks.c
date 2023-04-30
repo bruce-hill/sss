@@ -116,6 +116,8 @@ void predeclare_def_types(env_t *env, ast_t *def)
         bl_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
                             .field_types=LIST(bl_type_t*), .field_defaults=LIST(ast_t*));
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
+        if (hget(env->bindings, name, binding_t*))
+            compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
         hset(env->type_namespaces, name, struct_env->bindings);
@@ -127,6 +129,8 @@ void predeclare_def_types(env_t *env, ast_t *def)
         const char* name = tu_def->name;
         bl_type_t *t = Type(TaggedUnionType, .name=name, .members=LIST(bl_tagged_union_member_t));
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
+        if (hget(env->bindings, name, binding_t*))
+            compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
     } else if (def->tag == UnitDef) {
         auto unit_def = Match(def, UnitDef);
@@ -289,16 +293,16 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     auto statements = ast->tag == Block ? Match(ast, Block)->statements : LIST(ast_t*, ast);
 
     // Design constraints:
-    // - Struct/oneof members can be struct/oneof values defined earlier in the file
-    // - Struct/oneof members can be pointers to structs/oneofs defined *later* in the file
+    // - Struct/tagged union members can be struct/tagged union values defined earlier in the file
+    // - Struct/tagged union members can be pointers to structs/tagged union defined *later* in the file
     // - Structs can define inner classes, which can be referenced by other classes
     // - Structs can define inner methods, which can be referenced inside the bodies of functions
-    // - Function arguments can be struct/oneof values/pointers defined anywhere in the file
+    // - Function arguments can be struct/tagged union values/pointers defined anywhere in the file
     // - Function bodies can have references to functions declared anywhere in the file (corecursion)
     // Therefore the order of operations is:
-    // 1) Predeclare all structs/oneofs with placeholder opaque structs/oneofs
-    //    1B) Also predeclare all struct/oneofs 
-    // 2) Populate all struct/oneof members
+    // 1) Predeclare all structs/tagged union with placeholder opaque structs/tagged union
+    //    1B) Also predeclare all struct/tagged union 
+    // 2) Populate all struct/tagged union members
     // 3) Predeclare all functions
     //    3B) Also predeclare all inner methods
     // 4) Populate all function bodies

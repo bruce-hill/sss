@@ -106,11 +106,11 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
             if (!expand_structs)
                 return tagged->name;
 
-            CORD c = CORD_cat(tagged->name, " oneof{");
+            CORD c = CORD_cat(tagged->name, "{|");
 
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
-                    c = CORD_cat(c, ",");
+                    c = CORD_cat(c, "|");
                 auto member = LIST_ITEM(tagged->members, i);
                 if (i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value)
                     c = CORD_cat(c, member.name);
@@ -120,7 +120,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
                 if (member.type)
                     CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, true));
             }
-            c = CORD_cat(c, "}");
+            c = CORD_cat(c, "|}");
             return c;
         }
         case ModuleType: {

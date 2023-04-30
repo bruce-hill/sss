@@ -1,4 +1,4 @@
-def Foo oneof { A, B, C, D }
+def Foo {| A | B | C | D |}
 
 say "$(Foo.A)"
 fail unless "$(Foo.A)" == "Foo.A"
@@ -11,12 +11,12 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     else
         say "$x is something else"
 
-def Baz oneof {
+def Baz {|
     Text:String
     Integer:Int
     Vec2:{x:Num,y:Num}
-    Nil,
-}
+    Nil
+|}
 
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2({2.4, 4}), Baz.Nil]
 

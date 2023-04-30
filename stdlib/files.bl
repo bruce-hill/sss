@@ -7,10 +7,7 @@ def FileInfo {
     accessed, modified, moved:time.Timestamp
 }
 
-def Result oneof {
-    Failure:String
-    Success
-}
+def Result {| Failure:String | Success |}
 
 // Opaque struct representing C's FILE struct:
 def _CFile{}
@@ -56,10 +53,7 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-def OpenResult oneof {
-    Failure:String
-    Success:@File
-}
+def OpenResult {| Failure:String | Success:@File |}
 
 open := extern blang_fopen:(path:String,mode="r")->OpenResult
 temporary := extern blang_tmpfile:()->@File
