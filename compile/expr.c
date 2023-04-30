@@ -338,7 +338,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
                       type_to_string(t_rhs), type_to_string(t_lhs));
 
-            gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, t_rhs), "to_assign");
+            gcc_lvalue_t *tmp = gcc_local(func, loc, bl_type_to_gcc(env, t_lhs), "to_assign");
             assert(rval);
             gcc_assign(*block, loc, tmp, rval);
             append(rvals, gcc_rval(tmp));
