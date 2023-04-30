@@ -33,10 +33,10 @@ The operation will return the value in the table corresponding to the given
 key, or will skip out of the current block if the key is absent. Or, if the
 current block is not a skippable block, then a runtime error will be raised.
 
-In order to query if the key is present, a `do` block may be used:
+In order to query if the key is present, you can use `in`:
 
 ```
-do
+if 123 in my_table
     val := my_table[123]
     say "Got a val: $val"
 else
