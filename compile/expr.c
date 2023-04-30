@@ -1156,6 +1156,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
+        if (t->tag == TableType && value->tag != Table)
+            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), gcc_rval(tmp)));
+        else if (t->tag == ArrayType && value->tag != Array)
+            mark_array_cow(env, block, gcc_rval(tmp));
         return gcc_rval(tmp);
     }
     case Dereference: {
