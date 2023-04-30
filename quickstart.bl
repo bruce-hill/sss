@@ -346,6 +346,22 @@ else
 for node in my_list
     say "$node.value"
 
+// Modules:
+// Blang supports importing modules. Modules are imported with "use" and are
+// specified by filename. Blang will first search in the local directory, then
+// in the installed library directories (~/.local/share/blang/modules/ and
+// /usr/local/share/blang/modules/).
+files := use stdlib/files.bl
+
+// The resulting value is a Module, which has various functions and fields on
+// it. In this case, it's the files module, which has functions for
+// manipulating files.
+>>> files.open("quickstart.bl")
+
+// Any blang file can be imported as a module. Variables, types, and functions
+// defined at the top level of the file are accessible when imported.
+
+
 // Some fun stuff: Blang supports a couple of neat features not found in many
 // other langues.
 
