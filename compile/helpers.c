@@ -272,9 +272,6 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
             [TABLE_COUNT_FIELD]=gcc_new_field(env->ctx, NULL, u32, "count"),
             [TABLE_LASTFREE_FIELD]=gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
             [TABLE_COW_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
-#ifdef DEBUG_HASHTABLE
-            [TABLE_COW_FIELD+1]=gcc_new_field(env->ctx, NULL, u32, "entry_size"),
-#endif
         };
         gcc_set_fields(gcc_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(gcc_struct);
