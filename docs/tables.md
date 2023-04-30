@@ -77,27 +77,22 @@ Optionally, some special behaviors may be specified at the end of a table
 literal after a semicolon:
 
 ```
-counter := {:String=>Int; default=0}
+counter := @{:String=>Int; default=0}
 counter["x"] += 1
 
-t := {1=>2; fallback=other_table, default=(key:Int)=>key+1}
-
-nested := {:String=>{:String=>Int}; default={:String=>Int; default=0}, keep}
-nested["x"]["y"] += 1
+other := {1=>2}
+t := {3=>4; fallback=other}
+>>> t[1]
+=== 2
 ```
 
-The currently planned special behaviors are:
+The currently supported special behaviors are:
 
 - `fallback`: If a key isn't found in the table, try looking it up on the given
   fallback table before determining that it's missing.
 - `default`: When a key is missing (not in the table or its fallback, if any),
-  the `default` value will be used instead. If `default` is a function from key
-  type to value type, it will be called with the missing key to get the value
-  to use. If it is a value, it will be automatically converted to a function that
-  returns that value expression (i.e. `default=blah` is shorthand for
-  `default=(_:KeyType)=>blah`)
-- `keep`: If `keep` is specified, default values will be kept in the table when they
-  are created.
+  the `default` value will be used instead. Default expressions are only evaluated
+  once, so be careful about using mutable values as defaults.
 
 Special behaviors can be accessed (or modified) by attributes:
 
