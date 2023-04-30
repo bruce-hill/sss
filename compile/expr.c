@@ -641,7 +641,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             bl_type_t *t = get_type(env, interp_value);
 
-            if (!interp->quote_string && t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && !Match(t, ArrayType)->dsl) {
+            if (!interp->quote_string && t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && Match(t, ArrayType)->dsl == string_join->dsl) {
                 gcc_lvalue_t *interp_var = gcc_local(func, loc, bl_type_to_gcc(env, t), "_interp_str");
                 gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
                 gcc_rvalue_t *obj = gcc_rval(interp_var);
@@ -1402,6 +1402,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *val = compile_expr(env, block, cast->value);
         bl_type_t *src_t = get_type(env, cast->value);
         bl_type_t *cast_t = get_type(env, ast);
+        if (type_eq(src_t, cast_t))
+            return val;
 
         binding_t *convert_b = get_from_namespace(env, cast_t, heap_strf("#convert-from:%s", type_to_string(src_t)));
         if (convert_b)
@@ -1432,7 +1434,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
             compiler_err(env, ast, "I don't know how to convert %s to %s. "
-                        "You should implement a `def x:%s->%s` conversion function or use 'bitcast'",
+                        "You should implement a `def x:%s as %s` conversion function or use 'bitcast'",
                         type_to_string(src_t), type_to_string(cast_t),
                         type_to_string(src_t), type_to_string(cast_t));
         return gcc_cast(env->ctx, loc, val, bl_type_to_gcc(env, cast_t));

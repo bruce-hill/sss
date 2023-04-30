@@ -12,14 +12,14 @@ def n:Num as $SQL return bitcast "\x1b[0;35m$n\x1b[m" as $SQL
 
 age := 10
 s := $SQL"SELECT * FROM students WHERE name = $name AND age > $age"
-say "$s"
+say (bitcast s as String)
 
 def s:String as $Quoted
     return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as $Quoted
 
 str := "one two"
 str2 := 'with "quotes" in it'
-say "$($Quoted[my strings are $str and $str2])"
+say (bitcast $Quoted[my strings are $str and $str2!] as String)
 
 def s:String as $HTML
     s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
@@ -58,4 +58,4 @@ html := $HTML[
     $my_table
     </body>
 ]
-say "$html"
+say (bitcast html as String)
