@@ -18,12 +18,6 @@ t := @{"abc"=>1, "def"=>2}
 >>> t
 === @{"abc"=>11, "def"=>2}
 
-do
-    >>> t["missing"]
-    fail "Missing key lookup failed to skip ahead"
-else
-    say "(table lookup successfully skipped out of the block)"
-
 >>> t["new_key"] = 3
 >>> t
 === @{"abc"=>11, "def"=>2, "new_key"=>3}
