@@ -385,5 +385,5 @@ problem: `3..5` simply means the items `{3,4,5}`, as you would expect.
 One disadvantage with 1-indexing is it makes wrapping indexes more onerous. In
 C, you might say `int bucket_index = hash % buckets.len;`, but in a 1-indexed
 language like Lua, it becomes the much uglier code: `local bucket_index = 1 +
-((hash - 1) % #buckets)`. Blang has a simple workaround: `bucket_index :=
-buckets.wrapped(hash)`.
+((hash - 1) % #buckets)`. Blang has a simple workaround: the `mod` operator:
+`bucket_index := hash mod1 #buckets`.
