@@ -25,10 +25,12 @@ x += 1
 // Conditionals:
 if x == -5 and 10 < 2
     // Function call:
-    say("yep")
-else
+    say("first block")
+else if 1 == 2
     // Parentheses are optional on function calls
     say "nope"
+else
+    say "else block"
 
 // While loops:
 while x > 0
