@@ -103,7 +103,7 @@ arbitrary types of values. In the example above, instead of using a binary tree
 and a `contains()` function, you could instead just use a table:
 
 ```blang
-mydata := {[123]=yes}
+mydata := {123=>yes}
 fail unless mydata[123] == yes
 ```
 
@@ -124,76 +124,40 @@ spatial querying, which is not something that hash maps are good at doing. What
 would a reusable quadtree implementation look like without polymorphism?
 
 ```blang
-struct QuadTreeItem {
-    value:Pointer
+def QuadTreeItem {
+    value:@Void
     xmin,xmax,ymin,ymax:Num
 }
-union QuadTree {
+def QuadTree oneof {
     subtrees:[QuadTree],
     bucket:{
         xmin,xmax,ymin,ymax:Num
         items:[QuadTreeItem]
     }
-    def qt.insert(xmin,xmax,ymin,ymax:Num,value:Pointer)
-        ...
-    def qt.query(xmin,xmax,ymin,ymax:Num):[Pointer]
-        ...
 }
+extend QuadTree
+    def insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
+        ...
+    def query(qt:QuadTree,xmin,xmax,ymin,ymax:Num):[@Void]
+        ...
 
-my_items := [Foo{...}, Foo{...}, Foo{...}]
+my_items := [@Foo{...}, @Foo{...}, @Foo{...}]
 my_qt := QuadTree.new()
 for item in my_qt
     my_qt.insert(
         item.x-item.radius, item.x+item.radius,
         item.y-item.radius, item.y+item.radius,
-        (item as Pointer),
+        item,
     )
 
 for ptr in qt.query(0.0, 100.0, 0.0, 200.0)
-    item := ptr as Foo
+    item := bitcast ptr as @Foo
     say "Got item: $item"
 ```
 
 This is a simple solution because the data layout of the `QuadTree` and the
 generated binary code for each of its methods do not depend in any way on what
 the type of the contained items is.
-
-### Alternative 3: Hygienic Macros
-
-Macros are a great workaround for any small snippets of code that you want to
-reuse with different types. A classic example would be `max()`, a function
-that returns the larger of two values. A polymorphic implementation might look
-like:
-
-```blang
-// Not real code:
-def max<T>(a:T, b:T):T
-    if a >= b
-        return a
-    else
-        return b
-```
-
-However, the same thing can be easily accomplished with macros instead:
-
-```blang
-macro max(a_exp, b_exp)
-    // Store in variables to prevent evaluating multiple times:
-    a, b := a_exp, b_exp
-    if a >= b
-        a
-    else
-        b
-
-i := max(1, 2)
-s := max("A", "B")
-n := max(2.5, 1.5)
-```
-
-The combination of macros, pointers, and built-in lists and hash maps cover
-pretty much all of the bases for polymorphism, but without the headache of
-trying to decipher compiler errors about multiply-nested polymorphic type
-parameters. In my mind, that's a big win.
 
 
 ## Non-feature 2: Inheritance and OOP
@@ -210,17 +174,16 @@ inherit from `GameObject` and chain invoking super methods on each other, just
 save yourself a headache and create a struct that holds different things in it:
 
 ```blang
-struct Character {
+def Character {
     name:String
     sprite:Sprite
     body:PhysicsBody
-
-    def char.update(dt:Num)
+}
+    def update(char:Character, dt:Num)
         char.body.update(dt)
 
-    def char.draw()
+    def draw(char:Character)
         char.sprite.draw_at(char.body.pos)
-}
 ```
 
 Note that Blang does have *methods*, which are nothing more than a way to
@@ -228,7 +191,9 @@ conveniently group functions into the same place as the structs they operate
 on. They exist mainly to make the code tidier and to allow you to use the same
 function names for different types without needing function overloading. Other
 than namespacing, Blang's methods are identical to ordinary functions. Blang
-methods do *not* use vtables or inheritance or dynamic dispatch.
+methods do *not* use vtables or inheritance or dynamic dispatch. All method
+resolution is done at compile time. In other words, `char.draw()` is just a
+convenient shorthand for writing `Char.draw(char)`.
 
 
 ## Non-feature 3: Operator Overloading
@@ -276,12 +241,13 @@ quickly eyeball code to assess what its performance looks like.
 
 With all that said, Blang may make a few concessions to ergonomics and
 convention by having a few operator overloads for unambiguous, commonplace, and
-comparatively performant operations like string and list concatenation via `+`.
-The number of operator overloads will be kept small in order to keep the
-language simple, and best efforts will be made to keep the overloads fast as
-well. If there is ever any doubt about what an operator overload should mean,
-it will not get added to the language and an unambiguous method call will be
-preferred (e.g. instead of `[a,b,c] - b`, something like `[a,b,c].without(b)`).
+comparatively performant operations like vectorized math operations on arrays
+and structs. The number of operator overloads will be kept small in order to
+keep the language simple, and best efforts will be made to keep the overloads
+fast as well. If there is ever any doubt about what an operator overload should
+mean, it will not get added to the language and an unambiguous method call will
+be preferred (e.g. instead of `[a,b,c] - b`, something like
+`[a,b,c].without(b)`).
 
 
 ## Non-feature 4: Private Members
@@ -293,13 +259,13 @@ guarantees and implementation-specific details that users should not depend on.
 There is some merit to this idea, but in my opinion it is overkill to have
 compiler guarantees because it prevents useful inspection and debugging. It
 also encourages people to use getter/setter anti-patterns like `def
-foo.get_x():Num = foo.x`. A much saner alternative is to indicate that certain
-struct members are not intended for public use by prefixing their name with an
-underscore. This preserves the ability to introspect on structs for debugging
-purposes, as well as allows for library implementations which reference
-internal members in places other than methods. Any sane programmer can see a
-struct member with a leading underscore and understand that it's probably not
-meant for normal use.
+foo.get_x():Num return foo.x`. A much saner alternative is to indicate that
+certain struct members are not intended for public use by prefixing their name
+with an underscore. This preserves the ability to introspect on structs for
+debugging purposes, as well as allows for library implementations which
+reference internal members in places other than methods. Any sane programmer
+can see a struct member with a leading underscore and understand that it's
+probably not meant for normal use.
 
 
 ## Non-feature 5: A Fancy Type System
@@ -314,8 +280,8 @@ with.
 
 It's entirely possible to come up with elaborate and beautiful type systems
 that express higher mathematical conceptions of Set Theory, or make
-compile-time guarantees about different properties your program might have.
-In my personal opinion, languages with those sorts of type system tend to be
+compile-time guarantees about different properties your program might have. In
+my personal opinion, I find languages with those sorts of type system to be
 deeply unpleasant to work with, so I don't want to make a language like that.
 
 
@@ -353,24 +319,26 @@ errors explicitly. Ignoring return values is also treated as a compiler error,
 so callers must address any error values returned or explicitly discard them:
 
 ```blang
-def parse_int(str:String, base:Int?):?Int
-    return !Int if #str == 0
+def IntParseResult oneof {Failure, Success:Int}
+def parse_int(str:String, base=10):IntParseResult
+    return IntParseResult.Failure if #str == 0
     digits := "0123456789"
     n := 0
     for i in 1..#str
         c := str[i]
-        return !Int if c < digits[1] or c > digits[10]
+        if c < digits[1] or c > digits[10]
+          return IntParseResult.Failure
         n = n*10 + (c - digits[1])
-    return @n
+    return IntParseResult.Success(n)
 
-n := parse_int("hello")
-x := n + 1 // Compile error: `n` is `?Int` but `1` is `Int`
+x := 0
+when parse_int("Hello") is n:Success
+    x += n
+else
+    say "Oops, failed that one"
 
-n := *(parse_int("hello") or fail "Couldn't parse int")
-x := n + 1 // Okay
-
-n := *(parse_int("hello") or @0)
-x := n + 1 // Also okay
+// Alternatively, assume this succeeds and fail the program if not:
+x += parse_int("hello").Success
 ```
 
 When situations arise that truly require aborting a process, `fail` is a good
