@@ -106,7 +106,7 @@ void math_update_rec(
 // ============================== arrays.c ==============================
 // Copy on write behavior:
 typedef enum {ACCESS_READ, ACCESS_WRITE} access_type_e;
-gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, index_type_e index_type, access_type_e access);
+gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access);
 gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, access_type_e access);
 gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);

@@ -62,6 +62,7 @@ static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline ast_tag_e match_binary_operator(const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
+static ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
@@ -880,6 +881,14 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
+ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *value) {
+    if (!value) return NULL;
+    const char *pos = value->span.end;
+    if (!match(&pos, "!")) return NULL;
+    if (match(&pos, "=")) return NULL;
+    return NewAST(ctx->file, value->span.start, pos, AssertNonNull, .value=value);
+}
+
 PARSER(parse_ellipsis) {
     const char *start = pos;
     if (!match(&pos, "..")) return NULL;
@@ -928,16 +937,11 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
-    auto access_type = INDEX_NORMAL;
     const char *endpos = pos;
     spaces(&pos);
-    if (match_word(&pos, "unchecked"))
-        access_type = INDEX_UNCHECKED;
-    else if (match(&pos, "!"))
-        access_type = INDEX_FAIL;
-    else
-        pos = endpos;
-    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .type=access_type);
+    bool unchecked = match_word(&pos, "unchecked") != 0;
+    if (!unchecked) pos = endpos;
+    return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
 }
 
 PARSER(parse_if) {
@@ -1550,6 +1554,7 @@ PARSER(parse_term) {
         progress = (false
             || (new_term=parse_index_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
+            || (new_term=parse_bang_suffix(ctx, term))
             || (new_term=parse_fncall_suffix(ctx, term, true))
             );
         if (progress) term = new_term;

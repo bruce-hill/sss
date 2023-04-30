@@ -272,6 +272,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         bl_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
         return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
+    case AssertNonNull: {
+        bl_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
+        if (t->tag != PointerType)
+            compiler_err(env, ast, "This value isn't a pointer, so the '!' operator can't be applied to it.");
+        else if (!Match(t, PointerType)->is_optional)
+            compiler_err(env, ast, "This value is guaranteed to be non-null, so the '!' operator isn't needed.");
+        return Type(PointerType, .is_optional=false, Match(t, PointerType)->pointed);
+    }
     case Dereference: {
         bl_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
         if (pointer_t->tag != PointerType)

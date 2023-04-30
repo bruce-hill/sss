@@ -15,8 +15,6 @@
 #define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define StringAST(ast, _str) WrapAST(ast, StringLiteral, .str=heap_str(_str))
 
-typedef enum {INDEX_NORMAL, INDEX_FAIL, INDEX_UNCHECKED} index_type_e;
-
 typedef enum {
     Unknown = 0,
     Nil, Bool, Var,
@@ -31,7 +29,7 @@ typedef enum {
     In,
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
-    HeapAllocate, Dereference,
+    HeapAllocate, Dereference, AssertNonNull,
     Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
@@ -127,7 +125,7 @@ struct ast_s {
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
             ast_t *value;
-        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, Dereference;
+        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, Dereference, AssertNonNull;
         struct {
             ast_t *type;
             List(ast_t*) items;
@@ -260,7 +258,7 @@ struct ast_s {
         } TaggedUnionField;
         struct {
             ast_t *indexed, *index;
-            index_type_e type;
+            bool unchecked;
         } Index;
         struct {
             ast_t *fielded;

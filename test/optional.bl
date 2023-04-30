@@ -15,3 +15,14 @@ say(*(maybe_str("hi", no) or @"XXX"))
 foo := maybe_str("hi", no)
 say "$foo"
 
+>>> maybe_int := ?5
+>>> typeof maybe_int
+=== ?Int
+>>> maybe_int!
+=== @5
+>>> typeof maybe_int!
+=== @Int
+>>> typeof (maybe_int or fail)
+=== @Int
+>>> typeof (maybe_int or @6)
+=== @Int

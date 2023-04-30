@@ -1313,7 +1313,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             pointed_type = Match(pointed_type, PointerType)->pointed;
 
         if (pointed_type->tag == ArrayType) {
-            return array_index(env, block, indexing->indexed, indexing->index, indexing->type, ACCESS_WRITE);
+            return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
         } else if (pointed_type->tag == TableType) {
             return table_lvalue(env, block, pointed_type, compile_expr(env, block, indexing->indexed), indexing->index);
         } else {
