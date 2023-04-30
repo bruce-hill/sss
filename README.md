@@ -51,21 +51,27 @@ Additional command line arguments can be found in the manpages (`man
 
 ## Language Features
 
-[See features.md for writeups of some of the features in blang.](features.md) These include:
+[See docs/features.md for writeups of some of the features in blang.](docs/features.md) These include:
 
+- Simple value semantics and mutability rules
+- Memory safety (GC, compiler-enforced null pointer checks, and automatic array bounds checking)
+- Simple type system with type inference
 - Type-safe DSL strings
 - Units of measure
 - Better loops
-- Ergonomic optional typing
-- Memory safety (GC and automatic array bounds checking)
+- Vectorized math operations
+- Low-overhead datastructures
+- Structs, not OOP
+- Module system
+- Semantic versioning
 - Percentages
 
 ## Usage
 
-Once the necessary dependencies are installed, you can use `./blang
-your-file.bl` to run a file directly or `./blangc your-file.bl` to compile it
-into a binary called `your-file`. See `blang --help` and `blangc --help` for
-full usage info.
+Once the necessary dependencies are installed, you can run `./blang` to get a
+REPL or use `./blang your-file.bl` to run a file directly or `./blang -c
+your-file.bl` to compile it into a binary called `your-file`. See `blang
+--help` for full usage info.
 
 ## License
 
