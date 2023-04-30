@@ -153,8 +153,13 @@ void populate_def_members(env_t *env, ast_t *def)
         inner_env.bindings = get_namespace(env, t);
 
         auto struct_type = Match(t, StructType);
+        bl_hashmap_t used_names = {0};
         for (int64_t i = 0, len = LIST_LEN(struct_def->field_names); i < len; i++) {
-            APPEND(struct_type->field_names, ith(struct_def->field_names, i));
+            const char *name = ith(struct_def->field_names, i);
+            if (hget(&used_names, name, bool))
+                compiler_err(env, def, "This struct has a duplicated field name: '%s'", name);
+            hset(&used_names, name, true);
+            APPEND(struct_type->field_names, name);
             ast_t *type = ith(struct_def->field_types, i);
             ast_t *default_val = ith(struct_def->field_defaults, i);
             bl_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
@@ -174,9 +179,14 @@ void populate_def_members(env_t *env, ast_t *def)
         assert(binding && binding->type->tag == TypeType);
         bl_type_t *t = Match(binding->type, TypeType)->type;
         auto members = Match(t, TaggedUnionType)->members;
+        bl_hashmap_t used_names = {0};
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
             ast_t *member_type_ast = ith(tu_def->tag_types, i);
             bl_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            const char *name = ith(tu_def->tag_names, i);
+            if (hget(&used_names, name, bool))
+                compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);
+            hset(&used_names, name, true);
             bl_tagged_union_member_t member = {
                 .name=ith(tu_def->tag_names, i),
                 .tag_value=ith(tu_def->tag_values, i),
