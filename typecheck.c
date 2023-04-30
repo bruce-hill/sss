@@ -440,6 +440,15 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             }
             goto class_lookup;
         }
+        case TableType: {
+            if (streq(access->field, "has_default") || streq(access->field, "has_fallback"))
+                return Type(BoolType);
+            else if (streq(access->field, "default"))
+                return Match(value_t, TableType)->value_type;
+            else if (streq(access->field, "fallback"))
+                return value_t;
+            goto class_lookup;
+        }
         default: {
           class_lookup:;
             binding_t *binding = get_from_namespace(env, fielded_t, access->field);

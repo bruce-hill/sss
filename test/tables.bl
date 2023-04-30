@@ -59,7 +59,11 @@ t := @{"abc"=>1, "def"=>2}
 >>> t[3] += 1
 >>> t[4] += 1
 >>> t
-=== @{1=>10, 2=>20, 3=>34, 4=>11; fallback={3=>33}; default=10}
+// === @{1=>10, 2=>20, 3=>34, 4=>11; fallback={3=>33}; default=10}
+// >>> t.default
+// === @10
+// >>> t.fallback
+// === @{3=>33}
 
 // Equality:
 >>> {1=>2} == {1=>2; default=0}
@@ -74,3 +78,29 @@ t := @{"abc"=>1, "def"=>2}
 
 >>> {1=>2; fallback={2=>3}} == {1=>2; fallback={2=>3}}
 === yes
+
+// Mutating/accessing defaults and fallbacks:
+>>> t := @{1=>2; fallback={4=>5}; default=99}
+>>> t.has_default
+=== yes
+>>> t.default
+=== 99
+>>> del t.default
+>>> t
+=== @{1=>2; fallback={4=>5}}
+>>> t.default = 345
+>>> t
+=== @{1=>2; fallback={4=>5}; default=345}
+>>> t[-1]
+=== 345
+
+>>> del t.fallback
+>>> t
+=== @{1=>2; default=345}
+>>> t[4]
+=== 345
+>>> t.fallback = {9=>10}
+>>> t
+=== @{1=>2; fallback={9=>10}; default=345}
+>>> t[9]
+=== 10

@@ -388,25 +388,55 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Delete: {
         ast_t *to_delete = Match(ast, Delete)->value;
-        if (to_delete->tag != Index)
+        switch (to_delete->tag) {
+        case Index: {
+            auto index = Match(to_delete, Index);
+            bl_type_t *t = get_type(env, index->indexed);
+            if (t->tag != PointerType)
+                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+            if (Match(t, PointerType)->is_optional)
+                compiler_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
+            bl_type_t *table_t = Match(t, PointerType)->pointed;
+            if (table_t->tag != TableType)
+                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+
+            bl_type_t *key_t = get_type(env, index->index);
+            if (!type_is_a(key_t, Match(table_t, TableType)->key_type))
+                compiler_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
+                            type_to_string(key_t), type_to_string(Match(table_t, TableType)->key_type));
+
+            table_remove(env, block, table_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
+            return NULL;
+        }
+        case FieldAccess: {
+            auto access = Match(to_delete, FieldAccess);
+            bl_type_t *t = get_type(env, access->fielded);
+            if (t->tag != PointerType)
+                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+            if (Match(t, PointerType)->is_optional)
+                compiler_err(env, access->fielded, "This value is optional and can't be safely dereferenced");
+            bl_type_t *table_t = Match(t, PointerType)->pointed;
+            if (table_t->tag != TableType)
+                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+
+            if (streq(access->field, "default")) {
+                gcc_rvalue_t *table = compile_expr(env, block, access->fielded);
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, table_t)), TABLE_DEFAULT_FIELD);
+                gcc_assign(*block, loc, gcc_rvalue_dereference_field(table, loc, field),
+                           gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, Match(table_t, TableType)->value_type))));
+            } else if (streq(access->field, "fallback")) {
+                gcc_rvalue_t *table = compile_expr(env, block, access->fielded);
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, table_t)), TABLE_FALLBACK_FIELD);
+                gcc_assign(*block, loc, gcc_rvalue_dereference_field(table, loc, field),
+                           gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, table_t))));
+            } else {
+                compiler_err(env, ast, "The only table fields that can be deleted are .default and .fallback, not .%s", access->field);
+            }
+            return NULL;
+        }
+        default:
             compiler_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
-        auto index = Match(to_delete, Index);
-        bl_type_t *t = get_type(env, index->indexed);
-        if (t->tag != PointerType)
-            compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
-        if (Match(t, PointerType)->is_optional)
-            compiler_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
-        bl_type_t *table_t = Match(t, PointerType)->pointed;
-        if (table_t->tag != TableType)
-            compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
-
-        bl_type_t *key_t = get_type(env, index->index);
-        if (!type_is_a(key_t, Match(table_t, TableType)->key_type))
-            compiler_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
-                        type_to_string(key_t), type_to_string(Match(table_t, TableType)->key_type));
-
-        table_remove(env, block, table_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
-        return NULL;
+        }
     }
     case Do: {
         auto do_ = Match(ast, Do);
@@ -1291,6 +1321,50 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             break;
         }
+        case TableType: {
+            if (streq(access->field, "has_default")) {
+                gcc_type_t *ptr_t = gcc_get_ptr_type(bl_type_to_gcc(env, Match(fielded_t, TableType)->value_type));
+                gcc_lvalue_t *default_ptr = gcc_local(func, loc, ptr_t, "_default_ptr");
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, fielded_t)), TABLE_DEFAULT_FIELD);
+                gcc_assign(*block, loc, default_ptr, gcc_rvalue_access_field(obj, loc, field));
+                return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(default_ptr), gcc_null(env->ctx, ptr_t));
+            } else if (streq(access->field, "has_fallback")) {
+                gcc_type_t *ptr_t = gcc_get_ptr_type(bl_type_to_gcc(env, fielded_t));
+                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, ptr_t, "_fallback_ptr");
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, fielded_t)), TABLE_FALLBACK_FIELD);
+                gcc_assign(*block, loc, fallback_ptr, gcc_rvalue_access_field(obj, loc, field));
+                return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(fallback_ptr), gcc_null(env->ctx, ptr_t));
+            } else if (streq(access->field, "default")) {
+                gcc_type_t *ptr_t = gcc_get_ptr_type(bl_type_to_gcc(env, Match(fielded_t, TableType)->value_type));
+                gcc_lvalue_t *default_ptr = gcc_local(func, loc, ptr_t, "_default_ptr");
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, fielded_t)), TABLE_DEFAULT_FIELD);
+                gcc_assign(*block, loc, default_ptr, gcc_rvalue_access_field(obj, loc, field));
+
+                gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
+                            *if_nonnil = gcc_new_block(func, fresh("if_nonnil"));
+                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(default_ptr), gcc_null(env->ctx, ptr_t)),
+                                   if_nil, if_nonnil);
+                *block = if_nil;
+                insert_failure(env, block, ast->span, "This table has no default value");
+                *block = if_nonnil;
+                return gcc_rval(gcc_rvalue_dereference(gcc_rval(default_ptr), loc));
+            } else if (streq(access->field, "fallback")) {
+                gcc_type_t *ptr_t = gcc_get_ptr_type(bl_type_to_gcc(env, fielded_t));
+                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, ptr_t, "_fallback_ptr");
+                gcc_type_t *hashmap_gcc_t = bl_type_to_gcc(env, fielded_t);
+                gcc_assign(*block, loc, fallback_ptr, gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_FALLBACK_FIELD)));
+
+                gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
+                            *if_nonnil = gcc_new_block(func, fresh("if_nonnil"));
+                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(fallback_ptr), gcc_null(env->ctx, ptr_t)),
+                                   if_nil, if_nonnil);
+                *block = if_nil;
+                insert_failure(env, block, ast->span, "This table has no fallback value");
+                *block = if_nonnil;
+                return gcc_rval(gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc));
+            }
+            break;
+        }
         case TaggedUnionType: {
             auto tagged = Match(fielded_t, TaggedUnionType);
             for (int64_t i = 0; i < length(tagged->members); i++) {
@@ -1359,7 +1433,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_lvalue_t *value_var = gcc_local(func, loc, gcc_value_t, "_value");
             gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
                         *if_nonnil = gcc_new_block(func, fresh("if_nonnil")),
-                        *done = gcc_new_block(func, fresh("if_nonnil"));
+                        *done = gcc_new_block(func, fresh("done"));
             gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
                                if_nil, if_nonnil);
             *block = if_nil;

@@ -1230,6 +1230,7 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices)
 {
     (void)block;
+    gcc_loc_t *loc = ast_loc(env, ast);
     switch (ast->tag) {
     case Var: {
         binding_t *binding = get_binding(env, Match(ast, Var)->name);
@@ -1245,7 +1246,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         (void)get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
-        return gcc_rvalue_dereference(rval, ast_loc(env, ast));
+        return gcc_rvalue_dereference(rval, loc);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -1257,8 +1258,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (!allow_slices)
                 compiler_err(env, ast, "I can't assign to array slices");
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, NULL, bl_type_to_gcc(env, get_type(env, ast)), "_slice");
-            gcc_assign(*block, NULL, slice, compile_expr(env, block, ast));
+            gcc_lvalue_t *slice = gcc_local(func, loc, bl_type_to_gcc(env, get_type(env, ast)), "_slice");
+            gcc_assign(*block, loc, slice, compile_expr(env, block, ast));
             return slice;
         }
         gcc_rvalue_t *fielded_rval = compile_expr(env, block, access->fielded);
@@ -1275,14 +1276,37 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                     if (streq(ith(fielded_struct->field_names, i), access->field)) {
                         gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_ptr->pointed));
                         gcc_field_t *field = gcc_get_field(gcc_struct, i);
-                        return gcc_rvalue_dereference_field(fielded_rval, NULL, field);
+                        return gcc_rvalue_dereference_field(fielded_rval, loc, field);
                     }
                 }
                 compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
                       type_to_string(fielded_ptr->pointed), access->field);
+            } else if (fielded_ptr->pointed->tag == TableType) {
+                bl_type_t *table_t = fielded_ptr->pointed;
+                gcc_func_t *func = gcc_block_func(*block);
+                if (streq(access->field, "default")) {
+                    bl_type_t *key_t = Match(table_t, TableType)->key_type;
+                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
+                    gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(bl_type_to_gcc(env, key_t)), "_default_ptr");
+                    gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
+                                                              gcc_get_ptr_type(bl_type_to_gcc(env, key_t))));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, table_t));
+                    gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
+                    gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
+                    return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
+                } else if (streq(access->field, "fallback")) {
+                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
+                    gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(bl_type_to_gcc(env, table_t)), "_fallback_ptr");
+                    gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
+                                                              gcc_get_ptr_type(bl_type_to_gcc(env, table_t))));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, table_t));
+                    gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
+                    gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(fallback_ptr));
+                    return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
+                }
             }
 
-            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, NULL));
+            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, loc));
             fielded_t = fielded_ptr->pointed;
             goto keep_going;
         }
@@ -1337,10 +1361,10 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_size += 4; // Hidden "capacity" field
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
-        gcc_lvalue_t *tmp = gcc_local(func, NULL, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
+        gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
-        gcc_assign(*block, NULL, tmp, gcc_cast(env->ctx, NULL, gcc_callx(env->ctx, NULL, alloc_func, size), gcc_t));
-        gcc_assign(*block, NULL, gcc_rvalue_dereference(gcc_rval(tmp), NULL), rval);
+        gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
+        gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
         return tmp;
     }
     default:
