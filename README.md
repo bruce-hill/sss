@@ -23,7 +23,8 @@ def sing_bottles_song(num:Int)
 sing_bottles_song 99
 ```
 
-See [test/\*.bl](test/) for more examples.
+See [quickstart.bl](quickstart.bl) for a quick rundown of the language, or see
+[the test folder](tests/) for more comprehensive examples of each feature.
 
 ## Dependencies
 

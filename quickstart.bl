@@ -1,0 +1,342 @@
+// This is a quickstart guide to learning Blang.
+
+// A note on doctests: Lines beginning with '>>>' are doctests. When the
+// program is run, these lines will print their source code, and then print the
+// result of evaluating the line. This is handy for debugging or testing.
+// Doctests with a following '===' line will have their result checked against
+// the given value.
+
+// Variables:
+x := 1 + 2
+>>> x
+=== 3
+
+// Assignment
+x = 4
+
+// Updates:
+x += 1
+>>> x
+=== 5
+
+// Conditionals:
+if x == -5
+    // Function call:
+    say("yep")
+else
+    // Parentheses are optional on function calls
+    say "nope"
+
+// While loops:
+while x > 0
+    x -= 1
+
+// Strings:
+str := "hello"
+
+// Multi-line
+str = "
+    multi-line
+        string with "quotes"
+    delimited by indentation
+    (leading whitespace is stripped according to the first line)
+"
+
+// String interpolation:
+y := 5
+>>> "y is $y and y+1 is $(y + 1)"
+=== "y is 5 and y+1 is 6"
+
+// Arrays:
+nums := [10, 20, 30]
+
+// You need to specify the item type for empty arrays:
+empty := [:Int]
+
+// Array indexing is 1-indexed
+>>> nums[1]
+=== 10
+>>> nums[2]
+=== 20
+
+// Character literals use a single backtick:
+char := `A
+
+// Strings are just arrays of characters
+>>> "abc" == [`a, `b, `c]
+=== yes
+
+// Looping over an array:
+for num in nums
+    say "$num"
+
+// Loops can have an index var, which counts from 1 upwards:
+for i, num in nums
+    say "$i) $num" // 1) 10, 2) 20, 3) 30
+
+// Numeric loops can be done with ranges (inclusive):
+for num in 5..10
+    say "$num" // Prints 5,6,7,8,9,10
+
+// Ranges can also be used as values
+range := 5..10
+
+// And ranges can have a 'step' using the 'by' operator:
+odds := 1..10 by 2
+countdown := 10..1 by -1
+
+// Accessing beyond the bounds of an array causes a runtime failure.
+// Runtime failures print an error message and exit the program.
+// nums[999] --> failure
+
+// Booleans use 'yes'/'no':
+should_fail := no
+
+// Failures can be triggered manually:
+if should_fail
+    fail "This is a failure"
+
+// Function definitions need explicit type annotations:
+def subtract(x:Int, y:Int):Int
+    return x - y
+
+>>> subtract(100, 2)
+=== 98
+
+// Function calls can specify arguments by name and intermix positional and
+// named arguments:
+>>> subtract(y=2, 100)
+=== 98
+
+// Tables (AKA hash maps or dicts) can be used to map one value to another value:
+t := {"hello"=>123, "goodbye"=>456}
+>>> t["hello"]
+=== 123
+
+// Tables can also specify a fallback table in case a lookup is not found:
+t2 := {"xxx"=>789; fallback=t}
+>>> t2["hello"]
+=== 123
+
+// Tables can also specify a default value if both the lookup and the fallback
+// lookup fails:
+t3 := {"zzz"=>555; fallback=t2; default=-1}
+>>> t3["nope"]
+=== -1
+
+// If a key isn't found in a table that has no default, a runtime failure will occur:
+//    t["nope"] --> failure: missing key
+
+// Iterating over tables (does not include fallback entries):
+for entry in t
+    say "$(entry.key) => $(entry.value)"
+
+// Tuples can be used for collecting values of different types:
+tuple := {my_int=123, my_str="hello"}
+>>> tuple.my_int
+=== 123
+
+// If field names are unspecified, the names default to _1, _2, etc.
+anon_tuple := {123, "xxx"}
+>>> anon_tuple._1
+=== 123
+
+// Floating point numbers are called 'Num'
+f := 2.3
+>>> typeof f
+=== Num
+
+// Custom structs can be defined like this:
+def Vec{x,y:Num}
+    // Methods go indented after the struct definition:
+    def len2(v:Vec):Num
+        return v.x*v.x + v.y*v.y
+
+    // Static members can also be defined:
+    zero := Vec{0, 0}
+
+v := Vec{3, 4} // Equivalent to Vec{x=3, y=4}
+>>> v.len2()
+=== 25
+
+>>> Vec.zero
+=== Vec{x=0, y=0}
+
+// Built-in types like Num, Int, and String have a few pre-defined methods and
+// static members:
+>>> Int.Max
+=== 9223372036854775807
+
+>>> (4.0).sqrt()
+=== 2
+
+>>> "abc".uppercased()
+=== "ABC"
+
+// For tagged unions (AKA discriminated unions, sum types)
+def Whatever oneof {
+    count:Int
+    text:String
+    vec:Vec
+    nothing
+    unknown
+}
+
+// Tagged values are instantiated like this:
+vals := [Whatever.count(5), Whatever.text("xx"), Whatever.vec(Vec{1,2}), Whatever.nothing, Whatever.unknown]
+
+for val in vals
+    // Pattern matching using 'when':
+    when val is c:count
+        say "I got a count: $c"
+    is nothing
+        say "I got a nothing"
+    is x:vec,text
+        say "I got either a vec or text: $x"
+    else
+        say "I got something else"
+
+// So far, every type used in this tutorial is an *immutable value*. This means
+// that the value of a struct or string or array or table is immutable and the
+// underlying bytes won't change. Variables can be reassigned, but the string
+// "foo" or the struct Vec{1,2} is an unchanging value just like the number 25.
+vec := Vec{1, 2}
+other_vec := Vec{1, 2}
+>>> vec == other_vec
+=== yes
+
+// You can't edit an immutable value:
+//    vec.x = 999 --> compiler error
+
+// But you can assign a new struct to the variable
+vec = Vec{100, 200}
+
+// But what about mutation? The answer is that you can allocate a chunk of
+// memory that can hold various different values.
+vec_ptr := @Vec{1, 2}
+>>> vec_ptr
+=== @Vec{x=1, y=2}
+vec_ptr.x = 100
+>>> vec_ptr
+=== @Vec{x=100, y=2}
+
+// The "@" unary operator means "allocate some memory and put the following
+// value in that memory". You can access that value at any time with the
+// "*" unary operator:
+>>> *vec_ptr
+=== Vec{x=100, y=2}
+
+// Whenever a value is retrieved, the resulting value is an immutable copy of
+// whatever's residing in the mutable memory region.
+copy := *vec_ptr
+vec_ptr.x = 999
+>>> copy
+=== Vec{x=100, y=2}
+>>> vec_ptr
+=== @Vec{x=999, y=2}
+
+// Comparison between chunks of memory use referential equality, not structural
+// equality. In other words, it doesn't matter what value is at a chunk of
+// memory, it only matters if it's the same pointer.
+ptr1 := @Vec{1, 2}
+ptr2 := @Vec{1, 2}
+>>> ptr1 == ptr2
+=== no
+
+// The intuition here is that editing ptr1 will edit a different chunk of
+// memory from the memory that's edited if you edit ptr2.
+
+ptr1.x = 999 // This edits ptr1's memory, it doesn't affect ptr2's memory
+>>> ptr1
+=== @Vec{x=999, y=2}
+>>> ptr2
+=== @Vec{x=1, y=2}
+
+// If you want to compare the memory contents, you need to explicity ask for
+// the memory contents:
+ptr3 := @Vec{1, 2}
+>>> *ptr2 == *ptr3
+=== yes
+
+// Arrays and tables residing in memory created with "@" can also be mutated:
+arr := @[1, 2, 3]
+arr[2] += 100
+>>> *arr
+=== [1, 102, 3]
+arr.insert(444)
+>>> *arr
+=== [1, 102, 3, 444]
+
+table := @{1=>2}
+table[222] = 777
+>>> *table
+=== {1=>2, 222=>777}
+
+// Under the hood, arrays and tables use copy-on-write behavior to let you
+// access the values in memory quickly without triggering any copying or
+// violating the immutability of values. Accessing a value flags it as
+// copy-on-write, so any subsequent mutations will copy the data to a new
+// location before modifying it. This means that any value retrieved by using
+// "*" is guaranteed to be immutable, and long sequences of mutations will not
+// perform much copying unless you interleave the mutations with pointer
+// dereferences. Retrieving values from *inside* a table or array does not
+// trigger copy-on-write, only slicing or dereferencing the whole container.
+
+// Slices are created by accessing a range of values from an array. Slicing
+// an array is a constant-time operation that does not trigger any copying.
+nums := [10, 20, 30, 40]
+>>> nums[2..3]
+=== [20, 30]
+>>> nums[.. by -1]
+=== [40, 30, 20, 10]
+
+// One problem often encountered with mutable collections is mutating a
+// collection during iteration. To help mitigate this issue, Blang does not
+// allow iteration over mutable arrays or tables, only immutable values. The
+// result of this is that you will need to retrieve the current immutable
+// value using "*" to iterate over it. Essentially, you are iterating over
+// a snapshot of what the container looked like when iteration began:
+mutable := @{1=>2, 2=>3}
+for entry in *mutable
+    mutable[entry.value] = entry.key
+>>> mutable
+=== @{1=>2, 2=>1, 3=>2}
+
+// Pointers created with "@" will always have a non-null value. However,
+// sometimes you want to represent values that may or may not exist (such as
+// the "next" pointer in a linked list). In these cases, you can use an
+// optional pointer with "?" or a null value with "!":
+def IntList{value:Int, next:?IntList}
+
+my_list := ?IntList{1, next=?IntList{2, next=!IntList}}
+
+// Null values cannot be dereferenced without checking for null first. The
+// compiler will enforce this requirement. This means that the language
+// prevents runtime segfaults caused by null pointer dereferences.
+
+// The simplest way to check a value is to use "or" to provide a fallback
+// or an explicit runtime failure:
+
+>>> typeof my_list
+=== ?IntList
+
+>>> typeof (my_list or @IntList{})
+=== @IntList
+
+>>> typeof (my_list or fail "Oh no, it was null!")
+=== @IntList
+
+// Null checks can also take place using "stop" or "skip". For example:
+do
+    second := (my_list or skip).next
+    third := (second or skip).next
+    val := (third or skip).value
+    say "If I got here, then third must be a valid value! $val"
+else
+    say "One of the skips must have triggered"
+
+// To make working with linked lists easier, Blang also automatically supports
+// iteration over any struct that has a "next" field that's an optional pointer
+// to the same type:
+for node in my_list
+    say "$node.value"
