@@ -1,10 +1,9 @@
 // This is a quickstart guide to learning Blang.
 
-// A note on doctests: Lines beginning with '>>>' are doctests. When the
-// program is run, these lines will print their source code, and then print the
-// result of evaluating the line. This is handy for debugging or testing.
-// Doctests with a following '===' line will have their result checked against
-// the given value.
+// A note on doctests: Lines starting with '>>>' are doctests. When the
+// These lines print their source code, and then print the result of evaluating
+// the line. This is handy for debugging or testing. Doctests with a '==='
+// check their result checked against the given value.
 
 // Variables:
 x := 1 + 2
@@ -14,9 +13,8 @@ x := 1 + 2
 // Assignment
 x = 4
 
-y := 99
-
 // Multiple assignments are supported and can be used to swap variables:
+y := 99
 x, y = y, x
 
 // Updates:
@@ -25,7 +23,7 @@ x += 1
 === 100
 
 // Conditionals:
-if x == -5
+if x == -5 and 10 < 2
     // Function call:
     say("yep")
 else
