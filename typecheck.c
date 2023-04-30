@@ -192,7 +192,7 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
         else if (u2 && strlen(u2) > 0)
             compiler_err(env, ast, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
         units = NULL;
-    } else if (tag == Modulus) {
+    } else if (tag == Modulus || tag == Modulus1) {
         if (u2 && strlen(u2) > 0)
             compiler_err(env, ast, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
         units = u1;
@@ -633,7 +633,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate: {
         return Type(VoidType);
     }
-    case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: {
+    case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: case Modulus1: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
         ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
         // Okay safe again

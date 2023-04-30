@@ -42,6 +42,16 @@ say "Numeric math operations:"
 >>> 1 + 2 - 3 - 4 + 5 - 6 * 7 * 8 / 2
 === -167
 
+// Clock arithmetic:
+>>> 1 mod1 3
+=== 1
+>>> 0 mod1 3
+=== 3
+>>> 14.5 mod1 12
+=== 2.5
+>>> 0.5 mod1 12
+=== 12.5
+
 say "Coercion"
 >>> 10 + 0.5
 === 10.5

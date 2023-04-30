@@ -30,7 +30,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
     [Power]=1,
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3, [Concatenate]=3,
-    [Modulus]=4,
+    [Modulus]=4, [Modulus1]=4,
     [Min]=5, [Max]=5,
     [Range]=6,
     [RANGE_STEP]=7,
@@ -43,7 +43,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat",
-    "or","not","no","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
+    "or","not","no","mod1","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
     "defer","def","by","bitcast","between","as","and", NULL,
 };
 
@@ -1598,7 +1598,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
             case 'a': if (match_word(&pos, "and")) return NULL; else break;
             case 'o': if (match_word(&pos, "or")) return NULL; else break;
             case 'x': if (match_word(&pos, "xor")) return NULL; else break;
-            case 'm': if (match_word(&pos, "mod")) return NULL; else break;
+            case 'm': if (match_word(&pos, "mod") || match_word(&pos, "mod1")) return NULL; else break;
             default: break;
             }
         }
@@ -1664,6 +1664,7 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "and")) return And;
         else if (match_word(pos, "or")) return Or;
         else if (match_word(pos, "xor")) return Xor;
+        else if (match_word(pos, "mod1")) return Modulus1;
         else if (match_word(pos, "mod")) return Modulus;
         else if (match_word(pos, "as")) return Cast;
         else if (match_word(pos, "by")) return RANGE_STEP;

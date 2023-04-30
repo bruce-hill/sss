@@ -1654,8 +1654,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "Concatenation update is only defined for array types and pointers to array types.");
         }
     }
-    case Modulus: {
-        ast_t *lhs = Match(ast, Modulus)->lhs, *rhs = Match(ast, Modulus)->rhs;
+    case Modulus: case Modulus1: {
+        // UNSAFE: this works because the two tags have the same layout:
+        ast_t *lhs = ast->__data.Modulus.lhs, *rhs = ast->__data.Modulus.rhs;
+        // END UNSAFE
         bl_type_t *t = get_type(env, ast);
         bl_type_t *lhs_t = get_type(env, lhs);
         bl_type_t *rhs_t = get_type(env, rhs);
@@ -1665,6 +1667,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             && !promote(env, rhs_t, &rhs_val, lhs_t))
             compiler_err(env, ast, "The left hand side of this modulus has type %s, but the right hand side has type %s and I can't figure out how to combine them.",
                   type_to_string(lhs_t), type_to_string(rhs_t));
+
+        if (ast->tag == Modulus1)
+            lhs_val = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, bl_type_to_gcc(env, t), lhs_val, gcc_one(env->ctx, bl_type_to_gcc(env, t)));
+
         if (t->tag == NumType) {
             gcc_func_t *sane_fmod_func = get_function(env, "sane_fmod");
             if (Match(t, NumType)->bits != 64) {
@@ -1675,12 +1681,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                               gcc_cast(env->ctx, loc, rhs_val, gcc_type(env->ctx, DOUBLE))),
                     gcc_type(env->ctx, FLOAT));
             }
-            return gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
+            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
+            if (ast->tag == Modulus1)
+                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, bl_type_to_gcc(env, t), result, gcc_one(env->ctx, bl_type_to_gcc(env, t)));
+            return result;
         } else {
             gcc_rvalue_t *result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), lhs_val, rhs_val);
             // Ensure modulus result is positive (i.e. (-1 mod 10) == 9)
-            result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_PLUS, bl_type_to_gcc(env, t), result, rhs_val);
-            result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, bl_type_to_gcc(env, t), result, rhs_val);
+            result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, bl_type_to_gcc(env, t), result, rhs_val);
+            result = gcc_binary_op(env->ctx, loc, GCC_BINOP_MODULO, bl_type_to_gcc(env, t), result, rhs_val);
+            if (ast->tag == Modulus1)
+                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, bl_type_to_gcc(env, t), result, gcc_one(env->ctx, bl_type_to_gcc(env, t)));
             return result;
         }
     }

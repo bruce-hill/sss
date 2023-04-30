@@ -25,7 +25,7 @@ typedef enum {
     Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
     AndUpdate, OrUpdate, ConcatenateUpdate,
-    Add, Subtract, Multiply, Divide, Power, Modulus,
+    Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
     And, Or, Xor, Min, Max, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In,
@@ -122,7 +122,7 @@ struct ast_s {
             ast_t *lhs, *rhs;
         } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
             AndUpdate, OrUpdate, ConcatenateUpdate,
-            Add, Subtract, Multiply, Divide, Power, Modulus,
+            Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
             And, Or, Xor, Min, Max, Concatenate,
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
