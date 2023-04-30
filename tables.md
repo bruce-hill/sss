@@ -110,22 +110,12 @@ Special behaviors can be accessed (or modified) by attributes:
 === Bool
 ```
 
-## Methods
+## Removing Entries
 
-Tables also provide a handful of methods:
+Entries can be removed with the `del` statement:
 
 ```
-// Remove an entry:
-my_table.remove(key)
-
-// Add all entries from another table:
-my_table.add_all(other)
-
-// Add any entries that aren't in this table:
-my_table.add_missing(other)
-
-// Clear all entries:
-my_table.clear()
+del my_table[key]
 ```
 
 ## Semantics
