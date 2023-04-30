@@ -14,10 +14,15 @@ x := 1 + 2
 // Assignment
 x = 4
 
+y := 99
+
+// Multiple assignments are supported and can be used to swap variables:
+x, y = y, x
+
 // Updates:
 x += 1
 >>> x
-=== 5
+=== 100
 
 // Conditionals:
 if x == -5
@@ -340,3 +345,125 @@ else
 // to the same type:
 for node in my_list
     say "$node.value"
+
+// Some fun stuff: Blang supports a couple of neat features not found in many
+// other langues.
+
+// Vectorized math operations:
+// Blang allows math operations to be performed on structs and arrays that
+// contain only structs/arrays/numeric values. As an example, consider this
+// struct representing a 3D vector:
+def Vec3{x,y,z:Num}
+
+v1 := Vec3{1,2,3}
+// Math operations between vectors are performed component-wise:
+>>> v1 + Vec3{100, 200, 300}
+=== Vec3{x=101, y=202, z=303}
+
+>>> v1 * Vec3{10, 20, 30}
+=== Vec3{x=10, y=40, z=90}
+
+// Vectors can also do math operations with scalars:
+>>> v1 * 10
+=== Vec3{x=10, y=20, z=30}
+>>> v1 + 10
+=== Vec3{x=11, y=12, z=13}
+
+// Arrays can also do vectorized math operations:
+// Scalar math:
+>>> [1, 2, 3] * 10
+=== [10, 20, 30]
+// Elementwise operations:
+>>> [1, 2, 3] + [10, 20, 30]
+=== [11, 22, 33]
+// Works recursively as well:
+>>> [Vec3{1,2,3}, Vec3{4,5,6}] * 100
+=== [Vec3{x=100, y=200, z=300}, Vec3{x=400, y=500, z=600}]
+
+// Units of measure:
+// Blang supports tracking units of measure using the type system. This lets
+// the compiler verify that units are being properly used. Units of measure do
+// *not* affect runtime performance, they are entirely calculated at compile
+// time and at runtime are represented as ordinary floating point numbers. The
+// only difference in runtime behavior is that numbers with units attached will
+// print their units when converted to strings.
+distance := 10.<km>
+speed := 5.<km/hr>
+distance += speed * 3<hr>
+>>> distance
+=== 25<km>
+>>> "$distance"
+=== "25<km>"
+
+// This would be a type error because the units don't match:
+//    >>> distance + speed
+
+// Blang doesn't come pre-built with any knowledge of units, you can use your
+// own units. Blang simply enforces the rules that units must match when adding
+// or subtracting, and units stack or cancel out when multiplying and dividing.
+foo := 8.5<frog/horse>
+>>> foo * 10<horse/banana>
+=== 85<frog/banana>
+
+// If you want, you can define derived units, which allows Blang to
+// automatically calculate unit conversions.
+def 1.0<mi> := 1.60934<km>
+
+>>> 1.0<mi> + 1.0<km>
+=== 2.60934<km>
+
+// Units can also be attached to structs:
+vel := Vec{1, 2}<km/hr>
+>>> vel.x
+=== 1<km/hr>
+
+
+// Domain Specific Languages:
+// Blang provides language-level safety features for having strings that
+// represent different languages. As an example, consider SQL queries. An
+// extremely common bug in web applications is SQL injection, which arises when
+// programmers create queries by stitching together strings written by the
+// programmer with inputs from users. The typical solution is to provide library
+// functions that make it easier to automatically escape user-specified parameters.
+// Blang's solution to this is to allow programmers to define a language type for
+// strings and define custom escaping rules when performing string interpolation.
+
+query := $SQL"select * from students"
+name := "Robert"
+
+// At this point, it would be a type error to write:
+//    $SQL"select * from students where name = '$name'"
+// since there is no conversion defined.
+
+// Defining a conversion:
+def s:String as $SQL
+    // SQL escaping uses single quotes around strings and double single quotes
+    // to represent escaped single quotes inside a string.
+    return bitcast ("'" ++ s.replace("'", "''") ++ "'") as $SQL
+
+// Example:
+name := "Robert"
+>>> $SQL"select * from students where name = $name"
+=== $SQL"select * from students where name = 'Robert'"
+
+// Still safe even with malicious inputs:
+name = "'; drop table students; --"
+>>> $SQL"select * from students where name = $name"
+=== $SQL"select * from students where name = '''; drop table students; --'"
+
+// Since Domain-specific languages often include quotation marks or
+// backslashes, Blang provides many different options for delimiting DSLs.
+// Whatever comes after the dollar sign and name of the DSL is used for a
+// delimiter:
+>>> $SingleQuotes'...'
+>>> $RegexStyle/.../
+>>> $Semicolons;...;
+// For parens, braces, brackets, and angle brackets, matching delimiters are used:
+>>> $Parens(inside (still inside) done)
+>>> $Braces{inside {still inside} done}
+>>> $Brackets[inside [still inside] done]
+>>> $AngleBrackets<inside <still inside> done>
+
+// For colons and ">", the rest of the line is considered part of the DSL string: 
+>>> $Colon: all this is in the string
+>>> $Shell> echo "all this is in the string"
