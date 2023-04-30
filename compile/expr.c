@@ -1346,16 +1346,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
                                if_nil, if_nonnil);
             *block = if_nil;
-
-            if (indexing->type == INDEX_NORMAL && env->loop_label) {
-                gcc_block_t *skip_dest = env->loop_label->skip_label;
-                insert_defers(env, block, env->loop_label->deferred);
-                assert(*block);
-                gcc_jump(*block, loc, skip_dest);
-            } else {
-                insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s",
-                               Match(t, TableType)->key_type, key_rval);
-            }
+            insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s",
+                           Match(t, TableType)->key_type, key_rval);
 
             *block = if_nonnil;
             gcc_assign(*block, loc, value_var, gcc_rval(gcc_rvalue_dereference(val_opt, loc)));
@@ -1381,7 +1373,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                             type_to_string(member_t), type_to_string(container_t));
 
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL);
-            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, member_t))));
+            gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(bl_type_to_gcc(env, Match(container_t, TableType)->value_type)));
+            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
         } else if (container_t->tag == ArrayType) {
             return array_contains(env, block, in->container, in->member);
         } else if (container_t->tag == RangeType) {
