@@ -434,8 +434,9 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     }
 
     if (array->dsl) {
-        COLOR_LITERAL(block, "\x1b[0;35m");
+        COLOR_LITERAL(block, "\x1b[0;1m");
         WRITE_LITERAL(*block, heap_strf("$%s", array->dsl));
+        COLOR_LITERAL(block, "\x1b[0;35m");
     }
 
     if (is_string) {
