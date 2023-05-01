@@ -169,23 +169,27 @@ def 1<km> := 1_000<m>
 def 100<cm> := 1<m>
 def 10<mm> := 1<cm>
 
-1<m> + 1<cm> == 1.01<m>
+>>> 1<m> + 1<cm>
+=== 1.01<m>
 
-10.0 * 2.5<m> == 25.0<m>
+>>> 10.0 * 2.5<m>
+=== 25.0<m>
 
 def 1<min> := 60<s>
 def 1<hr> := 60<min>
 
-1<km> + 1<hr> // Type error!
-12 + 1<hr> // Type error!
+// 1<km> + 1<hr> // Type error!
+// 12 + 1<hr> // Type error!
 
 def 1<inch> := 2.54<cm>
 def 1<ft> := 12<inch>
 def 1<yd> := 3<ft>
 def 1<mi> := 5_280<ft>
 
-10<mi> / 2<hr> == 5<mi/hr> == 2.2352<m/s>
-1<mi>/1<km> == 1<mi/km> == 1.60934
+>>> 10<mi> / 2<hr>
+=== 2.2352<m/s>
+>>> 1<mi>/1<km>
+=== 1.60934
 ```
 
 Type checking and unit conversions are all performed *at compile time* relative
@@ -208,28 +212,92 @@ pos += 2<s>*vel
 
 Optional types in many programming languages are either verbose and annoying to
 use, overengineered and complex, or totally absent. SSS takes an approach to
-values which may or may not exist that is simple and pragmatic. `!T` is used
-to indicate the absence of a value that would reside on the heap if it existed.
-
-When dealing with a situation where a non-optional value is really required,
-there are three options available: provide a fallback value, fail (exit the
-program with an error status) if a nil value appears, or pattern match for a
-non-nil value:
+values which may or may not exist that is simple and pragmatic. `!Foo` is used
+to indicate the absence of a `Foo` value that would reside on the heap if it
+existed. `@Foo` is used for values that are guaranteed to exist, and `?Foo`
+for values that may or may not exist.
 
 ```python
-// Option 1: Fallback value
-foo := maybe_val() or @Foo{...}
-do_thing(foo)
+def Vec{x,y:Num}
 
-// Option 2: Exit if nil is encountered:
-foo := maybe_val() or fail "I couldn't get a value!"
-do_thing(foo)
+def needs_value(v:@Vec)
+    say "v is guaranteed to be a non-null pointer"
+    say "so accessing fields is safe:"
+    say "$(v.x)"
 
-// Option 3: Conditional check
-if foo := maybe_val()
-    do_thing(foo)
+needs_value(@Vec{1,2}) // okay
+needs_value(!Vec) // compiler error
+```
+
+If you have a pointer that may or may not be null, there are a couple of
+options available to get to a point where it's safe to pass it to a function
+that requires a non-null pointer.
+
+For example, consider this situation:
+
+```python
+vec := if consition
+    @Vec{1,2}
 else
-    say "I didn't get a value"
+    !Vec
+
+>>> typeof vec
+=== ?Vec
+
+// Want to call: needs_value(vec)
+```
+
+### The Postfix Exclamation Operator
+
+The first, and simplest situation is to tell SSS that you want to trigger a 
+runtime failure if the pointer is null. The compiler can assume that if the
+program execution is still going, the expression must not have been null.
+
+```
+>>> typeof vec
+=== ?Vec
+>>> typeof vec!
+=== @Vec
+
+// If vec is null, this will trigger a runtime failure with an informative
+// message, otherwise it will succeed:
+needs_value(vec!)
+```
+
+### Fallback Values with "or"
+
+SSS also lets you provide an alternative value to use in the event that the
+pointer is null using `or`:
+
+```
+>>> typeof vec
+=== ?Vec
+>>> typeof (vec or @Vec{0,0})
+=== @Vec
+
+needs_value(vec or @Vec{0,0})
+```
+
+### Use Control Flow with "or"
+
+The last way to handle null values is to interrupt execution with `return`,
+`fail`, `stop`, or `skip`. For example, in the context of a loop, we know
+that `vec or skip` will evaluate to either a non-null pointer, or the current
+loop iteration will be skipped. Therefore, if the rest of the loop iteration
+is executed, we know that the value must have been non-null.
+
+```python
+maybe_vecs := [@Vec{1,2}, !Vec, @Vec{2,3}]
+for vec in maybe_vecs
+    >>> typeof vec
+    === ?Vec
+    >>> typeof (vec or skip)
+    === @Vec
+    needs_value(vec or skip)
+
+def get_x(v:?Vec):Num
+    v_nonnull := v or return 0
+    return v_nonnull.x
 ```
 
 ## String Interpolation
@@ -238,11 +306,13 @@ Like many modern programming languages, SSS supports string interpolation,
 which makes it easy to insert values into strings:
 
 ```python
-say "Hi, my name is $my_name and my favorite number is $(random())"
+my_name := "Bob"
+say "Hi, my name is $my_name and my favorite number is $(Int.random())"
 ```
 
-SSS provides useful default implementations of tostring functions, so you can
-easily introspect what's in structs, arrays, etc.
+When converting a value to a string for an interpolation, SSS automatically
+generates the code to format the value, including all its fields and data,
+in a canonical format that is nearly identical to SSS code.
 
 ## DSLs
 
