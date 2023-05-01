@@ -200,6 +200,27 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
+static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
+{
+    gcc_rvalue_t *stdout_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout"));
+    gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stdout_val)); 
+    gcc_func_t *print_fn = get_print_func(env, t);
+    sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+    gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
+    gcc_lvalue_t *cycle_checker = gcc_local(gcc_block_func(*block), loc, hashmap_gcc_t, "_rec");
+    gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
+    gcc_lvalue_t *next_index = gcc_local(gcc_block_func(*block), loc, gcc_type(env->ctx, INT64), "_index");
+    gcc_assign(*block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+    gcc_assign(*block, loc, gcc_lvalue_access_field(
+            cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
+        gcc_lvalue_address(next_index, loc));
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stdout_val,
+                                   gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), gcc_type(env->ctx, VOID_PTR)),
+                                   gcc_rvalue_bool(env->ctx, true)));
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\n"), stdout_val)); 
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -2151,8 +2172,24 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compile_statement(env, block, say_src);
         }
 
+        if (expr->tag == Return && Match(expr, Return)->value) {
+            if (test->output)
+                compiler_err(env, ast, "Sorry, I don't support testing return values in doctests with '==='");
+            ast_t *ret = Match(expr, Return)->value;
+            sss_type_t *ret_t = get_type(env, ret);
+            if (ret_t->tag == VoidType) return NULL;
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *ret_var = gcc_local(func, loc, sss_type_to_gcc(env, ret_t), "_ret");
+            gcc_assign(*block, loc, ret_var, compile_expr(env, block, ret));
+            const char *info = heap_strf("\x1b[0;2m%.*s = \x1b[0;35m", (int)(ret->span.end - ret->span.start), ret->span.start);
+            print_doctest_value(env, block, loc, info, ret_t, gcc_rval(ret_var));
+            gcc_return(*block, loc, gcc_rval(ret_var));
+            *block = NULL;
+            return NULL;
+        }
+
         sss_type_t *t = get_type(env, expr);
-        if (t->tag == VoidType) {
+        if (t->tag == VoidType || t->tag == AbortType) {
             if (test->output)
                 compiler_err(env, ast, "There shouldn't be any output for a Void expression like this");
 
@@ -2203,25 +2240,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             default: break;
             }
 
-            if (info && lhs_t) {
-                gcc_rvalue_t *stdout_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout"));
-                gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stdout_val)); 
-                gcc_func_t *print_fn = get_print_func(env, lhs_t);
-                sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
-                gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
-                gcc_lvalue_t *cycle_checker = gcc_local(gcc_block_func(*block), loc, hashmap_gcc_t, "_rec");
-                gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
-                gcc_lvalue_t *next_index = gcc_local(gcc_block_func(*block), loc, gcc_type(env->ctx, INT64), "_index");
-                gcc_assign(*block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
-                gcc_assign(*block, loc, gcc_lvalue_access_field(
-                        cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
-                    gcc_lvalue_address(next_index, loc));
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, val, stdout_val,
-                                               gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), gcc_type(env->ctx, VOID_PTR)),
-                                               gcc_rvalue_bool(env->ctx, true)));
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, "\n"), stdout_val)); 
-            }
+            if (info && lhs_t)
+                print_doctest_value(env, block, loc, info, lhs_t, val);
             return NULL;
         } else {
             // Print "= <expr>"
