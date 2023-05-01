@@ -7,24 +7,11 @@ binary. SSS lets you write SSS-tier software.
 
 ## Example
 
-```
-def sing_bottles_song(num:Int)
-    for i in num..0 by -1
-        if i == 0
-            say "No more bottles of beer on the wall! :("
-        else if i == 1
-            say "One last bottle of beer on the wall"
-        else
-            say "$i bottles of beer on the wall"
-    between
-        say "Take one down, pass it around... "
+![A quick demo of the code](sss-99bottles.png)
 
-
-sing_bottles_song 99
-```
-
-See [quickstart.sss](quickstart.sss) for a quick rundown of the language, or see
-[the test folder](test/) for more comprehensive examples of each feature.
+See [docs/quickstart.sss](docs/quickstart.sss) for a quick rundown of the
+language, or see [the test folder](test/) for more comprehensive examples of
+each feature.
 
 ## Dependencies
 
