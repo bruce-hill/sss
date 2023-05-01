@@ -1,6 +1,6 @@
 CC=gcc
 PREFIX=/usr/local
-VERSION=0.5.2
+VERSION=0.6.0
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 CWARN=-Wall -Wextra
@@ -20,23 +20,23 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lgccjit -lcord -lm -L. -l:libblang.so.$(VERSION)
-ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DBLANG_VERSION=\"$(VERSION)\"
+LIBS=-lgc -lgccjit -lcord -lm -L. -l:libsss.so.$(VERSION)
+ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
-LIBFILE=libblang.so.$(VERSION)
-CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libblang/list.c libblang/utils.c libblang/string.c libblang/hashmap.c SipHash/halfsiphash.c
-HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libblang/list.h libblang/string.h libblang/hashmap.h
+LIBFILE=libsss.so.$(VERSION)
+CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c SipHash/halfsiphash.c
+HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libsss/list.h libsss/string.h libsss/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 
-all: blang $(LIBFILE) blang.1
+all: sss $(LIBFILE) sss.1
 
-$(LIBFILE): libblang/list.o libblang/utils.o libblang/string.o libblang/hashmap.o SipHash/halfsiphash.o
+$(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o SipHash/halfsiphash.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
-blang: $(OBJFILES) $(HFILES) $(LIBFILE) blang.c
-	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) blang.c
+sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
+	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
 
-hashtest: libblang/hashmap.o hashtest.c
+hashtest: libsss/hashmap.o hashtest.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
 
 %.o: %.c $(HFILES)
@@ -45,39 +45,39 @@ hashtest: libblang/hashmap.o hashtest.c
 %: %.c $(HFILES)
 	$(CC) $(OSFLAGS) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
 
-tags: $(CFILES) $(HFILES) blang.c
+tags: $(CFILES) $(HFILES) sss.c
 	ctags $^
 
 clean:
-	rm -f blang $(OBJFILES) blang[0-9]+* libblang.so.*
+	rm -f sss $(OBJFILES) sss[0-9]+* libsss.so.*
 
-blang.1: blang.1.md
+sss.1: sss.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@
 
-install: blang $(LIBFILE)
-	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/blang/modules"
-	cp -v blang.1 "$(PREFIX)/man/man1/blang.1"
+install: sss $(LIBFILE)
+	mkdir -p -m 755 "$(PREFIX)/man/man1" "$(PREFIX)/bin" "$(PREFIX)/lib" "$(PREFIX)/share/sss/modules"
+	cp -v sss.1 "$(PREFIX)/man/man1/sss.1"
 	cp $(LIBFILE) "$(PREFIX)/lib/$(LIBFILE)"
-	cp -vr stdlib/* "$(PREFIX)/share/blang/modules/"
-	rm -f "$(PREFIX)/bin/blang" "$(PREFIX)/bin/blang$(VERSION)"
-	cp -v blang "$(PREFIX)/bin/blang$(VERSION)"
-	cp -v blang_version_picker.sh "$(PREFIX)/bin/blang"
+	cp -vr stdlib/* "$(PREFIX)/share/sss/modules/"
+	rm -f "$(PREFIX)/bin/sss" "$(PREFIX)/bin/sss$(VERSION)"
+	cp -v sss "$(PREFIX)/bin/sss$(VERSION)"
+	cp -v sss_version_picker.sh "$(PREFIX)/bin/sss"
 
 uninstall:
-	@rm -rvf "$(PREFIX)/bin/blang$(VERSION)" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/blang"; \
-	if [[ "`find "$(PREFIX)/bin" -type f -regex '.*/blang[0-9.]+\$$'`" == "" ]]; then \
-		rm -vf "$(PREFIX)/man/man1/blang.1" "$(PREFIX)/bin/blang"; \
+	@rm -rvf "$(PREFIX)/bin/sss$(VERSION)" "$(PREFIX)/lib/$(LIBFILE)" "$(PREFIX)/share/sss"; \
+	if [[ "`find "$(PREFIX)/bin" -type f -regex '.*/sss[0-9.]+\$$'`" == "" ]]; then \
+		rm -vf "$(PREFIX)/man/man1/sss.1" "$(PREFIX)/bin/sss"; \
 	else \
-		if [ -f "$(PREFIX)/bin/blang" ]; then \
-			read -p $$'\033[1mIt looks like there are other versions of Blang installed. Do you want to uninstall them as well? [Y/n]\033[0m ' ans; \
+		if [ -f "$(PREFIX)/bin/sss" ]; then \
+			read -p $$'\033[1mIt looks like there are other versions of sss installed. Do you want to uninstall them as well? [Y/n]\033[0m ' ans; \
 			if [[ $$ans =~ ^[Yy] ]]; then \
-				rm -vf "$(PREFIX)/bin"/blang* "$(PREFIX)"/lib/libblang.so* "$(PREFIX)"/man/man1/blang.1 ; \
+				rm -vf "$(PREFIX)/bin"/sss* "$(PREFIX)"/lib/libsss.so* "$(PREFIX)"/man/man1/sss.1 ; \
 			fi; \
 		fi; \
 	fi;
 
 test: all
-	@for f in test/*.bl; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./blang $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
+	@for f in test/*.sss; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./sss $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
 	@printf '\x1b[42;30m All tests passed! \x1b[m\n\n'
 
 .PHONY: all clean install uninstall test

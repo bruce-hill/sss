@@ -7,9 +7,9 @@ while getopts ':V:L' flag; do
 done
 
 if [[ $VERSION ]]; then
-    candidates=$(find $(dirname $BASH_SOURCE) -maxdepth 1 -name "blang$VERSION*")
+    candidates=$(find $(dirname $BASH_SOURCE) -maxdepth 1 -name "sss$VERSION*")
 else
-    candidates=$(find $(dirname $BASH_SOURCE) -maxdepth 1 -name "blang[0-9]*")
+    candidates=$(find $(dirname $BASH_SOURCE) -maxdepth 1 -name "sss[0-9]*")
 fi
 
 if [[ $LIST ]]; then
@@ -20,7 +20,7 @@ fi
 if [[ $candidates ]]; then
     exec "$(echo "$candidates" | sort -V | tail -n 1)" "$@"
 else
-    echo "Failed to find a Blang version matching: \"blang$VERSION\""
+    echo "Failed to find a SSS version matching: \"sss$VERSION\""
     echo "The versions available are:"
-    ls $(dirname $BASH_SOURCE) | grep "^blang[0-9.]\+$" | sed 's/^/    * /'
+    ls $(dirname $BASH_SOURCE) | grep "^sss[0-9.]\+$" | sed 's/^/    * /'
 fi

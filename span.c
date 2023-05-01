@@ -47,8 +47,8 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
     if (context_lines == 0)
         return fprintf(out, "%s%.*s%s", hl_color, (int)(span.end - span.start), span.start, normal_color);
 
-    ssize_t span_start_line = bl_get_line_number(span.file, span.start),
-            span_end_line = bl_get_line_number(span.file, span.end);
+    ssize_t span_start_line = sss_get_line_number(span.file, span.start),
+            span_end_line = sss_get_line_number(span.file, span.end);
 
     ssize_t first_line = span_start_line - (context_lines - 1),
             last_line = span_end_line + (context_lines - 1);
@@ -61,7 +61,7 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
 
     for (ssize_t line_no = first_line; line_no <= last_line; ++line_no) {
         printed += fprintf(out, lineno_fmt, digits, line_no);
-        const char *line = bl_get_line(span.file, line_no);
+        const char *line = sss_get_line(span.file, line_no);
         if (!line) break;
 
         int column = 0;

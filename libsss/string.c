@@ -13,21 +13,21 @@
 
 #define CLAMP(x, lo, hi) MIN(hi, MAX(x,lo))
 
-string_t bl_string_uppercased(string_t s) {
+string_t sss_string_uppercased(string_t s) {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (int32_t i = 0; i < s.length; i++)
         s2[i] = toupper(s.data[i*s.stride]);
     return (string_t){.data=s2, .length=s.length, .stride=1};
 }
 
-string_t bl_string_lowercased(string_t s) {
+string_t sss_string_lowercased(string_t s) {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (int32_t i = 0; i < s.length; i++)
         s2[i] = tolower(s.data[i*s.stride]);
     return (string_t){.data=s2, .length=s.length, .stride=1};
 }
 
-string_t bl_string_capitalized(string_t s) {
+string_t sss_string_capitalized(string_t s) {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     int32_t i;
     for (i = 0; i < s.length; i++) {
@@ -44,7 +44,7 @@ string_t bl_string_capitalized(string_t s) {
     return (string_t){.data=s2, .length=s.length, .stride=1};
 }
 
-string_t bl_string_titlecased(string_t s) {
+string_t sss_string_titlecased(string_t s) {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     bool should_uppercase = true;
     for (int32_t i = 0; i < s.length; i++) {
@@ -63,7 +63,7 @@ string_t bl_string_titlecased(string_t s) {
     return (string_t){.data=s2, .length=s.length, .stride=1};
 }
 
-bool bl_string_starts_with(string_t s, string_t prefix) {
+bool sss_string_starts_with(string_t s, string_t prefix) {
     if (s.length < prefix.length) return false;
     for (int32_t i = 0; i < prefix.length; i++) {
         if (s.data[i*s.stride] != prefix.data[i*prefix.stride])
@@ -72,7 +72,7 @@ bool bl_string_starts_with(string_t s, string_t prefix) {
     return true;
 }
 
-bool bl_string_ends_with(string_t s, string_t suffix) {
+bool sss_string_ends_with(string_t s, string_t suffix) {
     if (s.length < suffix.length) return false;
     for (int32_t i = 0; i < suffix.length; i++) {
         if (s.data[(s.length-suffix.length+i)*s.stride] != suffix.data[i*suffix.stride])
@@ -81,7 +81,7 @@ bool bl_string_ends_with(string_t s, string_t suffix) {
     return true;
 }
 
-string_t bl_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool trim_right)
+string_t sss_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool trim_right)
 {
     int32_t len = s.length;
     int32_t start = 0;
@@ -116,7 +116,7 @@ string_t bl_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool
     return (string_t){.data=buf, .length=len, .stride=1};
 }
 
-string_t bl_string_slice(string_t s, range_t *r) {
+string_t sss_string_slice(string_t s, range_t *r) {
     int32_t stride = (int32_t)r->stride;
     int32_t first = (int32_t)CLAMP(r->first-1, 0, (int64_t)s.length-1),
             last = (int32_t)CLAMP(r->last-1, 0, (int64_t)s.length-1);
@@ -151,7 +151,7 @@ string_t from_c_string(const char *str)
     return (string_t){.data=buf, .length=len, .stride=1};
 }
 
-int32_t bl_string_find(string_t str, string_t pat)
+int32_t sss_string_find(string_t str, string_t pat)
 {
     if (str.length < pat.length) return 0;
     if (pat.length == 0) return 1;
@@ -203,7 +203,7 @@ int32_t bl_string_find(string_t str, string_t pat)
     // return 0;
 }
 
-string_t bl_string_replace(string_t text, string_t pat, string_t replacement, int64_t limit) {
+string_t sss_string_replace(string_t text, string_t pat, string_t replacement, int64_t limit) {
     text = flatten(text);
     pat = flatten(pat);
     replacement = flatten(replacement);
@@ -229,7 +229,7 @@ string_t bl_string_replace(string_t text, string_t pat, string_t replacement, in
     return (string_t){.data=str, .length=size, .stride=1};
 }
 
-string_t bl_string_quoted(string_t text, const char *dsl, bool colorize) {
+string_t sss_string_quoted(string_t text, const char *dsl, bool colorize) {
     char *buf;
     size_t size;
     FILE *mem = open_memstream(&buf, &size);
@@ -267,30 +267,30 @@ string_t bl_string_quoted(string_t text, const char *dsl, bool colorize) {
     return (string_t){.data=str, .length=size, .stride=1};
 }
 
-string_t bl_string_number_format(double d, int64_t precision) {
+string_t sss_string_number_format(double d, int64_t precision) {
     int len = snprintf(NULL, 0, "%.*f", (int)precision, d);
     char *str = GC_MALLOC_ATOMIC(len + 1);
     snprintf(str, len+1, "%.*f", (int)precision, d);
     return (string_t){.data=str, .length=len, .stride=1};
 }
-string_t bl_string_number_format32(float f, int64_t precision) { return bl_string_number_format((double)f, precision); }
+string_t sss_string_number_format32(float f, int64_t precision) { return sss_string_number_format((double)f, precision); }
 
-string_t bl_string_scientific_notation(double d, int64_t precision) {
+string_t sss_string_scientific_notation(double d, int64_t precision) {
     int len = snprintf(NULL, 0, "%.*e", (int)precision, d);
     char *str = GC_MALLOC_ATOMIC(len + 1);
     snprintf(str, len+1, "%.*e", (int)precision, d);
     return (string_t){.data=str, .length=len, .stride=1};
 }
-string_t bl_string_scientific_notation32(float f, int64_t precision) { return bl_string_scientific_notation((double)f, precision); }
+string_t sss_string_scientific_notation32(float f, int64_t precision) { return sss_string_scientific_notation((double)f, precision); }
 
-string_t bl_string_int_format(int64_t i, int64_t digits) {
+string_t sss_string_int_format(int64_t i, int64_t digits) {
     int len = snprintf(NULL, 0, "%0*ld", (int)digits, i);
     char *str = GC_MALLOC_ATOMIC(len + 1);
     snprintf(str, len+1, "%0*ld", (int)digits, i);
     return (string_t){.data=str, .length=len, .stride=1};
 }
 
-string_t bl_string_hex(int64_t i, int64_t digits, bool uppercase, bool prefix) {
+string_t sss_string_hex(int64_t i, int64_t digits, bool uppercase, bool prefix) {
     const char *fmt = uppercase ? (prefix ? "0x%0.*lX" : "%0.*lX") : (prefix ? "0x%0.*lx" : "%0.*lx");
     int len = snprintf(NULL, 0, fmt, (int)digits, (uint64_t)i);
     char *str = GC_MALLOC_ATOMIC(len + 1);
@@ -298,7 +298,7 @@ string_t bl_string_hex(int64_t i, int64_t digits, bool uppercase, bool prefix) {
     return (string_t){.data=str, .length=len, .stride=1};
 }
 
-string_t bl_string_octal(int64_t i, int64_t digits, bool prefix) {
+string_t sss_string_octal(int64_t i, int64_t digits, bool prefix) {
     const char *fmt = prefix ? "0o%0.*lo" : "%0.*lo";
     int len = snprintf(NULL, 0, fmt, (int)digits, (uint64_t)i);
     char *str = GC_MALLOC_ATOMIC(len + 1);

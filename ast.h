@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <libgccjit.h>
 
-#include "libblang/list.h"
+#include "libsss/list.h"
 #include "compile/libgccjit_abbrev.h"
 #include "span.h"
 #include "util.h"

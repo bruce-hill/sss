@@ -34,7 +34,7 @@ char *resolve_path(const char *path, const char *relative_to)
         if (resolved) return heap_str(resolved);
     } else {
         // Relative path:
-        char *blpath = heap_str(getenv("BLANGPATH"));
+        char *blpath = heap_str(getenv("SSSPATH"));
         char *relative_dir = dirname(heap_str(relative_to));
         for (char *dir; (dir = strsep(&blpath, ":")); ) {
             if (dir[0] == '/') {
@@ -58,7 +58,7 @@ char *resolve_path(const char *path, const char *relative_to)
     return NULL;
 }
 
-static bl_file_t *_load_file(const char* filename, FILE *file)
+static sss_file_t *_load_file(const char* filename, FILE *file)
 {
     if (!file) return NULL;
 
@@ -66,9 +66,9 @@ static bl_file_t *_load_file(const char* filename, FILE *file)
     char *file_buf = NULL, *line_buf = NULL;
     FILE *mem = open_memstream(&file_buf, &file_size);
     ssize_t line_len = 0;
-    NEW_LIST(bl_line_t, lines);
+    NEW_LIST(sss_line_t, lines);
     while ((line_len = getline(&line_buf, &line_cap, file)) >= 0) {
-        bl_line_t line_info = {.offset=file_size, .indent=0, .is_empty=false};
+        sss_line_t line_info = {.offset=file_size, .indent=0, .is_empty=false};
         char *p;
         for (p = line_buf; *p == ' ' || *p == '\t'; ++p)
             line_info.indent += *p == ' ' ? 1 : 4;
@@ -94,13 +94,13 @@ static bl_file_t *_load_file(const char* filename, FILE *file)
         if (strncmp(cwd, filename, cwd_len) == 0 && filename[cwd_len] == '/')
             relative_filename = &filename[cwd_len+1];
     }
-    return new(bl_file_t, .filename=filename, .relative_filename=relative_filename, .text=copy, .lines=lines);
+    return new(sss_file_t, .filename=filename, .relative_filename=relative_filename, .text=copy, .lines=lines);
 }
 
 //
 // Read an entire file into memory.
 //
-bl_file_t *bl_load_file(const char* filename)
+sss_file_t *sss_load_file(const char* filename)
 {
     FILE *file = filename[0] ? fopen(filename, "r") : stdin;
     return _load_file(filename, file);
@@ -109,7 +109,7 @@ bl_file_t *bl_load_file(const char* filename)
 //
 // Create a virtual file from a string.
 //
-bl_file_t *bl_spoof_file(const char* filename, const char *text)
+sss_file_t *sss_spoof_file(const char* filename, const char *text)
 {
     FILE *file = fmemopen((char*)text, strlen(text)+1, "r");
     return _load_file(filename, file);
@@ -118,7 +118,7 @@ bl_file_t *bl_spoof_file(const char* filename, const char *text)
 //
 // Given a pointer, determine which line number it points to (1-indexed)
 //
-size_t bl_get_line_number(bl_file_t *f, const char *p)
+size_t sss_get_line_number(sss_file_t *f, const char *p)
 {
     // Binary search:
     ssize_t lo = 0, hi = (ssize_t)LIST_LEN(f->lines)-1;
@@ -139,25 +139,25 @@ size_t bl_get_line_number(bl_file_t *f, const char *p)
 //
 // Given a pointer, determine which line column it points to.
 //
-size_t bl_get_line_column(bl_file_t *f, const char *p)
+size_t sss_get_line_column(sss_file_t *f, const char *p)
 {
-    size_t line_no = bl_get_line_number(f, p);
+    size_t line_no = sss_get_line_number(f, p);
     return 1 + (size_t)(p - (f->text + f->lines[0][line_no-1].offset));
 }
 
 //
 // Given a pointer, get the indentation of the line it's on.
 //
-size_t bl_get_indent(bl_file_t *f, const char *p)
+size_t sss_get_indent(sss_file_t *f, const char *p)
 {
-    ssize_t line_no = bl_get_line_number(f, p);
+    ssize_t line_no = sss_get_line_number(f, p);
     return f->lines[0][line_no-1].indent;
 }
 
 //
 // Return a pointer to the line with the specified line number (1-indexed)
 //
-const char *bl_get_line(bl_file_t *f, size_t line_number)
+const char *sss_get_line(sss_file_t *f, size_t line_number)
 {
     if (line_number == 0 || line_number > (size_t)LIST_LEN(f->lines)) return NULL;
     return f->text + f->lines[0][line_number - 1].offset;

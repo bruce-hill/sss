@@ -1,12 +1,12 @@
 # Features
 
-This article is about some neat features of Blang. Some of them are taken
+This article is about some neat features of SSS. Some of them are taken
 from other languages, some of them are original.
 
 ## Better Loops
 
 Loops are one of the most fundamental features of imperative programming
-languages, but there's still some room for improvement. Blang supports two
+languages, but there's still some room for improvement. SSS supports two
 types of loops: `for` loops and `while` loops (with `repeat` as syntactic
 sugar for `while 1`). `while` loops follow the standard pattern of checking
 a condition:
@@ -38,7 +38,7 @@ for i,n in 99..150
 
 Most languages with loops also offer a `continue` and `break` statement for
 altering control flow. And a select few languages also offer
-breaking/continuing encompassing loops. For clarity and brevity, Blang uses
+breaking/continuing encompassing loops. For clarity and brevity, SSS uses
 `skip` and `stop` for this functionality and supports skipping/stopping
 loops by referencing either a loop variable or the type of loop:
 
@@ -58,8 +58,8 @@ for outer in things
 ```
 
 So far, all of these features exist in other languages, but the next feature is
-something I believe is original to Blang: `between` blocks. A really common
-behavior in programming tasks is doing something between iterations. In Blang,
+something I believe is original to SSS: `between` blocks. A really common
+behavior in programming tasks is doing something between iterations. In SSS,
 it looks like this:
 
 ```python
@@ -95,7 +95,7 @@ for num in nums
     s += str(num)
 ```
 
-Blang loops also support a `first` block, which only executes on the first
+SSS loops also support a `first` block, which only executes on the first
 iteration:
 
 ```python
@@ -109,13 +109,13 @@ between
 
 ## Vectorized Math Operations
 
-Inspired by languages like like APL and Octave, Blang, supports automatically
+Inspired by languages like like APL and Octave, SSS, supports automatically
 extending math operations to structs and arrays that hold numeric values. All
 operations are pairwise and do not require operator overloading.
 
 For example, adding two 2D vectors:
 
-```blang
+```SSS
 def Vec2{x,y:Num}
 
 v1 := Vec2{2, 3}
@@ -126,7 +126,7 @@ v2 := Vec2{10, 20}
 
 Operations are also automatically defined for scalar operations on numeric containers:
 
-```blang
+```SSS
 v1 := Vec2{2, 3}
 >>> v1 * 10
 === Vec2{20, 30}
@@ -138,7 +138,7 @@ nums := [1, 2, 3, 4]
 
 ## Seamless Slicing of Arrays-of-Structs
 
-When dealing with arrays of structs, Blang supports easy (and constant-time)
+When dealing with arrays of structs, SSS supports easy (and constant-time)
 creation of slices that contain one member of a struct:
 
 ```
@@ -161,7 +161,7 @@ Inspired by [Graydon Hoare's blogpost "What's
 next?"](https://graydon2.dreamwidth.org/253769.html) as well as the
 implementation of [F#'s Units of
 Measure](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/units-of-measure),
-Blang supports typed units of measure with typechecking and automatic
+SSS supports typed units of measure with typechecking and automatic
 conversions between units.
 
 ```python
@@ -207,7 +207,7 @@ pos += 2<s>*vel
 ## Minimally Intrusive Optional Types
 
 Optional types in many programming languages are either verbose and annoying to
-use, overengineered and complex, or totally absent. Blang takes an approach to
+use, overengineered and complex, or totally absent. SSS takes an approach to
 values which may or may not exist that is simple and pragmatic. `!T` is used
 to indicate the absence of a value that would reside on the heap if it existed.
 
@@ -234,29 +234,29 @@ else
 
 ## String Interpolation
 
-Like many modern programming languages, Blang supports string interpolation,
+Like many modern programming languages, SSS supports string interpolation,
 which makes it easy to insert values into strings:
 
 ```python
 say "Hi, my name is $my_name and my favorite number is $(random())"
 ```
 
-Blang provides useful default implementations of tostring functions, so you can
+SSS provides useful default implementations of tostring functions, so you can
 easily introspect what's in structs, arrays, etc.
 
 ## DSLs
 
-Blang supports safe-by-design strings representing non-blang code. An extremely
+SSS supports safe-by-design strings representing non-SSS code. An extremely
 common source of security vulnerabilities occurs when intermixing code (e.g.
 SQL code or HTML code) with user-controlled inputs. The result is code
-injection attacks. Blang addresses this problem by providing DSL strings (DSL =
+injection attacks. SSS addresses this problem by providing DSL strings (DSL =
 Domain Specific Language). DSL strings come with compile-time type safety to
 prevent accidentally mixing up different types of strings and automatic string
 escaping when performing string interpolations.
 
 ### Easy Language Embedding
 
-Blang allows for writing strings that contain code using DSL strings, which
+SSS allows for writing strings that contain code using DSL strings, which
 self-document which domain-specific language the string uses, as well as
 providing multiple different string delimiters to make it easy to avoid
 [leaning toothpick
@@ -272,11 +272,11 @@ you need to.
 ```
 pat := $Regex/[0-9]+|['"]+/
 json := $JSON!{"key"=[1,2,3]}!
-blang := $Blang`foo := $DSL[...]`
+sss := $SSS`foo := $DSL[...]`
 shell := $Shell> ls $HOME
 ```
 
-Blang's multi-line strings use indentation to delimit string boundaries, and
+SSS's multi-line strings use indentation to delimit string boundaries, and
 DSL strings can have the same format. Strings end where indented regions end
 (discarding trailing blank lines). Custom quotation marks are not needed to
 avoid ambiguity:
@@ -314,7 +314,7 @@ there is no way to tell that anything has gone wrong until it's too late,
 because there is no differentiation between "safe" SQL strings authored by the
 programmer and "unsafe" strings from elsewhere in the program.
 
-In Blang, there is a much better solution for this problem: DSL strings.
+In SSS, there is a much better solution for this problem: DSL strings.
 
 ```python
 deftype SQL:String
@@ -432,7 +432,7 @@ redacted values.
 
 ## Security
 
-Some ideas in Blang were inspired by Cristina Cifuentes' talk [What Is a Secure
+Some ideas in SSS were inspired by Cristina Cifuentes' talk [What Is a Secure
 Programming Language?](https://www.youtube.com/watch?v=dhoP-dyIr54) In the
 talk, Cifuentes points out that roughly half of all exploited vulnerabilities
 discovered in the National Vulnerability Database come down to buffer errors,
@@ -440,12 +440,12 @@ code injection, or accidental data leaks.
 
 ## Percentages
 
-Blang allows you to use percentages as a form of number. Percentages are a
+SSS allows you to use percentages as a form of number. Percentages are a
 commonly used way to express and think about fractions of a whole, but nearly
 all mainstream languages force programmers to use fractional real numbers (e.g.
 `.02` instead of `2%`) and then multiply by 100 every time they need to be
 represented visually as a percent. This is serviceable, but somewhat tedious
-and unintuitive, and occasionally leads to mistakes. Blang allows for
+and unintuitive, and occasionally leads to mistakes. SSS allows for
 percentage literals like `2%`, which internally compiles to the floating point
 representation equivalent to `.02` but comes with two added advantages: it
 automatically prints as "2%" rather than "0.02", and it comes with a few type

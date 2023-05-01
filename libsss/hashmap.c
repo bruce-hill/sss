@@ -43,7 +43,7 @@ int32_t compare_str(const void *x, const void *y) {
     return (int32_t)strcmp(*(char**)x, *(char**)y);
 }
 
-static inline void hshow(bl_hashmap_t *h)
+static inline void hshow(sss_hashmap_t *h)
 {
     hdebug("{");
     for (uint32_t i = 0; i < h->capacity; i++) {
@@ -53,27 +53,27 @@ static inline void hshow(bl_hashmap_t *h)
     hdebug("}\n");
 }
 
-uint32_t bl_hashmap_len(bl_hashmap_t *h)
+uint32_t sss_hashmap_len(sss_hashmap_t *h)
 {
     return h->count;
 }
 
-static void copy_on_write(bl_hashmap_t *h, size_t entry_size_padded)
+static void copy_on_write(sss_hashmap_t *h, size_t entry_size_padded)
 {
     if (h->entries)
         h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
     if (h->buckets)
-        h->buckets = memcpy(GC_MALLOC(sizeof(bl_hash_bucket_t)*h->capacity), h->buckets, sizeof(bl_hash_bucket_t)*h->capacity);
+        h->buckets = memcpy(GC_MALLOC(sizeof(sss_hash_bucket_t)*h->capacity), h->buckets, sizeof(sss_hash_bucket_t)*h->capacity);
     h->copy_on_write = false;
 }
 
-void bl_hashmap_mark_cow(bl_hashmap_t *h)
+void sss_hashmap_mark_cow(sss_hashmap_t *h)
 {
     h->copy_on_write = true;
 }
 
 // Return address of value or NULL
-static void *bl_hashmap_get_raw(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
+static void *sss_hashmap_get_raw(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
 {
     if (!h || !key || h->capacity == 0) return NULL;
 
@@ -90,24 +90,24 @@ static void *bl_hashmap_get_raw(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t ke
     return NULL;
 }
 
-void *bl_hashmap_get(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
+void *sss_hashmap_get(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
 {
-    for (bl_hashmap_t *iter = h; iter; iter = iter->fallback) {
-        void *ret = bl_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
+    for (sss_hashmap_t *iter = h; iter; iter = iter->fallback) {
+        void *ret = sss_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
         if (ret) return ret;
     }
-    for (bl_hashmap_t *iter = h; iter; iter = iter->fallback) {
+    for (sss_hashmap_t *iter = h; iter; iter = iter->fallback) {
         if (iter->default_value) return iter->default_value;
     }
     return NULL;
 }
 
-static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
+static void sss_hashmap_set_bucket(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, const void *entry, size_t entry_size_padded, int32_t index1)
 {
     hshow(h);
     uint32_t hash = key_hash(entry) % (uint32_t)h->capacity;
     hdebug("Hash value = %u\n", hash);
-    bl_hash_bucket_t *bucket = &h->buckets[hash];
+    sss_hash_bucket_t *bucket = &h->buckets[hash];
     if (bucket->index1 == 0) {
         hdebug("Got an empty space\n");
         // Empty space:
@@ -124,7 +124,7 @@ static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t 
     if (collided_hash != hash) { // Collided with a mid-chain entry
         hdebug("Hit a mid-chain entry\n");
         // Find chain predecessor
-        bl_hash_bucket_t *prev = &h->buckets[collided_hash];
+        sss_hash_bucket_t *prev = &h->buckets[collided_hash];
         while (prev->next1 != hash+1) {
             assert(key_hash(h->entries + entry_size_padded*(bucket->index1-1)) % (uint32_t)h->capacity == collided_hash);
             prev = &h->buckets[prev->next1-1];
@@ -155,25 +155,25 @@ static void bl_hashmap_set_bucket(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t 
     hshow(h);
 }
 
-static void hashmap_resize(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
+static void hashmap_resize(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, uint32_t new_capacity, size_t entry_size_padded)
 {
     hdebug("About to resize from %u to %u\n", h->capacity, new_capacity);
     hshow(h);
-    h->buckets = GC_MALLOC_ATOMIC((size_t)new_capacity*sizeof(bl_hash_bucket_t));
-    memset(h->buckets, 0, (size_t)new_capacity*sizeof(bl_hash_bucket_t));
+    h->buckets = GC_MALLOC_ATOMIC((size_t)new_capacity*sizeof(sss_hash_bucket_t));
+    memset(h->buckets, 0, (size_t)new_capacity*sizeof(sss_hash_bucket_t));
     h->capacity = new_capacity;
     h->lastfree_index1 = new_capacity;
     // Rehash:
     for (uint32_t i = 1; i <= h->count; i++) {
         hdebug("Rehashing %u\n", i);
-        bl_hashmap_set_bucket(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
+        sss_hashmap_set_bucket(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
     }
     hshow(h);
     hdebug("Finished resizing\n");
 }
 
 // Return address of value
-void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value)
+void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value)
 {
     hdebug("Raw hash of key being set: %u\n", key_hash(entry));
     if (!h || !key) return NULL;
@@ -186,10 +186,10 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
     size_t value_size = entry_size_padded - value_offset;
-    void *value_home = bl_hashmap_get_raw(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+    void *value_home = sss_hashmap_get_raw(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
     if (value_home) {
         if (!value && (h->fallback || h->default_value))
-            value = bl_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+            value = sss_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
 
         if (value && value_size > 0)
             memcpy(value_home, value, value_size);
@@ -204,11 +204,11 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     }
 
     if (!value && value_size > 0) {
-        for (bl_hashmap_t *iter = h->fallback; iter; iter = iter->fallback) {
-            value = bl_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
+        for (sss_hashmap_t *iter = h->fallback; iter; iter = iter->fallback) {
+            value = sss_hashmap_get_raw(iter, key_hash, key_cmp, entry_size_padded, key, value_offset);
             if (value) break;
         }
-        for (bl_hashmap_t *iter = h; !value && iter; iter = iter->fallback) {
+        for (sss_hashmap_t *iter = h; !value && iter; iter = iter->fallback) {
             if (iter->default_value) value = iter->default_value;
         }
     }
@@ -217,14 +217,14 @@ void *bl_hashmap_set(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size
     h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
     void *entry = h->entries + (index1-1)*entry_size_padded;
     memcpy(entry, key, value_offset);
-    bl_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
+    sss_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
 
     if (value)
         memcpy(entry + value_offset, value, entry_size_padded - value_offset);
     return entry + value_offset;
 }
 
-void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
+void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
     if (!h || !key || h->capacity == 0) return;
 
@@ -232,7 +232,7 @@ void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
         copy_on_write(h, entry_size_padded);
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
-    bl_hash_bucket_t *bucket, *prev = NULL;
+    sss_hash_bucket_t *bucket, *prev = NULL;
     for (uint32_t i = hash; h->buckets[i].index1; i = h->buckets[i].next1 - 1) {
         if (key_cmp(h->entries + entry_size_padded*(h->buckets[i].index1-1), key) == 0) {
             bucket = &h->buckets[i];
@@ -303,14 +303,14 @@ void bl_hashmap_remove(bl_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
     //    maybe update lastfree_index1 to removed bucket's index
 }
 
-void *bl_hashmap_nth(bl_hashmap_t *h, int32_t n, size_t entry_size_padded)
+void *sss_hashmap_nth(sss_hashmap_t *h, int32_t n, size_t entry_size_padded)
 {
     assert(n >= 1 && n <= (int32_t)h->count);
     if (n < 1 || n > (int32_t)h->count) return NULL;
     return h->entries + (n-1)*entry_size_padded;
 }
 
-uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded)
+uint32_t sss_hashmap_hash(sss_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded)
 {
     if (!h) return 0;
 
@@ -319,22 +319,22 @@ uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_siz
         hash ^= entry_hash(h->entries + i*entry_size_padded);
 
     if (h->fallback)
-        hash ^= bl_hashmap_hash(h->fallback, entry_hash, entry_size_padded);
+        hash ^= sss_hashmap_hash(h->fallback, entry_hash, entry_size_padded);
     return hash;
 }
 
-int32_t bl_hashmap_compare(bl_hashmap_t *h1, bl_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, size_t entry_size_padded, size_t value_offset)
+int32_t sss_hashmap_compare(sss_hashmap_t *h1, sss_hashmap_t *h2, hash_fn_t key_hash, cmp_fn_t key_cmp, cmp_fn_t value_cmp, size_t entry_size_padded, size_t value_offset)
 {
     if (h1->count != h2->count) return (int32_t)h1->count - (int32_t)h2->count;
     for (uint32_t i = 0; i < h1->count; i++) {
-        void *val = bl_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded, value_offset);
+        void *val = sss_hashmap_get(h2, key_hash, key_cmp, entry_size_padded, h1->entries + i*entry_size_padded, value_offset);
         if (!val) return 1;
         int32_t diff = value_cmp(h1->entries + i*entry_size_padded + value_offset, val);
         if (diff) return diff;
     }
     if (h1->fallback != h2->fallback) {
         if (h1->fallback && h2->fallback) {
-            int32_t diff = bl_hashmap_compare(h1->fallback, h2->fallback, key_hash, key_cmp, value_cmp, entry_size_padded, value_offset);
+            int32_t diff = sss_hashmap_compare(h1->fallback, h2->fallback, key_hash, key_cmp, value_cmp, entry_size_padded, value_offset);
             if (diff) return diff;
         } else {
             return 1;

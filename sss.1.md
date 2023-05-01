@@ -1,18 +1,18 @@
-% BLANG(1)
+% SSS(1)
 % Bruce Hill (*bruce@bruce-hill.com*)
 % March 30, 2023
 
 # NAME
 
-blang - Bruce\'s Language
+sss - A Simple, Safe, Speedy language.
 
 # SYNOPSIS
 
-`blang` \[*options...*\] *program.bl* \[\[`--`\] *args...*\]
+`sss` \[*options...*\] *program.sss* \[\[`--`\] *args...*\]
 
 # DESCRIPTION
 
-Blang is a programming language that is statically typed, compiled, small, and
+SSS is a programming language that is statically typed, compiled, small, and
 garbage-collected, with concise syntax and built-in support for
 high-performance, low-overhead datastructures. It uses libgccjit as a backend,
 which can produce compiled binaries or run files directly.
@@ -41,5 +41,5 @@ which can produce compiled binaries or run files directly.
 : Specify the output file when compiling to a file.
 
 *args...*
-: Extra arguments are passed to the compiled blang program when it runs.
+: Extra arguments are passed to the compiled SSS program when it runs.
 

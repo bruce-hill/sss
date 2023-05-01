@@ -11,9 +11,9 @@
 
 static gcc_rvalue_t *math_binop_rec(
     env_t *env, gcc_block_t **block, ast_t *ast,
-    bl_type_t *lhs_t, gcc_rvalue_t *lhs,
+    sss_type_t *lhs_t, gcc_rvalue_t *lhs,
     gcc_binary_op_e op,
-    bl_type_t *rhs_t, gcc_rvalue_t *rhs)
+    sss_type_t *rhs_t, gcc_rvalue_t *rhs)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
 
@@ -45,17 +45,17 @@ static gcc_rvalue_t *math_binop_rec(
         // for (i = 0; i < len; i++)
         //     result->data[i] = lhs->data[i] {OP} &rhs->data[i]
 
-        bl_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
-        gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
+        sss_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+        gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
-        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
         gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 1));
         gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 2));
 
-        gcc_type_t *rhs_gcc_t = bl_type_to_gcc(env, rhs_t);
+        gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
         gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
         gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
@@ -65,9 +65,9 @@ static gcc_rvalue_t *math_binop_rec(
                                     gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
                                     i32, lhs_len32, rhs_len32);
 
-        bl_type_t *item_t = Match(result_t, ArrayType)->item_type;
+        sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
         gcc_func_t *alloc_func = hget(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic", gcc_func_t*);
-        gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
+        gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
         size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
@@ -112,7 +112,7 @@ static gcc_rvalue_t *math_binop_rec(
         //     result->data[i] = arr->data[i] {OP} scalar
 
         gcc_rvalue_t *array, *scalar;
-        bl_type_t *array_t, *scalar_t;
+        sss_type_t *array_t, *scalar_t;
         bool scalar_left = (lhs_t->tag != ArrayType);
         if (scalar_left) {
             array = rhs, scalar = lhs;
@@ -121,12 +121,12 @@ static gcc_rvalue_t *math_binop_rec(
             array = lhs, scalar = rhs;
             array_t = lhs_t, scalar_t = rhs_t;
         }
-        bl_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
-        gcc_type_t *result_gcc_t = bl_type_to_gcc(env, result_t);
+        sss_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
+        gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
-        gcc_type_t *array_gcc_t = bl_type_to_gcc(env, array_t);
+        gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
         gcc_struct_t *array_struct = gcc_type_if_struct(array_gcc_t);
         gcc_rvalue_t *len = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 1));
         gcc_rvalue_t *stride = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 2));
@@ -136,9 +136,9 @@ static gcc_rvalue_t *math_binop_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        bl_type_t *item_t = Match(result_t, ArrayType)->item_type;
+        sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
         gcc_func_t *alloc_func = hget(env->global_funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic", gcc_func_t*);
-        gcc_type_t *gcc_item_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=item_t));
+        gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
         size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
@@ -162,7 +162,7 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, 0));
         gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
 
-        bl_type_t *array_item_t = Match(array_t, ArrayType)->item_type;
+        sss_type_t *array_item_t = Match(array_t, ArrayType)->item_type;
         gcc_rvalue_t *item;
         if (scalar_left) 
             item = math_binop_rec(env, block, ast, scalar_t, scalar, op, array_item_t, array_item);
@@ -177,7 +177,7 @@ static gcc_rvalue_t *math_binop_rec(
     }
 #undef ITEM
 
-    bl_type_t *struct_t = NULL;
+    sss_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (!type_eq(lhs_t, rhs_t)) compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
         struct_t = lhs_t;
@@ -191,25 +191,25 @@ static gcc_rvalue_t *math_binop_rec(
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
         if (numtype_priority(lhs_t) < numtype_priority(rhs_t)) {
-            lhs = gcc_cast(env->ctx, NULL, lhs, bl_type_to_gcc(env, rhs_t));
+            lhs = gcc_cast(env->ctx, NULL, lhs, sss_type_to_gcc(env, rhs_t));
             lhs_t = rhs_t;
         } else if (numtype_priority(lhs_t) > numtype_priority(rhs_t)) {
-            rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
+            rhs = gcc_cast(env->ctx, NULL, rhs, sss_type_to_gcc(env, lhs_t));
         }
-        return gcc_binary_op(env->ctx, loc, op, bl_type_to_gcc(env, lhs_t), lhs, rhs);
+        return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, lhs_t), lhs, rhs);
     }
 
     auto struct_ = Match(struct_t, StructType);
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, struct_t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, struct_t);
     gcc_struct_t *struct_gcc_t = gcc_type_if_struct(gcc_t);
     NEW_LIST(gcc_field_t*, fields);
     NEW_LIST(gcc_rvalue_t*, members);
     for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
         gcc_field_t *field = gcc_get_field(struct_gcc_t, i);
         APPEND(fields, field);
-        bl_type_t *field_t = ith(struct_->field_types, i);
+        sss_type_t *field_t = ith(struct_->field_types, i);
 
-        bl_type_t *lhs_field_t, *rhs_field_t;
+        sss_type_t *lhs_field_t, *rhs_field_t;
         gcc_rvalue_t *lhs_field_val, *rhs_field_val;
         if (lhs_t->tag == StructType) {
             lhs_field_val = gcc_rvalue_access_field(lhs, loc, field);
@@ -230,7 +230,7 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_rvalue_t *member = math_binop_rec(env, block, ast, lhs_field_t, lhs_field_val, op, rhs_field_t, rhs_field_val);
         // Just in case things get messed up with promotions:
         if (is_numeric(field_t))
-            member = gcc_cast(env->ctx, loc, member, bl_type_to_gcc(env, field_t));
+            member = gcc_cast(env->ctx, loc, member, sss_type_to_gcc(env, field_t));
         APPEND(members, member);
     }
     return gcc_struct_constructor(env->ctx, loc, gcc_t, length(fields), fields[0], members[0]);
@@ -257,10 +257,10 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
 }
 
 void math_update_rec(
-    env_t *env, gcc_block_t **block, ast_t *ast, bl_type_t *lhs_t, gcc_lvalue_t *lhs,
-    gcc_binary_op_e op, bl_type_t *rhs_t, gcc_rvalue_t *rhs)
+    env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *lhs_t, gcc_lvalue_t *lhs,
+    gcc_binary_op_e op, sss_type_t *rhs_t, gcc_rvalue_t *rhs)
 {
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, lhs_t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, lhs_t);
     gcc_loc_t *loc = ast_loc(env, ast);
 
     // Automatically dereference non-nil pointers:
@@ -299,12 +299,12 @@ void math_update_rec(
         // for (i = 0; i < len; i++)
         //     update(&lhs->data[i], &rhs->data[i]);
 
-        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
         gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
         gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
 
-        gcc_type_t *rhs_gcc_t = bl_type_to_gcc(env, rhs_t);
+        gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
         gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
         gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
@@ -341,7 +341,7 @@ void math_update_rec(
         // Pseudocode:
         // for (i = 0; i < lhs->len; i++)
         //     update(&lhs->data[i], rhs)
-        gcc_type_t *lhs_gcc_t = bl_type_to_gcc(env, lhs_t);
+        gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
         gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
         gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
@@ -377,7 +377,7 @@ void math_update_rec(
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
-            bl_type_t *field_t = ith(struct_->field_types, i);
+            sss_type_t *field_t = ith(struct_->field_types, i);
             math_update_rec(
                 env, block, ast, field_t, gcc_lvalue_access_field(lhs, loc, field),
                 op, field_t, gcc_rvalue_access_field(rhs, loc, field));
@@ -387,16 +387,16 @@ void math_update_rec(
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
-            bl_type_t *field_t = ith(struct_->field_types, i);
+            sss_type_t *field_t = ith(struct_->field_types, i);
             gcc_rvalue_t *rhs_field = rhs_t->tag == StructType ? gcc_rvalue_access_field(rhs, loc, field) : rhs;
-            bl_type_t *rhs_field_t = rhs_t->tag == StructType ? field_t : rhs_t;
+            sss_type_t *rhs_field_t = rhs_t->tag == StructType ? field_t : rhs_t;
             math_update_rec(
                 env, block, ast, with_units(field_t, type_units(lhs_t)), gcc_lvalue_access_field(lhs, loc, field),
                 op, rhs_field_t, rhs_field);
         }
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
-            rhs = gcc_cast(env->ctx, NULL, rhs, bl_type_to_gcc(env, lhs_t));
+            rhs = gcc_cast(env->ctx, NULL, rhs, sss_type_to_gcc(env, lhs_t));
         else if (numtype_priority(lhs_t) < numtype_priority(rhs_t))
             compiler_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));

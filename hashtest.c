@@ -5,7 +5,7 @@
 #include <gc.h>
 #include <assert.h>
 
-#include "libblang/hashmap.h"
+#include "libsss/hashmap.h"
 #include "SipHash/halfsiphash.h"
 
 #include "SipHash/halfsiphash.c"
@@ -56,7 +56,7 @@ static int32_t cmp_char_arrays(const void *va, const void *vb)
 
 int main(void) {
     getrandom(hash_random_vector, sizeof(hash_random_vector), 0);
-    bl_hashmap_t h = {0};
+    sss_hashmap_t h = {0};
 
     for (;;) {
         printf("Choose a type to test: (i)nt (s)tring (S)tring set\n");
@@ -71,7 +71,7 @@ int main(void) {
                 while ((nread = getline(&line, &len, stdin)) > 0) {
                     if (*line == '?') {
                         int key = strtol(line+1, NULL, 10);
-                        int *val = bl_hashmap_get(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &key);
+                        int *val = sss_hashmap_get(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &key);
                         if (val)
                             printf("= %d\n", *val);
                         else
@@ -83,16 +83,16 @@ int main(void) {
                             .key = strtol(line, NULL, 10),
                             .value = strtol(eq+1, NULL, 10),
                         };
-                        bl_hashmap_set(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &entry);
+                        sss_hashmap_set(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &entry);
                     } else {
                         int key = strtol(line, NULL, 10);
-                        bl_hashmap_remove(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &key);
+                        sss_hashmap_remove(&h, hash_int, cmp_ints, padded_sizeof(int_entry_t), &key);
                     }
 
                     printf("{");
                     for (int32_t i = 1; i <= (int32_t)h.count; i++) {
                         if (i > 1) printf(", ");
-                        int_entry_t *entry = bl_hashmap_nth(&h, i, padded_sizeof(int_entry_t));
+                        int_entry_t *entry = sss_hashmap_nth(&h, i, padded_sizeof(int_entry_t));
                         printf("[%d] = %d", entry->key, entry->value);
                     }
                     printf("}\n");
@@ -113,16 +113,16 @@ int main(void) {
                             .key = make_str(line, (size_t)(eq-line)),
                             .value = make_str(eq+1, strlen(eq+1)-1),
                         };
-                        bl_hashmap_set(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_entry_t), &entry);
+                        sss_hashmap_set(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_entry_t), &entry);
                     } else {
                         char_array_t key = make_str(line, strlen(line)-1);
-                        bl_hashmap_remove(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_entry_t), &key);
+                        sss_hashmap_remove(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_entry_t), &key);
                     }
 
                     printf("{");
                     for (int32_t i = 1; i <= (int32_t)h.count; i++) {
                         if (i > 1) printf(", ");
-                        str_entry_t *entry = bl_hashmap_nth(&h, i, padded_sizeof(str_entry_t));
+                        str_entry_t *entry = sss_hashmap_nth(&h, i, padded_sizeof(str_entry_t));
                         printf("%.*s = %.*s", entry->key.len, entry->key.data, entry->value.len, entry->value.data);
                     }
                     printf("}\n");
@@ -144,16 +144,16 @@ int main(void) {
                             .key = make_str(line, (size_t)(eq-line)),
                             .value = true,
                         };
-                        bl_hashmap_set(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_set_entry_t), &entry);
+                        sss_hashmap_set(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_set_entry_t), &entry);
                     } else {
                         char_array_t key = make_str(line, strlen(line)-1);
-                        bl_hashmap_remove(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_set_entry_t), &key);
+                        sss_hashmap_remove(&h, hash_char_array, cmp_char_arrays, padded_sizeof(str_set_entry_t), &key);
                     }
 
                     printf("{");
                     for (int32_t i = 1; i <= (int32_t)h.count; i++) {
                         if (i > 1) printf(", ");
-                        str_set_entry_t *entry = bl_hashmap_nth(&h, i, padded_sizeof(str_set_entry_t));
+                        str_set_entry_t *entry = sss_hashmap_nth(&h, i, padded_sizeof(str_set_entry_t));
                         printf("%.*s = %s", entry->key.len, entry->key.data, entry->value ? "yes" : "no");
                     }
                     printf("}\n");

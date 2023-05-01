@@ -1,6 +1,7 @@
 *.o
 *.so
 tags
-blang
+sss
+libsss.so.*
 .*
 !.gitignore

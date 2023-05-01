@@ -1,4 +1,4 @@
-// Logic for getting a Blang type from an AST node
+// Logic for getting an SSS type from an AST node
 #include <gc.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -14,16 +14,16 @@
 #include "util.h"
 
 // Cache of type string -> tuple type
-static bl_hashmap_t tuple_types = {0};
+static sss_hashmap_t tuple_types = {0};
 
-static bl_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
+static sss_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
 {
     if (condition && condition->tag == Declare)
         compiler_err(env, condition, "Declare is not supported in conditions for now");
     return get_type(env, body);
 }
 
-bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
+sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Var: {
@@ -39,7 +39,7 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        bl_type_t *fielded_t = parse_type_ast(env, access->fielded);
+        sss_type_t *fielded_t = parse_type_ast(env, access->fielded);
         binding_t *b = get_from_namespace(env, fielded_t, access->field);
         if (!b || b->type->tag != TypeType)
             compiler_err(env, ast, "I don't know any type with this name.");
@@ -47,27 +47,27 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
-        bl_type_t *item_t = parse_type_ast(env, item_type);
+        sss_type_t *item_t = parse_type_ast(env, item_type);
         if (!item_t) compiler_err(env, item_type, "I can't figure out what this type is.");
         return Type(ArrayType, .item_type=item_t);
     }
     case TypeTable: {
         ast_t *key_type_ast = Match(ast, TypeTable)->key_type;
-        bl_type_t *key_type = parse_type_ast(env, key_type_ast);
+        sss_type_t *key_type = parse_type_ast(env, key_type_ast);
         if (!key_type) compiler_err(env, key_type_ast, "I can't figure out what type this is.");
         ast_t *val_type_ast = Match(ast, TypeTable)->value_type;
-        bl_type_t *val_type = parse_type_ast(env, val_type_ast);
+        sss_type_t *val_type = parse_type_ast(env, val_type_ast);
         if (!val_type) compiler_err(env, val_type_ast, "I can't figure out what type this is.");
         return Type(TableType, .key_type=key_type, .value_type=val_type);
     }
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
-        bl_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
+        sss_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
         return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t);
     }
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
-        bl_type_t *raw = parse_type_ast(env, measure->type);
+        sss_type_t *raw = parse_type_ast(env, measure->type);
         const char* raw_units = type_units(raw);
         if (raw_units)
             compiler_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
@@ -76,17 +76,17 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
-        bl_type_t *ret_t = parse_type_ast(env, fn->ret_type);
+        sss_type_t *ret_t = parse_type_ast(env, fn->ret_type);
         NEW_LIST(const char*, arg_names);
         NEW_LIST(ast_t*, arg_defaults);
-        NEW_LIST(bl_type_t*, arg_types);
+        NEW_LIST(sss_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
             APPEND(arg_names, ith(fn->arg_names, i));
             if (ith(fn->arg_types, i)) {
                 APPEND(arg_types, parse_type_ast(env, ith(fn->arg_types, i)));
                 APPEND(arg_defaults, NULL);
             } else {
-                bl_type_t *arg_t = get_type(env, ith(fn->arg_defaults, i));
+                sss_type_t *arg_t = get_type(env, ith(fn->arg_defaults, i));
                 APPEND(arg_types, arg_t);
                 APPEND(arg_defaults, ith(fn->arg_defaults, i));
             }
@@ -98,8 +98,8 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         // binding_t *b = struct_->name ? hashmap_get(env->bindings, struct_->name) : NULL;
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(const char*, member_names);
-        NEW_LIST(bl_type_t*, member_types);
-        bl_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
+        NEW_LIST(sss_type_t*, member_types);
+        sss_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
             env = fresh_scope(env);
             hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
@@ -107,10 +107,10 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
         for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
             const char* member_name = ith(struct_->member_names, i);
             APPEND(member_names, member_name);
-            bl_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
+            sss_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
             APPEND(member_types, member_t);
         }
-        bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
+        sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
         if (memoized) {
             t = memoized;
         } else {
@@ -120,9 +120,9 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypeTaggedUnion: {
         auto tu = Match(ast, TypeTaggedUnion);
-        NEW_LIST(bl_tagged_union_member_t, members);
+        NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
-            bl_tagged_union_member_t member = {
+            sss_tagged_union_member_t member = {
                 .name=ith(tu->tag_names, i),
                 .tag_value=ith(tu->tag_values, i),
                 .type=parse_type_ast(env, ith(tu->tag_types, i)),
@@ -143,9 +143,9 @@ bl_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
 }
 
-static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
+static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
 {
-    bl_type_t *iter_t = get_type(env, iter);
+    sss_type_t *iter_t = get_type(env, iter);
     while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
     switch (iter_t->tag) {
     case ArrayType: {
@@ -167,7 +167,7 @@ static bl_type_t *get_iter_type(env_t *env, ast_t *iter)
     }
 }
 
-bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag, bl_type_t *rhs_t)
+sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e tag, sss_type_t *rhs_t)
 {
     // Dereference:
     while (lhs_t->tag == PointerType)
@@ -203,7 +203,7 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     if (type_eq(lhs_t, rhs_t)) {
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
-        bl_type_t *t = numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        sss_type_t *t = numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
         return with_units(rhs_t, units);
@@ -215,7 +215,7 @@ bl_type_t *get_math_type(env_t *env, ast_t *ast, bl_type_t *lhs_t, ast_tag_e tag
     }
 }
 
-static bl_type_t *generate(bl_type_t *t)
+static sss_type_t *generate(sss_type_t *t)
 {
     if (t->tag == VoidType)
         return t;
@@ -223,11 +223,11 @@ static bl_type_t *generate(bl_type_t *t)
         return Type(GeneratorType, .generated=t);
 }
 
-bl_type_t *get_type(env_t *env, ast_t *ast)
+sss_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Nil: {
-        bl_type_t *pointed = parse_type_ast(env, Match(ast, Nil)->type);
+        sss_type_t *pointed = parse_type_ast(env, Match(ast, Nil)->type);
         return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case Bool: {
@@ -265,15 +265,15 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return INT_TYPE;
     }
     case HeapAllocate: {
-        bl_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
+        sss_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
     case Maybe: {
-        bl_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
+        sss_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
         return Type(PointerType, .is_optional=true, .pointed=pointed);
     }
     case AssertNonNull: {
-        bl_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
+        sss_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
         if (t->tag != PointerType)
             compiler_err(env, ast, "This value isn't a pointer, so the '!' operator can't be applied to it.");
         else if (!Match(t, PointerType)->is_optional)
@@ -281,7 +281,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(PointerType, .is_optional=false, Match(t, PointerType)->pointed);
     }
     case Dereference: {
-        bl_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
+        sss_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
         if (pointer_t->tag != PointerType)
             compiler_err(env, ast, "You're attempting to dereference something that isn't a pointer (it's a %s)",
                         type_to_string(pointer_t));
@@ -314,13 +314,13 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (list->type)
             return Type(ArrayType, .item_type=parse_type_ast(env, list->type));
 
-        bl_type_t *item_type = NULL;
+        sss_type_t *item_type = NULL;
         for (int64_t i = 0; i < LIST_LEN(list->items); i++) {
             ast_t *item = LIST_ITEM(list->items, i);
-            bl_type_t *t2 = get_type(env, item);
+            sss_type_t *t2 = get_type(env, item);
             while (t2->tag == GeneratorType)
                 t2 = Match(t2, GeneratorType)->generated;
-            bl_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
+            sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
                 compiler_err(env, LIST_ITEM(list->items, i),
                             "This array item has type %s, which is different from earlier array items which have type %s",
@@ -334,25 +334,25 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (table->key_type && table->value_type)
             return Type(TableType, .key_type=parse_type_ast(env, table->key_type), .value_type=parse_type_ast(env, table->value_type));
 
-        bl_type_t *key_type = NULL, *value_type = NULL;
+        sss_type_t *key_type = NULL, *value_type = NULL;
         if (table->default_value)
             value_type = get_type(env, table->default_value);
         for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
             ast_t *entry = LIST_ITEM(table->entries, i);
-            bl_type_t *entry_t = get_type(env, entry);
+            sss_type_t *entry_t = get_type(env, entry);
             while (entry_t->tag == GeneratorType)
                 entry_t = Match(entry_t, GeneratorType)->generated;
 
-            bl_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
-            bl_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
+            sss_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
+            sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
             if (!key_merged)
                 compiler_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
                             type_to_string(key_t),  type_to_string(key_type));
             key_type = key_merged;
 
-            bl_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
-            bl_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
+            sss_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
+            sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
             if (!val_merged)
                 compiler_err(env, LIST_ITEM(table->entries, i),
                             "This table entry has type %s, which is different from earlier table entries which have type %s",
@@ -363,9 +363,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
-        bl_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(const char*, "key", "value"),
-                            .field_types=LIST(bl_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
-        bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
+        sss_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(const char*, "key", "value"),
+                            .field_types=LIST(sss_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
+        sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
         if (memoized) {
             t = memoized;
         } else {
@@ -375,7 +375,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        bl_type_t *fielded_t = get_type(env, access->fielded);
+        sss_type_t *fielded_t = get_type(env, access->fielded);
         if (streq(access->field, "__hash"))
             (void)get_hash_func(env, fielded_t); 
         else if (streq(access->field, "__compare"))
@@ -383,7 +383,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         else if (streq(access->field, "__print"))
             (void)get_print_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
-        bl_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
+        sss_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
         switch (value_t->tag) {
         case StructType: {
             auto struct_t = Match(value_t, StructType);
@@ -392,7 +392,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                     if (is_optional)
                         compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
 
-                    bl_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
+                    sss_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
                     if (struct_t->units)
                         field_t = with_units(field_t, struct_t->units);
                     return field_t;
@@ -425,7 +425,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         case ArrayType: {
             define_array_methods(env, value_t);
             auto array = Match(value_t, ArrayType);
-            bl_type_t *item_t = array->item_type;
+            sss_type_t *item_t = array->item_type;
             // TODO: support other things like pointers
             if (item_t->tag == StructType) {
                 // vecs.x ==> [v.x for v in vecs]
@@ -463,11 +463,11 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Index: {
         auto indexing = Match(ast, Index);
-        bl_type_t *indexed_t = get_type(env, indexing->indexed);
+        sss_type_t *indexed_t = get_type(env, indexing->indexed);
       try_again:
         switch (indexed_t->tag) {
         case ArrayType: {
-            bl_type_t *index_t = get_type(env, indexing->index);
+            sss_type_t *index_t = get_type(env, indexing->index);
             switch (index_t->tag) {
             case RangeType: return indexed_t;
             case IntType: case CharType: case CStringCharType:
@@ -494,7 +494,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case FunctionCall: {
         auto call = Match(ast, FunctionCall);
-        bl_type_t *fn_type_t = get_type(env, call->fn);
+        sss_type_t *fn_type_t = get_type(env, call->fn);
         if (fn_type_t->tag != FunctionType) {
             compiler_err(env, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
         }
@@ -532,7 +532,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             switch (stmt->tag) {
             case Declare: {
                 auto decl = Match(stmt, Declare);
-                bl_type_t *t = get_type(env, decl->value);
+                sss_type_t *t = get_type(env, decl->value);
                 hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
                 break;
             }
@@ -545,10 +545,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Do: {
         auto do_ = Match(ast, Do);
-        bl_type_t *t = get_type(env, do_->body);
+        sss_type_t *t = get_type(env, do_->body);
         if (do_->else_body) {
-            bl_type_t *else_t = get_type(env, do_->else_body);
-            bl_type_t *t2 = type_or_type(t, else_t);
+            sss_type_t *else_t = get_type(env, do_->else_body);
+            sss_type_t *t2 = type_or_type(t, else_t);
             if (!t2)
                 compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_t));
@@ -581,14 +581,14 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         return Type(TypeType, .type=parse_type_ast(env, ast));
     }
     case Negative: {
-        bl_type_t *t = get_type(env, Match(ast, Negative)->value);
+        sss_type_t *t = get_type(env, Match(ast, Negative)->value);
         if (!is_numeric(t))
             compiler_err(env, ast, "I only know how to negate numeric types, not %s", type_to_string(t));
         return t;
     }
     case And: {
         auto and_ = Match(ast, And);
-        bl_type_t *lhs_t = get_type(env, and_->lhs),
+        sss_type_t *lhs_t = get_type(env, and_->lhs),
                   *rhs_t = get_type(env, and_->rhs);
 
         if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
@@ -611,7 +611,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Or: {
         auto or_ = Match(ast, Or);
-        bl_type_t *lhs_t = get_type(env, or_->lhs),
+        sss_type_t *lhs_t = get_type(env, or_->lhs),
                   *rhs_t = get_type(env, or_->rhs);
 
         if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
@@ -636,7 +636,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Xor: {
         auto xor = Match(ast, Xor);
-        bl_type_t *lhs_t = get_type(env, xor->lhs),
+        sss_type_t *lhs_t = get_type(env, xor->lhs),
                   *rhs_t = get_type(env, xor->rhs);
 
         if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
@@ -655,12 +655,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
         // Okay safe again
 
-        bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
+        sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
     }
     case Concatenate: {
         auto concat = Match(ast, Concatenate);
-        bl_type_t *lhs_t = get_type(env, concat->lhs),
+        sss_type_t *lhs_t = get_type(env, concat->lhs),
                   *rhs_t = get_type(env, concat->rhs);
         if (!type_eq(lhs_t, rhs_t))
             compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %s vs. %s",
@@ -677,8 +677,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         ast_t *lhs = ast->__data.Min.lhs, *rhs = ast->__data.Min.rhs;
         // Okay safe again
 
-        bl_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
-        bl_type_t *t = type_or_type(lhs_t, rhs_t);
+        sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
+        sss_type_t *t = type_or_type(lhs_t, rhs_t);
         if (!t)
             compiler_err(env, ast, "The two sides of this operation are not compatible: %s vs %s",
                          type_to_string(lhs_t), type_to_string(rhs_t));
@@ -686,7 +686,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
 
     case Not: {
-        bl_type_t *t = get_type(env, Match(ast, Not)->value);
+        sss_type_t *t = get_type(env, Match(ast, Not)->value);
         if (t->tag == BoolType || is_integral(t))
             return t;
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
@@ -701,8 +701,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         } else {
             lhs = Match(ast, NotEqual)->lhs, rhs = Match(ast, NotEqual)->rhs;
         }
-        bl_type_t *lhs_t = get_type(env, lhs);
-        bl_type_t *rhs_t = get_type(env, rhs);
+        sss_type_t *lhs_t = get_type(env, lhs);
+        sss_type_t *rhs_t = get_type(env, rhs);
         if (type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t))
             return Type(BoolType);
         else if (is_numeric(lhs_t) && is_numeric(rhs_t))
@@ -715,10 +715,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     case Lambda: {
         auto lambda = Match(ast, Lambda);
         NEW_LIST(const char*, arg_names);
-        NEW_LIST(bl_type_t*, arg_types);
+        NEW_LIST(sss_type_t*, arg_types);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
-            bl_type_t *t = parse_type_ast(env, arg_def);
+            sss_type_t *t = parse_type_ast(env, arg_def);
             const char* arg_name = LIST_ITEM(lambda->arg_names, i);
             APPEND(arg_names, arg_name);
             APPEND(arg_types, t);
@@ -729,24 +729,24 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
-        bl_type_t *ret = get_type(lambda_env, lambda->body);
+        sss_type_t *ret = get_type(lambda_env, lambda->body);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 
     case FunctionDef: {
         auto def = Match(ast, FunctionDef);
         NEW_LIST(const char*, arg_names);
-        NEW_LIST(bl_type_t*, arg_types);
+        NEW_LIST(sss_type_t*, arg_types);
         NEW_LIST(ast_t*, arg_defaults);
 
         // In order to allow default values to reference other arguments (e.g. `def foo(x:Foo, y=x)`)
         // we need to create scoped bindings for them here:
         env_t *default_arg_env = global_scope(env);
-        default_arg_env->bindings = new(bl_hashmap_t, .fallback=default_arg_env->bindings);
+        default_arg_env->bindings = new(sss_hashmap_t, .fallback=default_arg_env->bindings);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_type_def = LIST_ITEM(def->arg_types, i);
             if (!arg_type_def) continue;
-            bl_type_t *arg_type = parse_type_ast(env, arg_type_def);
+            sss_type_t *arg_type = parse_type_ast(env, arg_type_def);
             hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
         }
         
@@ -755,20 +755,20 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             const char* arg_name = LIST_ITEM(def->arg_names, i);
             APPEND(arg_names, arg_name);
             if (arg_def) {
-                bl_type_t *arg_type = parse_type_ast(env, arg_def);
+                sss_type_t *arg_type = parse_type_ast(env, arg_def);
                 APPEND(arg_types, arg_type);
                 ast_t *default_val = NULL;
                 APPEND(arg_defaults, default_val);
             } else {
                 ast_t *default_val = LIST_ITEM(def->arg_defaults, i);
-                bl_type_t *arg_type = get_type(default_arg_env, default_val);
+                sss_type_t *arg_type = get_type(default_arg_env, default_val);
                 APPEND(arg_types, arg_type);
                 APPEND(arg_defaults, default_val);
                 hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
             }
         }
 
-        bl_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
+        sss_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
     }
 
@@ -780,18 +780,18 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto struct_ = Match(ast, Struct);
         if (!struct_->type) {
             NEW_LIST(const char*, field_names);
-            NEW_LIST(bl_type_t*, field_types);
+            NEW_LIST(sss_type_t*, field_types);
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != StructField)
                     compiler_err(env, *member, "Anonymous structs must have names for each field");
                 auto field = Match(*member, StructField);
                 APPEND(field_names, field->name);
-                bl_type_t *field_type = get_type(env, field->value);
+                sss_type_t *field_type = get_type(env, field->value);
                 APPEND(field_types, field_type);
             }
 
-            bl_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
-            bl_type_t *memoized = hget(&tuple_types, type_to_string(t), bl_type_t*);
+            sss_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
+            sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
             if (memoized) {
                 t = memoized;
             } else {
@@ -803,9 +803,9 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (!b)
             compiler_err(env, struct_->type, "I can't figure out this type");
 
-        bl_type_t *t = NULL;
+        sss_type_t *t = NULL;
         if (struct_->type && struct_->type->tag == FieldAccess) {
-            bl_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
+            sss_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
             if (fielded_t->tag == TypeType && Match(fielded_t, TypeType)->type->tag == TaggedUnionType)
                 t = Match(fielded_t, TypeType)->type;
         }
@@ -823,10 +823,10 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         auto if_ = Match(ast, If);
         ast_t *cond = if_->condition;
         ast_t *body = if_->body;
-        bl_type_t *t = get_clause_type(env, cond, body);
+        sss_type_t *t = get_clause_type(env, cond, body);
         if (if_->else_body) {
-            bl_type_t *else_type = get_type(env, if_->else_body);
-            bl_type_t *t2 = type_or_type(t, else_type);
+            sss_type_t *else_type = get_type(env, if_->else_body);
+            sss_type_t *t2 = type_or_type(t, else_type);
             if (!t2)
                 compiler_err(env, if_->else_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
@@ -840,12 +840,12 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
 
     case When: {
         auto when = Match(ast, When);
-        bl_type_t *tagged_t = get_type(env, when->subject);
+        sss_type_t *tagged_t = get_type(env, when->subject);
         if (tagged_t->tag != TaggedUnionType)
             compiler_err(env, when->subject, "A 'when' statement requires the subject be a tagged union, not %s",
                         type_to_string(tagged_t));
 
-        bl_type_t *t = NULL;
+        sss_type_t *t = NULL;
         LIST_FOR (when->cases, case_, _) {
             env_t *case_env = env;
             if (case_->var) {
@@ -861,8 +861,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
                 compiler_err(env, case_->tag, "I couldn't find a tagged union value with this tag.");
             }
           env_ready:;
-            bl_type_t *case_t = get_type(case_env, (case_)->body);
-            bl_type_t *t2 = type_or_type(t, case_t);
+            sss_type_t *case_t = get_type(case_env, (case_)->body);
+            sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
                 compiler_err(env, (case_)->body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
@@ -870,8 +870,8 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
             t = t2;
         }
         if (when->default_body) {
-            bl_type_t *else_type = get_type(env, when->default_body);
-            bl_type_t *t2 = type_or_type(t, else_type);
+            sss_type_t *else_type = get_type(env, when->default_body);
+            sss_type_t *t2 = type_or_type(t, else_type);
             if (!t2)
                 compiler_err(env, when->default_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
@@ -891,7 +891,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
     }
     case For: {
         auto for_loop = Match(ast, For);
-        bl_type_t *key_type = INT_TYPE,
+        sss_type_t *key_type = INT_TYPE,
                   *value_type = get_iter_type(env, for_loop->iter);
 
         env_t *loop_env = fresh_scope(env);
@@ -929,7 +929,7 @@ bl_type_t *get_type(env_t *env, ast_t *ast)
         if (reduction->fallback) {
             return get_type(env, reduction->fallback);
         } else {
-            bl_type_t *item_type = get_iter_type(env, reduction->iter);
+            sss_type_t *item_type = get_iter_type(env, reduction->iter);
             hset(env->bindings, "x", new(binding_t, .type=item_type));
             hset(env->bindings, "y", new(binding_t, .type=item_type));
             return get_type(env, reduction->combination);
@@ -960,7 +960,7 @@ bool is_discardable(env_t *env, ast_t *ast)
         return true;
     default: break;
     }
-    bl_type_t *t = get_type(env, ast);
+    sss_type_t *t = get_type(env, ast);
     while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
     return (t->tag == VoidType || t->tag == AbortType);
 }

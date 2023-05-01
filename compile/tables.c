@@ -16,11 +16,11 @@
 #include "../util.h"
 
 typedef struct {
-    bl_type_t *table_type;
+    sss_type_t *table_type;
     gcc_rvalue_t *table_ptr;
 } table_insert_info_t;
 
-static gcc_rvalue_t *table_entry_value_offset(env_t *env, bl_type_t *t)
+static gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
 {
     size_t key_size = gcc_sizeof(env, Match(t, TableType)->key_type);
     size_t value_align = gcc_alignof(env, Match(t, TableType)->value_type);
@@ -29,11 +29,11 @@ static gcc_rvalue_t *table_entry_value_offset(env_t *env, bl_type_t *t)
     return gcc_rvalue_size(env->ctx, value_offset);
 }
 
-gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, ast_t *key_ast)
+gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast)
 {
     gcc_func_t *func = gcc_block_func(*block);
-    bl_type_t *needed_key_t = Match(t, TableType)->key_type;
-    gcc_type_t *needed_key_gcc_t = bl_type_to_gcc(env, needed_key_t);
+    sss_type_t *needed_key_t = Match(t, TableType)->key_type;
+    gcc_type_t *needed_key_gcc_t = sss_type_to_gcc(env, needed_key_t);
 
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!block) return NULL;
@@ -45,7 +45,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
     gcc_assign(*block, NULL, key_lval, key_val);
     flatten_arrays(env, block, needed_key_t, gcc_lvalue_address(key_lval, NULL));
 
-    gcc_func_t *hashmap_set_fn = get_function(env, "bl_hashmap_set");
+    gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
     gcc_func_t *key_hash = get_hash_func(env, needed_key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, needed_key_t);
     gcc_rvalue_t *call = gcc_callx(
@@ -58,24 +58,24 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rv
         table_entry_value_offset(env, t),
         gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)));
 
-    gcc_type_t *value_gcc_t = bl_type_to_gcc(env, Match(t, TableType)->value_type);
+    gcc_type_t *value_gcc_t = sss_type_to_gcc(env, Match(t, TableType)->value_type);
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
     gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(value_gcc_t)));
     return gcc_rvalue_dereference(gcc_rval(dest), NULL);
 }
 
-void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
+void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
 {
-    gcc_type_t *entry_t = bl_type_to_gcc(env, table_entry_type(t));
+    gcc_type_t *entry_t = sss_type_to_gcc(env, table_entry_type(t));
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, "_entry");
 
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, Match(t, TableType)->key_type), "_key");
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, sss_type_to_gcc(env, Match(t, TableType)->key_type), "_key");
     gcc_assign(*block, NULL, key_lval, key_val);
     flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
     gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
 
-    gcc_func_t *hashmap_remove_fn = get_function(env, "bl_hashmap_remove");
+    gcc_func_t *hashmap_remove_fn = get_function(env, "sss_hashmap_remove");
     gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(t, TableType)->key_type);
     gcc_rvalue_t *call = gcc_callx(
@@ -90,7 +90,7 @@ void table_remove(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *t
 
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)
 {
-    bl_type_t *raw_entry_t = get_type(env, entry);
+    sss_type_t *raw_entry_t = get_type(env, entry);
     if (raw_entry_t->tag == GeneratorType) {
         gcc_rvalue_t *val = compile_expr(env, block, entry);
         assert(!val);
@@ -99,9 +99,9 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
 
     ast_t *key_ast = Match(entry, TableEntry)->key,
           *value_ast = Match(entry, TableEntry)->value;
-    bl_type_t *raw_key_t = get_type(env, key_ast),
+    sss_type_t *raw_key_t = get_type(env, key_ast),
               *raw_value_t = get_type(env, value_ast);
-    bl_type_t *needed_key_t = Match(info->table_type, TableType)->key_type,
+    sss_type_t *needed_key_t = Match(info->table_type, TableType)->key_type,
               *needed_value_t = Match(info->table_type, TableType)->value_type;
 
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
@@ -117,12 +117,12 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                     type_to_string(needed_value_t), type_to_string(raw_value_t));
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_key_t), "_key"),
-                 *value_lval = gcc_local(func, NULL, bl_type_to_gcc(env, needed_value_t), "_value");
+    gcc_lvalue_t *key_lval = gcc_local(func, NULL, sss_type_to_gcc(env, needed_key_t), "_key"),
+                 *value_lval = gcc_local(func, NULL, sss_type_to_gcc(env, needed_value_t), "_value");
     gcc_assign(*block, NULL, key_lval, key_val);
     gcc_assign(*block, NULL, value_lval, value_val);
 
-    gcc_func_t *hashmap_set_fn = get_function(env, "bl_hashmap_set");
+    gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
     gcc_func_t *key_hash = get_hash_func(env, Match(info->table_type, TableType)->key_type);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, Match(info->table_type, TableType)->key_type);
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, hashmap_set_fn,
@@ -139,7 +139,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
 gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out)
 {
     gcc_loc_t *loc = ast_loc(env, key_ast);
-    bl_type_t *table_t = get_type(env, table_ast);
+    sss_type_t *table_t = get_type(env, table_ast);
     gcc_rvalue_t *table = compile_expr(env, block, table_ast);
     while (table_t->tag == PointerType) {
         auto ptr = Match(table_t, PointerType);
@@ -150,22 +150,22 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         table_t = ptr->pointed;
     }
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *table_var = gcc_local(func, loc, bl_type_to_gcc(env, table_t), "_table");
+    gcc_lvalue_t *table_var = gcc_local(func, loc, sss_type_to_gcc(env, table_t), "_table");
     gcc_assign(*block, loc, table_var, table);
 
-    bl_type_t *key_t = Match(table_t, TableType)->key_type;
-    bl_type_t *value_t = Match(table_t, TableType)->value_type;
+    sss_type_t *key_t = Match(table_t, TableType)->key_type;
+    sss_type_t *value_t = Match(table_t, TableType)->value_type;
 
-    gcc_func_t *hashmap_get_fn = get_function(env, "bl_hashmap_get");
+    gcc_func_t *hashmap_get_fn = get_function(env, "sss_hashmap_get");
     gcc_func_t *key_hash = get_hash_func(env, key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, key_t);
 
-    bl_type_t *raw_key_t = get_type(env, key_ast);
+    sss_type_t *raw_key_t = get_type(env, key_ast);
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!promote(env, raw_key_t, &key_val, key_t))
         compiler_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
                     type_to_string(raw_key_t), type_to_string(key_t));
-    gcc_lvalue_t *key_lval = gcc_local(func, loc, bl_type_to_gcc(env, key_t), "_key");
+    gcc_lvalue_t *key_lval = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "_key");
     gcc_assign(*block, loc, key_lval, key_val);
     if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
     flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
@@ -177,7 +177,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(table_t))),
         gcc_lvalue_address(key_lval, loc),
         table_entry_value_offset(env, table_t));
-    gcc_type_t *val_ptr_gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, value_t));
+    gcc_type_t *val_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, value_t));
     val_ptr = gcc_cast(env->ctx, loc, val_ptr, val_ptr_gcc_t);
 
     gcc_lvalue_t *value_lval = gcc_local(func, loc, val_ptr_gcc_t, "_value");
@@ -188,12 +188,12 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
 gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto table = Match(ast, Table);
-    bl_type_t *t = get_type(env, ast);
+    sss_type_t *t = get_type(env, ast);
     if (Match(t, TableType)->key_type->tag == VoidType)
         compiler_err(env, ast, "Tables can't be defined with a Void key type");
     else if (Match(t, TableType)->value_type->tag == VoidType)
         compiler_err(env, ast, "Tables can't be defined with a Void value type");
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_func_t *func = gcc_block_func(*block);
 
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -231,7 +231,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (table->fallback) {
         ast_t *fallback = table->fallback;
-        bl_type_t *fallback_t = get_type(env, fallback);
+        sss_type_t *fallback_t = get_type(env, fallback);
         if (fallback_t->tag == PointerType) {
             compiler_err(env, fallback, "Fallback tables are not allowed to be pointers to mutable tables, only table values are allowed. \n"
                         "Use '*' to dereference this value if you want to use it as a fallback.");
@@ -250,8 +250,8 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 
     if (table->default_value) {
-        bl_type_t *default_t = get_type(env, table->default_value);
-        bl_type_t *value_t = Match(t, TableType)->value_type;
+        sss_type_t *default_t = get_type(env, table->default_value);
+        sss_type_t *value_t = Match(t, TableType)->value_type;
         if (!type_is_a(default_t, value_t))
             compiler_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
                         type_to_string(default_t), type_to_string(value_t));
@@ -264,9 +264,9 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     return gcc_rval(table_var);
 }
 
-void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, bl_type_t *t)
+void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t)
 {
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_func_t *fputs_fn = get_function(env, "fputs");
 
 #define WRITE_LITERAL(block, str) gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
@@ -274,7 +274,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_func_t *func = gcc_block_func(*block);
 
-    bl_type_t *entry_t = table_entry_type(t);
+    sss_type_t *entry_t = table_entry_type(t);
 
     // i = 0
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_i");
@@ -312,7 +312,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_block_t *done_with_entries = gcc_new_block(func, fresh("done_with_entries"));
 
     // entry_ptr = array.entries
-    gcc_type_t *gcc_entry_t = bl_type_to_gcc(env, entry_t);
+    gcc_type_t *gcc_entry_t = sss_type_to_gcc(env, entry_t);
     gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_entry_t), "_entry_ptr");
     gcc_assign(*block, NULL, entry_ptr, entries);
 
@@ -325,9 +325,9 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // entry = *entry_ptr
     gcc_rvalue_t *entry = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
     // print(key) print("=>") print(value)
-    bl_type_t *key_type = Match(t, TableType)->key_type;
+    sss_type_t *key_type = Match(t, TableType)->key_type;
     gcc_func_t *key_print = get_print_func(env, key_type);
-    gcc_struct_t *entry_struct = gcc_type_if_struct(bl_type_to_gcc(env, entry_t));
+    gcc_struct_t *entry_struct = gcc_type_if_struct(sss_type_to_gcc(env, entry_t));
     gcc_rvalue_t *key = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 0));
     gcc_eval(add_next_entry, NULL, gcc_callx(env->ctx, NULL, key_print, key, file, rec, color));
     gcc_block_t *rest_of_entry = add_next_entry;
@@ -335,7 +335,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     WRITE_LITERAL(rest_of_entry, "=>");
     COLOR_LITERAL(&rest_of_entry, "\x1b[m");
     gcc_rvalue_t *value = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 1));
-    bl_type_t *value_type = Match(t, TableType)->value_type;
+    sss_type_t *value_type = Match(t, TableType)->value_type;
     gcc_func_t *value_print = get_print_func(env, value_type);
     gcc_eval(rest_of_entry, NULL, gcc_callx(env->ctx, NULL, value_print, value, file, rec, color));
     
@@ -375,8 +375,8 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_jump(print_fallback, NULL, check_default);
 
     // Check default
-    bl_type_t *default_t = Match(t, TableType)->value_type;
-    gcc_type_t *default_gcc_t = bl_type_to_gcc(env, default_t);
+    sss_type_t *default_t = Match(t, TableType)->value_type;
+    gcc_type_t *default_gcc_t = sss_type_to_gcc(env, default_t);
     gcc_rvalue_t *def = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD));
     gcc_rvalue_t *has_default = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, def, gcc_null(env->ctx, gcc_get_ptr_type(default_gcc_t)));
     gcc_jump_condition(check_default, NULL, has_default, print_default, done_with_metadata);

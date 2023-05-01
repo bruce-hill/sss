@@ -45,9 +45,9 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     gcc_comment(*block, NULL, "For Loop");
     ast_t *iter = for_->iter;
-    bl_type_t *iter_t = get_type(env, iter);
+    sss_type_t *iter_t = get_type(env, iter);
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
-    gcc_type_t *gcc_iter_t = bl_type_to_gcc(env, iter_t);
+    gcc_type_t *gcc_iter_t = sss_type_to_gcc(env, iter_t);
     gcc_rvalue_t *original_pointer = NULL;
     if (iter_t->tag == PointerType) {
         auto ptr = Match(iter_t, PointerType);
@@ -66,11 +66,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ptr->pointed->tag == ArrayType)
                 mark_array_cow(env, block, iter_rval);
             else if (ptr->pointed->tag == TableType)
-                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "bl_hashmap_mark_cow"), iter_rval));
+                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "sss_hashmap_mark_cow"), iter_rval));
 
             iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
             iter_t = Match(iter_t, PointerType)->pointed;
-            gcc_iter_t = bl_type_to_gcc(env, iter_t);
+            gcc_iter_t = sss_type_to_gcc(env, iter_t);
         } else {
             compiler_err(env, iter, "This value is a %s pointer. You must dereference the pointer with *%.*s to access the underlying value to iterate over it.",
                          type_to_string(iter_t), (int)(iter->span.end - iter->span.start), iter->span.start);
@@ -88,13 +88,13 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_update(for_next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
 
     gcc_lvalue_t *item_shadow;
-    bl_type_t *item_t;
+    sss_type_t *item_t;
     switch (iter_t->tag) {
     case ArrayType: {
         // item_ptr = array->items
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = Match(iter_t, ArrayType)->item_type;
-        gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+        gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
         if (for_->value && for_->value->tag == Dereference) {
             if (!original_pointer)
@@ -149,7 +149,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         // entry_ptr = table->entries
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = table_entry_type(iter_t);
-        gcc_type_t *gcc_item_t = bl_type_to_gcc(env, item_t);
+        gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_entry_ptr");
         gcc_assign(*block, NULL, entry_ptr,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_ENTRIES_FIELD)));
@@ -280,7 +280,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
       found_next_field:
 
-        bl_type_t *iter_var_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
+        sss_type_t *iter_var_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
         if (for_->value && for_->value->tag == Dereference) {
             item_t = iter_var_t;
             if (!original_pointer)
@@ -289,7 +289,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             item_t = iter_t;
         }
-        gcc_type_t *gcc_iter_var_t = bl_type_to_gcc(env, iter_var_t);
+        gcc_type_t *gcc_iter_var_t = sss_type_to_gcc(env, iter_var_t);
 
         // iter = obj
         gcc_lvalue_t *tmp = NULL;
@@ -308,7 +308,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
 
         // Shadow loop variables so they can be mutated without breaking the loop's functionality
-        item_shadow = gcc_local(func, NULL, bl_type_to_gcc(env, item_t), "_item");
+        item_shadow = gcc_local(func, NULL, sss_type_to_gcc(env, item_t), "_item");
         gcc_rvalue_t *to_assign = type_eq(item_t, iter_var_t) ? gcc_rval(iter_var)
             : gcc_rval(gcc_rvalue_dereference(gcc_rval(iter_var), NULL));
         gcc_assign(for_body, NULL, item_shadow, to_assign);

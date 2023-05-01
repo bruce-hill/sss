@@ -1,4 +1,4 @@
-// Logic for compiling Blang ranges (`1..10`)
+// Logic for compiling SSS ranges (`1..10`)
 #include <assert.h>
 #include <libgccjit.h>
 #include <ctype.h>
@@ -19,7 +19,7 @@
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
-    gcc_type_t *range_t = bl_type_to_gcc(env, Type(RangeType));
+    gcc_type_t *range_t = sss_type_to_gcc(env, Type(RangeType));
     gcc_struct_t *range_struct = gcc_type_if_struct(range_t);
     assert(range_struct);
     auto range = Match(ast, Range);
@@ -69,7 +69,7 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
     gcc_loc_t *loc = ast_loc(env, range);
     gcc_func_t *func = gcc_block_func(*block);
 
-    bl_type_t *member_t = get_type(env, member);
+    sss_type_t *member_t = get_type(env, member);
     gcc_lvalue_t *member_var = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_member");
     gcc_rvalue_t *member_val = compile_expr(env, block, member);
     if (!promote(env, member_t, &member_val, Type(IntType, .bits=64)))
@@ -77,7 +77,7 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
     gcc_assign(*block, loc, member_var, member_val);
     member_val = gcc_rval(member_var);
 
-    gcc_type_t *gcc_range_t = bl_type_to_gcc(env, get_type(env, range));
+    gcc_type_t *gcc_range_t = sss_type_to_gcc(env, get_type(env, range));
     gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
     gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, "_range");
     gcc_assign(*block, loc, range_var, compile_range(env, block, range));

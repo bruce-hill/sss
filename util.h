@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "libblang/utils.h"
+#include "libsss/utils.h"
 
 #define streq(a, b) (((a) == NULL && (b) == NULL) || (((a) == NULL) == ((b) == NULL) && strcmp(a, b) == 0))
 #define new(t, ...) ((t*)memcpy(GC_MALLOC(sizeof(t)), &(t){__VA_ARGS__}, sizeof(t)))

@@ -1,4 +1,4 @@
-// Logic for compile a file containing a Blang program
+// Logic for compile a file containing a SSS program
 #include <assert.h>
 #include <ctype.h>
 #include <err.h>
@@ -17,13 +17,13 @@
 #include "libgccjit_abbrev.h"
 #include "../SipHash/halfsiphash.h"
 
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, debug);
 
-    bl_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
-    bl_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
-    gcc_type_t *gcc_string_t = bl_type_to_gcc(env, str_t);
+    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
+    gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
 
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_string_t, "PROGRAM_NAME");
@@ -31,7 +31,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
          new(binding_t, .rval=gcc_rval(program_name), .type=str_t));
 
     // Set up `ARGS`
-    gcc_type_t *args_gcc_t = bl_type_to_gcc(env, str_array_t);
+    gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
     hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t));
 
@@ -69,8 +69,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, ast_t *a
     // Actually compile the functions:
     for (uint32_t i = 1; i <= env->ast_functions->count; i++) {
         auto entry = hnth(env->ast_functions, i, ast_t*, gcc_func_t*);
-        bl_type_t *t = Type(ModuleType, .path=entry->key->span.file->filename);
-        bl_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
+        sss_type_t *t = Type(ModuleType, .path=entry->key->span.file->filename);
+        sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
         env_t module_env = *env;
         module_env.bindings = namespace;
         compile_function(&module_env, entry->value, entry->key);

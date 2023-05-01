@@ -5,7 +5,7 @@ extend $Sh
     def run(sh:$Sh):{output:String,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "r") or return {output="", status=-1i32}
-        output := (extern blang_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
+        output := (extern sss_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
         pclose := (extern pclose:(?_POpenFile)->Int32)
         status := pclose(f)
         if status >= 0

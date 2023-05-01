@@ -1,10 +1,10 @@
 #include <gc/cord.h>
 
-#include "libblang/hashmap.h"
+#include "libsss/hashmap.h"
 #include "types.h"
 #include "util.h"
 
-static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
+static CORD type_to_cord(sss_type_t *t, bool expand_structs) {
     switch (t->tag) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
@@ -77,7 +77,7 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
                 c = CORD_cat(c, struct_->name);
             c = CORD_cat(c, "{");
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
-                bl_type_t *ft = LIST_ITEM(struct_->field_types, i);
+                sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
                 const char* fname = LIST_ITEM(struct_->field_names, i);
                 if (i > 0)
                     c = CORD_cat(c, ",");
@@ -136,18 +136,18 @@ static CORD type_to_cord(bl_type_t *t, bool expand_structs) {
     }
 }
 
-const char* type_to_string(bl_type_t *t) {
+const char* type_to_string(sss_type_t *t) {
     return CORD_to_char_star(type_to_cord(t, false));
 }
 
-bool type_eq(bl_type_t *a, bl_type_t *b)
+bool type_eq(sss_type_t *a, sss_type_t *b)
 {
     if (a == b) return true;
     if (a->tag != b->tag) return false;
     return streq(type_to_string(a), type_to_string(b));
 }
 
-bool type_is_a(bl_type_t *t, bl_type_t *req)
+bool type_is_a(sss_type_t *t, sss_type_t *req)
 {
     if (type_eq(t, req)) return true;
     if (t->tag == PointerType && req->tag == PointerType) {
@@ -159,21 +159,21 @@ bool type_is_a(bl_type_t *t, bl_type_t *req)
     return false;
 }
 
-static bl_type_t *non_optional(bl_type_t *t)
+static sss_type_t *non_optional(sss_type_t *t)
 {
     if (t->tag != PointerType) return t;
     auto ptr = Match(t, PointerType);
     return ptr->is_optional ? Type(PointerType, .is_optional=false, .pointed=ptr->pointed) : t;
 }
 
-bl_type_t *value_type(bl_type_t *t)
+sss_type_t *value_type(sss_type_t *t)
 {
     while (t->tag == PointerType)
         t = Match(t, PointerType)->pointed;
     return t;
 }
 
-bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
+sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
 {
     if (!a) return b;
     if (!b) return a;
@@ -188,7 +188,7 @@ bl_type_t *type_or_type(bl_type_t *a, bl_type_t *b)
     return NULL;
 }
 
-const char* type_units(bl_type_t *t)
+const char* type_units(sss_type_t *t)
 {
     switch (t->tag) {
     case IntType: return Match(t, IntType)->units;
@@ -200,7 +200,7 @@ const char* type_units(bl_type_t *t)
     }
 }
 
-bl_type_t *with_units(bl_type_t *t, const char* units)
+sss_type_t *with_units(sss_type_t *t, const char* units)
 {
     switch (t->tag) {
     case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits, .is_unsigned=Match(t, IntType)->is_unsigned);
@@ -221,7 +221,7 @@ bl_type_t *with_units(bl_type_t *t, const char* units)
     }
 }
 
-bool is_integral(bl_type_t *t)
+bool is_integral(sss_type_t *t)
 {
     switch (t->tag) {
     case IntType: case CharType: case CStringCharType:
@@ -231,7 +231,7 @@ bool is_integral(bl_type_t *t)
     }
 }
 
-bool is_numeric(bl_type_t *t)
+bool is_numeric(sss_type_t *t)
 {
     switch (t->tag) {
     case IntType: case NumType:
@@ -242,7 +242,7 @@ bool is_numeric(bl_type_t *t)
     }
 }
 
-int numtype_priority(bl_type_t *t)
+int numtype_priority(sss_type_t *t)
 {
     switch (t->tag) {
     case BoolType: return 1;
@@ -261,7 +261,7 @@ int numtype_priority(bl_type_t *t)
     }
 }
 
-bool is_orderable(bl_type_t *t)
+bool is_orderable(sss_type_t *t)
 {
     switch (t->tag) {
     case ArrayType: return is_orderable(Match(t, ArrayType)->item_type);
@@ -287,7 +287,7 @@ bool is_orderable(bl_type_t *t)
     }
 }
 
-bool has_heap_memory(bl_type_t *t)
+bool has_heap_memory(sss_type_t *t)
 {
     switch (t->tag) {
     case ArrayType: return true;
@@ -315,7 +315,7 @@ bool has_heap_memory(bl_type_t *t)
     }
 }
 
-bool can_promote(bl_type_t *actual, bl_type_t *needed)
+bool can_promote(sss_type_t *actual, sss_type_t *needed)
 {
     // No promotion necessary:
     if (type_eq(actual, needed))
@@ -368,7 +368,7 @@ bool can_promote(bl_type_t *actual, bl_type_t *needed)
     return false;
 }
 
-bool can_leave_uninitialized(bl_type_t *t)
+bool can_leave_uninitialized(sss_type_t *t)
 {
     switch (t->tag) {
     case PointerType: return Match(t, PointerType)->is_optional;
@@ -393,13 +393,13 @@ bool can_leave_uninitialized(bl_type_t *t)
     }
 }
 
-bl_type_t *table_entry_type(bl_type_t *table_t)
+sss_type_t *table_entry_type(sss_type_t *table_t)
 {
-    static bl_hashmap_t cache = {0};
-    bl_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                        .field_types=LIST(bl_type_t*, Match(table_t, TableType)->key_type,
+    static sss_hashmap_t cache = {0};
+    sss_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
+                        .field_types=LIST(sss_type_t*, Match(table_t, TableType)->key_type,
                                           Match(table_t, TableType)->value_type));
-    bl_type_t *cached = hget(&cache, type_to_string(t), bl_type_t*);
+    sss_type_t *cached = hget(&cache, type_to_string(t), sss_type_t*);
     if (cached) {
         return cached;
     } else {

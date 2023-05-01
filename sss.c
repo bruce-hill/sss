@@ -16,7 +16,7 @@
 
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
-int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, char *argv[])
+int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -60,7 +60,7 @@ int compile_to_file(gcc_jit_context *ctx, bl_file_t *f, bool verbose, int argc, 
     return 0;
 }
 
-int run_file(gcc_jit_context *ctx, jmp_buf *on_err, bl_file_t *f, bool verbose, int argc, char *argv[])
+int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -90,7 +90,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
 
-    printf("\n    \x1b[1;4mWelcome to the Blang v%s interactive console!\x1b[m\n", BLANG_VERSION);
+    printf("\n     \x1b[1;4mWelcome to the SSS v%s interactive console!\x1b[m\n", SSS_VERSION);
     printf("          press 'enter' twice to run a command\n");
     printf("     \x1b[2mnote: variables do not persist across commands\x1b[m\n\n\n");
 
@@ -126,8 +126,8 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             } else if (streq(line, "help\n")) {
                 puts(
                     "\n\x1b[0;3;36;1m"
-                    "Hello! This is the blang read-evaluate-print-loop (REPL).\n"
-                    "Here, you can type blang statements or expressions to see them evaluted and printed.\n"
+                    "Hello! This is the SSS read-evaluate-print-loop (REPL).\n"
+                    "Here, you can type SSS statements or expressions to see them evaluted and printed.\n"
                     "For example:\n\n"
                     "    \x1b[0;33;1m>>>\x1b[m 1+2\n"
                     "    \x1b[2m= \x1b[0;35m3\x1b[0;2m : Int\x1b[m\n"
@@ -155,7 +155,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
             break;
         }
 
-        bl_file_t *f = bl_spoof_file("<repl>", buf);
+        sss_file_t *f = sss_spoof_file("<repl>", buf);
         env->file = f;
         if (setjmp(on_err) != 0) {
             CLEANUP();
@@ -183,7 +183,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
         block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        bl_hashmap_t old_globals = {0};
+        sss_hashmap_t old_globals = {0};
         for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
             auto entry = hnth(env->global_bindings, i, const char*, binding_t*);
             hset(&old_globals, entry->key, entry->value);
@@ -221,7 +221,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
             void *global = gcc_jit_result_get_global(result, entry->value->sym_name);
             assert(global);
-            gcc_type_t *gcc_t = bl_type_to_gcc(env, b->type);
+            gcc_type_t *gcc_t = sss_type_to_gcc(env, b->type);
             char *copy = GC_MALLOC(gcc_sizeof(env, b->type));
             memcpy(copy, (char*)global, gcc_sizeof(env, b->type));
             gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(env->ctx, gcc_get_ptr_type(gcc_t), copy);
@@ -257,11 +257,11 @@ int main(int argc, char *argv[])
     gcc_jit_context *ctx = gcc_jit_context_acquire();
     assert(ctx != NULL);
 
-    // Set $BLANGPATH (without overriding if it already exists)
-    setenv("BLANGPATH", heap_strf(".:%s/.local/share/blang/modules:/usr/local/share/blang/modules", getenv("HOME")), 0);
+    // Set $SSSPATH (without overriding if it already exists)
+    setenv("SSSPATH", heap_strf(".:%s/.local/share/sss/modules:/usr/local/share/sss/modules", getenv("HOME")), 0);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-l:libblang.so."BLANG_VERSION,
+        "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-l:libsss.so."SSS_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)
@@ -271,8 +271,8 @@ int main(int argc, char *argv[])
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
-            puts("blang - The Blang programming language runner");
-            puts("Usage: blang [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.bl]");
+            puts("sss - The SSS programming language runner");
+            puts("Usage: sss [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.sss]");
             return 0;
         } else if (streq(argv[i], "-V")) {
             ++i;
@@ -284,7 +284,7 @@ int main(int argc, char *argv[])
             verbose = true;
             continue;
         } else if (streq(argv[i], "--version")) {
-            puts(BLANG_VERSION);
+            puts(SSS_VERSION);
             return 0;
         } else if (streq(argv[i], "-c") || streq(argv[i], "--compile")) {
             run_program = false;
@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
             err(1, "could not pledge");
 #endif
 
-        bl_file_t *f = bl_load_file(argv[i]);
+        sss_file_t *f = sss_load_file(argv[i]);
         if (!f) {
             if (argv[i][0] == '-')
                 errx(1, "'%s' is not a recognized command-line argument", argv[i]);

@@ -1,6 +1,6 @@
 
 def Timestamp{seconds, nanoseconds:Int}
-    format := (extern bl_time_format:(timestamp:Timestamp,format="%c")->String)
+    format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->String)
 
 def now():Timestamp
     t := @Timestamp{}

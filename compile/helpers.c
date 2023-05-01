@@ -12,14 +12,14 @@
 #include "../ast.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
-#include "../libblang/hashmap.h"
+#include "../libsss/hashmap.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
 
 const char *fresh(const char *name)
 {
-    static bl_hashmap_t seen = {0};
+    static sss_hashmap_t seen = {0};
     // static int id = 0;
     char *tmp = (char*)heap_str(name);
     for (size_t i = 0; i < strlen(tmp); i++) {
@@ -34,14 +34,14 @@ const char *fresh(const char *name)
 }
 
 // Kinda janky, but libgccjit doesn't have this function built in
-ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
+ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
 {
-    switch (bl_t->tag) {
+    switch (sss_t->tag) {
     case ArrayType: return sizeof(void*);
     case TableType: return sizeof(void*);
     case StructType: {
         ssize_t align = 0;
-        auto struct_type = Match(bl_t, StructType);
+        auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > align) align = field_align;
@@ -49,7 +49,7 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
         return align;
     }
     case TaggedUnionType: {
-        auto tagged = Match(bl_t, TaggedUnionType);
+        auto tagged = Match(sss_t, TaggedUnionType);
         int64_t max_tag = 0;
         foreach (tagged->members, member, _) {
             if (member->tag_value > max_tag)
@@ -75,30 +75,30 @@ ssize_t gcc_alignof(env_t *env, bl_type_t *bl_t)
     case ModuleType: return 1;
     case VoidType: return 1;
     default:
-        return gcc_sizeof(env, bl_t);
+        return gcc_sizeof(env, sss_t);
     }
 }
 
 // Kinda janky, but libgccjit doesn't have this function built in, except for integer types:
-ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
+ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
 {
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, bl_t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, sss_t);
     if (gcc_type_is_integral(gcc_t))
         return gcc_type_size(gcc_t);
 
-    switch (bl_t->tag) {
+    switch (sss_t->tag) {
     case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
-    case TableType: return sizeof (bl_hashmap_t);
+    case TableType: return sizeof (sss_hashmap_t);
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case BoolType: return sizeof(bool);
     case TypeType: return sizeof(char*);
-    case NumType: return Match(bl_t, NumType)->bits / 8;
+    case NumType: return Match(sss_t, NumType)->bits / 8;
     case FunctionType:
     case PointerType: return sizeof(void*);
     case StructType: {
         ssize_t size = 0;
         ssize_t max_align = 0;
-        auto struct_type = Match(bl_t, StructType);
+        auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > 1 && size % field_align)
@@ -111,7 +111,7 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
         return size;
     }
     case TaggedUnionType: {
-        auto tagged = Match(bl_t, TaggedUnionType);
+        auto tagged = Match(sss_t, TaggedUnionType);
         int64_t max_tag = 0;
         foreach (tagged->members, member, _) {
             if (member->tag_value > max_tag)
@@ -143,11 +143,11 @@ ssize_t gcc_sizeof(env_t *env, bl_type_t *bl_t)
     }
     case ModuleType: return 0;
     case VoidType: return 0;
-    default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(bl_t));
+    default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(sss_t));
     }
 }
 
-gcc_type_t *get_tag_type(env_t *env, bl_type_t *t)
+gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
 {
     auto tagged = Match(t, TaggedUnionType);
     int64_t max_tag = 0;
@@ -166,15 +166,15 @@ gcc_type_t *get_tag_type(env_t *env, bl_type_t *t)
         return gcc_type(env->ctx, INT8);
 }
 
-gcc_type_t *get_union_type(env_t *env, bl_type_t *t)
+gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 {
-    static bl_hashmap_t cache = {0};
+    static sss_hashmap_t cache = {0};
     gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
     auto tagged = Match(t, TaggedUnionType);
     auto fields = LIST(gcc_field_t*);
     foreach (tagged->members, member, _) {
-        gcc_type_t *gcc_ft = member->type ? bl_type_to_gcc(env, member->type)
+        gcc_type_t *gcc_ft = member->type ? sss_type_to_gcc(env, member->type)
             : gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, member->name, 0, NULL)); // empty struct
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, member->name);
         append(fields, field);
@@ -185,9 +185,9 @@ gcc_type_t *get_union_type(env_t *env, bl_type_t *t)
 }
 
 // This must be memoized because GCC JIT doesn't do structural equality
-gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
+gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
-    static bl_hashmap_t cache = {0};
+    static sss_hashmap_t cache = {0};
     t = with_units(t, NULL);
     gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
@@ -220,7 +220,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
     case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
     case PointerType: {
-        gcc_t = bl_type_to_gcc(env, Match(t, PointerType)->pointed);
+        gcc_t = sss_type_to_gcc(env, Match(t, PointerType)->pointed);
         gcc_t = gcc_get_ptr_type(gcc_t);
         break;
     }
@@ -236,11 +236,11 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         break;
     }
     case ArrayType: {
-        bl_type_t *item_type = Match(t, ArrayType)->item_type;
+        sss_type_t *item_type = Match(t, ArrayType)->item_type;
         // GCC type is the same for DSL and non-DSLs:
-        if (Match(t, ArrayType)->dsl) return bl_type_to_gcc(env, Type(ArrayType, .item_type=item_type));
+        if (Match(t, ArrayType)->dsl) return sss_type_to_gcc(env, Type(ArrayType, .item_type=item_type));
         gcc_field_t *fields[3] = {
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, item_type)), "items"),
+            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
             gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "stride"),
         };
@@ -253,8 +253,8 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         auto table = Match(t, TableType);
         if (table->key_type->tag == VoidType || table->value_type->tag == VoidType)
             compiler_err(env, NULL, "Tables can't hold Void types");
-        bl_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                                  .field_types=LIST(bl_type_t*, table->key_type, table->value_type));
+        sss_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
+                                  .field_types=LIST(sss_type_t*, table->key_type, table->value_type));
 
         gcc_field_t *bucket_fields[] = {
             gcc_new_field(env->ctx, NULL, u32, "index1"),
@@ -264,10 +264,10 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
 
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, "Table");
         gcc_field_t *fields[] = {
-            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, entry_t)), "entries"),
+            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, entry_t)), "entries"),
             [TABLE_BUCKETS_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
             [TABLE_FALLBACK_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
-            [TABLE_DEFAULT_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(bl_type_to_gcc(env, table->value_type)), "default_value"),
+            [TABLE_DEFAULT_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, table->value_type)), "default_value"),
             [TABLE_CAPACITY_FIELD]=gcc_new_field(env->ctx, NULL, u32, "capacity"),
             [TABLE_COUNT_FIELD]=gcc_new_field(env->ctx, NULL, u32, "count"),
             [TABLE_LASTFREE_FIELD]=gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
@@ -281,8 +281,8 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         NEW_LIST(gcc_type_t*, arg_types);
         auto fn = Match(t, FunctionType);
         foreach (fn->arg_types, arg_t, _)
-            append(arg_types, bl_type_to_gcc(env, *arg_t));
-        gcc_type_t *ret_type = bl_type_to_gcc(env, fn->ret);
+            append(arg_types, sss_type_to_gcc(env, *arg_t));
+        gcc_type_t *ret_type = sss_type_to_gcc(env, fn->ret);
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
         break;
     }
@@ -293,9 +293,9 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
         hset(&cache, type_to_string(t), gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
-        foreach (struct_t->field_types, bl_ft, _) {
-            int i = (int)(bl_ft - *struct_t->field_types);
-            gcc_type_t *gcc_ft = bl_type_to_gcc(env, *bl_ft);
+        foreach (struct_t->field_types, sss_ft, _) {
+            int i = (int)(sss_ft - *struct_t->field_types);
+            gcc_type_t *gcc_ft = sss_type_to_gcc(env, *sss_ft);
             assert(gcc_ft);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(struct_t->field_names, i));
             append(fields, field);
@@ -332,7 +332,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     }
     default: {
       unknown_gcc_type:
-        compiler_err(env, NULL, "The following BL type doesn't have a GCC type: %s", type_to_string(t));
+        compiler_err(env, NULL, "The following SSS type doesn't have a GCC type: %s", type_to_string(t));
     }
     }
 
@@ -340,7 +340,7 @@ gcc_type_t *bl_type_to_gcc(env_t *env, bl_type_t *t)
     return gcc_t;
 }
 
-bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *needed)
+bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *needed)
 {
     if (!can_promote(actual, needed))
         return false;
@@ -353,8 +353,8 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
     } else if (actual->tag == StructType && needed->tag == StructType) { // Struct promotion
-        gcc_type_t *actual_gcc_t = bl_type_to_gcc(env, actual);
-        gcc_type_t *needed_gcc_t = bl_type_to_gcc(env, needed);
+        gcc_type_t *actual_gcc_t = sss_type_to_gcc(env, actual);
+        gcc_type_t *needed_gcc_t = sss_type_to_gcc(env, needed);
         auto actual_field_types = Match(actual, StructType)->field_types;
         auto needed_field_types = Match(needed, StructType)->field_types;
         if (LIST_LEN(needed_field_types) == 0)
@@ -370,7 +370,7 @@ bool promote(env_t *env, bl_type_t *actual, gcc_rvalue_t **val, bl_type_t *neede
         }
         *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LIST_LEN(needed_fields), needed_fields[0], field_vals[0]);
     } else if (!type_eq(actual, needed) || actual->tag == FunctionType) {
-        *val = gcc_cast(env->ctx, NULL, *val, bl_type_to_gcc(env, needed));
+        *val = gcc_cast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
     }
     return true;
 }
@@ -380,8 +380,8 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
     if (obj->tag == Declare) {
         // Special case for `if x := foo()`
         auto decl = Match(obj, Declare);
-        bl_type_t *t = get_type(env, decl->value);
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        sss_type_t *t = get_type(env, decl->value);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
 
         if (t->tag == GeneratorType)
             compiler_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
@@ -411,7 +411,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         return;
     }
 
-    bl_type_t *t = get_type(env, obj);
+    sss_type_t *t = get_type(env, obj);
     gcc_rvalue_t *bool_val = compile_expr(env, block, obj); 
     switch (t->tag) {
     case BoolType: break;
@@ -420,7 +420,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         break;
     }
     default: {
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         if (gcc_type_if_pointer(gcc_t))
             bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
         else
@@ -444,7 +444,7 @@ void maybe_print_str(env_t *env, gcc_block_t **block, gcc_rvalue_t *do_print, gc
     *block = done_block;
 }
 
-gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
+gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 {
     // Hash map for tracking recursion: {ptr => index, "__max_index" => max_index}
     // Create a function `int print(T obj, FILE* file, void* recursion)`
@@ -458,9 +458,9 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     binding_t *b = get_from_namespace(env, t, "__print");
     if (b) return b->func;
 
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
 
-    gcc_type_t *void_ptr_t = bl_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
+    gcc_type_t *void_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
@@ -469,12 +469,12 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     };
     const char* sym_name = fresh("__print");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), sym_name, 4, params, 0);
-    bl_type_t *fn_t = Type(FunctionType,
-                           .arg_types=LIST(bl_type_t*, t, Type(PointerType, .pointed=Type(VoidType)),
+    sss_type_t *fn_t = Type(FunctionType,
+                           .arg_types=LIST(sss_type_t*, t, Type(PointerType, .pointed=Type(VoidType)),
                                            Type(PointerType, .pointed=Type(VoidType)), Type(BoolType)),
                            .arg_names=LIST(const char*, "obj", "file", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(IntType));
-    bl_hashmap_t *ns = get_namespace(env, t);
+    sss_hashmap_t *ns = get_namespace(env, t);
     hset(ns, "__print", new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("print"));
@@ -654,7 +654,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         gcc_block_t *nil_block = gcc_new_block(func, fresh("nil")),
                     *nonnil_block = gcc_new_block(func, fresh("nonnil"));
 
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, obj, gcc_null(env->ctx, gcc_t));
 
         assert(block);
@@ -662,7 +662,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
         block = NULL;
 
         // If it's nil, print !Type:
-        bl_type_t *pointed_type = Match(t, PointerType)->pointed;
+        sss_type_t *pointed_type = Match(t, PointerType)->pointed;
         COLOR_LITERAL(&nil_block, "\x1b[0;34;1m");
         WRITE_LITERAL(nil_block, heap_strf("!%s", type_to_string(pointed_type)));
         COLOR_LITERAL(&nil_block, "\x1b[m");
@@ -687,15 +687,15 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             //         print("@#%d", index)
             gcc_type_t *i64 = gcc_type(env->ctx, INT64);
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_func_t *hash_set_func = get_function(env, "bl_hashmap_set");
+            gcc_func_t *hash_set_func = get_function(env, "sss_hashmap_set");
             gcc_func_t *hash_func = get_function(env, "hash_64bits");
             gcc_func_t *cmp_func = get_function(env, "compare_64bits");
 
-            // val = bl_hashmap_set(rec, &obj, NULL)
+            // val = sss_hashmap_set(rec, &obj, NULL)
             block = nonnil_block;
             gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
             gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
-            bl_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            sss_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
             gcc_rvalue_t *index_ptr = gcc_callx(
                 env->ctx, NULL, hash_set_func, rec,
                 gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_star),
@@ -707,10 +707,10 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
             gcc_lvalue_t *index_var = gcc_local(func, NULL, gcc_get_ptr_type(i64), "_index");
             gcc_assign(block, NULL, index_var, gcc_cast(env->ctx, NULL, index_ptr, gcc_get_ptr_type(i64)));
 
-            gcc_type_t *rec_gcc_t = bl_type_to_gcc(env, rec_t);
+            gcc_type_t *rec_gcc_t = sss_type_to_gcc(env, rec_t);
             gcc_lvalue_t *rec_default = gcc_deref(gcc_rval(gcc_deref_field(
                 gcc_cast(env->ctx, NULL, rec, gcc_get_ptr_type(rec_gcc_t)), NULL,
-                gcc_get_field(gcc_type_if_struct(bl_type_to_gcc(env, rec_t)), TABLE_DEFAULT_FIELD))), NULL);
+                gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, rec_t)), TABLE_DEFAULT_FIELD))), NULL);
 
             // if (entry == NULL) goto cycle else goto noncycle
             gcc_jump_condition(block, NULL,
@@ -755,7 +755,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
     case StructType: {
         auto struct_t = Match(t, StructType);
 
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
 #define ADD_INT(a, b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, a, b)
@@ -782,7 +782,7 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
                 WRITE_LITERAL(block, "=");
             }
 
-            bl_type_t *member_t = ith(struct_t->field_types, i);
+            sss_type_t *member_t = ith(struct_t->field_types, i);
             gcc_func_t *print_fn = get_print_func(env, member_t);
             assert(print_fn);
             gcc_field_t *field = gcc_get_field(gcc_struct, i);
@@ -845,15 +845,15 @@ gcc_func_t *get_print_func(env_t *env, bl_type_t *t)
 #undef COLOR_LITERAL
 }
 
-void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t *array_ptr)
+void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array_ptr)
 {
     if (t->tag != ArrayType) return;
     // If necessary, flatten first:
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, 2)));
-    bl_type_t *item_type = Match(t, ArrayType)->item_type;
+    sss_type_t *item_type = Match(t, ArrayType)->item_type;
     gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
                 *already_flat = gcc_new_block(func, fresh("already_flat"));
     gcc_jump_condition(*block, NULL,
@@ -871,7 +871,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, bl_type_t *t, gcc_rvalue_t 
     *block = already_flat;
 }
 
-gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
+gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
 {
     // Return a hash function for a given type.
 
@@ -879,13 +879,13 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     binding_t *b = get_from_namespace(env, t, "__hash");
     if (b) return b->func;
 
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
 
     gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("obj"))};
     const char* sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, Type(PointerType, .pointed=t)),
+    sss_type_t *fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t)),
                            .arg_names=LIST(const char*, "obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
     hset(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
@@ -921,9 +921,9 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
         break;
     }
     case TableType: {
-        // uint32_t bl_hashmap_hash(bl_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded);
-        gcc_func_t *hash_fn = get_function(env, "bl_hashmap_hash");
-        bl_type_t *entry_t = table_entry_type(t);
+        // uint32_t sss_hashmap_hash(sss_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded);
+        gcc_func_t *hash_fn = get_function(env, "sss_hashmap_hash");
+        sss_type_t *entry_t = table_entry_type(t);
         gcc_func_t *entry_hash = get_hash_func(env, entry_t);
         gcc_assign(block, NULL, hashval, gcc_callx(env->ctx, NULL, hash_fn, gcc_param_as_rvalue(params[0]),
                                                    gcc_get_func_address(entry_hash, NULL),
@@ -932,13 +932,13 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
     }
     case ArrayType: {
         // If necessary, flatten first:
-        gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_rvalue_t *array = gcc_param_as_rvalue(params[0]);
         // flatten_arrays(env, &block, t, array);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 0)));
         gcc_rvalue_t *length_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 1)));
-        bl_type_t *item_type = Match(t, ArrayType)->item_type;
+        sss_type_t *item_type = Match(t, ArrayType)->item_type;
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type));
         gcc_type_t *t_size = gcc_type(env->ctx, SIZE);
         inlen = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, t_size, inlen, gcc_cast(env->ctx, NULL, length_field, t_size));
@@ -959,7 +959,7 @@ gcc_func_t *get_hash_func(env_t *env, bl_type_t *t)
 }
 
 // Helper function to make value comparison return an int that is one of [-1,0,1]
-gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
+gcc_rvalue_t *compare_values(env_t *env, sss_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
 {
     // (int)((a > b) - (a < b))
     if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType) {
@@ -974,13 +974,13 @@ gcc_rvalue_t *compare_values(env_t *env, bl_type_t *t, gcc_rvalue_t *a, gcc_rval
 }
 
 // Get a comparison function: -1 means lhs < rhs; 0 means lhs == rhs; 1 means lhs > rhs
-gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
+gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
 {
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare");
     if (b) return b->func;
 
-    gcc_type_t *gcc_t = bl_type_to_gcc(env, t);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
     gcc_param_t *params[] = {
@@ -988,7 +988,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare"), 2, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
+    sss_type_t *fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hset(get_namespace(env, t), "__compare",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
@@ -1001,14 +1001,14 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
     switch (t->tag) {
     case StructType: {
         auto struct_ = Match(t, StructType);
-        gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, t));
+        gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_lvalue_t *cmp = gcc_local(func, NULL, gcc_type(env->ctx, INT), "_cmp");
         gcc_rvalue_t *zero = gcc_zero(env->ctx, gcc_type(env->ctx, INT));
         gcc_assign(block, NULL, cmp, zero);
         for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
             gcc_block_t *next_field = gcc_new_block(func, fresh("next_field"));
-            bl_type_t *field_t = ith(struct_->field_types, i);
+            sss_type_t *field_t = ith(struct_->field_types, i);
 
             gcc_rvalue_t *lhs_field = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(gcc_struct, i));
             gcc_rvalue_t *rhs_field = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(gcc_struct, i));
@@ -1112,7 +1112,7 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         gcc_jump_condition(loop_condition, NULL, either_done, loop_end, loop_body);
 
         // loop_body:
-        bl_type_t *item_t = Match(t, ArrayType)->item_type;
+        sss_type_t *item_t = Match(t, ArrayType)->item_type;
 
         gcc_func_t *cmp_fn = get_compare_func(env, item_t);
         assert(cmp_fn);
@@ -1140,8 +1140,8 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
         break;
     }
     case TableType: {
-        gcc_func_t *compare_fn = get_function(env, "bl_hashmap_compare");
-        bl_type_t *entry_t = table_entry_type(t);
+        gcc_func_t *compare_fn = get_function(env, "sss_hashmap_compare");
+        sss_type_t *entry_t = table_entry_type(t);
         gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
         gcc_func_t *key_compare = get_indirect_compare_func(env, Match(t, TableType)->key_type);
         gcc_func_t *value_compare = get_indirect_compare_func(env, Match(t, TableType)->value_type);
@@ -1175,13 +1175,13 @@ gcc_func_t *get_compare_func(env_t *env, bl_type_t *t)
 
 // Get a comparison function for pointers to data (instead of the data itself)
 // This is just a shim around the real comparison function
-gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
+gcc_func_t *get_indirect_compare_func(env_t *env, sss_type_t *t)
 {
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare_indirect");
     if (b) return b->func;
 
-    gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+    gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
 
     gcc_param_t *params[] = {
@@ -1189,7 +1189,7 @@ gcc_func_t *get_indirect_compare_func(env_t *env, bl_type_t *t)
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("rhs")),
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, int_t, fresh("compare_indirect"), 2, params, 0);
-    bl_type_t *fn_t = Type(FunctionType, .arg_types=LIST(bl_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
+    sss_type_t *fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, t, t), .arg_names=LIST(const char*, "lhs", "rhs"),
                            .arg_defaults=NULL, .ret=Type(IntType, .bits=32));
     hset(get_namespace(env, t), "__compare_indirect",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
@@ -1247,7 +1247,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        bl_type_t *fielded_t = get_type(env, access->fielded);
+        sss_type_t *fielded_t = get_type(env, access->fielded);
         // arr.x => [item.x for x in arr]
         if (fielded_t->tag == ArrayType) {
             compiler_err(env, ast, "I can't assign to immutable array slice values");
@@ -1255,7 +1255,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (!allow_slices)
                 compiler_err(env, ast, "I can't assign to array slices");
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, loc, bl_type_to_gcc(env, get_type(env, ast)), "_slice");
+            gcc_lvalue_t *slice = gcc_local(func, loc, sss_type_to_gcc(env, get_type(env, ast)), "_slice");
             gcc_assign(*block, loc, slice, compile_expr(env, block, ast));
             return slice;
         }
@@ -1271,7 +1271,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 auto fielded_struct = Match(fielded_ptr->pointed, StructType);
                 for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
                     if (streq(ith(fielded_struct->field_names, i), access->field)) {
-                        gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, fielded_ptr->pointed));
+                        gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_ptr->pointed));
                         gcc_field_t *field = gcc_get_field(gcc_struct, i);
                         return gcc_rvalue_dereference_field(fielded_rval, loc, field);
                     }
@@ -1279,24 +1279,24 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
                       type_to_string(fielded_ptr->pointed), access->field);
             } else if (fielded_ptr->pointed->tag == TableType) {
-                bl_type_t *table_t = fielded_ptr->pointed;
+                sss_type_t *table_t = fielded_ptr->pointed;
                 gcc_func_t *func = gcc_block_func(*block);
                 if (streq(access->field, "default")) {
-                    bl_type_t *key_t = Match(table_t, TableType)->key_type;
+                    sss_type_t *key_t = Match(table_t, TableType)->key_type;
                     gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
-                    gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(bl_type_to_gcc(env, key_t)), "_default_ptr");
+                    gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, key_t)), "_default_ptr");
                     gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
-                                                              gcc_get_ptr_type(bl_type_to_gcc(env, key_t))));
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, table_t));
+                                                              gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
                     gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
                     return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
                 } else if (streq(access->field, "fallback")) {
                     gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
-                    gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(bl_type_to_gcc(env, table_t)), "_fallback_ptr");
+                    gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, table_t)), "_fallback_ptr");
                     gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
-                                                              gcc_get_ptr_type(bl_type_to_gcc(env, table_t))));
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(bl_type_to_gcc(env, table_t));
+                                                              gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
                     gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(fallback_ptr));
                     return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
@@ -1323,13 +1323,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
             compiler_err(env, ast, "I can't assign to array slices");
 
-        bl_type_t *indexed_t = get_type(env, indexing->indexed);
+        sss_type_t *indexed_t = get_type(env, indexing->indexed);
         if (indexed_t->tag == ArrayType)
             compiler_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
         else if (indexed_t->tag == TableType)
             compiler_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
 
-        bl_type_t *pointed_type = indexed_t;
+        sss_type_t *pointed_type = indexed_t;
         while (pointed_type->tag == PointerType)
             pointed_type = Match(pointed_type, PointerType)->pointed;
 
@@ -1351,13 +1351,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             compiler_err(env, ast, "I don't know how to assign to this value. Maybe it's immutable?");
       safe:;
         gcc_rvalue_t *rval = compile_expr(env, block, value);
-        bl_type_t *t = get_type(env, value);
+        sss_type_t *t = get_type(env, value);
         gcc_func_t *func = gcc_block_func(*block);
         ssize_t gcc_size = gcc_sizeof(env, t);
         if (t->tag == ArrayType)
             gcc_size += 4; // Hidden "capacity" field
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
-        gcc_type_t *gcc_t = gcc_get_ptr_type(bl_type_to_gcc(env, t));
+        gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
@@ -1391,8 +1391,8 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
     gcc_func_t *fail = get_function(env, "fail");
     const char* fmt_str = heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
                                     span.file->relative_filename,
-                                    bl_get_line_number(span.file, span.start),
-                                    bl_get_line_column(span.file, span.start),
+                                    sss_get_line_number(span.file, span.start),
+                                    sss_get_line_column(span.file, span.start),
                                     user_fmt,
                                     info);
     gcc_rvalue_t *fmt_val = gcc_str(env->ctx, fmt_str);
@@ -1416,7 +1416,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
         switch (*(++p)) {
         case '#': {
             assert(*(++p) == 's');
-            bl_type_t *t = va_arg(ap, bl_type_t*);
+            sss_type_t *t = va_arg(ap, sss_type_t*);
             gcc_rvalue_t *rval = va_arg(ap, gcc_rvalue_t*);
 
             // Insert strings directly:
@@ -1436,9 +1436,9 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *us
             gcc_rvalue_t *file = gcc_rval(file_var);
 
             gcc_func_t *print_fn = get_print_func(env, t);
-            // Do bl_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
-            bl_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
-            gcc_type_t *hashmap_gcc_t = bl_type_to_gcc(env, cycle_checker_t);
+            // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
+            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
             gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
             gcc_assign(*block, NULL, cycle_checker, gcc_struct_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL, NULL));
             gcc_lvalue_t *next_index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_index");

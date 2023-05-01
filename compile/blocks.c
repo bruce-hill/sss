@@ -1,4 +1,4 @@
-// Logic for compiling Blang blocks
+// Logic for compiling SSS blocks
 #include <assert.h>
 #include <libgccjit.h>
 #include <ctype.h>
@@ -24,7 +24,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         if (val && *block)
             gcc_eval(*block, ast_loc(env, ast), val);
     } else {
-        bl_type_t *t = get_type(env, ast);
+        sss_type_t *t = get_type(env, ast);
         bool was_generator = (t->tag == GeneratorType);
         while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
         if (!(t->tag == VoidType || t->tag == AbortType)) {
@@ -44,13 +44,13 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 gcc_func_t *prepare_use(env_t *env, ast_t *ast)
 {
     auto use = Match(ast, Use);
-    bl_type_t *t = Type(ModuleType, .path=use->path);
-    bl_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), bl_hashmap_t*);
+    sss_type_t *t = Type(ModuleType, .path=use->path);
+    sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
     binding_t *b = NULL;
     if (namespace) {
         b = hget(namespace, "#load", binding_t*);
     } else {
-        namespace = new(bl_hashmap_t, .fallback=env->global_bindings);
+        namespace = new(sss_hashmap_t, .fallback=env->global_bindings);
         hset(env->type_namespaces, type_to_string(t), namespace);
     }
     // Look up old value to avoid recompiling the same module if it's reimported:
@@ -58,8 +58,8 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
         env_t module_env = *env;
         module_env.bindings = namespace;
         gcc_func_t *load_func = gcc_new_func(
-            env->ctx, NULL, GCC_FUNCTION_EXPORTED, bl_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
-        b = new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*), .ret=t), .func=load_func);
+            env->ctx, NULL, GCC_FUNCTION_EXPORTED, sss_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
+        b = new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*), .ret=t), .func=load_func);
         hset(namespace, "#load", b);
 
         gcc_block_t *enter_load = gcc_new_block(load_func, fresh("enter_load")),
@@ -70,11 +70,11 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
         gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
         gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
         gcc_jump_condition(enter_load, NULL, gcc_rval(is_loaded), finished_loading, do_loading);
-        gcc_lvalue_t *module_val = gcc_local(load_func, NULL, bl_type_to_gcc(env, t), "_module");
+        gcc_lvalue_t *module_val = gcc_local(load_func, NULL, sss_type_to_gcc(env, t), "_module");
         gcc_return(finished_loading, NULL, gcc_rval(module_val));
 
         gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
-        bl_file_t *file = bl_load_file(use->path);
+        sss_file_t *file = sss_load_file(use->path);
         module_env.file = file;
         if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
         ast_t *module_ast = parse_file(file, env->on_err);
@@ -84,7 +84,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
             for (uint32_t i = 1; i <= namespace->count; i++) {
                 auto entry = hnth(namespace, i, const char*, binding_t*);
                 if (entry->value->func) continue;
-                gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, bl_type_to_gcc(env, entry->value->type), fresh(entry->key));
+                gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, entry->value->type), fresh(entry->key));
                 gcc_assign(do_loading, NULL, global, entry->value->rval);
                 hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global, .visible_in_closures=true));
             }
@@ -113,8 +113,8 @@ void predeclare_def_types(env_t *env, ast_t *def)
         const char* name = struct_def->name;
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
-        bl_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
-                            .field_types=LIST(bl_type_t*), .field_defaults=LIST(ast_t*));
+        sss_type_t *t = Type(StructType, .name=name, .field_names=LIST(const char*),
+                            .field_types=LIST(sss_type_t*), .field_defaults=LIST(ast_t*));
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         if (hget(env->bindings, name, binding_t*))
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
@@ -127,7 +127,7 @@ void predeclare_def_types(env_t *env, ast_t *def)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* name = tu_def->name;
-        bl_type_t *t = Type(TaggedUnionType, .name=name, .members=LIST(bl_tagged_union_member_t));
+        sss_type_t *t = Type(TaggedUnionType, .name=name, .members=LIST(sss_tagged_union_member_t));
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         if (hget(env->bindings, name, binding_t*))
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
@@ -151,13 +151,13 @@ void populate_def_members(env_t *env, ast_t *def)
         const char* name = struct_def->name;
         binding_t *binding = get_binding(env, name);
         assert(binding && binding->type->tag == TypeType);
-        bl_type_t *t = Match(binding->type, TypeType)->type;
+        sss_type_t *t = Match(binding->type, TypeType)->type;
 
         env_t inner_env = *env;
         inner_env.bindings = get_namespace(env, t);
 
         auto struct_type = Match(t, StructType);
-        bl_hashmap_t used_names = {0};
+        sss_hashmap_t used_names = {0};
         for (int64_t i = 0, len = LIST_LEN(struct_def->field_names); i < len; i++) {
             const char *name = ith(struct_def->field_names, i);
             if (hget(&used_names, name, bool))
@@ -166,7 +166,7 @@ void populate_def_members(env_t *env, ast_t *def)
             APPEND(struct_type->field_names, name);
             ast_t *type = ith(struct_def->field_types, i);
             ast_t *default_val = ith(struct_def->field_defaults, i);
-            bl_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
+            sss_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
             if (ft->tag == VoidType)
                 compiler_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
             APPEND(struct_type->field_types, ft);
@@ -181,17 +181,17 @@ void populate_def_members(env_t *env, ast_t *def)
         const char* tu_name = tu_def->name;
         binding_t *binding = get_binding(env, tu_name);
         assert(binding && binding->type->tag == TypeType);
-        bl_type_t *t = Match(binding->type, TypeType)->type;
+        sss_type_t *t = Match(binding->type, TypeType)->type;
         auto members = Match(t, TaggedUnionType)->members;
-        bl_hashmap_t used_names = {0};
+        sss_hashmap_t used_names = {0};
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
             ast_t *member_type_ast = ith(tu_def->tag_types, i);
-            bl_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            sss_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
             const char *name = ith(tu_def->tag_names, i);
             if (hget(&used_names, name, bool))
                 compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);
             hset(&used_names, name, true);
-            bl_tagged_union_member_t member = {
+            sss_tagged_union_member_t member = {
                 .name=ith(tu_def->tag_names, i),
                 .tag_value=ith(tu_def->tag_values, i),
                 .type=member_t,
@@ -199,10 +199,10 @@ void populate_def_members(env_t *env, ast_t *def)
             APPEND_STRUCT(members, member);
         }
 
-        bl_hashmap_t *type_ns = get_namespace(env, t);
+        sss_hashmap_t *type_ns = get_namespace(env, t);
         type_ns->fallback = env->bindings;
 
-        gcc_type_t *gcc_tagged_t = bl_type_to_gcc(env, t);
+        gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
         gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
         gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
@@ -213,9 +213,9 @@ void populate_def_members(env_t *env, ast_t *def)
             // Constructor:
             if (member.type) {
                 gcc_param_t *params[] = {
-                    gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, member.type), fresh(member.name)),
+                    gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, member.type), fresh(member.name)),
                 };
-                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, bl_type_to_gcc(env, t),
+                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, sss_type_to_gcc(env, t),
                                                 fresh(member.name), 1, params, 0);
                 gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
                 assert(gcc_get_union_field(union_gcc_t, i));
@@ -227,7 +227,7 @@ void populate_def_members(env_t *env, ast_t *def)
                             gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                             gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), gcc_param_as_rvalue(params[0])),
                         }));
-                hset(type_ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(bl_type_t*, member.type),
+                hset(type_ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*, member.type),
                                                                      .arg_names=LIST(const char*, member.name),
                                                                      .ret=t),
                                                .visible_in_closures=true,
@@ -332,7 +332,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
         if (!*block)
             compiler_err(env, *stmt, "This code can never be reached because there is an unconditional control flow statement before it.");
         if (stmt == last_stmt && give_expression) {
-            bl_type_t *last_t = get_type(env, *stmt);
+            sss_type_t *last_t = get_type(env, *stmt);
             if (last_t->tag == VoidType || last_t->tag == AbortType)
                 give_expression = false;
         }

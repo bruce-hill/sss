@@ -8,8 +8,8 @@
 #include "ast.h"
 #include "files.h"
 #include "compile/libgccjit_abbrev.h"
-#include "libblang/hashmap.h"
-#include "libblang/list.h"
+#include "libsss/hashmap.h"
+#include "libsss/list.h"
 #include "types.h"
 #include "units.h"
 
@@ -31,7 +31,7 @@ typedef struct loop_label_s {
 typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
-    bl_type_t *type;
+    sss_type_t *type;
     const char* sym_name;
     union {
         gcc_jit_rvalue *tag_rval;
@@ -43,15 +43,15 @@ typedef struct {
 
 typedef struct env_s {
     gcc_ctx_t *ctx;
-    bl_file_t *file;
+    sss_file_t *file;
     jmp_buf *on_err;
-    bl_hashmap_t *bindings; // name -> binding_t
-    bl_hashmap_t *global_bindings; // name -> binding_t*
-    bl_hashmap_t *global_funcs; // name -> func
-    bl_hashmap_t *type_namespaces; // bl_type_t* -> name -> binding_t*
-    bl_hashmap_t *def_types; // ast_t* -> binding_t*
-    bl_hashmap_t *ast_functions; // ast_t* -> gcc_func_t*
-    bl_type_t *return_type;
+    sss_hashmap_t *bindings; // name -> binding_t
+    sss_hashmap_t *global_bindings; // name -> binding_t*
+    sss_hashmap_t *global_funcs; // name -> func
+    sss_hashmap_t *type_namespaces; // sss_type_t* -> name -> binding_t*
+    sss_hashmap_t *def_types; // ast_t* -> binding_t*
+    sss_hashmap_t *ast_functions; // ast_t* -> gcc_func_t*
+    sss_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
@@ -63,16 +63,16 @@ typedef struct env_s {
 __attribute__((noreturn, format(printf,3,4)))
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
-env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, bl_file_t *f, bool debug);
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool debug);
 env_t *fresh_scope(env_t *env);
 env_t *global_scope(env_t *env);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
-env_t *get_type_env(env_t *env, bl_type_t *t);
-bl_hashmap_t *get_namespace(env_t *env, bl_type_t *t);
-binding_t *get_from_namespace(env_t *env, bl_type_t *t, const char *name);
-void set_in_namespace(env_t *env, bl_type_t *t, const char *name, void *value);
+env_t *get_type_env(env_t *env, sss_type_t *t);
+sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t);
+binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name);
+void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

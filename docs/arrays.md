@@ -1,13 +1,13 @@
 # Arrays
 
-Blang arrays are implemented as compact structures with value semantics that
+SSS arrays are implemented as compact structures with value semantics that
 store a pointer to a chunk of heap-allocated memory, a length value, and a
 stride value. This allows for constant-time creation of array slices, including
 slices that have strides other than 1.
 
 ## Data Model
 
-A Blang array of `Foo` items is equivalent to the following C structure:
+A SSS array of `Foo` items is equivalent to the following C structure:
 
 ```c
 struct {
@@ -22,7 +22,7 @@ When arrays are initialized, the initial values are appended to an empty array.
 Memory reallocations ensure that the array has enough capacity to hold the
 required items. This code:
 
-```blang
+```SSS
 nums := [1, 2, x for x in 4..7] 
 ```
 
@@ -39,7 +39,7 @@ for (in64_t x = 4; x <= 7; x++)
 
 ## Indexing
 
-Array accesses in Blang are 1-indexed and fully bounds-checked. Accessing an
+Array accesses in SSS are 1-indexed and fully bounds-checked. Accessing an
 array index below 1 or above the length of the array results in a runtime
 failure with an informative message. So `val := nums[i]` is roughly equivalent
 to the following C code:
@@ -53,7 +53,7 @@ int64_t val = nums.items[(i-1)*nums.stride];
 However, 1-indexing and bounds-checking do not incur any overhead or chance of
 failure when iterating over an array.
 
-```blang
+```SSS
 for i, x in nums
     do_thing(i, x)
 ```
@@ -68,7 +68,7 @@ for (int64_t i = 1; i <= nums.len; i++) {
 
 ## Mutability
 
-Blang array values are immutable, however, heap-allocated array structures are
+SSS array values are immutable, however, heap-allocated array structures are
 mutable. Dereferencing an array pointer or taking a slice of an array pointer
 causes a copy-on-write bit to be set on the array pointer.
 
@@ -97,7 +97,7 @@ sliced.
 
 Modifying an array while iterating over its contents is allowed and
 memory-safe, but not recommended (because it's easy to get confused and end up
-with bugs). Under the hood, Blang arrays maintain the following guarantees:
+with bugs). Under the hood, SSS arrays maintain the following guarantees:
 
 - Loop iterators retain a reference to a snapshot of the *original* array
   contents at the start of the iteration and the *original* length of the array
@@ -119,10 +119,10 @@ with bugs). Under the hood, Blang arrays maintain the following guarantees:
   has not been reallocated.
 
 As a rule of thumb, it's always better to avoid mutating an array during
-iteration, but sometimes it's unavoidable. Blang strives to mitigate the risks
+iteration, but sometimes it's unavoidable. SSS strives to mitigate the risks
 in such cases.
 
-```blang
+```SSS
 all_things := @[....]
 // Bad! This is a bug!
 for i,thing in *all_things

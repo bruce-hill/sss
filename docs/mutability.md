@@ -1,6 +1,6 @@
 # Mutability and Value Semantics
 
-All Blang values are either immutable values with value semantics or addresses
+All SSS values are either immutable values with value semantics or addresses
 of heap-allocated memory whose contents may change over time. The sigil for the
 address of mutable, heap-allocated memory is the `@` symbol (mnemonic cue: "@"
 for **a**ddress of memory).
@@ -88,7 +88,7 @@ not violate the rule that struct values are immutable.
 
 ## Arrays
 
-Arrays are one more slight complication to the value semantics of Blang. Array
+Arrays are one more slight complication to the value semantics of SSS. Array
 values and array slices are considered immutable values just like primitive
 values and structs. However, for implementation efficiency and simplicity
 reasons, the member values of an array are stored on the heap. However, the
@@ -195,7 +195,7 @@ obvious that the file `/home/users/Alice/my_favorite_movie.txt` is equal to
 _itself_. Two references to the same file are interchangeable when it comes to
 reading and writing behavior.
 
-Memory addresses in Blang work the same way. Two memory addresses are equal if
+Memory addresses in SSS work the same way. Two memory addresses are equal if
 and only if they refer to the same address, it doesn't matter what the contents
 of that memory region are. This is known as referential equality (as opposed to
 structural equality).

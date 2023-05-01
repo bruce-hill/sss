@@ -1,6 +1,6 @@
 # Tables
 
-Blang supports hash tables as a language primitive. Hash tables are one of the
+SSS supports hash tables as a language primitive. Hash tables are one of the
 most important datastructures in programming, so it's important to have them be
 a core part of the language. Hash tables allow for asymptotically fast
 implementations of many algorithms.
@@ -134,7 +134,7 @@ del my_table[key]
 ## Semantics
 
 One of the most critical design decisions for hash tables is how to handle
-hashing and equality for value types and pointer types. Blang opts for the
+hashing and equality for value types and pointer types. SSS opts for the
 mantra of "reference equality for references, structural equality for values."
 The same extends to hashing. That is, for pointer types (with `@` in the type
 description), hashing and equality checks are based on the memory address
@@ -146,7 +146,7 @@ the entire memory contents of that structure are used for hashing and equality.
 One special case worth mentioning is that IEEE-754 floating point standards
 have some _unusual_ requirements for equality of floating point numbers.
 Specifically, `NaN != NaN` and `+0.0 == -0.0`. These are cases where bitwise
-equality is insufficient. Blang handles these cases as follows:
+equality is insufficient. SSS handles these cases as follows:
 
 - If `NaN` is used as a table key, it will produce a runtime failure.
 - If `-0.0` is used as a table key, it will be normalized to `0.0`.

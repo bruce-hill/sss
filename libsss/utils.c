@@ -130,12 +130,12 @@ string_t last_err()
 
 typedef struct {
     int64_t seconds, nanoseconds;
-} bl_time_t;
+} sss_time_t;
 
-string_t bl_time_format(bl_time_t bl_time, string_t fmt)
+string_t sss_time_format(sss_time_t sss_time, string_t fmt)
 {
     static char buf[256];
-    time_t time = (time_t)bl_time.seconds;
+    time_t time = (time_t)sss_time.seconds;
     struct tm my_time;
     localtime_r(&time, &my_time);
     size_t len = strftime(buf, sizeof(buf), c_string(fmt), &my_time);
@@ -149,16 +149,16 @@ typedef struct {
     int64_t device, rdevice;
     int64_t inode, mode, links, user, group;
     int64_t size, block_size, block_count;
-    bl_time_t accessed, modified, moved;
-} bl_fileinfo_t;
+    sss_time_t accessed, modified, moved;
+} sss_fileinfo_t;
 
-bl_fileinfo_t bl_fstat(FILE* f)
+sss_fileinfo_t sss_fstat(FILE* f)
 {
     struct stat buf;
     if (fstat(fileno(f), &buf) != 0)
-        return (bl_fileinfo_t){0};
+        return (sss_fileinfo_t){0};
 
-    bl_fileinfo_t ret = {
+    sss_fileinfo_t ret = {
         .device = buf.st_dev,
         .rdevice = buf.st_rdev,
         .inode = buf.st_ino,
@@ -379,27 +379,27 @@ void array_shuffle(void *voidarr, size_t item_size, bool atomic)
     }
 }
 
-typedef struct { FILE *file; } BlangFile;
+typedef struct { FILE *file; } SSSFile;
 
 typedef struct {
     enum { Failure, Success } tag;
     union {
         string_t Failure;
-        BlangFile *Success;
+        SSSFile *Success;
     } __data;
 } FileResult;
 
-void blang_file_finalizer(void *obj, void *_)
+void sss_file_finalizer(void *obj, void *_)
 {
     (void)_;
-    BlangFile *f = (BlangFile*)obj;
+    SSSFile *f = (SSSFile*)obj;
     if (f->file) fclose(f->file);
     f->file = NULL;
 }
 
 #include <assert.h>
 #define STR_LITERAL(s) (string_t){.data=s, .stride=1, .length=(int32_t)strlen(s)}
-FileResult blang_fopen(string_t path, string_t mode)
+FileResult sss_fopen(string_t path, string_t mode)
 {
     if (path.length > PATH_MAX)
         return (FileResult){.tag=Failure, .__data.Failure=STR_LITERAL("Path name is too long!")};
@@ -407,9 +407,9 @@ FileResult blang_fopen(string_t path, string_t mode)
     FileResult ret;
     if (f) {
         ret.tag = Success;
-        ret.__data.Success = GC_MALLOC_ATOMIC(sizeof(BlangFile));
+        ret.__data.Success = GC_MALLOC_ATOMIC(sizeof(SSSFile));
         ret.__data.Success->file = f;
-        GC_REGISTER_FINALIZER(ret.__data.Success, blang_file_finalizer, NULL, NULL, NULL);
+        GC_REGISTER_FINALIZER(ret.__data.Success, sss_file_finalizer, NULL, NULL, NULL);
     } else {
         ret.tag = Failure;
         ret.__data.Failure = last_err();
@@ -417,15 +417,15 @@ FileResult blang_fopen(string_t path, string_t mode)
     return ret;
 }
 
-BlangFile *blang_tmpfile(void)
+SSSFile *sss_tmpfile(void)
 {
-    BlangFile *bf = GC_MALLOC_ATOMIC(sizeof(BlangFile));
+    SSSFile *bf = GC_MALLOC_ATOMIC(sizeof(SSSFile));
     bf->file = tmpfile();
-    GC_REGISTER_FINALIZER(bf, blang_file_finalizer, NULL, NULL, NULL);
+    GC_REGISTER_FINALIZER(bf, sss_file_finalizer, NULL, NULL, NULL);
     return bf;
 }
 
-string_t blang_readfile(BlangFile *bf, int64_t bytes)
+string_t sss_readfile(SSSFile *bf, int64_t bytes)
 {
     const size_t chunk_size = 1000;
     if (!bf || !bf->file || bytes <= 0) return (string_t){.stride=1};

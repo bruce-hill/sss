@@ -1,4 +1,4 @@
-// This is a quickstart guide to learning Blang.
+// This is a quickstart guide to learning the SSS programming language.
 
 // A note on doctests: Lines starting with '>>>' are doctests. When the
 // These lines print their source code, and then print the result of evaluating
@@ -298,7 +298,7 @@ nums := [10, 20, 30, 40]
 === [40, 30, 20, 10]
 
 // One problem often encountered with mutable collections is mutating a
-// collection during iteration. To help mitigate this issue, Blang does not
+// collection during iteration. To help mitigate this issue, SSS does not
 // allow iteration over mutable arrays or tables, only immutable values. The
 // result of this is that you will need to retrieve the current immutable
 // value using "*" to iterate over it. Essentially, you are iterating over
@@ -356,33 +356,33 @@ do
 else
     say "One of the skips must have triggered"
 
-// To make working with linked lists easier, Blang also automatically supports
+// To make working with linked lists easier, SSS also automatically supports
 // iteration over any struct that has a "next" field that's an optional pointer
 // to the same type:
 for node in my_list
     say "$node.value"
 
 // Modules:
-// Blang supports importing modules. Modules are imported with "use" and are
-// specified by filename. Blang will first search in the local directory, then
-// in the installed library directories (~/.local/share/blang/modules/ and
-// /usr/local/share/blang/modules/).
-files := use stdlib/files.bl
+// SSS supports importing modules. Modules are imported with "use" and are
+// specified by filename. SSS will first search in the local directory, then
+// in the installed library directories (~/.local/share/sss/modules/ and
+// /usr/local/share/sss/modules/).
+files := use stdlib/files.sss
 
 // The resulting value is a Module, which has various functions and fields on
 // it. In this case, it's the files module, which has functions for
 // manipulating files.
->>> files.open("quickstart.bl")
+>>> files.open("quickstart.sss")
 
-// Any blang file can be imported as a module. Variables, types, and functions
+// Any SSS file can be imported as a module. Variables, types, and functions
 // defined at the top level of the file are accessible when imported.
 
 
-// Some fun stuff: Blang supports a couple of neat features not found in many
+// Some fun stuff: SSS supports a couple of neat features not found in many
 // other langues.
 
 // Vectorized math operations:
-// Blang allows math operations to be performed on structs and arrays that
+// SSS allows math operations to be performed on structs and arrays that
 // contain only structs/arrays/numeric values. As an example, consider this
 // struct representing a 3D vector:
 def Vec3{x,y,z:Num}
@@ -413,7 +413,7 @@ v1 := Vec3{1,2,3}
 === [Vec3{x=100, y=200, z=300}, Vec3{x=400, y=500, z=600}]
 
 // Units of measure:
-// Blang supports tracking units of measure using the type system. This lets
+// SSS supports tracking units of measure using the type system. This lets
 // the compiler verify that units are being properly used. Units of measure do
 // *not* affect runtime performance, they are entirely calculated at compile
 // time and at runtime are represented as ordinary floating point numbers. The
@@ -430,14 +430,14 @@ distance += speed * 3<hr>
 // This would be a type error because the units don't match:
 //    >>> distance + speed
 
-// Blang doesn't come pre-built with any knowledge of units, you can use your
-// own units. Blang simply enforces the rules that units must match when adding
+// SSS doesn't come pre-built with any knowledge of units, you can use your
+// own units. SSS simply enforces the rules that units must match when adding
 // or subtracting, and units stack or cancel out when multiplying and dividing.
 foo := 8.5<frog/horse>
 >>> foo * 10<horse/banana>
 === 85<frog/banana>
 
-// If you want, you can define derived units, which allows Blang to
+// If you want, you can define derived units, which allows SSS to
 // automatically calculate unit conversions.
 def 1.0<mi> := 1.60934<km>
 
@@ -451,13 +451,13 @@ vel := Vec{1, 2}<km/hr>
 
 
 // Domain Specific Languages:
-// Blang provides language-level safety features for having strings that
+// SSS provides language-level safety features for having strings that
 // represent different languages. As an example, consider SQL queries. An
 // extremely common bug in web applications is SQL injection, which arises when
 // programmers create queries by stitching together strings written by the
 // programmer with inputs from users. The typical solution is to provide library
 // functions that make it easier to automatically escape user-specified parameters.
-// Blang's solution to this is to allow programmers to define a language type for
+// SSS's solution to this is to allow programmers to define a language type for
 // strings and define custom escaping rules when performing string interpolation.
 
 query := $SQL"select * from students"
@@ -484,7 +484,7 @@ name = "'; drop table students; --"
 === $SQL"select * from students where name = '''; drop table students; --'"
 
 // Since Domain-specific languages often include quotation marks or
-// backslashes, Blang provides many different options for delimiting DSLs.
+// backslashes, SSS provides many different options for delimiting DSLs.
 // Whatever comes after the dollar sign and name of the DSL is used for a
 // delimiter:
 >>> $SingleQuotes'...'

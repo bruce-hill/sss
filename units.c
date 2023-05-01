@@ -6,7 +6,7 @@
 
 #include "units.h"
 #include "util.h"
-#include "libblang/list.h"
+#include "libsss/list.h"
 
 typedef struct {
     int exponent;

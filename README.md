@@ -1,9 +1,9 @@
-# Blang
+# SSS Language
 
-Blang is a small, statically typed, garbage-collected, compiled imperative
-language with lightweight syntax. It uses
+SSS is a **s**mall, **s**afe, **s**speedy language with lightweight syntax and
+garbage collection. It's statically typed, compiled, and imperative. It uses
 [libgccjit](https://gcc.gnu.org/wiki/JIT) as a backend, which compiles to a
-binary.
+binary. SSS lets you write SSS-tier software.
 
 ## Example
 
@@ -23,14 +23,14 @@ def sing_bottles_song(num:Int)
 sing_bottles_song 99
 ```
 
-See [quickstart.bl](quickstart.bl) for a quick rundown of the language, or see
+See [quickstart.sss](quickstart.sss) for a quick rundown of the language, or see
 [the test folder](test/) for more comprehensive examples of each feature.
 
 ## Dependencies
 
-The Blang compiler is written in C and uses
+The SSS compiler is written in C and uses
 [libgccjit](https://gcc.gnu.org/onlinedocs/jit/) as the backend for
-compilation. Blang also uses the [Boehm garbage
+compilation. SSS also uses the [Boehm garbage
 collector](https://www.hboehm.info/gc/) for runtime garbage collection. (both
 are available from your package manager of choice, for example: `pacman -S
 libgccjit gc`). The compiler uses a few GCC extensions, so other C compilers
@@ -41,17 +41,17 @@ are not supported.
 To build the compiler, simply run `make`. To install the compiler run `sudo
 make install`.
 
-The REPL can be run by running the command `blang` (or `./blang` in this
-directory). Blang files can be run directly via `blang myprogram.bl`, compiled
-to a static executable via `blangc myprogram.bl -o myprogram`, or compiled to a
-library module via `blangc -c myprogram.bl -o libmyprogram.so`.
+The REPL can be run by running the command `sss` (or `./sss` in this
+directory). SSS files can be run directly via `sss myprogram.sss`, compiled
+to a static executable via `sss -c myprogram.sss -o myprogram`, or compiled to a
+library module via `sss -c myprogram.sss -o libmyprogram.so`.
 
 Additional command line arguments can be found in the manpages (`man
-./blang.1`) or by running `blang --help` or `blangc --help`.
+./sss.1`) or by running `sss --help`.
 
 ## Language Features
 
-[See docs/features.md for writeups of some of the features in blang.](docs/features.md) These include:
+[See docs/features.md for writeups of some of the features in SSS.](docs/features.md) These include:
 
 - Simple value semantics and mutability rules
 - Memory safety (GC, compiler-enforced null pointer checks, and automatic array bounds checking)
@@ -68,12 +68,12 @@ Additional command line arguments can be found in the manpages (`man
 
 ## Usage
 
-Once the necessary dependencies are installed, you can run `./blang` to get a
-REPL or use `./blang your-file.bl` to run a file directly or `./blang -c
-your-file.bl` to compile it into a binary called `your-file`. See `blang
---help` for full usage info.
+Once the necessary dependencies are installed, you can run `./sss` to get a
+REPL or use `./sss your-file.sss` to run a file directly or `./sss -c
+your-file.sss` to compile it into a binary called `your-file`. See `sss --help`
+for full usage info.
 
 ## License
 
-Blang is released under the MIT license with the Commons Clause, see
+SSS is released under the MIT license with the Commons Clause, see
 [LICENSE](LICENSE) for full details.

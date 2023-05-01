@@ -1,4 +1,4 @@
-// Logic for compiling Blang functions
+// Logic for compiling SSS functions
 #include <assert.h>
 #include <libgccjit.h>
 #include <ctype.h>
@@ -29,7 +29,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
     for (int64_t i = 0; i < length(arg_names); i++) {
         const char* argname = ith(arg_names, i);
-        bl_type_t *argtype = ith(t->arg_types, i);
+        sss_type_t *argtype = ith(t->arg_types, i);
         if (argtype->tag == VoidType)
             compiler_err(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
@@ -58,15 +58,15 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
     for (int64_t i = 0; i < length(arg_names); i++) {
         const char* argname = ith(arg_names, i);
-        bl_type_t *argtype = ith(t->arg_types, i);
-        gcc_param_t *param = gcc_new_param(env->ctx, NULL, bl_type_to_gcc(env, argtype), fresh(argname));
+        sss_type_t *argtype = ith(t->arg_types, i);
+        gcc_param_t *param = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, argtype), fresh(argname));
         append(params, param);
     }
 
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
     func = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
-        bl_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
+        sss_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
     hset(env->ast_functions, def, func);
     return func;
 }

@@ -1,6 +1,6 @@
-# Non-Features of Blang
+# Non-Features of SSS
 
-These are a few features that I don't plan to ever add to Blang. This document
+These are a few features that I don't plan to ever add to SSS. This document
 will explain the rationale behind not including those features.
 
 
@@ -11,7 +11,7 @@ with other types. For example, you might have a tree datastructure that holds
 arbitrary datatypes and functions that operate on trees with arbitrary
 datatypes:
 
-```blang
+```SSS
 // This is not real code, it won't work:
 struct BinaryTree<T> {
     value:T
@@ -69,7 +69,7 @@ never even heard of.
 
 Now, there's one more issue with polymorphism--function values:
 
-```blang
+```SSS
 my_fn := contains
 ```
 
@@ -81,7 +81,7 @@ its call site? All of these answers are pretty unsatisfying to me. The only
 answer that seems self-consistent is to either require manual specification
 of all parameterized types (e.g. `my_fn := contains<Int8>`) or type inference
 based on what the ultimate call site (if any) is. Type inference to this extreme
-degree is antithetical to Blang's design goals, since it means that you can't
+degree is antithetical to SSS's design goals, since it means that you can't
 actually determine the type of an expression just by looking at the expression
 and the types of any variables it references.
 
@@ -96,13 +96,13 @@ things.
 
 ### Alternative 1: Lists and Tables
 
-As it turns out, Blang does have exactly two types of polymorphism built into
+As it turns out, SSS does have exactly two types of polymorphism built into
 the language: Lists and Tables. These datastructures are overwhelmingly common
 and it makes sense to provide tools for handling lists and tables that hold
 arbitrary types of values. In the example above, instead of using a binary tree
 and a `contains()` function, you could instead just use a table:
 
-```blang
+```SSS
 mydata := {123=>yes}
 fail unless mydata[123] == yes
 ```
@@ -110,7 +110,7 @@ fail unless mydata[123] == yes
 For the vast majority of cases, a solid list implementation and a solid hash
 map implementation will be able to store your data and retrieve it quickly.
 
-How does Blang resolve the issues with memory offsets? It's simple: the
+How does SSS resolve the issues with memory offsets? It's simple: the
 compiler inlines list accesses and uses a hash table implementation that pads
 values to 64 bits. In other words, the compiler cheats and does polymorphism
 under the hood, but only for two specific datastructures.
@@ -123,7 +123,7 @@ Let's consider quadtrees (or octtrees) as a case study. Quadtrees are meant for
 spatial querying, which is not something that hash maps are good at doing. What
 would a reusable quadtree implementation look like without polymorphism?
 
-```blang
+```SSS
 def QuadTreeItem {
     value:@Void
     xmin,xmax,ymin,ymax:Num
@@ -167,13 +167,13 @@ misstep in the history of computer programming. One of the central ideas was
 that you would arrange things into hierarchical class structures to allow for
 reuse of code and generalized interfaces. The result of this was a massive
 ballooning in code complexity, as well as a lot of indirection to hide that
-complexity. Blang's ideal is to keep things simple. If you want to reuse code
+complexity. SSS's ideal is to keep things simple. If you want to reuse code
 from different areas, use composition instead of inheritance. Instead of having
 a `Character` that inherits from `SpriteObject` and `PhysicsObject` which
 inherit from `GameObject` and chain invoking super methods on each other, just
 save yourself a headache and create a struct that holds different things in it:
 
-```blang
+```SSS
 def Character {
     name:String
     sprite:Sprite
@@ -186,11 +186,11 @@ def Character {
         char.sprite.draw_at(char.body.pos)
 ```
 
-Note that Blang does have *methods*, which are nothing more than a way to
+Note that SSS does have *methods*, which are nothing more than a way to
 conveniently group functions into the same place as the structs they operate
 on. They exist mainly to make the code tidier and to allow you to use the same
 function names for different types without needing function overloading. Other
-than namespacing, Blang's methods are identical to ordinary functions. Blang
+than namespacing, SSS's methods are identical to ordinary functions. SSS
 methods do *not* use vtables or inheritance or dynamic dispatch. All method
 resolution is done at compile time. In other words, `char.draw()` is just a
 convenient shorthand for writing `Char.draw(char)`.
@@ -239,7 +239,7 @@ quickly eyeball code to assess what its performance looks like.
 
 ### Grudging Concessions
 
-With all that said, Blang may make a few concessions to ergonomics and
+With all that said, SSS may make a few concessions to ergonomics and
 convention by having a few operator overloads for unambiguous, commonplace, and
 comparatively performant operations like vectorized math operations on arrays
 and structs. The number of operator overloads will be kept small in order to
@@ -270,12 +270,12 @@ probably not meant for normal use.
 
 ## Non-feature 5: A Fancy Type System
 
-Blang's philosophy with static typing is that the less time you spend thinking
+SSS's philosophy with static typing is that the less time you spend thinking
 about types, the more time you can spend writing code. Static types are useful
 for a compiled language, since they allow you to output specialized code for
 different types, which leads to better performance. Types are also useful for
 catching "dumb" mistakes, like mixing up variables or passing the wrong value
-to a function. Those two use cases are the main ones that Blang is concerned
+to a function. Those two use cases are the main ones that SSS is concerned
 with.
 
 It's entirely possible to come up with elaborate and beautiful type systems
@@ -287,13 +287,13 @@ deeply unpleasant to work with, so I don't want to make a language like that.
 
 ## Non-feature 6: Full Type Inference
 
-In Blang, there are two little morsels of type inference: variable declaration
+In SSS, there are two little morsels of type inference: variable declaration
 (`x := 5`) and lambda return values (`fn := (x:Int)-> x+1`). Everything else in
-Blang is either annotated with a type (as in the case of function arguments and
+SSS is either annotated with a type (as in the case of function arguments and
 return types) or a literal value whose type is trivial to deduce (e.g. `5` is
 an `Int` and `["hi"]` is a `[String]`). A small amount of type inference
 prevents redundant noise in variable declarations like `String str = "hello"`
-(of course it's a string, the value is `"hello"`). Blang strives to hit the
+(of course it's a string, the value is `"hello"`). SSS strives to hit the
 happy medium between too much redundant noise and too much inference.
 
 It is possible to use type inference much more aggressively (e.g. inferring the
@@ -305,20 +305,20 @@ it also serves as pretty good documentation. You start a function with a
 declaration of what goes in and comes out of the function, and the compiler
 holds you to that declaration.
 
-With Blang's moderate type inference, you should never have to look at how a
+With SSS's moderate type inference, you should never have to look at how a
 value is *used* in order to figure out *what* it is. And you should never have
 to announce what something *is* when it's already self-evident.
 
 
 ## Non-feature 7: Exceptions
 
-Blang does not plan to ever support exceptions or try/catch handling. Many of
-the uses for exceptions are handled by Blang's optional types and `fail`.
+SSS does not plan to ever support exceptions or try/catch handling. Many of
+the uses for exceptions are handled by SSS's optional types and `fail`.
 Optional types provide a way to express failure and also force callers to handle
 errors explicitly. Ignoring return values is also treated as a compiler error,
 so callers must address any error values returned or explicitly discard them:
 
-```blang
+```SSS
 def IntParseResult {|Failure|Success:Int|}
 def parse_int(str:String, base=10):IntParseResult
     return IntParseResult.Failure if #str == 0
@@ -352,18 +352,18 @@ guess which functions do or don't throw exceptions (and which exceptions), or
 you're forced to annotate all thrown exceptions all the way up and down the
 callstack.
 
-Blang tries to avoid the problems of exceptions by offering a robust toolkit
+SSS tries to avoid the problems of exceptions by offering a robust toolkit
 for expressing different sorts of failures (either through optional values or
 through tagged unions to give extra information about different kinds of
 failures) and a fallback of last resort for when a program is in an
-unrecoverable state. At some point in the future, Blang *may* support a limited
+unrecoverable state. At some point in the future, SSS *may* support a limited
 way to create a safe recovery point for recovering from a `fail` (inspired by Lua's
 `pcall()`), but it is a low priority.
 
 
 ## Non-feature 8: 0-Indexed Lists
 
-Although 0-indexing is more common than 1-indexing, Blang uses 1-indexing
+Although 0-indexing is more common than 1-indexing, SSS uses 1-indexing
 because it works much better with Range values than 0-indexing. 1-indexing also
 has some intuitive advantages when dealing with ordinal lists. The original
 reason for 0-indexing is that it's a more natural representation of memory
@@ -377,7 +377,7 @@ and 0-indexed lists. If you want to iterate over the indices in a Python list,
 you use `range(0, len(foo))`, but because of the half-openness of Python's
 ranges, iterating over the same range *backwards* is extremely
 counter-intuitive: `range(len(foo)-1, -1, -1)` (idiomatically, Python prefers
-`reversed(range(len(foo)))` to circumvent the problem). In Blang, this is not a
+`reversed(range(len(foo)))` to circumvent the problem). In SSS, this is not a
 problem: `3..5` simply means the items `{3,4,5}`, as you would expect.
 
 ### Modular Arithmetic
@@ -385,5 +385,5 @@ problem: `3..5` simply means the items `{3,4,5}`, as you would expect.
 One disadvantage with 1-indexing is it makes wrapping indexes more onerous. In
 C, you might say `int bucket_index = hash % buckets.len;`, but in a 1-indexed
 language like Lua, it becomes the much uglier code: `local bucket_index = 1 +
-((hash - 1) % #buckets)`. Blang has a simple workaround: the `mod` operator:
+((hash - 1) % #buckets)`. SSS has a simple workaround: the `mod` operator:
 `bucket_index := hash mod1 #buckets`.

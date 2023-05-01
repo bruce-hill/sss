@@ -6,7 +6,7 @@
 #include "files.h"
 
 typedef struct {
-    bl_file_t *file;
+    sss_file_t *file;
     const char *start, *end;
 } span_t;
 
