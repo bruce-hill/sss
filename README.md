@@ -1,4 +1,4 @@
-# SSS Language
+# The SSS Programming Language
 
 SSS is a **s**mall, **s**afe, **s**speedy language with lightweight syntax and
 garbage collection. It's statically typed, compiled, and imperative. It uses
