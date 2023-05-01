@@ -51,6 +51,8 @@ Additional command line arguments can be found in the manpages (`man
 - Structs, not OOP
 - Module system
 - Semantic versioning
+- Built-in doctests with syntax highlighting
+- Useful built-in types: arrays, tables, tuples, structs, tagged unions
 - Percentages
 
 ## Usage
