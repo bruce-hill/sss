@@ -66,14 +66,17 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
 
 void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
 {
-    gcc_type_t *entry_t = sss_type_to_gcc(env, table_entry_type(t));
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *entry_lval = gcc_local(func, NULL, entry_t, "_entry");
-
-    gcc_lvalue_t *key_lval = gcc_local(func, NULL, sss_type_to_gcc(env, Match(t, TableType)->key_type), "_key");
-    gcc_assign(*block, NULL, key_lval, key_val);
-    flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
-    gcc_assign(*block, NULL, gcc_lvalue_access_field(entry_lval, NULL, gcc_get_field(gcc_type_if_struct(entry_t), 0)), gcc_rval(key_lval));
+    gcc_type_t *key_gcc_t = sss_type_to_gcc(env, Match(t, TableType)->key_type);
+    gcc_rvalue_t *key_ptr;
+    if (key_val) {
+        gcc_lvalue_t *key_lval = gcc_local(func, NULL, key_gcc_t, "_key");
+        gcc_assign(*block, NULL, key_lval, key_val);
+        flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
+        key_ptr = gcc_lvalue_address(key_lval, NULL);
+    } else {
+        key_ptr = gcc_null(env->ctx, gcc_get_ptr_type(key_gcc_t));
+    }
 
     gcc_func_t *hashmap_remove_fn = get_function(env, "sss_hashmap_remove");
     gcc_func_t *key_hash = get_hash_func(env, Match(t, TableType)->key_type);
@@ -84,7 +87,7 @@ void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *
         gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
         gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
         gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
-        gcc_lvalue_address(entry_lval, NULL));
+        key_ptr);
     gcc_eval(*block, NULL, call);
 }
 

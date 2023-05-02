@@ -226,10 +226,14 @@ void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
 
 void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key)
 {
-    if (!h || !key || h->capacity == 0) return;
+    if (!h || h->capacity == 0) return;
 
     if (h->copy_on_write)
         copy_on_write(h, entry_size_padded);
+
+    // If unspecified, pop a random key:
+    if (!key)
+        key = h->entries + entry_size_padded*arc4random_uniform(h->count);
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
     sss_hash_bucket_t *bucket, *prev = NULL;

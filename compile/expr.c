@@ -414,19 +414,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto index = Match(to_delete, Index);
             sss_type_t *t = get_type(env, index->indexed);
             if (t->tag != PointerType)
-                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+                compiler_err(env, ast, "Only mutable containers can be used with 'del', not %s", type_to_string(t));
             if (Match(t, PointerType)->is_optional)
                 compiler_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
-            sss_type_t *table_t = Match(t, PointerType)->pointed;
-            if (table_t->tag != TableType)
+            sss_type_t *container_t = Match(t, PointerType)->pointed;
+            if (container_t->tag == TableType) {
+                sss_type_t *key_t = get_type(env, index->index);
+                if (!type_is_a(key_t, Match(container_t, TableType)->key_type))
+                    compiler_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
+                                type_to_string(key_t), type_to_string(Match(container_t, TableType)->key_type));
+
+                table_remove(env, block, container_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
+            } else if (container_t->tag == ArrayType) {
+                define_array_methods(env, container_t);
+                binding_t *b = get_from_namespace(env, container_t, "remove");
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
+                gcc_assign(*block, loc, arr_var, compile_expr(env, block, index->indexed));
+                gcc_rvalue_t *index_val = compile_expr(env, block, index->index);
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_rval(arr_var), index_val, gcc_rvalue_int64(env->ctx, 1)));
+            } else {
                 compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
-
-            sss_type_t *key_t = get_type(env, index->index);
-            if (!type_is_a(key_t, Match(table_t, TableType)->key_type))
-                compiler_err(env, index->index, "This key has type %s, but this table has a different key type: %s",
-                            type_to_string(key_t), type_to_string(Match(table_t, TableType)->key_type));
-
-            table_remove(env, block, table_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
+            }
             return NULL;
         }
         case FieldAccess: {
@@ -455,8 +464,30 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             return NULL;
         }
-        default:
+        default: {
+            sss_type_t *t = get_type(env, to_delete);
+            if (t->tag == PointerType) {
+                if (Match(t, PointerType)->is_optional)
+                    compiler_err(env, to_delete, "This value is optional and can't be safely dereferenced");
+                sss_type_t *value_t = Match(t, PointerType)->pointed;
+                if (value_t->tag == TableType) {
+                    table_remove(env, block, value_t, compile_expr(env, block, to_delete), NULL);
+                } else if (value_t->tag == ArrayType) {
+                    define_array_methods(env, value_t);
+                    binding_t *b = get_from_namespace(env, value_t, "remove");
+                    gcc_func_t *func = gcc_block_func(*block);
+                    gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
+                    gcc_assign(*block, loc, arr_var, compile_expr(env, block, to_delete));
+                    gcc_rvalue_t *len = compile_len(env, block, t, gcc_rval(arr_var));
+                    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_rval(arr_var), len, gcc_rvalue_int64(env->ctx, 1)));
+                } else {
+                    compiler_err(env, ast, "Only mutable tables can be used with 'del', not %s", type_to_string(t));
+                }
+
+                return NULL;
+            }
             compiler_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
+        }
         }
     }
     case Do: {
