@@ -1348,10 +1348,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
                 sss_type_t *field_type = ith(struct_type->field_types, i);
                 gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
+                size_t struct_size = gcc_sizeof(env, array->item_type);
+                size_t field_size = gcc_sizeof(env, field_type);
+                if (struct_size % field_size > 0)
+                    compiler_err(env, ast, "I'm sorry, but the structs in this array (%s) are not evenly divisible by the size of the given field (.%s). "
+                                 "This unfortunately means I can't produce a constant-time array slice.",
+                                 type_to_string(array->item_type), access->field);
+
                 stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
-                                       gcc_rvalue_int32(env->ctx, gcc_sizeof(env, array->item_type)));
-                stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_DIVIDE, gcc_type(env->ctx, INT32), stride,
-                                       gcc_rvalue_int32(env->ctx, gcc_sizeof(env, field_type)));
+                                       gcc_rvalue_int32(env->ctx, struct_size/field_size));
 
                 gcc_type_t *slice_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
                 gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
