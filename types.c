@@ -99,7 +99,9 @@ static CORD type_to_cord(sss_type_t *t, bool expand_structs) {
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
-            return CORD_cat(type_to_cord(gen->generated, false), "(generator)");
+            CORD ret;
+            CORD_sprintf(&ret, "Generator(%r)", type_to_cord(gen->generated, false));
+            return ret;
         }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
