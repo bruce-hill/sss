@@ -1419,6 +1419,50 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 insert_failure(env, block, ast->span, "This table has no fallback value");
                 *block = if_nonnil;
                 return gcc_rval(gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc));
+            } else if (streq(access->field, "keys")) {
+                sss_type_t *item_t = Match(fielded_t, TableType)->key_type;
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=item_t));
+                gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+                gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                size_t entry_size = gcc_sizeof(env, table_entry_type(fielded_t));
+                size_t key_size = gcc_sizeof(env, item_t);
+                if (entry_size % key_size > 0)
+                    compiler_err(env, ast, "I'm sorry, but this table's entry size is not cleanly divisible by its key size, so I can't create a constant-time slice of the keys");
+                return gcc_struct_constructor(
+                    env->ctx, loc, gcc_t, 3,
+                    (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 1), gcc_get_field(gcc_struct, 2)},
+                    (gcc_rvalue_t*[]){
+                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD)),
+                                 gcc_get_ptr_type(sss_type_to_gcc(env, item_t))), // items
+                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
+                                 gcc_type(env->ctx, INT32)), // len
+                        gcc_rvalue_int32(env->ctx, entry_size/key_size), // stride
+                    });
+            } else if (streq(access->field, "values")) {
+                sss_type_t *key_t = Match(fielded_t, TableType)->key_type;
+                sss_type_t *item_t = Match(fielded_t, TableType)->value_type;
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=item_t));
+                gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+                gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+
+                gcc_rvalue_t *items_ptr = gcc_cast(
+                    env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD)),
+                    gcc_type(env->ctx, STRING));
+                items_ptr = gcc_lvalue_address(gcc_array_access(env->ctx, loc, items_ptr, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), loc);
+                items_ptr = gcc_cast(env->ctx, loc, items_ptr, gcc_get_ptr_type(sss_type_to_gcc(env, item_t)));
+                size_t entry_size = gcc_sizeof(env, table_entry_type(fielded_t));
+                size_t value_size = gcc_sizeof(env, item_t);
+                if (entry_size % value_size > 0)
+                    compiler_err(env, ast, "I'm sorry, but this table's entry size is not cleanly divisible by its value size, so I can't create a constant-time slice of the keys");
+                return gcc_struct_constructor(
+                    env->ctx, loc, gcc_t, 3,
+                    (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 1), gcc_get_field(gcc_struct, 2)},
+                    (gcc_rvalue_t*[]){
+                        items_ptr, // items
+                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
+                                 gcc_type(env->ctx, INT32)), // len
+                        gcc_rvalue_int32(env->ctx, entry_size/value_size), // stride
+                    });
             }
             break;
         }

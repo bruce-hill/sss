@@ -447,6 +447,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 return Match(value_t, TableType)->value_type;
             else if (streq(access->field, "fallback"))
                 return value_t;
+            else if (streq(access->field, "keys"))
+                return Type(ArrayType, .item_type=Match(value_t, TableType)->key_type);
+            else if (streq(access->field, "values"))
+                return Type(ArrayType, .item_type=Match(value_t, TableType)->value_type);
             goto class_lookup;
         }
         default: {
