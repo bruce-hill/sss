@@ -215,6 +215,16 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
                 offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
             else
                 offset = gcc_zero(env->ctx, i32_t);
+
+            gcc_lvalue_t *offset_var = gcc_local(func, loc, i32_t, "_offset");
+            gcc_assign(*block, loc, offset_var, offset);
+            // Bit hack to branchlessly set offset to zero when it would otherwise be negative:
+            // offset &= ~(offset >> 31)
+            gcc_update(*block, loc, offset_var, GCC_BINOP_BITWISE_AND,
+               gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, i32_t,
+                   gcc_binary_op(env->ctx, loc, GCC_BINOP_RSHIFT, i32_t, offset, gcc_rvalue_int32(env->ctx, 31))));
+            offset = gcc_rval(offset_var);
+
             gcc_rvalue_t *items = gcc_lvalue_address(gcc_array_access(env->ctx, loc, old_items, offset), loc);
             gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, "_slice");
             // assign slice.items and slice.stride

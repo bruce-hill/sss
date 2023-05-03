@@ -219,9 +219,11 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         if (range.last == INT64_MAX) range.last = 1;
         if (range.first > array.length) {
             // printf("Range starting after array\n");
-            range.first = (array.length % (-array.stride)) + (range.first % (-array.stride));
+            int64_t residual = range.first % -range.stride;
+            range.first = array.length - (array.length % -range.stride) + residual;
         }
-        if (range.first < 1 || range.first > array.length) {
+        if (range.first > array.length) range.first += range.stride;
+        if (range.first < 1) {
             // printf("Range outside array\n");
             return (string_t){array.data, 0, 1};
         }
@@ -230,9 +232,9 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         if (range.last == INT64_MAX) range.last = array.length;
         if (range.first < 1) {
             // printf("Range starting before array\n");
-            range.first = range.first % array.stride;
+            range.first = range.first % range.stride;
         }
-        if (range.first < 1) range.first += array.stride;
+        while (range.first < 1) range.first += range.stride;
         if (range.first > array.length) {
             // printf("Range outside array\n");
             return (string_t){array.data, 0, 1};

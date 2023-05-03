@@ -19,3 +19,16 @@ for i in 1..
 for i in 1.. by 2
     say "odd $i..."
     stop if i >= 4
+
+>>> "abcdef"[-1..]
+=== "abcdef"
+
+>>> range := -1..
+>>> "abcdef"[range]
+=== "abcdef"
+
+>>> "abcdef"[-1.. by 3]
+=== "be"
+
+>>> "abcdef"[7.. by -2]
+=== "eca"
