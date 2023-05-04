@@ -28,12 +28,12 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_string_t, "PROGRAM_NAME");
     hset(env->global_bindings, "PROGRAM_NAME",
-         new(binding_t, .rval=gcc_rval(program_name), .type=str_t));
+         new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t));
+    hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
 
     // Compile main(int argc, char *argv[]) function
     gcc_param_t* main_params[] = {

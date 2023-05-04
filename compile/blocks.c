@@ -86,7 +86,8 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
                 if (entry->value->func) continue;
                 gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, entry->value->type), fresh(entry->key));
                 gcc_assign(do_loading, NULL, global, entry->value->rval);
-                hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global, .visible_in_closures=true));
+                hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global,
+                                                .visible_in_closures=entry->value->visible_in_closures));
             }
             gcc_return(do_loading, NULL, gcc_rval(module_val));
         }
