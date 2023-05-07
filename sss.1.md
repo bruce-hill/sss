@@ -4,7 +4,7 @@
 
 # NAME
 
-sss - A Simple, Safe, Speedy language.
+sss - A language prioritizing Simplicity, Safety, and Speed.
 
 # SYNOPSIS
 
