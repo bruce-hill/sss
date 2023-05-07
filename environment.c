@@ -102,24 +102,25 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
     load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
-    load_global_func(env, t_bl_str, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_insert", PARAM(t_void_ptr, "array"),
+    load_global_func(env, t_void, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_void, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_void, "array_insert", PARAM(t_void_ptr, "array"),
                      PARAM(t_void_ptr, "item"),
                      PARAM(t_int64, "index"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_insert_all", PARAM(t_void_ptr, "array"),
+    load_global_func(env, t_void, "array_insert_all", PARAM(t_void_ptr, "array"),
                      PARAM(t_void_ptr, "other"),
                      PARAM(t_int64, "index"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_remove", PARAM(t_void_ptr, "array"),
+    load_global_func(env, t_void, "array_remove", PARAM(t_void_ptr, "array"),
                      PARAM(t_int64, "index"),
                      PARAM(t_int64, "count"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_sort", PARAM(t_void_ptr, "array"),
+    load_global_func(env, t_void, "array_sort", PARAM(t_void_ptr, "array"),
                      PARAM(t_void_ptr, "compare"),
                      PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_shuffle", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_void, "array_shuffle", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
+    load_global_func(env, t_bl_str, "array_join", PARAM(t_void_ptr, "array"), PARAM(t_void_ptr, "glue"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
 
     // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
     load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
@@ -169,6 +170,9 @@ static sss_type_t *define_string_type(env_t *env)
                 ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
     load_method(env, ns, "sss_string_replace", "replace", str_type,
                 ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
+    load_method(env, ns, "sss_string_split", "split", Type(ArrayType, .item_type=str_type),
+                ARG("str",str_type,0),
+                ARG("separators", str_type, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))));
 
     sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
     load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_type,0));

@@ -310,19 +310,21 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return INT_TYPE;
     }
     case Array: {
-        auto list = Match(ast, Array);
-        if (list->type)
-            return Type(ArrayType, .item_type=parse_type_ast(env, list->type));
+        auto array = Match(ast, Array);
+        if (array->type)
+            return Type(ArrayType, .item_type=parse_type_ast(env, array->type));
+        else if (!array->items)
+            compiler_err(env, ast, "I can't figure out what type this array has because it has no members or explicit type");
 
         sss_type_t *item_type = NULL;
-        for (int64_t i = 0; i < LIST_LEN(list->items); i++) {
-            ast_t *item = LIST_ITEM(list->items, i);
+        for (int64_t i = 0; i < LIST_LEN(array->items); i++) {
+            ast_t *item = LIST_ITEM(array->items, i);
             sss_type_t *t2 = get_type(env, item);
             while (t2->tag == GeneratorType)
                 t2 = Match(t2, GeneratorType)->generated;
             sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
             if (!merged)
-                compiler_err(env, LIST_ITEM(list->items, i),
+                compiler_err(env, LIST_ITEM(array->items, i),
                             "This array item has type %s, which is different from earlier array items which have type %s",
                             type_to_string(t2),  type_to_string(item_type));
             item_type = merged;

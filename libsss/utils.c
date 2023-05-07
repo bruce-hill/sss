@@ -381,6 +381,32 @@ void array_shuffle(void *voidarr, size_t item_size, bool atomic)
     }
 }
 
+string_t array_join(void *voidarr, void *voidglue, size_t item_size, bool atomic)
+{
+    struct {string_t *data; int32_t length, stride, free;} *strings = voidarr;
+    string_t *glue = voidglue;
+    if (strings->length == 0) return (string_t){.stride=1};
+
+    int32_t len = 0;
+    for (int32_t i = 0; i < strings->length; i++) {
+        if (i > 0) len += glue->length;
+        len += strings->data[strings->stride*i].length;
+    }
+    char *data = atomic ? GC_MALLOC_ATOMIC((size_t)len*item_size) : GC_MALLOC((size_t)len*item_size);
+    char *ptr = data;
+    for (int32_t i = 0; i < strings->length; i++) {
+        if (i > 0) {
+            for (int32_t j = 0; j < glue->length; j++)
+                ptr = mempcpy(ptr, &glue->data[j*glue->stride*item_size], item_size);
+        }
+        string_t str = strings->data[i*strings->stride];
+        for (int32_t j = 0; j < str.length; j++)
+            ptr = mempcpy(ptr, &str.data[j*str.stride*item_size], item_size);
+    }
+    return (string_t){.data = data, .length = len, .stride = 1};
+}
+
+
 typedef struct { FILE *file; } SSSFile;
 
 typedef struct {

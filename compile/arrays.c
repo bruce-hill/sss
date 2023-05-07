@@ -369,9 +369,10 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
         compiler_err(env, ast, "Arrays can't be defined with a Void item type");
 
     gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
-    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * length(array->items)));
+    int64_t min_length = array->items ? length(array->items) : 0;
+    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * min_length));
     gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
-    gcc_rvalue_t *initial_items = length(array->items) == 0 ? 
+    gcc_rvalue_t *initial_items = min_length == 0 ? 
         gcc_null(env->ctx, gcc_item_ptr_t) : gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
     gcc_assign(*block, loc, array_var, gcc_struct_constructor(
             env->ctx, loc, gcc_t, 2,
@@ -660,6 +661,33 @@ static void define_array_sort(env_t *env, sss_type_t *t)
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "sort", b);
 }
+
+static void define_array_join(env_t *env, sss_type_t *glue_t)
+{
+    sss_type_t *array_t = Type(ArrayType, .item_type=glue_t);
+    sss_type_t *item_t = Match(glue_t, ArrayType)->item_type;
+
+    gcc_type_t *glue_gcc_t = sss_type_to_gcc(env, glue_t);
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, glue_gcc_t, fresh("glue")),
+        gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, array_t), fresh("array")),
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, glue_gcc_t, fresh("join"), 2, params, 0);
+    gcc_block_t *block = gcc_new_block(func, fresh("join"));
+    gcc_func_t *c_join_func = get_function(env, "array_join");
+    gcc_rvalue_t *retval = gcc_callx(env->ctx, NULL, c_join_func,
+                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
+                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL)),
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
+                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)));
+    gcc_return(block, NULL, gcc_bitcast(env->ctx, NULL, retval, glue_gcc_t));
+    binding_t *b = new(binding_t, .func=func,
+                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "glue"),
+                                  .arg_types=LIST(sss_type_t*, glue_t, array_t),
+                                  .ret=glue_t));
+    set_in_namespace(env, glue_t, "join", b);
+}
+
 #undef AS_VOID_PTR
 
 void define_array_methods(env_t *env, sss_type_t *t)
@@ -674,6 +702,8 @@ void define_array_methods(env_t *env, sss_type_t *t)
         define_array_sort(env, t);
     if (!get_from_namespace(env, t, "shuffle"))
         define_array_shuffle(env, t);
+    if (!get_from_namespace(env, t, "join"))
+        define_array_join(env, t);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

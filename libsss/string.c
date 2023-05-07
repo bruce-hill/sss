@@ -306,4 +306,29 @@ string_t sss_string_octal(int64_t i, int64_t digits, bool prefix) {
     return (string_t){.data=str, .length=len, .stride=1};
 }
 
+string_t sss_string_split(string_t str, string_t split_chars) {
+    if (str.length == 0) return (string_t){.stride=1};
+    struct { string_t *data; int32_t length, stride; } strings = {.stride=1};
+    size_t capacity = 0;
+    bool separators[256] = {0};
+    for (int32_t i = 0; i < split_chars.length; i++)
+        separators[(int)split_chars.data[split_chars.stride*i]] = true;
+
+    for (int32_t i = 0; i < str.length; i++) {
+        if (separators[(int)str.data[str.stride*i]]) continue;
+        int32_t len = 0;
+        while (i < str.length && !separators[(int)str.data[str.stride*i]]) {
+            ++len;
+            ++i;
+        }
+        strings.data = GC_REALLOC(strings.data, sizeof(string_t)*(capacity += 1));
+        strings.data[strings.length++] = (string_t){
+            .data=&str.data[str.stride*(i-len)],
+            .length=len, 
+            .stride=str.stride,
+        };
+    }
+    return *(string_t*)&strings;
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

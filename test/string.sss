@@ -1,32 +1,63 @@
 def Vec{x,y:Num}
 
-i := 5
-f := 3.14159
-s := "world"
-v := Vec{2.3, 4.5}
-l := [[1,2],[3,4]]
-l2 := [[Vec{2.,3.}]]
+>>> "$(5)"
+=== "5"
+>>> "$(3.14159)"
+=== "3.14159"
+>>> s := "world"
+>>> "hello $s"
+=== "hello world"
+>>> "$(Vec{2.3, 4.5})"
+=== "Vec{x=2.3, y=4.5}"
+>>> "$([[1,2], [3,4]])"
+=== "[[1, 2], [3, 4]]"
+>>> "$([[Vec{2.,3.}]])"
+=== "[[Vec{x=2, y=3}]]"
 
-say "Hello: i=$i f=$f s=$s v=$v l=$l l2=$l2 expr=$(i + 1)!"
 say "\n<-newline \x21<-bang \101<-A, backslash: \\ quote: \" done"
 say "Fn: $( (x:Int,y:Int)-> x + y )"
 
-toslice := "Hello world"
-char := toslice[1]
-slice := toslice[2..6]
-say "Char: $char Slice: $slice"
-// say "Invalid char: $(toslice[-10]) Invalid slice: '$(toslice[-100..-5])'"
-say "First slice: '$(toslice[..5])' Backwards: '$(toslice[.. by -1])'"
-say "Whole slice: '$(toslice[..])' Every other: '$(toslice[1.. by 2])'"
+>>> str := "Hello world"
+>>> str[1] == `H
+=== yes
+>>> str[2..6]
+=== "ello "
+>>> str[..5]
+=== "Hello"
+>>> str[.. by -1]
+=== "dlrow olleH"
+>>> str[..]
+=== "Hello world"
+>>> str[.. by 2]
+=== "Hlowrd"
+>>> str[99..102]
+=== ""
 
-say "$:(toslice.replace("o","XXX"))"
-say "|$:("  one two  ".trimmed())|"
-say "|$:("  one two  ".trimmed(chars=" on"))|"
-say "|$:("  one two  ".trimmed(trim_left=no))|"
+>>> "$($DSL"xx")"
+=== "$DSL\"xx\""
+
+>>> str.replace("o", "XX")
+=== "HellXX wXXrld"
+
+>>> "  one two  ".trimmed()
+=== "one two"
+>>> "  one two  ".trimmed(chars=" on")
+=== "e tw"
+>>> "  one two  ".trimmed(trim_left=no)
+=== "  one two"
+>>> "one" ++ "two"
+=== "onetwo"
+>>> " one two three".split()
+=== ["one", "two", "three"]
+>>> "one,two three,four".split(",")
+=== ["one", "two three", "four"]
+>>> ",".join(["one", "two", "three"])
+=== "one,two,three"
 // say("string" + " + " + "concatenation")
 // say "string repeating: $("Ha".repeated(5))"
 
 if yes
+    i := 123
     multiline := ("
         Hello world
             (indented x4 here)
