@@ -4,7 +4,7 @@
 
 # NAME
 
-sss - A language prioritizing Simplicity, Safety, and Speed.
+sss - A language that prioritizes Safety, Simplicity, and Speed.
 
 # SYNOPSIS
 

@@ -1,6 +1,6 @@
 # The SSS Programming Language
 
-SSS is a language that prioritizes **s**implicity, **s**afety, and **s**peed,
+SSS is a language that prioritizes **s**afety, **s**implicity, and **s**peed,
 with lightweight syntax and garbage collection. It's statically typed,
 compiled, and imperative. It uses [libgccjit](https://gcc.gnu.org/wiki/JIT) as
 a backend, which compiles to a binary. SSS lets you write SSS-tier software.
