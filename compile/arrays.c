@@ -690,20 +690,29 @@ static void define_array_join(env_t *env, sss_type_t *glue_t)
 
 #undef AS_VOID_PTR
 
-void define_array_methods(env_t *env, sss_type_t *t)
+binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name)
 {
-    if (!get_from_namespace(env, t, "insert"))
+    while (t->tag == PointerType) t = Match(t, PointerType)->pointed;
+
+    binding_t *b = get_from_namespace(env, t, method_name);
+    if (b || t->tag != ArrayType) return b;
+
+    if (streq(method_name, "insert"))
         define_array_insert(env, t);
-    if (!get_from_namespace(env, t, "insert_all"))
+    else if (streq(method_name, "insert_all"))
         define_array_insert_all(env, t);
-    if (!get_from_namespace(env, t, "remove"))
+    else if (streq(method_name, "remove"))
         define_array_remove(env, t);
-    if (!get_from_namespace(env, t, "sort"))
+    else if (streq(method_name, "sort"))
         define_array_sort(env, t);
-    if (!get_from_namespace(env, t, "shuffle"))
+    else if (streq(method_name, "shuffle"))
         define_array_shuffle(env, t);
-    if (!get_from_namespace(env, t, "join"))
+    else if (streq(method_name, "join"))
         define_array_join(env, t);
+    else
+        return NULL;
+
+    return get_from_namespace(env, t, method_name);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

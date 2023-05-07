@@ -425,7 +425,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 compiler_err(env, ast, "I can't find anything called %s on this type", access->field);
         }
         case ArrayType: {
-            define_array_methods(env, value_t);
             auto array = Match(value_t, ArrayType);
             sss_type_t *item_t = array->item_type;
             // TODO: support other things like pointers
@@ -440,7 +439,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                     }
                 }
             }
-            goto class_lookup;
+            binding_t *binding = get_array_method(env, fielded_t, access->field);
+            if (!binding)
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
+            return binding->type;
         }
         case TableType: {
             if (streq(access->field, "has_default") || streq(access->field, "has_fallback"))

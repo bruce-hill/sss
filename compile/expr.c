@@ -426,8 +426,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 table_remove(env, block, container_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
             } else if (container_t->tag == ArrayType) {
-                define_array_methods(env, container_t);
-                binding_t *b = get_from_namespace(env, container_t, "remove");
+                binding_t *b = get_array_method(env, container_t, "remove");
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
                 gcc_assign(*block, loc, arr_var, compile_expr(env, block, index->indexed));
@@ -473,8 +472,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (value_t->tag == TableType) {
                     table_remove(env, block, value_t, compile_expr(env, block, to_delete), NULL);
                 } else if (value_t->tag == ArrayType) {
-                    define_array_methods(env, value_t);
-                    binding_t *b = get_from_namespace(env, value_t, "remove");
+                    binding_t *b = get_array_method(env, value_t, "remove");
                     gcc_func_t *func = gcc_block_func(*block);
                     gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
                     gcc_assign(*block, loc, arr_var, compile_expr(env, block, to_delete));
@@ -1080,10 +1078,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
-                if (value_type->tag == ArrayType)
-                    define_array_methods(env, value_type);
-
-                binding_t *binding = get_from_namespace(env, self_t, access->field);
+                binding_t *binding = (value_type->tag == ArrayType) ?
+                    get_array_method(env, value_type, access->field)
+                    : get_from_namespace(env, self_t, access->field);
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)
@@ -1823,8 +1820,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t_lhs = get_type(env, concat->lhs);
         sss_type_t *array_t = t_lhs;
         while (array_t->tag == PointerType) array_t = Match(array_t, PointerType)->pointed;
-        define_array_methods(env, array_t);
-        binding_t *b = get_from_namespace(env, array_t, "insert_all");
+        binding_t *b = get_array_method(env, array_t, "insert_all");
         assert(b);
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
         if (t_lhs->tag == ArrayType) {
