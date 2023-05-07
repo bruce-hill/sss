@@ -137,7 +137,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_u32, "sss_hashmap_len", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_void, "sss_hashmap_mark_cow", PARAM(t_void_ptr, "table"));
     load_global_func(env, t_int, "sss_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"), PARAM(t_void_ptr, "entry_compare"),
+                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"),
                      PARAM(t_size, "entry_size"), PARAM(t_size, "value_offset"));
     load_global_func(env, t_u32, "hash_64bits", PARAM(t_void_ptr, "ptr"));
     load_global_func(env, t_u32, "compare_64bits", PARAM(t_void_ptr, "a"), PARAM(t_void_ptr, "b"));

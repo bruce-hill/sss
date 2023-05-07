@@ -104,3 +104,18 @@ t := @{"abc"=>1, "def"=>2}
 === @{1=>2; fallback={9=>10}; default=345}
 >>> t[9]
 === 10
+
+// Order-independence
+>>> t1 := {1=>2, 3=>4}
+>>> "$t1" // String representation keeps order:
+=== "{1=>2, 3=>4}"
+>>> t2 := {3=>4, 1=>2}
+>>> "$t2" // String representation keeps order:
+=== "{3=>4, 1=>2}"
+>>> t1 == t2 // Equality despite different insertion orders
+=== yes
+>>> t3 := {t1=>123}
+>>> t3[t1] // Tables can be used as table keys
+=== 123
+>>> t3[t2] // t1==t2 ==> t3[t1]==t3[t2]
+=== 123
