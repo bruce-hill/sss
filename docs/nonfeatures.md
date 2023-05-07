@@ -1,7 +1,9 @@
 # Non-Features of SSS
 
 These are a few features that I don't plan to ever add to SSS. This document
-will explain the rationale behind not including those features.
+will explain the rationale behind not including those features. The philosophy
+of SSS is prioritizing Safety, Simplicity, and Speed. The features here are
+ones that violate one or more of these principles
 
 
 ## Non-feature 1: Polymorphism/Generics
@@ -34,10 +36,11 @@ fail unless contains(mytree, 123)
 ```
 
 It's intuitively obvious how this code *should* work, but what actually happens
-is quite a bit more complicated. The first thing to note is that the actual
-memory layout of the `BinaryTree` struct is no longer fixed. Depending on what
-type `T` is, the memory offset for `left` and `right` may be quite different.
-Consider these possibilities:
+is quite a bit more complicated. This goes against the core SSS value of
+"Simplicity". The first thing to note is that the actual memory layout of the
+`BinaryTree` struct is no longer fixed. Depending on what type `T` is, the
+memory offset for `left` and `right` may be quite different. Consider these
+possibilities:
 
 T        | Offset of `value` | Offset of `depth` | Offset of `left` | Offset of `right`
 ---------+-------------------+-------------------+------------------+-------------------------------
@@ -167,11 +170,12 @@ misstep in the history of computer programming. One of the central ideas was
 that you would arrange things into hierarchical class structures to allow for
 reuse of code and generalized interfaces. The result of this was a massive
 ballooning in code complexity, as well as a lot of indirection to hide that
-complexity. SSS's ideal is to keep things simple. If you want to reuse code
-from different areas, use composition instead of inheritance. Instead of having
-a `Character` that inherits from `SpriteObject` and `PhysicsObject` which
-inherit from `GameObject` and chain invoking super methods on each other, just
-save yourself a headache and create a struct that holds different things in it:
+complexity. SSS's ideal is to keep things simple, but OOP goes against that
+principle. If you want to reuse code from different areas, use composition
+instead of inheritance. Instead of having a `Character` that inherits from
+`SpriteObject` and `PhysicsObject` which inherit from `GameObject` and chain
+invoking super methods on each other, just save yourself a headache and create
+a struct that holds different things in it:
 
 ```SSS
 def Character {
@@ -213,10 +217,14 @@ effectively creating a domain-specific language where operators have entirely
 new meanings, sometimes with little association to mathematical operations.
 This creates a lot of burden on readers who are not familiar with the
 conventions. What happens when you subtract one list from another list? How
-about multiplying a `Foo` by a floating point number? Does dividing a `Path`
-by another `Path` give you a subdirectory or a type error? These questions
-might be answerable, but they are often not intuitive, especially when operator
-overloading is allowed for mixed types.
+about multiplying a `Foo` by a floating point number? Does dividing a `Path` by
+another `Path` give you a subdirectory or a type error? These questions might
+be answerable, but they are often not intuitive, especially when operator
+overloading is allowed for mixed types. This violates the principles of both
+_Simplicity_ and _Safety_, as it requires memorizing a complex set of rules,
+and may cause uncaught bugs in the case of complicated overloading rules like
+Javascript's operator overloading (e.g. `1 + [] == "1"` is valid under
+Javascript's operator overloading rules, but would be a compiler error in SSS).
 
 Mixed type operator overloading (e.g. `String + Int`) also introduces the
 further complexity of how to resolve conflicting overloading rules and how to
@@ -235,19 +243,21 @@ may be very computationally expensive *appear* to be similar in cost to
 extremely fast and simple operations like integer addition. Code like `a + b`
 might be near-instantaneous, or it might be making web requests to a Mars
 rover. Without deep familiarity with the source code, it becomes hard to
-quickly eyeball code to assess what its performance looks like.
+quickly eyeball code to assess what its performance looks like. This violates
+SSS's principles of both _Speed_ and _Simplicity_, as it becomes easy to
+accidentally tank a program's performance and hard to reason about performance.
 
 ### Grudging Concessions
 
-With all that said, SSS may make a few concessions to ergonomics and
-convention by having a few operator overloads for unambiguous, commonplace, and
-comparatively performant operations like vectorized math operations on arrays
-and structs. The number of operator overloads will be kept small in order to
-keep the language simple, and best efforts will be made to keep the overloads
-fast as well. If there is ever any doubt about what an operator overload should
-mean, it will not get added to the language and an unambiguous method call will
-be preferred (e.g. instead of `[a,b,c] - b`, something like
-`[a,b,c].without(b)`).
+With all that said, SSS may make a few concessions to ergonomics and convention
+by having a few operator overloads for unambiguous, commonplace, and
+comparatively performant operations like vectorized numerical math operations
+on arrays and structs. The number of operator overloads will be kept small in
+order to keep the language simple, and best efforts will be made to keep the
+overloads fast as well. If there is ever any doubt about what an operator
+overload should mean, it will not get added to the language and an unambiguous
+method call will be preferred (e.g. instead of `[a,b,c] - b`, something like
+`[a,b,c].without_item(b)`).
 
 
 ## Non-feature 4: Private Members
@@ -256,34 +266,57 @@ In some languages, there is a notion of "private" vs. "public" members in a
 struct, which is enforced by the compiler. This practice is based off of the
 premise that library authors want to differentiate between contractual
 guarantees and implementation-specific details that users should not depend on.
-There is some merit to this idea, but in my opinion it is overkill to have
-compiler guarantees because it prevents useful inspection and debugging. It
-also encourages people to use getter/setter anti-patterns like `def
-foo.get_x():Num return foo.x`. A much saner alternative is to indicate that
-certain struct members are not intended for public use by prefixing their name
-with an underscore. This preserves the ability to introspect on structs for
-debugging purposes, as well as allows for library implementations which
-reference internal members in places other than methods. Any sane programmer
-can see a struct member with a leading underscore and understand that it's
-probably not meant for normal use.
+There is some merit to this idea, but in my opinion it makes debugging harder
+and has the potential to introduce difficult to understand bugs. This violates
+the principles of _Safety_ and _Simplicity_. For example, imagine two structs
+with a hidden member that has different values in each struct. If the value is
+not accessible or visible in debug printouts, then it is entirely possible to
+have two values that _look_ identical in every observable way, but behave
+_differently_ from each other. This adds a lot of complexity to the
+programmer's reasoning and makes it nearly impossible to have a coherent system
+of value semantics.
+
+Private members also encourage people to use getter/setter anti-patterns like
+`def foo.get_x():Num return foo.private_x`. This sort of pattern is bad for
+_Speed_: it introduces function call overhead for member access, as well as
+potentially slow accessor methods. It also tends to produce a lot of
+boilerplate code. A much saner alternative is to indicate that certain struct
+members are not _intended_ for public use by prefixing their name with an
+underscore. This preserves the ability to introspect on structs for debugging
+purposes and keeps value semantics simple, while still allowing library authors
+to communicate which members an end user isn't intended to care about. Any sane
+programmer can see a struct member with a leading underscore and understand
+that it's probably not meant for normal use.
 
 
 ## Non-feature 5: A Fancy Type System
 
-SSS's philosophy with static typing is that the less time you spend thinking
-about types, the more time you can spend writing code. Static types are useful
-for a compiled language, since they allow you to output specialized code for
-different types, which leads to better performance. Types are also useful for
-catching "dumb" mistakes, like mixing up variables or passing the wrong value
-to a function. Those two use cases are the main ones that SSS is concerned
-with.
+SSS's philosophy with static typing is that the goal of SSS's type system is
+to promote _Safety_ and _Speed_, while remaining as _Simple_ as possible. The
+simplest practical type system would be something like dynamic typing, where
+the user doesn't have to think much about type annotations or types at all.
+However, dynamic typing sacrifices too much _Safety_ and _Speed_. SSS aims to
+have a type system that is _just_ complex enough to express concepts necessary
+for safety and speed, without becoming excessively complex.
 
-It's entirely possible to come up with elaborate and beautiful type systems
-that express higher mathematical conceptions of Set Theory, or make
-compile-time guarantees about different properties your program might have. In
-my personal opinion, I find languages with those sorts of type system to be
-deeply unpleasant to work with, so I don't want to make a language like that.
+There is no objective definition for what "excessively complex" means when it
+comes to the tradeoff between safety and simplicity in the type system. I
+personally dislike working in languages with overly complicated type systems,
+so I tend to err on the side of simplicity, except in cases where it can be
+demonstrated that a real-world safety problem can be mitigated or eliminated by
+adding a small amount of complexity to the type system. For example, code
+injection (e.g. SQL injection) is a real-world problem that can be
+substantially mitigated by having a type system capable of expressing the
+difference between strings that have different meanings or origins and safely
+escaping values when interpolating.
 
+However, a counterexample would be type systems that are capable of proving
+bounds on the runtime or memory usage of code. There's a real safety benefit to
+such type systems, but the amount of complexity added is immense. Another
+counterexample would be type systems that allow for specifying abstract
+interfaces which various types can implement. Interface types do not improve
+safety or speed, they simply reduce boilerplate, while increasing the
+complexity of the type system.
 
 ## Non-feature 6: Full Type Inference
 
@@ -322,13 +355,12 @@ so callers must address any error values returned or explicitly discard them:
 def IntParseResult {|Failure|Success:Int|}
 def parse_int(str:String, base=10):IntParseResult
     return IntParseResult.Failure if #str == 0
-    digits := "0123456789"
     n := 0
     for i in 1..#str
         c := str[i]
-        if c < digits[1] or c > digits[10]
+        if c < `0 or c > `9
           return IntParseResult.Failure
-        n = n*10 + (c - digits[1])
+        n = n*10 + ((c as Int) - (`0 as Int))
     return IntParseResult.Success(n)
 
 x := 0
@@ -341,12 +373,13 @@ else
 x += parse_int("hello").Success
 ```
 
-When situations arise that truly require aborting a process, `fail` is a good
-option. Exceptions live in a murky middle ground that attempt to address both
-problems (predictable/recoverable errors and unrecoverable errors). Exceptions
-come with a lot of baggage attached, however. First and foremost, there is a
-big drag on performance when code relies heavily on exception handling as part
-of happy-path control flow. Secondly, exceptions create a lot of cognitive load
+When situations arise that truly require aborting a process (such as
+encountering an unrecoverable bug), `fail` is a good option. Exceptions live in
+a murky middle ground that attempt to address both problems
+(predictable/recoverable errors and unrecoverable errors). Exceptions come with
+a lot of baggage attached, however. First and foremost, there is a big drag on
+performance when code relies heavily on exception handling as part of
+happy-path control flow. Secondly, exceptions create a lot of cognitive load
 when trying to understand code. You're left with either the task of trying to
 guess which functions do or don't throw exceptions (and which exceptions), or
 you're forced to annotate all thrown exceptions all the way up and down the
@@ -363,14 +396,14 @@ way to create a safe recovery point for recovering from a `fail` (inspired by Lu
 
 ## Non-feature 8: 0-Indexed Lists
 
-Although 0-indexing is more common than 1-indexing, SSS uses 1-indexing
-because it works much better with Range values than 0-indexing. 1-indexing also
-has some intuitive advantages when dealing with ordinal lists. The original
-reason for 0-indexing is that it's a more natural representation of memory
-offsets: in C, `foo[x]` is directly equivalent to `*(foo + x)`. Unfortunately,
-0-indexing is quite counter-intuitive (the fifth item is `items[4]`) and it
-plays very poorly with Ranges. Taking Python as an example, Python's ranges
-have the incredibly awkward property that they are *inclusive* on one side and
+Although 0-indexing is more common than 1-indexing, SSS uses 1-indexing because
+it works much better with `Range` values than 0-indexing. 1-indexing also has
+some intuitive advantages when dealing with ordinal lists. The original reason
+for 0-indexing is that it's a more natural representation of memory offsets: in
+C, `foo[x]` is directly equivalent to `*(foo + x)`. Unfortunately, 0-indexing
+is quite counter-intuitive (the fifth item is `items[4]`) and it plays very
+poorly with inclusive Ranges. Taking Python as an example, Python's ranges have
+the incredibly awkward property that they are *inclusive* on one side and
 *exclusive* on the other side. In other words, `range(3,5)` contains the
 elements `{3,4}` but not `5`. This is necessary because Python has both Ranges
 and 0-indexed lists. If you want to iterate over the indices in a Python list,
@@ -378,12 +411,17 @@ you use `range(0, len(foo))`, but because of the half-openness of Python's
 ranges, iterating over the same range *backwards* is extremely
 counter-intuitive: `range(len(foo)-1, -1, -1)` (idiomatically, Python prefers
 `reversed(range(len(foo)))` to circumvent the problem). In SSS, this is not a
-problem: `3..5` simply means the items `{3,4,5}`, as you would expect.
+problem: `3..5` simply means the items `{3,4,5}`, as you would expect. The
+indices in a list are `1..#list` and backwards ranges include the same values
+as forward ranges (`a..b` and `b..a by -1` include the same values).
 
 ### Modular Arithmetic
 
 One disadvantage with 1-indexing is it makes wrapping indexes more onerous. In
 C, you might say `int bucket_index = hash % buckets.len;`, but in a 1-indexed
 language like Lua, it becomes the much uglier code: `local bucket_index = 1 +
-((hash - 1) % #buckets)`. SSS has a simple workaround: the `mod` operator:
-`bucket_index := hash mod1 #buckets`.
+((hash - 1) % #buckets)`. SSS has a simple workaround: the `mod1` operator:
+`bucket_index := hash mod1 #buckets`. You can think of this as "clock
+arithmetic", just like how the hours on a 12-hour clock always range from 1 to
+12: 11 o'clock plus 1 hour is 12 o'clock and another hour gives 1 o'clock. In
+SSS, that looks like: `11 + 1 mod1 12 == 12` and `11 + 2 mod1 == 1`.
