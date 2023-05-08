@@ -31,6 +31,13 @@ def width(s:String):Int
     setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
     return (extern u8_width:(@CStringChar,Int,@CStringChar)->Int32)(s.c_string(), #s, setlocale(0i32,!CStringChar))
 
+def first_codepoint(s:String):Int32
+    len := (extern u8_mblen:(@CStringChar,Int)->Int32)(s.c_string(), #s)
+    ret := @0i32
+    u8_to_u32 := extern u8_to_u32:(@CStringChar,Int,?Int32,@Int)->?Int32
+    _ := u8_to_u32(s[1..len].c_string(), len, ret, @1)
+    return *ret
+
 def codepoints(s:String):[Int32]
     ret := [0i32 for _ in 1..length(s)]
     len := @#ret
@@ -72,11 +79,11 @@ is_other_lowercase := extern uc_is_property_other_lowercase:(Int32)->Bool
 is_titlecase := extern uc_is_property_titlecase:(Int32)->Bool
 is_cased := extern uc_is_property_cased:(Int32)->Bool
 is_case_ignorable := extern uc_is_property_case_ignorable:(Int32)->Bool
-is_changes_when_lowercased := extern uc_is_property_changes_when_lowercased:(Int32)->Bool
-is_changes_when_uppercased := extern uc_is_property_changes_when_uppercased:(Int32)->Bool
-is_changes_when_titlecased := extern uc_is_property_changes_when_titlecased:(Int32)->Bool
-is_changes_when_casefolded := extern uc_is_property_changes_when_casefolded:(Int32)->Bool
-is_changes_when_casemapped := extern uc_is_property_changes_when_casemapped:(Int32)->Bool
+changes_when_lowercased := extern uc_is_property_changes_when_lowercased:(Int32)->Bool
+changes_when_uppercased := extern uc_is_property_changes_when_uppercased:(Int32)->Bool
+changes_when_titlecased := extern uc_is_property_changes_when_titlecased:(Int32)->Bool
+changes_when_casefolded := extern uc_is_property_changes_when_casefolded:(Int32)->Bool
+changes_when_casemapped := extern uc_is_property_changes_when_casemapped:(Int32)->Bool
 is_soft_dotted := extern uc_is_property_soft_dotted:(Int32)->Bool
 is_id_start := extern uc_is_property_id_start:(Int32)->Bool
 is_other_id_start := extern uc_is_property_other_id_start:(Int32)->Bool

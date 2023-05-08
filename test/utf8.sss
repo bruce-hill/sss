@@ -1,0 +1,50 @@
+
+>>> smile := "smile: 😀"
+>>> smile
+=== "smile: \xF0\x9F\x98\x80"
+say "$smile"
+>>> #smile
+=== 11
+>>> utf8 := use ../stdlib/utf8.sss
+>>> utf8.length(smile)
+=== 8
+>>> utf8.width(smile)
+=== 9
+>>> codepoints := utf8.codepoints(smile)
+>>> codepoints
+=== [115_i32, 109_i32, 105_i32, 108_i32, 101_i32, 58_i32, 32_i32, 128512_i32]
+>>> utf8.from_codepoints(codepoints) == smile
+=== yes
+
+>>> amelie := "Amélie"
+>>> #amelie
+=== 7
+>>> utf8.length(amelie)
+=== 6
+>>> utf8.width(amelie)
+=== 6
+>>> utf8.codepoints(amelie)
+=== [65_i32, 109_i32, 233_i32, 108_i32, 105_i32, 101_i32]
+>>> amelie_alt := utf8.from_codepoints([0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32])
+>>> amelie == amelie_alt
+=== no
+say "$:amelie $:amelie_alt"
+>>> utf8.normalize(amelie) == amelie_alt
+=== yes
+>>> utf8.normalize(amelie_alt) == amelie_alt
+=== yes
+>>> utf8.lowercased(amelie) == "amélie"
+=== yes
+>>> utf8.uppercased(amelie) == "AMÉLIE"
+=== yes
+>>> utf8.titlecased(utf8.lowercased(amelie)) == amelie
+=== yes
+
+>>> utf8.is_valid(smile)
+=== yes
+>>> utf8.is_valid("\xFF\xFF")
+=== no
+
+>>> c := utf8.first_codepoint("😀...")
+>>> utf8.is_emoji(c)
+=== yes
