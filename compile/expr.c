@@ -622,7 +622,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             // Put in a temporary variable so defers can run after evaluating return expr:
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_return_val");
+            gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, env->return_type), "_return_val");
             gcc_assign(*block, loc, return_var, val);
 
             // Now run defers:
