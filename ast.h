@@ -195,6 +195,7 @@ struct ast_s {
         struct {
             const char *name;
             ast_t *type;
+            bool address;
         } Extern;
         struct {
             ast_t *item_type;

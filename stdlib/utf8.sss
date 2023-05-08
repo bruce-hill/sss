@@ -1,0 +1,172 @@
+!link -lunistring
+
+// Opaque struct:
+def uninorm_t{}
+
+def normalize(s:String):String
+    len := @0
+    u8_normalize := (extern u8_normalize:(@uninorm_t,@CStringChar,Int,?CStringChar,?Int)->?CStringChar)
+    buf := u8_normalize((extern @uninorm_nfd:uninorm_t), s.c_string(), #s, !CStringChar, len) or fail "Couldn't normalize string: $s"
+    defer (extern free:(@CStringChar)->Void)(buf)
+    gc_alloc := extern GC_malloc_atomic:(Int)->@CStringChar
+    memcpy := extern memcpy:(@CStringChar,@CStringChar,Int)->@CStringChar
+    data := memcpy(gc_alloc(*len+1), buf, *len+1)
+    return bitcast ({data=data, length=(*len as Int32), stride=1i32}) as String
+
+def compare(s1:String, s2:String):Int32
+    u8_normcmp := extern u8_normcmp:(@CStringChar,Int,@CStringChar,Int,@uninorm_t,@Int32)->Int32
+    ret := @0i32
+    _ := u8_normcmp(s1.c_string(), #s1, s2.c_string(), #s2, (extern @uninorm_nfd:uninorm_t), ret)
+    return *ret
+
+def length(s:String):Int
+    return (extern u8_mbsnlen:(@CStringChar,Int)->Int32)(s.c_string(), #s)
+
+def width(s:String):Int
+    setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
+    return (extern u8_width:(@CStringChar,Int,@CStringChar)->Int32)(s.c_string(), #s, setlocale(0i32,!CStringChar))
+
+def codepoints(s:String):[Int32]
+    ret := [0i32 for _ in 1..length(s)]
+    len := @#ret
+    u8_to_u32 := extern u8_to_u32:(@CStringChar,Int,?Int32,@Int)->?Int32
+    _ := u8_to_u32(s.c_string(), #s, (bitcast ret as {data:@Int32,length:Int32,stride:Int32}).data, len)
+    return ret
+
+def from_codepoints(codepoints:[Int32]):String
+    u32_to_u8 := extern u32_to_u8:(@Int32,Int,?Int32,@Int)->?CStringChar
+    data_ptr := (bitcast codepoints as {data:?Int32,length:Int32,stride:Int32}).data or return ""
+    len := @0
+    buf := u32_to_u8(data_ptr, #codepoints, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
+    defer (extern free:(@CStringChar)->Void)(buf)
+    gc_alloc := extern GC_malloc_atomic:(Int)->@CStringChar
+    memcpy := extern memcpy:(@CStringChar,@CStringChar,Int)->@CStringChar
+    data := memcpy(gc_alloc(*len + 1), buf, *len + 1)
+    return bitcast ({data=data, length=(*len as Int32), stride=1i32}) as String
+
+toupper := extern uc_toupper:(Int32)->Int32
+tolower := extern uc_tolower:(Int32)->Int32
+totitle := extern uc_totitle:(Int32)->Int32
+        
+
+is_white_space := extern uc_is_property_white_space:(Int32)->Bool
+is_alphabetic := extern uc_is_property_alphabetic:(Int32)->Bool
+is_other_alphabetic := extern uc_is_property_other_alphabetic:(Int32)->Bool
+is_not_a_character := extern uc_is_property_not_a_character:(Int32)->Bool
+is_default_ignorable_code_point := extern uc_is_property_default_ignorable_code_point:(Int32)->Bool
+is_other_default_ignorable_code_point := extern uc_is_property_other_default_ignorable_code_point:(Int32)->Bool
+is_deprecated := extern uc_is_property_deprecated:(Int32)->Bool
+is_logical_order_exception := extern uc_is_property_logical_order_exception:(Int32)->Bool
+is_variation_selector := extern uc_is_property_variation_selector:(Int32)->Bool
+is_private_use := extern uc_is_property_private_use:(Int32)->Bool
+is_unassigned_code_value := extern uc_is_property_unassigned_code_value:(Int32)->Bool
+is_uppercase := extern uc_is_property_uppercase:(Int32)->Bool
+is_other_uppercase := extern uc_is_property_other_uppercase:(Int32)->Bool
+is_lowercase := extern uc_is_property_lowercase:(Int32)->Bool
+is_other_lowercase := extern uc_is_property_other_lowercase:(Int32)->Bool
+is_titlecase := extern uc_is_property_titlecase:(Int32)->Bool
+is_cased := extern uc_is_property_cased:(Int32)->Bool
+is_case_ignorable := extern uc_is_property_case_ignorable:(Int32)->Bool
+is_changes_when_lowercased := extern uc_is_property_changes_when_lowercased:(Int32)->Bool
+is_changes_when_uppercased := extern uc_is_property_changes_when_uppercased:(Int32)->Bool
+is_changes_when_titlecased := extern uc_is_property_changes_when_titlecased:(Int32)->Bool
+is_changes_when_casefolded := extern uc_is_property_changes_when_casefolded:(Int32)->Bool
+is_changes_when_casemapped := extern uc_is_property_changes_when_casemapped:(Int32)->Bool
+is_soft_dotted := extern uc_is_property_soft_dotted:(Int32)->Bool
+is_id_start := extern uc_is_property_id_start:(Int32)->Bool
+is_other_id_start := extern uc_is_property_other_id_start:(Int32)->Bool
+is_id_continue := extern uc_is_property_id_continue:(Int32)->Bool
+is_other_id_continue := extern uc_is_property_other_id_continue:(Int32)->Bool
+is_xid_start := extern uc_is_property_xid_start:(Int32)->Bool
+is_xid_continue := extern uc_is_property_xid_continue:(Int32)->Bool
+is_pattern_white_space := extern uc_is_property_pattern_white_space:(Int32)->Bool
+is_pattern_syntax := extern uc_is_property_pattern_syntax:(Int32)->Bool
+is_join_control := extern uc_is_property_join_control:(Int32)->Bool
+is_grapheme_base := extern uc_is_property_grapheme_base:(Int32)->Bool
+is_grapheme_extend := extern uc_is_property_grapheme_extend:(Int32)->Bool
+is_other_grapheme_extend := extern uc_is_property_other_grapheme_extend:(Int32)->Bool
+is_grapheme_link := extern uc_is_property_grapheme_link:(Int32)->Bool
+is_bidi_control := extern uc_is_property_bidi_control:(Int32)->Bool
+is_bidi_left_to_right := extern uc_is_property_bidi_left_to_right:(Int32)->Bool
+is_bidi_hebrew_right_to_left := extern uc_is_property_bidi_hebrew_right_to_left:(Int32)->Bool
+is_bidi_arabic_right_to_left := extern uc_is_property_bidi_arabic_right_to_left:(Int32)->Bool
+is_bidi_european_digit := extern uc_is_property_bidi_european_digit:(Int32)->Bool
+is_bidi_eur_num_separator := extern uc_is_property_bidi_eur_num_separator:(Int32)->Bool
+is_bidi_eur_num_terminator := extern uc_is_property_bidi_eur_num_terminator:(Int32)->Bool
+is_bidi_arabic_digit := extern uc_is_property_bidi_arabic_digit:(Int32)->Bool
+is_bidi_common_separator := extern uc_is_property_bidi_common_separator:(Int32)->Bool
+is_bidi_block_separator := extern uc_is_property_bidi_block_separator:(Int32)->Bool
+is_bidi_segment_separator := extern uc_is_property_bidi_segment_separator:(Int32)->Bool
+is_bidi_whitespace := extern uc_is_property_bidi_whitespace:(Int32)->Bool
+is_bidi_non_spacing_mark := extern uc_is_property_bidi_non_spacing_mark:(Int32)->Bool
+is_bidi_boundary_neutral := extern uc_is_property_bidi_boundary_neutral:(Int32)->Bool
+is_bidi_pdf := extern uc_is_property_bidi_pdf:(Int32)->Bool
+is_bidi_embedding_or_override := extern uc_is_property_bidi_embedding_or_override:(Int32)->Bool
+is_bidi_other_neutral := extern uc_is_property_bidi_other_neutral:(Int32)->Bool
+is_hex_digit := extern uc_is_property_hex_digit:(Int32)->Bool
+is_ascii_hex_digit := extern uc_is_property_ascii_hex_digit:(Int32)->Bool
+is_ideographic := extern uc_is_property_ideographic:(Int32)->Bool
+is_unified_ideograph := extern uc_is_property_unified_ideograph:(Int32)->Bool
+is_radical := extern uc_is_property_radical:(Int32)->Bool
+is_ids_binary_operator := extern uc_is_property_ids_binary_operator:(Int32)->Bool
+is_ids_trinary_operator := extern uc_is_property_ids_trinary_operator:(Int32)->Bool
+is_emoji := extern uc_is_property_emoji:(Int32)->Bool
+is_emoji_presentation := extern uc_is_property_emoji_presentation:(Int32)->Bool
+is_emoji_modifier := extern uc_is_property_emoji_modifier:(Int32)->Bool
+is_emoji_modifier_base := extern uc_is_property_emoji_modifier_base:(Int32)->Bool
+is_emoji_component := extern uc_is_property_emoji_component:(Int32)->Bool
+is_extended_pictographic := extern uc_is_property_extended_pictographic:(Int32)->Bool
+is_zero_width := extern uc_is_property_zero_width:(Int32)->Bool
+is_space := extern uc_is_property_space:(Int32)->Bool
+is_non_break := extern uc_is_property_non_break:(Int32)->Bool
+is_iso_control := extern uc_is_property_iso_control:(Int32)->Bool
+is_format_control := extern uc_is_property_format_control:(Int32)->Bool
+is_dash := extern uc_is_property_dash:(Int32)->Bool
+is_hyphen := extern uc_is_property_hyphen:(Int32)->Bool
+is_punctuation := extern uc_is_property_punctuation:(Int32)->Bool
+is_line_separator := extern uc_is_property_line_separator:(Int32)->Bool
+is_paragraph_separator := extern uc_is_property_paragraph_separator:(Int32)->Bool
+is_quotation_mark := extern uc_is_property_quotation_mark:(Int32)->Bool
+is_sentence_terminal := extern uc_is_property_sentence_terminal:(Int32)->Bool
+is_terminal_punctuation := extern uc_is_property_terminal_punctuation:(Int32)->Bool
+is_currency_symbol := extern uc_is_property_currency_symbol:(Int32)->Bool
+is_math := extern uc_is_property_math:(Int32)->Bool
+is_other_math := extern uc_is_property_other_math:(Int32)->Bool
+is_paired_punctuation := extern uc_is_property_paired_punctuation:(Int32)->Bool
+is_left_of_pair := extern uc_is_property_left_of_pair:(Int32)->Bool
+is_combining := extern uc_is_property_combining:(Int32)->Bool
+is_composite := extern uc_is_property_composite:(Int32)->Bool
+is_decimal_digit := extern uc_is_property_decimal_digit:(Int32)->Bool
+is_numeric := extern uc_is_property_numeric:(Int32)->Bool
+is_diacritic := extern uc_is_property_diacritic:(Int32)->Bool
+is_extender := extern uc_is_property_extender:(Int32)->Bool
+is_ignorable_control := extern uc_is_property_ignorable_control:(Int32)->Bool
+is_regional_indicator := extern uc_is_property_regional_indicator:(Int32)->Bool
+
+def uppercased(str:String):String
+    toupper := extern uc_toupper:(Int32)->Int32
+    return from_codepoints([toupper(c) for c in codepoints(str)])
+
+def lowercased(str:String):String
+    tolower := extern uc_tolower:(Int32)->Int32
+    return from_codepoints([tolower(c) for c in codepoints(str)])
+
+def titlecased(str:String):String
+    points := codepoints(str)
+    prev_alpha := no
+    is_alphabetic := extern uc_is_property_alphabetic:(Int32)->Bool
+    tolower := extern uc_tolower:(Int32)->Int32
+    totitle := extern uc_totitle:(Int32)->Int32
+    return from_codepoints([
+        for c in points
+            if prev_alpha
+                prev_alpha = is_alphabetic(c)
+                tolower(c)
+            else
+                if is_alphabetic(c)
+                    prev_alpha = yes
+                    totitle(c)
+                else
+                    prev_alpha = no
+                    c
+    ])

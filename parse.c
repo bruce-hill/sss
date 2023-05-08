@@ -2132,12 +2132,14 @@ PARSER(parse_def) {
 PARSER(parse_extern) {
     const char *start = pos;
     if (!match_word(&pos, "extern")) return NULL;
+    spaces(&pos);
+    bool address = (match(&pos, "@") != 0);
     const char* name = get_id(&pos);
     spaces(&pos);
     if (!match(&pos, ":"))
         parser_err(ctx, start, pos, "I couldn't get a type for this extern");
     ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this extern");
-    return NewAST(ctx->file, start, pos, Extern, .name=name, .type=type);
+    return NewAST(ctx->file, start, pos, Extern, .name=name, .type=type, .address=address);
 }
 
 PARSER(parse_doctest) {

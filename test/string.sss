@@ -56,6 +56,14 @@ say "Fn: $( (x:Int,y:Int)-> x + y )"
 // say("string" + " + " + "concatenation")
 // say "string repeating: $("Ha".repeated(5))"
 
+// UTF-8 functionality:
+>>> smile := "smile: 😀"
+>>> smile
+=== "smile: \xF0\x9F\x98\x80"
+say "$smile"
+>>> #smile
+=== 11
+
 if yes
     i := 123
     multiline := ("

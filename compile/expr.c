@@ -288,7 +288,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_get_func_address(func, loc);
         } else {
             gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-            return gcc_rval(gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name));
+            gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_IMPORTED, gcc_t, ext->name);
+            return ext->address ? gcc_lvalue_address(lval, loc) : gcc_rval(lval);
         }
     }
 

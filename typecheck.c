@@ -567,7 +567,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return t;
     }
     case Extern: {
-        return parse_type_ast(env, Match(ast, Extern)->type);
+        sss_type_t *t = parse_type_ast(env, Match(ast, Extern)->type);
+        return Match(ast, Extern)->address ? Type(PointerType, .pointed=t, .is_optional=false) : t;
     }
     case Declare: case Assign: case Delete: case DocTest: case LinkerDirective: {
         return Type(VoidType);
