@@ -3,6 +3,11 @@
 // Opaque struct:
 def uninorm_t{}
 
+def is_valid(s:String):Bool
+    u8_check := extern u8_check:(@CStringChar,Int)->?CStringChar
+    err := u8_check(s.c_string(), #s)
+    return err == !CStringChar
+
 def normalize(s:String):String
     len := @0
     u8_normalize := (extern u8_normalize:(@uninorm_t,@CStringChar,Int,?CStringChar,?Int)->?CStringChar)
