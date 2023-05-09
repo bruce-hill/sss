@@ -1,0 +1,132 @@
+// Parsing for command-line arguments
+// Usage:
+//    spec := Spec.new(["v|verbose", "o|output"], ["input_file"])
+//    when spec.parse(ARGS) is args:Success
+//        ...
+//    else
+//        fail "Usage: $PROGRAM_NAME $(spec.usage())"
+
+def ArgumentResult{|
+    Success:{flags:{String=>String},positional:[String]}
+    InvalidArgument:String
+    MissingValue:String
+    DuplicateValue:String
+|}
+
+def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_args:[String]}
+    def new(flags:[String], positional_args=[:String]):Spec
+        flag_infos := @{:String=>{canonical:String,needs_value:Bool}}
+        for flag in flags
+            skip if #flag < 1
+            needs_value := flag.ends_with("=")
+            if needs_value then flag = flag[..(#flag-1)]
+            arg_aliases := flag.split("| -=")
+            skip if #arg_aliases < 1
+            longest := |arg_aliases, x if #x > #y else y|
+            for alias in arg_aliases
+                flag_infos[alias] = {longest, needs_value}
+        return Spec{*flag_infos, positional_args}
+
+    def usage(spec:Spec):String
+        usage := @""
+        for i,entry in spec.flag_infos
+            usage ++= ("-" if #entry.key == 1 else "--")
+            usage ++= entry.key
+            prev_canonical := entry.value.canonical
+        between
+            usage ++= ("|" if entry.value.canonical == prev_canonical else " ")
+
+        for pos in spec.positional_args
+            usage ++= " " ++ pos
+        return (*usage).trimmed()
+
+    def parse(spec:Spec, args:[String], allow_duplicates=no):ArgumentResult
+        positional := @[:String]
+        flags := @{:String=>String}
+
+        args := @args
+        while #args > 0
+            arg := args.pop(1)
+            if arg == "-"
+                positional.insert(arg)
+            else if arg.starts_with('\-')
+                positional.insert(arg[2..])
+            else if arg == "--"
+                positional.insert_all(*args)
+                stop
+            else if arg.starts_with("--")
+                flag := if `= in arg
+                    arg[3..].split("=")[1]
+                else
+                    arg[3..]
+
+                info := spec.flag_infos[flag] if flag in spec.flag_infos else return ArgumentResult.InvalidArgument("--"++flag)
+                flag = info.canonical
+
+                value := if `= in arg
+                    "=".join(arg[3..].split("=")[2..])
+                else if info.needs_value
+                    if #args > 0
+                        args.pop(1)
+                    else
+                        return ArgumentResult.MissingValue(flag)
+                else
+                    "yes"
+
+                if flag in flags and not allow_duplicates
+                    return ArgumentResult.DuplicateValue(flag)
+
+                flags[flag] = value
+            else if arg.starts_with("-")
+                char_index := 2
+                while char_index <= #arg
+                    flag := arg[char_index..char_index]
+                    info := spec.flag_infos[flag] if flag in spec.flag_infos else return ArgumentResult.InvalidArgument("-"++flag)
+                    flag = info.canonical
+
+                    value := if char_index+1 <= #arg and arg[char_index+1] == `=
+                        val := arg[(char_index+2)..]
+                        char_index = #arg+1
+                        val
+                    else if info.needs_value
+                        if char_index+1 <= #arg
+                            val := arg[(char_index+1)..(char_index+1)]
+                            char_index += 1
+                            val
+                        else if #args > 0
+                            args.pop(1)
+                        else
+                            return ArgumentResult.MissingValue(flag)
+                    else
+                        "yes"
+
+                    if flag in flags and not allow_duplicates
+                        return ArgumentResult.DuplicateValue(flag)
+
+                    flags[flag] = value
+                    char_index += 1
+            else
+                positional.insert(arg)
+
+        for name in spec.positional_args
+            if #positional > 0
+                flags[name] = positional.pop(1)
+            else stop
+
+        return ArgumentResult.Success({flags=*flags, positional=*positional})
+
+def test()
+    >>> spec := Spec.new(["v|verbose","O=","o|output=","n|name="], ["first","second"])
+    >>> spec.usage()
+    >>> spec.parse(["a","-v","b","--verbose","c","--","-o"])
+    >>> spec.parse(["a","-v","b","--verbose","c","--","-o"], allow_duplicates=yes)
+    >>> spec.parse(["--verbose=3"])
+    >>> spec.parse(["a","-v","-o"])
+    >>> spec.parse(["-O1o", "foo"])
+    >>> spec.parse(["-vO1o=foo"])
+    >>> spec.parse(["-O1o=foo"])
+    >>> spec.parse(["--name=one=two"])
+    >>> spec.parse(["--name", "one=two"])
+    >>> spec.parse(["--invalid"])
+    >>> spec.parse(["", "-", '\-x'])
+    >>> spec.parse(["-vXo=y"])
