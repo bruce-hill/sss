@@ -1712,10 +1712,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_assign(*block, NULL, result, lhs_val);
         lhs_val = gcc_rval(result);
-        if (t->tag == BoolType && rhs_t->tag == BoolType) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_AND, sss_type_to_gcc(env, t), lhs_val, rhs_val);
-        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+        if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             // Numeric promotion:
             if (!promote(env, lhs_t, &lhs_val, rhs_t))
@@ -1757,10 +1754,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_assign(*block, loc, result, lhs_val);
         lhs_val = gcc_rval(result);
-        if (t->tag == BoolType && rhs_t->tag == BoolType) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_LOGICAL_OR, sss_type_to_gcc(env, t), lhs_val, rhs_val);
-        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+        if (is_integral(lhs_t) && is_integral(rhs_t)) {
             gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
             if (!promote(env, lhs_t, &lhs_val, rhs_t)
                 && !promote(env, rhs_t, &rhs_val, lhs_t))

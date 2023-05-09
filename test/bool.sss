@@ -16,3 +16,10 @@ if no xor yes xor no
     say "Xor pass"
 else
     fail "'xor' failed"
+
+arr := [1]
+>>> 1 < 2 or arr[1] == 999
+=== yes
+
+>>> 1 == 2 and arr[1] == 999
+=== no
