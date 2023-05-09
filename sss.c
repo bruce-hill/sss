@@ -150,7 +150,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         fflush(buf_file);
         if (buf_size == 0) {
-            printf("\x1b[A\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
+            printf("\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
             CLEANUP();
             break;
         }
