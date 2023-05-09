@@ -109,11 +109,7 @@ string_t sss_string_trimmed(string_t s, string_t trim_chars, bool trim_left, boo
         }
     }
   done_trimming_right:;
-    char *buf = GC_MALLOC_ATOMIC(len+1);
-    char *ptr = buf;
-    for (int32_t i = start; i < start+len; i++)
-        *(ptr++) = s.data[i*s.stride];
-    return (string_t){.data=buf, .length=len, .stride=1};
+    return (string_t){.data=s.data+start*s.stride, .length=len, .stride=s.stride};
 }
 
 string_t sss_string_slice(string_t s, range_t *r) {

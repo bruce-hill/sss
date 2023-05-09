@@ -290,7 +290,10 @@ void array_insert(void *voidarr, char *item, int64_t index, size_t item_size, bo
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
 
-    if (arr->free < 1 || arr->stride != 1) {
+    if (!arr->data) {
+        arr->data = atomic ? GC_MALLOC_ATOMIC(item_size) : GC_MALLOC(item_size);
+        arr->free = 1;
+    } else if (arr->free < 1 || arr->stride != 1) {
         arr->free = 6;
         char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
         for (int32_t i = 0; i < index-1; i++)
@@ -312,7 +315,10 @@ void array_insert_all(void *voidarr, void *voidarr2, int64_t index, size_t item_
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
 
-    if (arr->free < arr2->len || arr->stride != 1) {
+    if (!arr->data) {
+        arr->data = atomic ? GC_MALLOC_ATOMIC(item_size*arr2->len) : GC_MALLOC(item_size*arr2->len);
+        arr->free = arr2->len;
+    } else if (arr->free < arr2->len || arr->stride != 1) {
         arr->free = arr2->len;
         char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
         for (int32_t i = 0; i < index-1; i++)
