@@ -377,55 +377,13 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
 
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey)
 {
-    if (obj->tag == Declare) {
-        // Special case for `if x := foo()`
-        auto decl = Match(obj, Declare);
-        sss_type_t *t = get_type(env, decl->value);
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-
-        if (t->tag == GeneratorType)
-            compiler_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
-        else if (t->tag == VoidType)
-            compiler_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
-
-        gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
-        gcc_func_t *func = gcc_block_func(*block);
-        const char* name = Match(decl->var, Var)->name;
-        gcc_lvalue_t *lval = gcc_local(func, ast_loc(env, obj), gcc_t, name);
-        binding_t *clobbered = get_local_binding(env, name);
-        if (clobbered && clobbered->type->tag == TypeType)
-            compiler_err(env, obj, "This name is already being used for the name of a type (struct or enum) in the same block, "
-                  "and I get confused if you try to redeclare the name of a namespace.");
-        hset(env->bindings, name,
-             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t));
-        assert(rval);
-        gcc_assign(*block, ast_loc(env, obj), lval, rval);
-
-        gcc_rvalue_t *bool_val = gcc_rval(lval);
-        if (gcc_type_if_pointer(gcc_t))
-            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
-        else
-            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, gcc_t));
-        gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
-        *block = NULL;
-        return;
-    }
-
     sss_type_t *t = get_type(env, obj);
     gcc_rvalue_t *bool_val = compile_expr(env, block, obj); 
-    switch (t->tag) {
-    case BoolType: break;
-    case StructType: {
-        compiler_err(env, obj, "This value is a struct and can't be used as a conditional.");
-        break;
-    }
-    default: {
+    if (t->tag == PointerType) {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        if (gcc_type_if_pointer(gcc_t))
-            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
-        else
-            bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_zero(env->ctx, gcc_t));
-    }
+        bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
+    } else if (t->tag != BoolType) {
+        compiler_err(env, obj, "This value can't be used for a boolean value, since it's a %s\n", type_to_string(t));
     }
     gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
     *block = NULL;
@@ -1378,21 +1336,26 @@ void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer)
     }
 }
 
-void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *user_fmt, ...)
+void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...)
 {
     char *info = NULL;
     size_t size = 0;
     FILE *f = open_memstream(&info, &size);
-    fprint_span(f, span, "\x1b[31;1m", 2, true);
+    if (span)
+        fprint_span(f, *span, "\x1b[31;1m", 2, true);
     fputc('\0', f);
     fflush(f);
     gcc_func_t *fail = get_function(env, "fail");
-    const char* fmt_str = heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
-                                    span.file->relative_filename,
-                                    sss_get_line_number(span.file, span.start),
-                                    sss_get_line_column(span.file, span.start),
-                                    user_fmt,
-                                    info);
+    const char* fmt_str;
+    if (span)
+        fmt_str = heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
+                            span->file->relative_filename,
+                            sss_get_line_number(span->file, span->start),
+                            sss_get_line_column(span->file, span->start),
+                            user_fmt,
+                            info);
+    else
+        fmt_str = heap_strf("\x1b[31;1;7m%s\x1b[m\n\n%s", user_fmt, info);
     gcc_rvalue_t *fmt_val = gcc_str(env->ctx, fmt_str);
 
     NEW_LIST(gcc_rvalue_t*, args);

@@ -1264,7 +1264,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(value_var), gcc_null(env->ctx, gcc_t)),
                            if_nil, done);
         *block = if_nil;
-        insert_failure(env, block, ast->span, "Error: this %s value was null when it was expected to be non-null",
+        insert_failure(env, block, &ast->span, "Error: this %s value was null when it was expected to be non-null",
                        type_to_string(get_type(env, value)));
         *block = done;
         return gcc_rval(value_var);
@@ -1400,7 +1400,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(default_ptr), gcc_null(env->ctx, ptr_t)),
                                    if_nil, if_nonnil);
                 *block = if_nil;
-                insert_failure(env, block, ast->span, "This table has no default value");
+                insert_failure(env, block, &ast->span, "This table has no default value");
                 *block = if_nonnil;
                 return gcc_rval(gcc_rvalue_dereference(gcc_rval(default_ptr), loc));
             } else if (streq(access->field, "fallback")) {
@@ -1414,7 +1414,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(fallback_ptr), gcc_null(env->ctx, ptr_t)),
                                    if_nil, if_nonnil);
                 *block = if_nil;
-                insert_failure(env, block, ast->span, "This table has no fallback value");
+                insert_failure(env, block, &ast->span, "This table has no fallback value");
                 *block = if_nonnil;
                 return gcc_rval(gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc));
             } else if (streq(access->field, "keys")) {
@@ -1481,7 +1481,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);
                 *block = wrong_tag;
-                insert_failure(env, block, ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
+                insert_failure(env, block, &ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
                                fielded_t, obj);
                 if (*block) gcc_jump(*block, loc, *block);
 
@@ -1536,7 +1536,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
                                if_nil, if_nonnil);
             *block = if_nil;
-            insert_failure(env, block, ast->span, "Error: this table does not have the given key: %#s",
+            insert_failure(env, block, &ast->span, "Error: this table does not have the given key: %#s",
                            Match(t, TableType)->key_type, key_rval);
 
             *block = if_nonnil;
@@ -1642,7 +1642,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (gcc_type_if_pointer(gcc_t))
             return gcc_null(env->ctx, sss_type_to_gcc(env, t));
         else
-            return gcc_zero(env->ctx, sss_type_to_gcc(env, t));
+            compiler_err(env, ast, "There is no nil value for %s", type_to_string(t));
     }
     case Not: {
         auto value = Match(ast, Not)->value;
@@ -2230,9 +2230,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *message = Match(ast, Fail)->message;
         if (message) {
             gcc_rvalue_t *msg = compile_expr(env, block, message);
-            insert_failure(env, block, ast->span, "%#s", get_type(env, message), msg);
+            insert_failure(env, block, &ast->span, "%#s", get_type(env, message), msg);
         } else {
-            insert_failure(env, block, ast->span, "A failure occurred");
+            insert_failure(env, block, &ast->span, "A failure occurred");
         }
         return NULL;
     }

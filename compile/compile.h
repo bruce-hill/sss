@@ -68,7 +68,7 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes
 void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array);
-void insert_failure(env_t *env, gcc_block_t **block, span_t span, const char *user_fmt, ...);
+void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...);
 binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name);
 
 // ============================== program.c =============================
