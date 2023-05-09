@@ -1,3 +1,4 @@
+// A small library for representing timestamps and getting the current time
 
 def Timestamp{seconds, nanoseconds:Int}
     format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->String)
