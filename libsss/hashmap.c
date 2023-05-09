@@ -73,7 +73,7 @@ void sss_hashmap_mark_cow(sss_hashmap_t *h)
 }
 
 // Return address of value or NULL
-static void *sss_hashmap_get_raw(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
+void *sss_hashmap_get_raw(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset)
 {
     if (!h || !key || h->capacity == 0) return NULL;
 

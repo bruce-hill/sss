@@ -1523,7 +1523,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
         } else if (t->tag == TableType) {
             gcc_rvalue_t *key_rval;
-            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index, &key_rval);
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index, &key_rval, false);
             if (indexing->unchecked)
                 return gcc_rval(gcc_rvalue_dereference(val_opt, loc));
 
@@ -1562,7 +1562,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
                             type_to_string(member_t), type_to_string(container_t));
 
-            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL);
+            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL, true);
             gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_t, TableType)->value_type)));
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
         } else if (container_t->tag == ArrayType) {

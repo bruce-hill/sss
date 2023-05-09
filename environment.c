@@ -128,6 +128,8 @@ static void load_global_functions(env_t *env)
 
     load_global_func(env, t_void_ptr, "sss_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"), PARAM(t_size, "value_offset"));
+    load_global_func(env, t_void_ptr, "sss_hashmap_get_raw", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
+                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"), PARAM(t_size, "value_offset"));
     load_global_func(env, t_void_ptr, "sss_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
                      PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"),
                      PARAM(t_size, "value_offset"), PARAM(t_void_ptr, "value"));

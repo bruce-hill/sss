@@ -139,7 +139,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
 }
 
 // Returns an optional pointer to a value
-gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out)
+gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out, bool raw)
 {
     gcc_loc_t *loc = ast_loc(env, key_ast);
     sss_type_t *table_t = get_type(env, table_ast);
@@ -159,7 +159,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     sss_type_t *key_t = Match(table_t, TableType)->key_type;
     sss_type_t *value_t = Match(table_t, TableType)->value_type;
 
-    gcc_func_t *hashmap_get_fn = get_function(env, "sss_hashmap_get");
+    gcc_func_t *hashmap_get_fn = get_function(env, raw ? "sss_hashmap_get_raw" : "sss_hashmap_get");
     gcc_func_t *key_hash = get_hash_func(env, key_t);
     gcc_func_t *key_cmp = get_indirect_compare_func(env, key_t);
 

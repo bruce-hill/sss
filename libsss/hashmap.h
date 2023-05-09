@@ -40,6 +40,7 @@ int compare_str(const void *x, const void *y);
 
 void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value);
 void *sss_hashmap_get(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset);
+void *sss_hashmap_get_raw(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset);
 void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key);
 uint32_t sss_hashmap_len(sss_hashmap_t *h);
 void sss_hashmap_mark_cow(sss_hashmap_t *h);
