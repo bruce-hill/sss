@@ -328,7 +328,8 @@ string_t sss_string_split(string_t str, string_t split_chars) {
             .stride=str.stride,
         };
     }
-    return *(string_t*)&strings;
+    string_t *ptr = (string_t*)&strings;
+    return *ptr;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
