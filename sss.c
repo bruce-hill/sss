@@ -272,7 +272,7 @@ int main(int argc, char *argv[])
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
             puts("sss - The SSS programming language runner");
-            puts("Usage: sss [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.sss]");
+            puts("Usage: sss [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.sss | -e '<expr>']");
             return 0;
         } else if (streq(argv[i], "-V")) {
             ++i;
@@ -297,6 +297,12 @@ int main(int argc, char *argv[])
             int opt = atoi(argv[i]+2);
             gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
             continue;
+        } else if (streq(argv[i], "-e") || streq(argv[i], "--eval")) {
+            if (i+1 >= argc)
+                errx(1, "I expected an argument for a program to execute");
+            const char *src = isatty(STDOUT_FILENO) ? heap_strf(">>> %s", argv[++i]) : heap_strf("say \"$(%s)\"", argv[++i]);
+            sss_file_t *f = sss_spoof_file("<argument>", src);
+            return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
         }
 
 #ifdef __OpenBSD__

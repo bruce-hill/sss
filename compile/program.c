@@ -62,7 +62,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
                                        gcc_param_as_rvalue(main_params[0]),
                                        gcc_param_as_rvalue(main_params[1]));
     gcc_assign(main_block, NULL, args, arg_list);
-    gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename));
+    gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename, .file=f));
     gcc_eval(main_block, NULL, val);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 

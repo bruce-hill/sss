@@ -74,7 +74,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
         gcc_return(finished_loading, NULL, gcc_rval(module_val));
 
         gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
-        sss_file_t *file = sss_load_file(use->path);
+        sss_file_t *file = use->file ? use->file : sss_load_file(use->path);
         module_env.file = file;
         if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
         ast_t *module_ast = parse_file(file, env->on_err);

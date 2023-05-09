@@ -85,7 +85,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
 
     free(file_buf);
     const char *relative_filename = filename;
-    if (filename && !streq(filename, "<repl>")) {
+    if (filename && !streq(filename, "<repl>") && !streq(filename, "<argument>")) {
         filename = resolve_path(filename, ".");
         // Convert to relative path (if applicable)
         char buf[PATH_MAX];

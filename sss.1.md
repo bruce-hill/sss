@@ -40,6 +40,9 @@ which can produce compiled binaries or run files directly.
 `-o` *file*
 : Specify the output file when compiling to a file.
 
+`-e`,`--eval` *expr*
+: Evaluate an expression passed in as a command line argument and print the result.
+
 *args...*
 : Extra arguments are passed to the compiled SSS program when it runs.
 

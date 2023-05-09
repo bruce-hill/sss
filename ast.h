@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <libgccjit.h>
 
+#include "files.h"
 #include "libsss/list.h"
 #include "compile/libgccjit_abbrev.h"
 #include "span.h"
@@ -291,6 +292,7 @@ struct ast_s {
         } Extend;
         struct {
             const char *path;
+            sss_file_t *file;
         } Use;
         struct {
             ast_t *value;
