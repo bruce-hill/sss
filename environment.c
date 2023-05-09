@@ -93,6 +93,14 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
+    load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
+    gcc_func_t *exit_fn = hget(env->global_funcs, "exit", gcc_func_t*);
+    hset(env->global_bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
+        FunctionType,
+        .arg_names=LIST(const char*, "status"),
+        .arg_types=LIST(sss_type_t*, Type(IntType, .bits=32)),
+        .arg_defaults=LIST(ast_t*, FakeAST(Int, .i=0, .precision=32)),
+        .ret=Type(AbortType))));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
     gcc_func_t *range_print = hget(env->global_funcs, "range_print", gcc_func_t*);

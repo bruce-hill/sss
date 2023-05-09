@@ -218,7 +218,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case CharType: case CStringCharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
-    case VoidType: gcc_t = gcc_type(env->ctx, VOID); break;
+    case VoidType: case AbortType: gcc_t = gcc_type(env->ctx, VOID); break;
     case PointerType: {
         gcc_t = sss_type_to_gcc(env, Match(t, PointerType)->pointed);
         gcc_t = gcc_get_ptr_type(gcc_t);

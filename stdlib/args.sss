@@ -1,10 +1,11 @@
 // Parsing for command-line arguments
 // Usage:
-//    spec := Spec.new(["v|verbose", "o|output"], ["input_file"])
-//    when spec.parse(ARGS) is args:Success
-//        ...
+//    spec := args.spec(["v|verbose", "o|output"], ["input_file"])
+//    options := when spec.parse(ARGS) is opts:Success
+//        opts
 //    else
-//        fail "Usage: $PROGRAM_NAME $(spec.usage())"
+//        say "Usage: $PROGRAM_NAME $(spec.usage())"
+//        exit 1i32
 
 def ArgumentResult{|
     Success:{flags:{String=>String},positional:[String]}
@@ -114,6 +115,8 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
             else stop
 
         return ArgumentResult.Success({flags=*flags, positional=*positional})
+
+spec := Spec.new
 
 def test()
     >>> spec := Spec.new(["v|verbose","O=","o|output=","n|name="], ["first","second"])
