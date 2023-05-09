@@ -678,7 +678,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             compiler_err(env, ast, "Only array/string value types support concatenation, not %s", type_to_string(lhs_t));
         return lhs_t;
     }
-    case Less: case LessEqual: case Greater: case GreaterEqual: case In: {
+    case Less: case LessEqual: case Greater: case GreaterEqual: case In: case NotIn: {
         return Type(BoolType);
     }
     case Min: case Max: {

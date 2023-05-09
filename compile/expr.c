@@ -1549,14 +1549,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "I only know how to index Arrays and Tables, not %s", type_to_string(t));
         }
     }
-    case In: {
-        auto in = Match(ast, In);
+    case In: case NotIn: {
+        auto in = ast->tag == In ? Match(ast, In) : Match(ast, NotIn);
         sss_type_t *member_t = get_type(env, in->member);
         sss_type_t *container_t = get_type(env, in->container);
 
         while (container_t->tag == PointerType)
             container_t = Match(container_t, PointerType)->pointed;
 
+        gcc_rvalue_t *ret;
         if (container_t->tag == TableType) {
             if (!type_is_a(member_t, Match(container_t, TableType)->key_type))
                 compiler_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
@@ -1564,14 +1565,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL, true);
             gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_t, TableType)->value_type)));
-            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
+            ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
         } else if (container_t->tag == ArrayType) {
-            return array_contains(env, block, in->container, in->member);
+            ret = array_contains(env, block, in->container, in->member);
         } else if (container_t->tag == RangeType) {
-            return range_contains(env, block, in->container, in->member);
+            ret = range_contains(env, block, in->container, in->member);
         } else {
             compiler_err(env, ast, "'in' membership testing is only supported for Arrays and Tables, not %s", type_to_string(container_t));
         }
+        if (ast->tag == NotIn)
+            ret = gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), ret);
+        return ret;
     }
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;

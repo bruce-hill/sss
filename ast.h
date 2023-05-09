@@ -27,7 +27,7 @@ typedef enum {
     Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
     And, Or, Xor, Min, Max, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
-    In,
+    In, NotIn,
     Not, Negative, Len, Maybe,
     TypeOf, SizeOf,
     HeapAllocate, Dereference, AssertNonNull,
@@ -299,7 +299,7 @@ struct ast_s {
         } Delete;
         struct {
             ast_t *member, *container;
-        } In;
+        } In, NotIn;
         struct {
             List(const char*) directives;
         } LinkerDirective;

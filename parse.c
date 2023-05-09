@@ -36,7 +36,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
     [RANGE_STEP]=7,
     [Cast]=7,
     [Greater]=8, [GreaterEqual]=8, [Less]=8, [LessEqual]=8,
-    [In]=9,
+    [In]=9, [NotIn]=10,
     [Equal]=10, [NotEqual]=10,
     [And]=11, [Or]=11, [Xor]=11,
 };
@@ -1672,6 +1672,7 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "mod")) return Modulus;
         else if (match_word(pos, "as")) return Cast;
         else if (match_word(pos, "by")) return RANGE_STEP;
+        else if (match_word(pos, "not in")) return NotIn;
         else if (match_word(pos, "in")) return In;
         else if (match_word(pos, "%min")) return Min;
         else if (match_word(pos, "%max")) return Max;
