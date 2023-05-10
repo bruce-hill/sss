@@ -1,9 +1,7 @@
 // Parsing for command-line arguments
 // Usage:
-//    spec := args.spec(["v|verbose", "o|output"], ["input_file"])
-//    options := when spec.parse(ARGS) is opts:Success
-//        opts
-//    else
+//    spec := args.spec(["v|verbose", "o|output="], ["input_file"])
+//    options := when spec.parse(ARGS) is s:Success then s else
 //        say "Usage: $PROGRAM_NAME $(spec.usage())"
 //        exit 1i32
 
