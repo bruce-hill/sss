@@ -1010,6 +1010,8 @@ PARSER(parse_when) {
             if (!tag) break;
             APPEND(tags, tag);
         }
+
+        match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when'"); 
         for (int64_t i = 0, len = LIST_LEN(tags); i < len; i++) {
             ast_case_t case_ = {.var=var, .tag=LIST_ITEM(tags, i), .body=body};
