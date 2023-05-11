@@ -7,10 +7,10 @@ def NumberValue {_value:Num, _callbacks:?CallbackList}
             fn := cb.fn
             fn(value)
 
-    def get(self:@NumberValue):Num
+    def get(self:@NumberValue)->Num
         return self._value
 
-    def on_changed(self:@NumberValue, callback:((Num)->Void)):((Num)->Void)
+    def on_changed(self:@NumberValue, callback:((Num)->Void))->((Num)->Void)
         self._callbacks = @CallbackList{callback, next=self._callbacks}
         return callback
 

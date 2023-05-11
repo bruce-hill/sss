@@ -21,7 +21,7 @@ struct BinaryTree<T> {
     left,right:?BinaryTree<T>
 }
 
-def contains(tree:BinaryTree<T>, obj:T):Bool
+def contains(tree:BinaryTree<T>, obj:T)->Bool
     return yes if tree.value == obj
     if (left := tree.left) and obj < tree.value
         return contains(left)
@@ -141,7 +141,7 @@ def QuadTree {|
 extend QuadTree
     def insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
         ...
-    def query(qt:QuadTree,xmin,xmax,ymin,ymax:Num):[@Void]
+    def query(qt:QuadTree,xmin,xmax,ymin,ymax:Num)->[@Void]
         ...
 
 my_items := [@Foo{...}, @Foo{...}, @Foo{...}]
@@ -277,7 +277,7 @@ programmer's reasoning and makes it nearly impossible to have a coherent system
 of value semantics.
 
 Private members also encourage people to use getter/setter anti-patterns like
-`def foo.get_x():Num return foo.private_x`. This sort of pattern is bad for
+`def get_x(f:Foo)->Num return f.private_x`. This sort of pattern is bad for
 _Speed_: it introduces function call overhead for member access, as well as
 potentially slow accessor methods. It also tends to produce a lot of
 boilerplate code. A much saner alternative is to indicate that certain struct
@@ -353,7 +353,7 @@ so callers must address any error values returned or explicitly discard them:
 
 ```SSS
 def IntParseResult {|Failure|Success:Int|}
-def parse_int(str:String, base=10):IntParseResult
+def parse_int(str:String, base=10)->IntParseResult
     return IntParseResult.Failure if #str == 0
     n := 0
     for i in 1..#str

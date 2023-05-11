@@ -106,7 +106,7 @@ if should_fail
     fail "This is a failure"
 
 // Function definitions need explicit type annotations:
-def subtract(x:Int, y:Int):Int
+def subtract(x:Int, y:Int)->Int
     return x - y
 
 >>> subtract(100, 2)
@@ -162,7 +162,7 @@ f := 2.3
 // Custom structs can be defined like this:
 def Vec{x,y:Num}
     // Methods go indented after the struct definition:
-    def len2(v:Vec):Num
+    def len2(v:Vec)->Num
         return v.x*v.x + v.y*v.y
 
     // Static members can also be defined:

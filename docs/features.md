@@ -295,7 +295,7 @@ for vec in maybe_vecs
     === @Vec
     needs_value(vec or skip)
 
-def get_x(v:?Vec):Num
+def get_x(v:?Vec)->Num
     v_nonnull := v or return 0
     return v_nonnull.x
 ```
@@ -387,9 +387,8 @@ programmer and "unsafe" strings from elsewhere in the program.
 In SSS, there is a much better solution for this problem: DSL strings.
 
 ```python
-deftype SQL:String
-def escape(str:String):SQL
-    return ("'" + (str|replace("'", "''")) + "'"):SQL
+def s:String as $SQL
+    return bitcast ("'" ++ (str.replace("'", "''")) ++ "'") as $SQL
 
 symbol:String = get_requested_symbol()
 query := $SQL"SELECT * FROM stocks WHERE symbol = $symbol"
@@ -432,11 +431,10 @@ DSL strings also allow escaping values besides strings, which can be useful in
 cases like escaping lists of filenames for shell code:
 
 ```python
-deftype Shell:String
-def escape(str:String):Shell
+def str:String as $Shell
     return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
-def escape(strings:[String]):Shell
+def strings:[String] as $Shell
     ret := $Shell""
     for str in strings
         ret += $Shell"$str"
@@ -456,9 +454,9 @@ DSLs can also be used to guard against sensitive information being revealed
 accidentally.
 
 ```python
-struct User {name:String, password_hash:String, credit_card:String}
+def User {name:String, password_hash:String, credit_card:String}
 
-def check_credentials(users:{String=User}, username:String, password:Password):Bool
+def check_credentials(users:{String=User}, username:String, password:Password)->Bool
     user := users[username] or return no
     if hash_password(password) == user.password_hash
         return yes
@@ -482,18 +480,19 @@ One way to avoid this problem is to use custom DSL strings for sensitive data,
 which defines a custom `tostring()` implementation that obscures any private data:
 
 ```python
-deftype SensitiveString:String
-def escape(s:String):SensitiveString = s:SensitiveString
-def tostring(h:SensitiveString):String = "******"
+def s:String as $Sensitive
+    return s:SensitiveString
+def sensitive:$Sensitive as String
+    return "******"
 
-struct User {name:String, password_hash:SensitiveString, credit_card:SensitiveString}
+def User {name:String, password_hash:Sensitive, credit_card:Sensitive}
 ```
 
 If `User` is defined in this way, the accidental log line will print a much
 more benign log message:
 
 ```
-[log] Failed login attempt for User{name=Roland, password_hash=******, credit_card=******}
+[log] Failed login attempt for User{name="Roland", password_hash=******, credit_card=******}
 ```
 
 Even if the programmer prints `log("User: $username hash:

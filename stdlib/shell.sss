@@ -3,7 +3,7 @@
 def _POpenFile{}
 
 extend $Sh
-    def run(sh:$Sh):{output:String,status:Int32}
+    def run(sh:$Sh )->{output:String,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "r") or return {output="", status=-1i32}
         output := (extern sss_readfile:(f:@{@_POpenFile},bytes=Int.Max)->String)(@{f})
@@ -13,7 +13,7 @@ extend $Sh
             status = (status / 256i32) and 0xFFi32
         return {output=output, status=status}
 
-    def run_with(sh:$Sh, input:String):Int32
+    def run_with(sh:$Sh , input:String)->Int32
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "w") or return -1i32
         pclose := (extern pclose:(?_POpenFile)->Void)

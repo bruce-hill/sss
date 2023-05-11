@@ -9,7 +9,7 @@ fail unless "$a,$b,$c" == "C,B,A"
 strings := ["A","B"]
 
 // eval_log := [:String]
-// def log(msg:String):[String]
+// def log(msg:String)->[String]
 //     eval_log.insert(msg)
 //     return strings
 
@@ -23,7 +23,7 @@ strings := ["A","B"]
 // eval_log := [:String]
 // queue := ["a","b","c","d"]
 // i := 1
-// def fresh(msg:String):String
+// def fresh(msg:String)->String
 //     eval_log.insert(msg)
 //     ret := queue[i]
 //     i += 1

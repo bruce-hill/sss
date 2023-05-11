@@ -1,10 +1,10 @@
 def Vec {x,y:Num}
-    def len(v:Vec):Num
+    def len(v:Vec)->Num
         hypot := extern hypot:(Num,Num)->Num
         return hypot(v.x, v.y)
 
-    def dot(v:Vec, other:Vec):Num return v.x*other.x + v.y*other.y
-    def as_string(v:Vec):String return "Vec<$(v.x),$(v.y)>"
+    def dot(v:Vec, other:Vec)->Num return v.x*other.x + v.y*other.y
+    def as_string(v:Vec)->String return "Vec<$(v.x),$(v.y)>"
 
 v := Vec{2.3, 4.5}
 say "$:v"

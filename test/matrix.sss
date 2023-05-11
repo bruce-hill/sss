@@ -1,4 +1,4 @@
-def dot(a:[Num],b:[Num]):Num
+def dot(a:[Num],b:[Num])->Num
     fail unless #a == #b
     sum := 0.
     for i, ai in a
@@ -7,21 +7,21 @@ def dot(a:[Num],b:[Num]):Num
     return sum
 
 def Mat2D {rows,cols:Int, data:[Num]}
-    def from_nested(data:[[Num]]):Mat2D
+    def from_nested(data:[[Num]])->Mat2D
         fail unless #row == #data[1] for row in data[2..]
         return Mat2D{#data,#data[1], [x for x in row for row in data]}
 
-    def get(mat:Mat2D, row:Int, col:Int):Num
+    def get(mat:Mat2D, row:Int, col:Int)->Num
         return mat.data[row + (col-1)*mat.rows]
 
-    def row(mat:Mat2D, row:Int):[Num]
+    def row(mat:Mat2D, row:Int)->[Num]
         start := 1+(row-1)*mat.cols
         return mat.data[start..(start+mat.cols-1)]
 
-    def col(mat:Mat2D, col:Int):[Num]
+    def col(mat:Mat2D, col:Int)->[Num]
         return mat.data[col.. by mat.cols]
 
-    def mul(a:Mat2D, b:Mat2D):Mat2D
+    def mul(a:Mat2D, b:Mat2D)->Mat2D
         fail unless a.cols == b.rows
         rows := a.rows
         cols := b.cols
@@ -32,7 +32,7 @@ def Mat2D {rows,cols:Int, data:[Num]}
         ]
         return Mat2D{rows,cols,data}
 
-    def tostring(mat:Mat2D):String
+    def tostring(mat:Mat2D)->String
         s := "["
         for row_num in 1..mat.rows
             for x in mat.row(row_num)

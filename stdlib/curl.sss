@@ -325,7 +325,7 @@ def Header {|
 
 def _CURL{}
 
-def _write(data:@Char, size:Int, nmemb:Int, buf:@String):Int
+def _write(data:@Char, size:Int, nmemb:Int, buf:@String)->Int
     buf ++= (bitcast {data,(size * nmemb) as Int32,1i32} as String)
     return size*nmemb
 
@@ -333,7 +333,7 @@ def Result {| Success:String | Failure:ResultCode |}
 
 def _CurlSList{}
 
-def _curl(headers:[Header]):ResultCode
+def _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
     defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
     for header in headers
@@ -355,7 +355,7 @@ def _curl(headers:[Header]):ResultCode
 
     return (extern curl_easy_perform:(@_CURL)->ResultCode)(curl)
 
-def get(url:String, headers=[:Header]):Result
+def get(url:String, headers=[:Header])->Result
     curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
     defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
     buf := @""

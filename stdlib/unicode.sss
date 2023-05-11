@@ -5,12 +5,12 @@
 // Opaque struct:
 def uninorm_t{}
 
-def is_valid(s:String):Bool
+def is_valid(s:String)->Bool
     u8_check := extern u8_check:(@CStringChar,Int)->?CStringChar
     err := u8_check(s.c_string(), #s)
     return err == !CStringChar
 
-def normalize(s:String):String
+def normalize(s:String)->String
     len := @0
     u8_normalize := (extern u8_normalize:(&uninorm_t,@CStringChar,Int,?CStringChar,?Int)->?CStringChar)
     buf := u8_normalize((extern &uninorm_nfd:uninorm_t), s.c_string(), #s, !CStringChar, len) or fail "Couldn't normalize string: $s"
@@ -20,34 +20,34 @@ def normalize(s:String):String
     data := memcpy(gc_alloc(*len+1), buf, *len+1)
     return bitcast ({data=data, length=(*len as Int32), stride=1i32}) as String
 
-def compare(s1:String, s2:String):Int32
+def compare(s1:String, s2:String)->Int32
     u8_normcmp := extern u8_normcmp:(@CStringChar,Int,@CStringChar,Int,&uninorm_t,@Int32)->Int32
     ret := @0i32
     _ := u8_normcmp(s1.c_string(), #s1, s2.c_string(), #s2, (extern &uninorm_nfd:uninorm_t), ret)
     return *ret
 
-def length(s:String):Int
+def length(s:String)->Int
     return (extern u8_mbsnlen:(@CStringChar,Int)->Int32)(s.c_string(), #s)
 
-def width(s:String):Int
+def width(s:String)->Int
     setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
     return (extern u8_width:(@CStringChar,Int,@CStringChar)->Int32)(s.c_string(), #s, setlocale(0i32,!CStringChar))
 
-def first_codepoint(s:String):Int32
+def first_codepoint(s:String)->Int32
     len := (extern u8_mblen:(@CStringChar,Int)->Int32)(s.c_string(), #s)
     ret := @0i32
     u8_to_u32 := extern u8_to_u32:(@CStringChar,Int,?Int32,@Int)->?Int32
     _ := u8_to_u32(s[1..len].c_string(), len, ret, @1)
     return *ret
 
-def codepoints(s:String):[Int32]
+def codepoints(s:String)->[Int32]
     ret := [0i32 for _ in 1..length(s)]
     len := @#ret
     u8_to_u32 := extern u8_to_u32:(@CStringChar,Int,?Int32,@Int)->?Int32
     _ := u8_to_u32(s.c_string(), #s, (bitcast ret as {data:@Int32,length:Int32,stride:Int32}).data, len)
     return ret
 
-def from_codepoints(codepoints:[Int32]):String
+def from_codepoints(codepoints:[Int32])->String
     u32_to_u8 := extern u32_to_u8:(@Int32,Int,?Int32,@Int)->?CStringChar
     data_ptr := (bitcast codepoints as {data:?Int32,length:Int32,stride:Int32}).data or return ""
     len := @0
@@ -157,15 +157,15 @@ is_extender := extern uc_is_property_extender:(Int32)->Bool
 is_ignorable_control := extern uc_is_property_ignorable_control:(Int32)->Bool
 is_regional_indicator := extern uc_is_property_regional_indicator:(Int32)->Bool
 
-def uppercased(str:String):String
+def uppercased(str:String)->String
     toupper := extern uc_toupper:(Int32)->Int32
     return from_codepoints([toupper(c) for c in codepoints(str)])
 
-def lowercased(str:String):String
+def lowercased(str:String)->String
     tolower := extern uc_tolower:(Int32)->Int32
     return from_codepoints([tolower(c) for c in codepoints(str)])
 
-def titlecased(str:String):String
+def titlecased(str:String)->String
     points := codepoints(str)
     prev_alpha := no
     is_alphabetic := extern uc_is_property_alphabetic:(Int32)->Bool

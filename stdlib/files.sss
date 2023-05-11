@@ -15,22 +15,22 @@ def Result {| Failure:String | Success |}
 def _CFile{}
 
 def File{raw_c_file:?_CFile}
-    def line(f:@File):String
+    def line(f:@File)->String
         return (extern get_line:(@_CFile)->String)(f.raw_c_file or fail "File has already been closed")
 
-    def lines(f:@File):[String]
+    def lines(f:@File)->[String]
         return [f.line() while not f.ended()]
 
-    def ended(f:@File):Bool
+    def ended(f:@File)->Bool
         return (extern feof:(@_CFile)->Int32)(f.raw_c_file or fail "File has already been closed") == 1
 
-    def info(f:@File):FileInfo
+    def info(f:@File)->FileInfo
         file := f.raw_c_file or fail "File has already been closed"
         return (extern sss_fstat:(@_CFile)->FileInfo)(file)
 
     read := extern sss_readfile:(f:@File,bytes=Int.Max)->String
 
-    def write(f:@File, text:String):Result
+    def write(f:@File, text:String)->Result
         t := @{:@_CFile=>Int; default=1}
         file := f.raw_c_file or fail "File has already been closed"
         fputc := (extern fputc:(Char,@_CFile)->Int32)
@@ -60,21 +60,21 @@ def OpenResult {| Failure:String | Success:@File |}
 open := extern sss_fopen:(path:String,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
-def move(path:String, dest:String):Result
+def move(path:String, dest:String)->Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
     if result == 0
         return Result.Success
     else
         return Result.Failure((extern last_err:()->String)())
 
-def remove(path:String):Result
+def remove(path:String)->Result
     result := (extern unlink:(path:@CStringChar)->Int32)(path)
     if result == 0
         return Result.Success
     else
         return Result.Failure((extern last_err:()->String)())
 
-def spoof(text:String):@File
+def spoof(text:String)->@File
     f := temporary()
     _ := f.write(text)
     f.rewind()

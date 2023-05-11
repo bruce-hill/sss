@@ -3,7 +3,7 @@
 def Timestamp{seconds, nanoseconds:Int}
     format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->String)
 
-def now():Timestamp
+def now()->Timestamp
     t := @Timestamp{}
     (extern timespec_get:(@Timestamp,Int32)->Void)(t, 1i32)
     return *t

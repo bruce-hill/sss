@@ -79,7 +79,7 @@ fail unless my_vec == equivalent
 Structs are referenced by name when using them in type annotations:
 
 ```sss
-def foo(v:Vec2):Num
+def foo(v:Vec2)->Num
    return v.x + v.y
 ```
 

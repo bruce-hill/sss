@@ -13,7 +13,7 @@ def ArgumentResult{|
 |}
 
 def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_args:[String]}
-    def new(flags:[String], positional_args=[:String]):Spec
+    def new(flags:[String], positional_args=[:String])->Spec
         flag_infos := @{:String=>{canonical:String,needs_value:Bool}}
         for flag in flags
             skip if #flag < 1
@@ -26,7 +26,7 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
                 flag_infos[alias] = {longest, needs_value}
         return Spec{*flag_infos, positional_args}
 
-    def usage(spec:Spec):String
+    def usage(spec:Spec)->String
         usage := @""
         for i,entry in spec.flag_infos
             usage ++= ("-" if #entry.key == 1 else "--")
@@ -39,7 +39,7 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
             usage ++= " " ++ pos
         return (*usage).trimmed()
 
-    def parse(spec:Spec, args:[String], allow_duplicates=no):ArgumentResult
+    def parse(spec:Spec, args:[String], allow_duplicates=no)->ArgumentResult
         positional := @[:String]
         flags := @{:String=>String}
 
