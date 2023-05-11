@@ -343,7 +343,7 @@ def _curl(headers:[Header]):ResultCode
             (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int,Int,?Void)->Int)->Void)(curl, header as Int32, fn)
         is data:WRITEDATA
             (extern curl_easy_setopt:(@_CURL,Int32,?Void)->Void)(curl, header as Int32, data)
-        is val:VERBOSE,HEADER
+        is val:VERBOSE|HEADER
             (extern curl_easy_setopt:(@_CURL,Int32,Int)->Void)(curl, header as Int32, (1 if val else 0))
         is http_headers:HTTPHEADER
             list := !_CurlSList

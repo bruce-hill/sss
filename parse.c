@@ -1007,7 +1007,7 @@ PARSER(parse_when) {
             var = NULL;
         }
         List(ast_t*) tags = LIST(ast_t*, tag);
-        for (spaces(&pos); match(&pos, ","); spaces(&pos)) {
+        for (spaces(&pos); match(&pos, "|"); spaces(&pos)) {
             tag = optional_ast(ctx, &pos, parse_var);
             if (!tag) break;
             APPEND(tags, tag);

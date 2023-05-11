@@ -23,10 +23,8 @@ bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2({2.4, 4}), Baz.Nil]
 for b in bazzes
     when b is t:Text
         say "$t"
-    is i:Integer
-        say "$i"
-    is v:Vec2
-        say "$v"
+    is x:Integer|Vec2
+        say "$x"
     is Nil
         say "nil"
 
