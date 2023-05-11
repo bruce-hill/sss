@@ -28,7 +28,7 @@ def File{raw_c_file:?_CFile}
         file := f.raw_c_file or fail "File has already been closed"
         return (extern sss_fstat:(@_CFile)->FileInfo)(file)
 
-    read := extern sss_readfile:(f:@File,bytes=Int.Max)->String
+    read := extern sss_readfile:(f:@File,bytes=Int.max)->String
 
     def write(f:@File, text:String)->Result
         t := @{:@_CFile=>Int; default=1}

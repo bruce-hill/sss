@@ -308,8 +308,8 @@ static void define_int_types(env_t *env)
         load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
         load_method(env, ns, "arc4random_uniform", "random", i64, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
-        hset(ns, "Min", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
-        hset(ns, "Max", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
+        hset(ns, "min", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
+        hset(ns, "max", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
     }
 
     { // Int32 methods
@@ -320,8 +320,8 @@ static void define_int_types(env_t *env)
         load_method(env, ns, "abs", "abs", i32, ARG("i",i32,0));
         load_method(env, ns, "arc4random_uniform", "random", i32, ARG("max", i32, FakeAST(Int, .i=INT32_MAX, .precision=32)));
 
-        hset(ns, "Min", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
-        hset(ns, "Max", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
+        hset(ns, "min", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
+        hset(ns, "max", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
     }
 
     { // Int16 methods
@@ -329,8 +329,8 @@ static void define_int_types(env_t *env)
         sss_hashmap_t *ns = get_namespace(env, i16);
         gcc_type_t *gcc_i16 = sss_type_to_gcc(env, i16);
         load_method(env, ns, "arc4random_uniform", "random", i16, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT16_MAX, .precision=32)));
-        hset(ns, "Min", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
-        hset(ns, "Max", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
+        hset(ns, "min", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
+        hset(ns, "max", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
     }
 
     { // Int8 methods
@@ -338,8 +338,8 @@ static void define_int_types(env_t *env)
         sss_hashmap_t *ns = get_namespace(env, i8);
         gcc_type_t *gcc_i8 = sss_type_to_gcc(env, i8);
         load_method(env, ns, "arc4random_uniform", "random", i8, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT8_MAX, .precision=32)));
-        hset(ns, "Min", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
-        hset(ns, "Max", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
+        hset(ns, "min", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
+        hset(ns, "max", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
     }
 
     // Stringifying methods
