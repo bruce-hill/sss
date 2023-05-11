@@ -2048,7 +2048,7 @@ PARSER(parse_def) {
 
         ast_t *ret_type = NULL;
         spaces(&pos);
-        if (match(&pos, ":")) {
+        if (match(&pos, "->") || match(&pos, ":")) {
             ret_type = optional_ast(ctx, &pos, _parse_type);
         }
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
