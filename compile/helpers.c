@@ -253,8 +253,6 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         auto table = Match(t, TableType);
         if (table->key_type->tag == VoidType || table->value_type->tag == VoidType)
             compiler_err(env, NULL, "Tables can't hold Void types");
-        sss_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                                  .field_types=LIST(sss_type_t*, table->key_type, table->value_type));
 
         gcc_field_t *bucket_fields[] = {
             gcc_new_field(env->ctx, NULL, u32, "index1"),
@@ -264,7 +262,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, "Table");
         gcc_field_t *fields[] = {
-            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, entry_t)), "entries"),
+            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "entries"),
             [TABLE_BUCKETS_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
             [TABLE_FALLBACK_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
             [TABLE_DEFAULT_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, table->value_type)), "default_value"),

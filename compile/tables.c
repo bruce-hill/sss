@@ -317,7 +317,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // entry_ptr = array.entries
     gcc_type_t *gcc_entry_t = sss_type_to_gcc(env, entry_t);
     gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_entry_t), "_entry_ptr");
-    gcc_assign(*block, NULL, entry_ptr, entries);
+    gcc_assign(*block, NULL, entry_ptr, gcc_cast(env->ctx, NULL, entries, gcc_get_ptr_type(gcc_entry_t)));
 
     // if (i < len) goto add_next_entry;
     gcc_jump_condition(*block, NULL, 

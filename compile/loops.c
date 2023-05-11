@@ -152,7 +152,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_entry_ptr");
         gcc_assign(*block, NULL, entry_ptr,
-                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_ENTRIES_FIELD)));
+                   gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_ENTRIES_FIELD)),
+                            gcc_get_ptr_type(gcc_item_t)));
 
         // len = table->count
         gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
