@@ -60,6 +60,15 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
     for (size_t i = last_line; i > 0; i /= 10) ++digits;
 
     for (ssize_t line_no = first_line; line_no <= last_line; ++line_no) {
+        if (line_no > first_line + 5 && line_no < last_line - 5) {
+            if (use_color)
+                printed += fprintf(out, "\x1b[0;2;3;4m     ... %ld lines omitted ...     \x1b[m\n", (last_line - first_line) - 11);
+            else
+                printed += fprintf(out, "     ... %ld lines omitted ...\n", (last_line - first_line) - 11);
+            line_no = last_line - 6;
+            continue;
+        }
+
         printed += fprintf(out, lineno_fmt, digits, line_no);
         const char *line = sss_get_line(span.file, line_no);
         if (!line) break;
