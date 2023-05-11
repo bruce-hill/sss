@@ -63,8 +63,8 @@ struct sss_type_s {
             void *env;
         } FunctionType;
         struct {
-            bool is_optional;
             sss_type_t *pointed;
+            bool is_optional:1, is_stack:1;
         } PointerType;
         struct {
             sss_type_t *generated;
@@ -102,6 +102,7 @@ const char* type_units(sss_type_t *t);
 sss_type_t *with_units(sss_type_t *t, const char* units);
 bool is_orderable(sss_type_t *t);
 bool has_heap_memory(sss_type_t *t);
+bool has_stack_memory(sss_type_t *t);
 bool can_promote(sss_type_t *actual, sss_type_t *needed);
 bool can_leave_uninitialized(sss_type_t *t);
 sss_type_t *table_entry_type(sss_type_t *table_t);

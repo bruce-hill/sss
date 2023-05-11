@@ -170,6 +170,8 @@ void populate_def_members(env_t *env, ast_t *def)
             sss_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
             if (ft->tag == VoidType)
                 compiler_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
+            if (ft->tag == PointerType && Match(ft, PointerType)->is_stack)
+                compiler_err(env, type ? type : default_val, "Structs are not allowed to hold stack references, because the struct might outlive the stack frame.");
             APPEND(struct_type->field_types, ft);
             APPEND(struct_type->field_defaults, default_val);
         }
@@ -188,6 +190,8 @@ void populate_def_members(env_t *env, ast_t *def)
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
             ast_t *member_type_ast = ith(tu_def->tag_types, i);
             sss_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            if (member_t && member_t->tag == PointerType && Match(member_t, PointerType)->is_stack)
+                compiler_err(env, member_type_ast, "Tagged unions are not allowed to hold stack references, because the tagged union might outlive the stack frame.");
             const char *name = ith(tu_def->tag_names, i);
             if (hget(&used_names, name, bool))
                 compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);

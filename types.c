@@ -95,7 +95,10 @@ static CORD type_to_cord(sss_type_t *t, bool expand_structs) {
         }
         case PointerType: {
             auto ptr = Match(t, PointerType);
-            return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, false));
+            if (ptr->is_stack)
+                return CORD_cat("&", type_to_cord(ptr->pointed, false));
+            else
+                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, false));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
@@ -155,8 +158,9 @@ bool type_is_a(sss_type_t *t, sss_type_t *req)
     if (t->tag == PointerType && req->tag == PointerType) {
         auto t_ptr = Match(t, PointerType);
         auto req_ptr = Match(req, PointerType);
-        if (type_eq(t_ptr->pointed, req_ptr->pointed) && req_ptr->is_optional)
-            return true;
+        if (type_eq(t_ptr->pointed, req_ptr->pointed))
+            return (!t_ptr->is_stack && !t_ptr->is_optional && req_ptr->is_stack)
+                || (!t_ptr->is_stack && req_ptr->is_optional);
     }
     return false;
 }
@@ -317,6 +321,15 @@ bool has_heap_memory(sss_type_t *t)
     }
 }
 
+bool has_stack_memory(sss_type_t *t)
+{
+    switch (t->tag) {
+    case PointerType: return Match(t, PointerType)->is_stack;
+    case GeneratorType: return has_stack_memory(Match(t, GeneratorType)->generated);
+    default: return false;
+    }
+}
+
 bool can_promote(sss_type_t *actual, sss_type_t *needed)
 {
     // No promotion necessary:
@@ -331,7 +344,14 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
-        return (needed_ptr->pointed->tag == VoidType || type_eq(needed_ptr->pointed, actual_ptr->pointed)) && needed_ptr->is_optional;
+        if (!(needed_ptr->pointed->tag == VoidType || type_eq(needed_ptr->pointed, actual_ptr->pointed)))
+            return false;
+        if (actual_ptr->is_stack)
+            return false;
+        else if (needed_ptr->is_stack)
+            return true;
+        else
+            return needed_ptr->is_optional;
     }
 
     // Function promotion:

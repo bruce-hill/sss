@@ -1242,6 +1242,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             mark_array_cow(env, block, gcc_rval(tmp));
         return gcc_rval(tmp);
     }
+    case StackReference: {
+        gcc_lvalue_t *lval = get_lvalue(env, block, Match(ast, StackReference)->value, false);
+        return gcc_lvalue_address(lval, loc);
+    }
     case Dereference: {
         sss_type_t *t = get_type(env, ast); // Check this is a pointer type
         ast_t *value = Match(ast, Dereference)->value;

@@ -49,21 +49,27 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         ast_t *item_type = Match(ast, TypeArray)->item_type;
         sss_type_t *item_t = parse_type_ast(env, item_type);
         if (!item_t) compiler_err(env, item_type, "I can't figure out what this type is.");
+        if (has_stack_memory(item_t))
+            compiler_err(env, item_type, "Arrays can't have stack references because the array may outlive the stack frame.");
         return Type(ArrayType, .item_type=item_t);
     }
     case TypeTable: {
         ast_t *key_type_ast = Match(ast, TypeTable)->key_type;
         sss_type_t *key_type = parse_type_ast(env, key_type_ast);
         if (!key_type) compiler_err(env, key_type_ast, "I can't figure out what type this is.");
+        if (has_stack_memory(key_type))
+            compiler_err(env, key_type_ast, "Tables can't have stack references because the array may outlive the stack frame.");
         ast_t *val_type_ast = Match(ast, TypeTable)->value_type;
         sss_type_t *val_type = parse_type_ast(env, val_type_ast);
         if (!val_type) compiler_err(env, val_type_ast, "I can't figure out what type this is.");
+        if (has_stack_memory(val_type))
+            compiler_err(env, val_type_ast, "Tables can't have stack references because the array may outlive the stack frame.");
         return Type(TableType, .key_type=key_type, .value_type=val_type);
     }
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         sss_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
-        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t);
+        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack);
     }
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
@@ -77,6 +83,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
         sss_type_t *ret_t = parse_type_ast(env, fn->ret_type);
+        if (has_stack_memory(ret_t))
+            compiler_err(env, fn->ret_type, "Functions are not allowed to return stack references, because the reference may no longer exist on the stack.");
         NEW_LIST(const char*, arg_names);
         NEW_LIST(ast_t*, arg_defaults);
         NEW_LIST(sss_type_t*, arg_types);
@@ -108,6 +116,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             const char* member_name = ith(struct_->member_names, i);
             APPEND(member_names, member_name);
             sss_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
+            if (has_stack_memory(member_t))
+                compiler_err(env, ith(struct_->member_types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
             APPEND(member_types, member_t);
         }
         sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
@@ -122,10 +132,13 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto tu = Match(ast, TypeTaggedUnion);
         NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
+            sss_type_t *member_t = parse_type_ast(env, ith(tu->tag_types, i));
+            if (has_stack_memory(member_t))
+                compiler_err(env, ith(tu->tag_types, i), "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
             sss_tagged_union_member_t member = {
                 .name=ith(tu->tag_names, i),
                 .tag_value=ith(tu->tag_values, i),
-                .type=parse_type_ast(env, ith(tu->tag_types, i)),
+                .type=member_t,
             };
             APPEND_STRUCT(members, member);
         }
@@ -266,11 +279,19 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case HeapAllocate: {
         sss_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
+        if (has_stack_memory(pointed))
+            compiler_err(env, ast, "Stack references cannot be moved to the heap because they may outlive the stack frame they were created in.");
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
     case Maybe: {
         sss_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
+        if (has_stack_memory(pointed))
+            compiler_err(env, ast, "Stack references cannot be moved to the heap because they may outlive the stack frame they were created in.");
         return Type(PointerType, .is_optional=true, .pointed=pointed);
+    }
+    case StackReference: {
+        sss_type_t *pointed = get_type(env, Match(ast, StackReference)->value);
+        return Type(PointerType, .pointed=pointed, .is_stack=true);
     }
     case AssertNonNull: {
         sss_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
@@ -278,7 +299,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             compiler_err(env, ast, "This value isn't a pointer, so the '!' operator can't be applied to it.");
         else if (!Match(t, PointerType)->is_optional)
             compiler_err(env, ast, "This value is guaranteed to be non-null, so the '!' operator isn't needed.");
-        return Type(PointerType, .is_optional=false, Match(t, PointerType)->pointed);
+        return Type(PointerType, Match(t, PointerType)->pointed, .is_optional=false);
     }
     case Dereference: {
         sss_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
@@ -311,56 +332,63 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Array: {
         auto array = Match(ast, Array);
-        if (array->type)
-            return Type(ArrayType, .item_type=parse_type_ast(env, array->type));
-        else if (!array->items)
-            compiler_err(env, ast, "I can't figure out what type this array has because it has no members or explicit type");
-
         sss_type_t *item_type = NULL;
-        for (int64_t i = 0; i < LIST_LEN(array->items); i++) {
-            ast_t *item = LIST_ITEM(array->items, i);
-            sss_type_t *t2 = get_type(env, item);
-            while (t2->tag == GeneratorType)
-                t2 = Match(t2, GeneratorType)->generated;
-            sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
-            if (!merged)
-                compiler_err(env, LIST_ITEM(array->items, i),
-                            "This array item has type %s, which is different from earlier array items which have type %s",
-                            type_to_string(t2),  type_to_string(item_type));
-            item_type = merged;
+        if (array->type) {
+            item_type = parse_type_ast(env, array->type);
+        } else if (array->items) {
+            for (int64_t i = 0; i < LIST_LEN(array->items); i++) {
+                ast_t *item = LIST_ITEM(array->items, i);
+                sss_type_t *t2 = get_type(env, item);
+                while (t2->tag == GeneratorType)
+                    t2 = Match(t2, GeneratorType)->generated;
+                sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
+                if (!merged)
+                    compiler_err(env, LIST_ITEM(array->items, i),
+                                "This array item has type %s, which is different from earlier array items which have type %s",
+                                type_to_string(t2),  type_to_string(item_type));
+                item_type = merged;
+            }
+        } else {
+            compiler_err(env, ast, "I can't figure out what type this array has because it has no members or explicit type");
         }
+        if (has_stack_memory(item_type))
+            compiler_err(env, ast, "Arrays cannot hold stack references, because the array may outlive the stack frame the reference was created in.");
         return Type(ArrayType, .item_type=item_type);
     }
     case Table: {
         auto table = Match(ast, Table);
-        if (table->key_type && table->value_type)
-            return Type(TableType, .key_type=parse_type_ast(env, table->key_type), .value_type=parse_type_ast(env, table->value_type));
-
         sss_type_t *key_type = NULL, *value_type = NULL;
-        if (table->default_value)
-            value_type = get_type(env, table->default_value);
-        for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
-            ast_t *entry = LIST_ITEM(table->entries, i);
-            sss_type_t *entry_t = get_type(env, entry);
-            while (entry_t->tag == GeneratorType)
-                entry_t = Match(entry_t, GeneratorType)->generated;
+        if (table->key_type && table->value_type) {
+            key_type = parse_type_ast(env, table->key_type);
+            value_type = parse_type_ast(env, table->value_type);
+        } else {
+            if (table->default_value)
+                value_type = get_type(env, table->default_value);
+            for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
+                ast_t *entry = LIST_ITEM(table->entries, i);
+                sss_type_t *entry_t = get_type(env, entry);
+                while (entry_t->tag == GeneratorType)
+                    entry_t = Match(entry_t, GeneratorType)->generated;
 
-            sss_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
-            sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
-            if (!key_merged)
-                compiler_err(env, LIST_ITEM(table->entries, i),
-                            "This table entry has type %s, which is different from earlier table entries which have type %s",
-                            type_to_string(key_t),  type_to_string(key_type));
-            key_type = key_merged;
+                sss_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
+                sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
+                if (!key_merged)
+                    compiler_err(env, LIST_ITEM(table->entries, i),
+                                "This table entry has type %s, which is different from earlier table entries which have type %s",
+                                type_to_string(key_t),  type_to_string(key_type));
+                key_type = key_merged;
 
-            sss_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
-            sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
-            if (!val_merged)
-                compiler_err(env, LIST_ITEM(table->entries, i),
-                            "This table entry has type %s, which is different from earlier table entries which have type %s",
-                            type_to_string(value_t),  type_to_string(value_type));
-            value_type = val_merged;
+                sss_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
+                sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
+                if (!val_merged)
+                    compiler_err(env, LIST_ITEM(table->entries, i),
+                                "This table entry has type %s, which is different from earlier table entries which have type %s",
+                                type_to_string(value_t),  type_to_string(value_type));
+                value_type = val_merged;
+            }
         }
+        if (has_stack_memory(key_type) || has_stack_memory(value_type))
+            compiler_err(env, ast, "Tables cannot hold stack references because the table may outlive the reference's stack frame.");
         return Type(TableType, .key_type=key_type, .value_type=value_type);
     }
     case TableEntry: {
@@ -739,6 +767,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
         sss_type_t *ret = get_type(lambda_env, lambda->body);
+        if (has_stack_memory(ret))
+            compiler_err(env, ast, "Functions can't return stack references because the reference may outlive its stack frame.");
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
     }
 
@@ -778,6 +808,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
 
         sss_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
+        if (has_stack_memory(ret))
+            compiler_err(env, def->ret_type, "Functions can't return stack references because the reference may outlive its stack frame.");
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
     }
 
@@ -796,6 +828,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 auto field = Match(*member, StructField);
                 APPEND(field_names, field->name);
                 sss_type_t *field_type = get_type(env, field->value);
+                if (has_stack_memory(field_type))
+                    compiler_err(env, field->value, "Structs aren't allowed to have stack references because the struct may outlive the reference's stack frame.");
                 APPEND(field_types, field_type);
             }
 

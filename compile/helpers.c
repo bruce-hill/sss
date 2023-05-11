@@ -410,7 +410,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
     // print() is the same for optional/non-optional pointers:
     if (t->tag == PointerType)
-        t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true);
+        t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true, .is_stack=Match(t, PointerType)->is_stack);
 
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__print");
@@ -635,6 +635,8 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
         gcc_func_t *fprintf_fn = get_function(env, "fprintf");
 
+        const char *sigil = Match(t, PointerType)->is_stack ? "&" : "@";
+
         { // If it's non-nil, check for cycles:
             // Summary of the approach:
             //     index = *hashmap_set(cycle_checker, &obj, NULL)
@@ -678,7 +680,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
             // If we're in a recursive cycle, print @T#index and return without recursing further
             block = cycle_block;
-            const char* backref = heap_strf("@%s#%%ld", type_to_string(pointed_type));
+            const char* backref = heap_strf("%s%s#%%ld", sigil, type_to_string(pointed_type));
             gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, backref),
                                             gcc_rval(gcc_deref(gcc_rval(index_var), NULL))));
             gcc_return_void(block, NULL);
@@ -690,14 +692,13 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
         if (pointed_type->tag == VoidType) {
             COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "@Void<0x%X>"), obj));
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, heap_strf("%sVoid<0x%%X>", sigil)), obj));
             COLOR_LITERAL(&block, "\x1b[m");
             gcc_return_void(block, NULL);
-            // gcc_return(noncycle_block, NULL, WRITE_LITERAL("@Void"));
         } else {
-            // Prepend "@"
+            // Prepend "@"/"&"
             COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            WRITE_LITERAL(block, "@");
+            WRITE_LITERAL(block, sigil);
             COLOR_LITERAL(&block, "\x1b[m");
 
             gcc_func_t *print_fn = get_print_func(env, pointed_type);

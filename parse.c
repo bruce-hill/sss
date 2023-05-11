@@ -585,16 +585,18 @@ PARSER(parse_array_type) {
 
 PARSER(parse_pointer_type) {
     const char *start = pos;
-    bool optional;
+    bool optional = false, is_stack = false;
     if (match(&pos, "@"))
         optional = false;
     else if (match(&pos, "?"))
         optional = true;
+    else if (match(&pos, "&"))
+        is_stack = true;
     else
         return NULL;
     ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
                              "I couldn't parse a pointer type after this point");
-    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional);
+    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack);
 }
 
 PARSER(parse_type_type) {
@@ -1225,6 +1227,7 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 }
 #define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-", false)
 #define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@", false)
+#define parse_stack_reference(...) parse_unary(__VA_ARGS__, StackReference, "&", false)
 #define parse_dereference(...) parse_unary(__VA_ARGS__, Dereference, "*", false)
 #define parse_len(...) parse_unary(__VA_ARGS__, Len, "#", false)
 #define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?", false)
@@ -1524,6 +1527,7 @@ PARSER(parse_term) {
         || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
+        || (term=parse_stack_reference(ctx, pos))
         || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
         || (term=parse_maybe(ctx, pos))
@@ -2136,7 +2140,7 @@ PARSER(parse_extern) {
     const char *start = pos;
     if (!match_word(&pos, "extern")) return NULL;
     spaces(&pos);
-    bool address = (match(&pos, "@") != 0);
+    bool address = (match(&pos, "&") != 0);
     const char* name = get_id(&pos);
     spaces(&pos);
     if (!match(&pos, ":"))
