@@ -2007,8 +2007,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         auto tagged = Match(subject_t, TaggedUnionType);
         NEW_LIST(gcc_case_t*, gcc_cases);
+        sss_hashmap_t handled_cases = {0};
         foreach (when->cases, case_, _) {
             const char* tag_name = Match(case_->tag, Var)->name;
+            hset(&handled_cases, tag_name, case_->body);
             gcc_loc_t *case_loc = ast_loc(env, case_->tag);
             env_t *case_env = env;
             int64_t tag_value = 0;
@@ -2065,8 +2067,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (case_block)
                 gcc_jump(case_block, case_loc, end_when);
         }
+
+        bool any_unhandled_cases = false;
+        foreach (tagged->members, member, _) {
+            if (!hget(&handled_cases, member->name, ast_t*)) {
+                any_unhandled_cases = true;
+                break;
+            }
+        }
+
         gcc_block_t *default_block;
         if (when->default_body) {
+            if (!any_unhandled_cases)
+                compiler_err(env, ast, "This 'when' has an 'else' block, but every single case is handled before the 'else', so it will never run.");
+
             default_block = gcc_new_block(func, fresh("default"));
             gcc_block_t *end_of_default = default_block;
             gcc_rvalue_t *branch_val = compile_expr(env, &end_of_default, when->default_body);
@@ -2085,6 +2099,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (end_of_default)
                 gcc_jump(end_of_default, else_loc, end_when);
         } else {
+            if (any_unhandled_cases)
+                compiler_err(env, ast, "This 'when' does not cover all cases and needs an 'else' block to be comprehensive.");
             default_block = end_when;
         }
 

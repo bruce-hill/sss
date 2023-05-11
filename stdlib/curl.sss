@@ -350,6 +350,8 @@ def _curl(headers:[Header]):ResultCode
             for h in http_headers
                 list = (extern curl_slist_append:(?_CurlSList,@CStringChar)->?_CurlSList)(list, h)
             (extern curl_easy_setopt:(@_CURL,Int32,?_CurlSList)->Void)(curl, header as Int32, list)
+        else
+            fail "This header is not yet supported: $header"
 
     return (extern curl_easy_perform:(@_CURL)->ResultCode)(curl)
 

@@ -920,8 +920,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
             t = t2;
-        } else {
-            t = generate(t);
         }
         return t;
     }

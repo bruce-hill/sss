@@ -994,9 +994,11 @@ PARSER(parse_when) {
 
     NEW_LIST(ast_case_t, cases);
     for (;;) {
-        whitespace(&pos);
-        if (sss_get_indent(ctx->file, pos) != starting_indent) break;
-        if (!match_word(&pos, "is")) break;
+        const char *clause = pos;
+        whitespace(&clause);
+        if (sss_get_indent(ctx->file, clause) != starting_indent) break;
+        if (!match_word(&clause, "is")) break;
+        pos = clause;
         ast_t *var = optional_ast(ctx, &pos, parse_var);
         ast_t *tag;
         spaces(&pos);
