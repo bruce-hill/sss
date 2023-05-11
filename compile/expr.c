@@ -2001,7 +2001,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, result_t), "_when_value") : NULL;
-        gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
+        gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("end_when"));
 
         gcc_type_t *gcc_union_t = get_union_type(env, subject_t);
 
@@ -2101,7 +2101,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             if (any_unhandled_cases)
                 compiler_err(env, ast, "This 'when' does not cover all cases and needs an 'else' block to be comprehensive.");
-            default_block = end_when;
+            default_block = gcc_new_block(func, "unreachable");
+            gcc_func_t *fail_func = hget(env->global_funcs, "fail", gcc_func_t*);
+            gcc_eval(default_block, loc, gcc_callx(env->ctx, loc, fail_func, gcc_str(env->ctx, "Unreachable")));
+            gcc_jump(default_block, loc, default_block); // technically unreachable, but make GCC happy
         }
 
         gcc_rvalue_t *tag_val = gcc_rvalue_access_field(subject, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
