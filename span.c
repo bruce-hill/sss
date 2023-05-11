@@ -54,7 +54,7 @@ int fprint_span(FILE *out, span_t span, const char *hl_color, size_t context_lin
             last_line = span_end_line + (context_lines - 1);
 
     if (first_line < 1) first_line = 1;
-    if (last_line > LIST_LEN(span.file->lines)) first_line = LIST_LEN(span.file->lines);
+    if (last_line > LIST_LEN(span.file->lines)) last_line = LIST_LEN(span.file->lines);
 
     int digits = 1;
     for (size_t i = last_line; i > 0; i /= 10) ++digits;
