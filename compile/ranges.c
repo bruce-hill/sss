@@ -32,16 +32,18 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *range_var = gcc_local(func, loc, range_t, "_range");
     gcc_assign(*block, loc, range_var, range_val);
-    gcc_block_t *if_zero = gcc_new_block(func, fresh("zero_step")),
-                *done = gcc_new_block(func, fresh("done"));
-    gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ,
-                                                   gcc_rvalue_access_field(gcc_rval(range_var), loc, gcc_get_field(range_struct, 1)),
-                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT64))),
-                       if_zero, done);
+    if (range->step && (range->step->tag != Int || Match(range->step, Int)->i == 0)) {
+        gcc_block_t *if_zero = gcc_new_block(func, fresh("zero_step")),
+                    *done = gcc_new_block(func, fresh("done"));
+        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ,
+                                                       gcc_rvalue_access_field(gcc_rval(range_var), loc, gcc_get_field(range_struct, 1)),
+                                                       gcc_zero(env->ctx, gcc_type(env->ctx, INT64))),
+                           if_zero, done);
 
-    insert_failure(env, &if_zero, &ast->span, "This range was created with a step of zero, which is not allowed");
-    
-    *block = done;
+        insert_failure(env, &if_zero, &ast->span, "This range was created with a step of zero, which is not allowed");
+        *block = done;
+    }
+
     return gcc_rval(range_var);
 }
 
