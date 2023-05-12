@@ -847,42 +847,74 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     hset(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
+    gcc_comment(block, NULL, heap_strf("Implementation of hash(%s)", type_to_string(t)));
 
     gcc_func_t *halfsiphash = get_function(env, "halfsiphash");
 
     gcc_type_t *t_void_ptr = gcc_get_type(env->ctx, GCC_T_VOID_PTR);
     gcc_rvalue_t *k = gcc_cast(env->ctx, NULL, gcc_str(env->ctx, "My secret key!!!"), t_void_ptr);
 
+    gcc_rvalue_t *obj_ptr = gcc_param_as_rvalue(params[0]);
     gcc_lvalue_t *hashval = gcc_local(func, NULL, gcc_type(env->ctx, UINT32), "_hashval");
 
-    // int halfsiphash(const void *in, const size_t inlen, const void *k, uint8_t *out, const size_t outlen);
     switch (t->tag) {
     case StructType: {
         auto struct_type = Match(t, StructType);
+
         foreach (struct_type->field_types, ftype, _) {
-            if ((*ftype)->tag == ArrayType)
-                compiler_err(env, NULL, "I don't currently support using structs as table keys when the struct holds an array");
+            if ((*ftype)->tag == ArrayType || (*ftype)->tag == TableType)
+                goto need_to_handle_arrays_or_tables;
         }
+        goto memory_hash;
+
+      need_to_handle_arrays_or_tables:;
+        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+        NEW_LIST(sss_type_t*, hash_members);
+        NEW_LIST(gcc_rvalue_t*, values);
+        for (int64_t i = 0; i < length(struct_type->field_types); i++) {
+            sss_type_t *ftype = ith(struct_type->field_types, i);
+            if (ftype->tag == ArrayType || ftype->tag == TableType) {
+                append(hash_members, Type(IntType, .bits=32, .is_unsigned=true));
+                gcc_func_t *item_hash = get_hash_func(env, ftype);
+                gcc_rvalue_t *member = gcc_lvalue_address(gcc_rvalue_dereference_field(gcc_param_as_rvalue(params[0]), NULL, gcc_get_field(struct_t, i)), NULL);
+                append(values, gcc_callx(env->ctx, NULL, item_hash, member));
+            } else {
+                append(hash_members, ftype);
+                gcc_rvalue_t *member = gcc_rval(gcc_rvalue_dereference_field(gcc_param_as_rvalue(params[0]), NULL, gcc_get_field(struct_t, i)));
+                append(values, member);
+            }
+        }
+
+        sss_type_t *safe_tup_t = Type(StructType, .field_names=struct_type->field_names, .field_types=hash_members);
+        gcc_type_t *safe_tup_gcc_t = sss_type_to_gcc(env, safe_tup_t);
+        gcc_struct_t *safe_tup_struct = gcc_type_if_struct(safe_tup_gcc_t);
+        gcc_lvalue_t *safe_tup = gcc_local(func, NULL, safe_tup_gcc_t, "_to_hash");
+        gcc_assign(block, NULL, safe_tup, gcc_struct_constructor(env->ctx, NULL, safe_tup_gcc_t, 0, NULL, NULL));
+
+        for (int64_t i = 0; i < length(values); i++)
+            gcc_assign(block, NULL, gcc_lvalue_access_field(safe_tup, NULL, gcc_get_field(safe_tup_struct, i)),
+                       ith(values, i));
+
+        t = safe_tup_t;
+        obj_ptr = gcc_lvalue_address(safe_tup, NULL);
         goto memory_hash;
     }
     case PointerType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType:
     case RangeType: case FunctionType: {
-      memory_hash:
+      memory_hash:;
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, t));
         gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
         gcc_rvalue_t *call = gcc_callx(
-            env->ctx, NULL, halfsiphash,
-            gcc_param_as_rvalue(params[0]), inlen, k,
+            env->ctx, NULL, halfsiphash, obj_ptr, inlen, k,
             gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
         gcc_eval(block, NULL, call);
         break;
     }
     case TableType: {
-        // uint32_t sss_hashmap_hash(sss_hashmap_t *h, hash_fn_t entry_hash, size_t entry_size_padded);
         gcc_func_t *hash_fn = get_function(env, "sss_hashmap_hash");
         sss_type_t *entry_t = table_entry_type(t);
         gcc_func_t *entry_hash = get_hash_func(env, entry_t);
-        gcc_assign(block, NULL, hashval, gcc_callx(env->ctx, NULL, hash_fn, gcc_param_as_rvalue(params[0]),
+        gcc_assign(block, NULL, hashval, gcc_callx(env->ctx, NULL, hash_fn, obj_ptr,
                                                    gcc_get_func_address(entry_hash, NULL),
                                                    gcc_rvalue_size(env->ctx, gcc_sizeof(env, entry_t))));
         break;
@@ -890,7 +922,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     case ArrayType: {
         // If necessary, flatten first:
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_rvalue_t *array = gcc_param_as_rvalue(params[0]);
+        gcc_rvalue_t *array = obj_ptr;
         // flatten_arrays(env, &block, t, array);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
         gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 0)));
