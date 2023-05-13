@@ -189,13 +189,24 @@ sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
     if (b->tag == AbortType) return non_optional(a);
     if (a->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(Match(a, GeneratorType)->generated, b));
     if (b->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(a, Match(b, GeneratorType)->generated));
-    if (is_numeric(a) && is_numeric(b))
-        return numtype_priority(a) >= numtype_priority(b) ? a : b;
+    if (is_numeric(a) && is_numeric(b)) {
+        switch (compare_precision(a, b)) {
+        case NUM_PRECISION_EQUAL: case NUM_PRECISION_MORE: return a;
+        case NUM_PRECISION_LESS: return b;
+        case NUM_PRECISION_INCOMPARABLE: {
+            if (a->tag == IntType && b->tag == IntType && Match(a, IntType)->bits < 64)
+                return Type(IntType, .bits=Match(a, IntType)->bits * 2, .is_unsigned=false);
+            return NULL;
+        }
+        }
+        return NULL;
+    }
     return NULL;
 }
 
 const char* type_units(sss_type_t *t)
 {
+    assert(t);
     switch (t->tag) {
     case IntType: return Match(t, IntType)->units;
     case NumType: return Match(t, NumType)->units;
@@ -248,23 +259,63 @@ bool is_numeric(sss_type_t *t)
     }
 }
 
-int numtype_priority(sss_type_t *t)
+typedef enum {
+    MAG_INAPPLICABLE = 0, MAG_ZERO, MAG1, MAG2, MAG3, MAG4, MAG5, MAG6, MAG7, MAG8, MAG9, MAG10, MAG11, MAG12,
+} magnitude_e;
+
+static inline magnitude_e type_min_magnitue(sss_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: return 1;
-    case CharType: case CStringCharType: return 2;
-    case IntType:
+    case BoolType: case CharType: case CStringCharType: return MAG_ZERO;
+    case IntType: {
+        if (Match(t, IntType)->is_unsigned) return MAG_ZERO;
         switch (Match(t, IntType)->bits) {
-        case 8: return 3;
-        case 16: return 4;
-        case 32: return 5;
-        case 64: return 6;
-        default: return 0;
+        case 8: return MAG1;
+        case 16: return MAG2;
+        case 32: return MAG3;
+        case 64: return MAG4;
+        default: return MAG_INAPPLICABLE;
         }
-    case NumType:
-        return Match(t, NumType)->bits == 32 ? 7 : 8;
-    default: return 0;
     }
+    case NumType: return Match(t, NumType)->bits == 32 ? MAG5 : MAG6;
+    default: return MAG_INAPPLICABLE;
+    }
+}
+
+static inline int type_max_magnitue(sss_type_t *t)
+{
+    switch (t->tag) {
+    case BoolType: return MAG1;
+    case CharType: case CStringCharType: return MAG2;
+    case IntType: {
+        bool is_unsigned = Match(t, IntType)->is_unsigned;
+        switch (Match(t, IntType)->bits) {
+        case 8: return is_unsigned ? MAG4 : MAG3;
+        case 16: return is_unsigned ? MAG6 : MAG5;
+        case 32: return is_unsigned ? MAG8 : MAG7;
+        case 64: return is_unsigned ? MAG10 : MAG9;
+        default: return MAG_INAPPLICABLE;
+        }
+    }
+    case NumType:
+        return Match(t, NumType)->bits == 32 ? MAG11 : MAG12;
+    default: return MAG_INAPPLICABLE;
+    }
+}
+
+precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b)
+{
+    magnitude_e a_min = type_min_magnitue(a),
+                b_min = type_min_magnitue(b),
+                a_max = type_max_magnitue(a),
+                b_max = type_max_magnitue(b);
+
+    if (a_min == MAG_INAPPLICABLE || b_min == MAG_INAPPLICABLE || a_max == MAG_INAPPLICABLE || b_max == MAG_INAPPLICABLE)
+        return NUM_PRECISION_INCOMPARABLE;
+    else if (a_min == b_min && a_max == b_max) return NUM_PRECISION_EQUAL;
+    else if (a_min <= b_min && a_max <= b_max) return NUM_PRECISION_LESS;
+    else if (a_min >= b_min && a_max >= b_max) return NUM_PRECISION_MORE;
+    else return NUM_PRECISION_INCOMPARABLE;
 }
 
 bool is_orderable(sss_type_t *t)
@@ -340,8 +391,13 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (is_integral(actual) && is_integral(needed) && Match(actual, IntType)->is_unsigned != Match(needed, IntType)->is_unsigned)
         return false;
 
-    if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) <= numtype_priority(needed))
-        return streq(type_units(actual), type_units(needed));
+    if (!streq(type_units(actual), type_units(needed)))
+        return false;
+
+    if (is_numeric(actual) && is_numeric(needed)) {
+        auto cmp = compare_precision(actual, needed);
+        return cmp == NUM_PRECISION_EQUAL || cmp == NUM_PRECISION_LESS;
+    }
 
     // Optional promotion:
     if (needed->tag == PointerType && actual->tag == PointerType) {

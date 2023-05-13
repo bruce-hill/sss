@@ -216,7 +216,9 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
     if (type_eq(lhs_t, rhs_t)) {
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
-        sss_type_t *t = numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        sss_type_t *t = type_or_type(lhs_t, rhs_t);
+        if (!t) compiler_err(env, ast, "I can't do math operations between %s and %s without losing precision.",
+                             type_to_string(lhs_t), type_to_string(rhs_t));
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
         return with_units(rhs_t, units);
@@ -342,7 +344,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 while (t2->tag == GeneratorType)
                     t2 = Match(t2, GeneratorType)->generated;
                 sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
-                if (!merged)
+                if (!merged || (item_type && !streq(type_units(item_type), type_units(t2))))
                     compiler_err(env, LIST_ITEM(array->items, i),
                                 "This array item has type %s, which is different from earlier array items which have type %s",
                                 type_to_string(t2),  type_to_string(item_type));
@@ -372,7 +374,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
                 sss_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
                 sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
-                if (!key_merged)
+                if (!key_merged || (key_type && !streq(type_units(key_type), type_units(key_t))))
                     compiler_err(env, LIST_ITEM(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(key_t),  type_to_string(key_type));
@@ -380,7 +382,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
                 sss_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
                 sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
-                if (!val_merged)
+                if (!val_merged || (value_type && !streq(type_units(value_type), type_units(value_t))))
                     compiler_err(env, LIST_ITEM(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(value_t),  type_to_string(value_type));
@@ -585,7 +587,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (do_->else_body) {
             sss_type_t *else_t = get_type(env, do_->else_body);
             sss_type_t *t2 = type_or_type(t, else_t);
-            if (!t2)
+            if (!t2 || !streq(type_units(t), type_units(else_t)))
                 compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_t));
             t = t2;
@@ -640,7 +642,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
                 return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional);
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+            if (!streq(type_units(lhs_t), type_units(rhs_t)))
+                compiler_err(env, ast, "These two types have different units: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
+            sss_type_t *t = type_or_type(lhs_t, rhs_t);
+            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+            return t;
         }
 
         compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
@@ -655,8 +662,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return lhs_t;
         else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType)
             return lhs_t;
-        else if (is_integral(lhs_t) && is_integral(rhs_t))
-            return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+            sss_type_t *t = type_or_type(lhs_t, rhs_t);
+            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+            return t;
+        }
 
         if (lhs_t->tag == PointerType) {
             auto lhs_ptr = Match(lhs_t, PointerType);
@@ -678,8 +689,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
             return lhs_t;
-        else if (is_integral(lhs_t) && is_integral(rhs_t))
-            return numtype_priority(lhs_t) >= numtype_priority(rhs_t) ? lhs_t : rhs_t;
+        else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+            sss_type_t *t = type_or_type(lhs_t, rhs_t);
+            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+            return t;
+        }
 
         compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
@@ -716,7 +731,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
-        if (!t)
+        if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
             compiler_err(env, ast, "The two sides of this operation are not compatible: %s vs %s",
                          type_to_string(lhs_t), type_to_string(rhs_t));
         return t;
@@ -870,7 +885,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (if_->else_body) {
             sss_type_t *else_type = get_type(env, if_->else_body);
             sss_type_t *t2 = type_or_type(t, else_type);
-            if (!t2)
+            if (!t2 || !streq(type_units(t), type_units(else_type)))
                 compiler_err(env, if_->else_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));
@@ -906,7 +921,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
           env_ready:;
             sss_type_t *case_t = get_type(case_env, (case_)->body);
             sss_type_t *t2 = type_or_type(t, case_t);
-            if (!t2)
+            if (!t2 || (t && !streq(type_units(t), type_units(case_t))))
                 compiler_err(env, (case_)->body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(case_t));
@@ -915,7 +930,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (when->default_body) {
             sss_type_t *else_type = get_type(env, when->default_body);
             sss_type_t *t2 = type_or_type(t, else_type);
-            if (!t2)
+            if (!t2 || (t && !streq(type_units(t), type_units(else_type))))
                 compiler_err(env, when->default_body,
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(else_type));

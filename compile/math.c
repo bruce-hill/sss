@@ -204,13 +204,16 @@ static gcc_rvalue_t *math_binop_rec(
             compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
                         type_to_string(lhs_t), type_to_string(rhs_t));
 
-        if (numtype_priority(lhs_t) < numtype_priority(rhs_t)) {
-            lhs = gcc_cast(env->ctx, NULL, lhs, sss_type_to_gcc(env, rhs_t));
-            lhs_t = rhs_t;
-        } else if (numtype_priority(lhs_t) > numtype_priority(rhs_t)) {
-            rhs = gcc_cast(env->ctx, NULL, rhs, sss_type_to_gcc(env, lhs_t));
-        }
-        return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        sss_type_t *result_t;
+        if (promote(env, with_units(lhs_t, NULL), &lhs, with_units(rhs_t, NULL)))
+            result_t = rhs_t;
+        else if (promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
+            result_t = lhs_t;
+        else
+            compiler_err(env, ast, "I can't do math operations between %s and %s without losing precision",
+                        type_to_string(lhs_t), type_to_string(rhs_t));
+
+        return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, result_t), lhs, rhs);
     }
 
     auto struct_ = Match(struct_t, StructType);
@@ -408,9 +411,7 @@ void math_update_rec(
                 op, rhs_field_t, rhs_field);
         }
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
-        if (numtype_priority(lhs_t) > numtype_priority(rhs_t))
-            rhs = gcc_cast(env->ctx, NULL, rhs, sss_type_to_gcc(env, lhs_t));
-        else if (numtype_priority(lhs_t) < numtype_priority(rhs_t))
+        if (!promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
             compiler_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));
         return gcc_update(*block, loc, lhs, op, rhs);
