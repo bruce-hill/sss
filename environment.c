@@ -300,63 +300,44 @@ static void define_num_types(env_t *env)
 
 static void define_int_types(env_t *env)
 {
-    { // Int64 methods
-        sss_type_t *i64 = Type(IntType, .bits=64);
-        sss_hashmap_t *ns = get_namespace(env, i64);
-        gcc_type_t *gcc_i64 = sss_type_to_gcc(env, i64);
-
-        load_method(env, ns, "labs", "abs", i64, ARG("i",i64,0));
-        load_method(env, ns, "arc4random_uniform", "random", i64, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT32_MAX, .precision=32)));
-
-        hset(ns, "min", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MIN)));
-        hset(ns, "max", new(binding_t, .type=i64, .rval=gcc_rvalue_from_long(env->ctx, gcc_i64, INT64_MAX)));
-    }
-
-    { // Int32 methods
-        sss_type_t *i32 = Type(IntType, .bits=32);
-        sss_hashmap_t *ns = get_namespace(env, i32);
-        gcc_type_t *gcc_i32 = sss_type_to_gcc(env, i32);
-
-        load_method(env, ns, "abs", "abs", i32, ARG("i",i32,0));
-        load_method(env, ns, "arc4random_uniform", "random", i32, ARG("max", i32, FakeAST(Int, .i=INT32_MAX, .precision=32)));
-
-        hset(ns, "min", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MIN)));
-        hset(ns, "max", new(binding_t, .type=i32, .rval=gcc_rvalue_from_long(env->ctx, gcc_i32, INT32_MAX)));
-    }
-
-    { // Int16 methods
-        sss_type_t *i16 = Type(IntType, .bits=16);
-        sss_hashmap_t *ns = get_namespace(env, i16);
-        gcc_type_t *gcc_i16 = sss_type_to_gcc(env, i16);
-        load_method(env, ns, "arc4random_uniform", "random", i16, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT16_MAX, .precision=32)));
-        hset(ns, "min", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MIN)));
-        hset(ns, "max", new(binding_t, .type=i16, .rval=gcc_rvalue_from_long(env->ctx, gcc_i16, INT16_MAX)));
-    }
-
-    { // Int8 methods
-        sss_type_t *i8 = Type(IntType, .bits=8);
-        sss_hashmap_t *ns = get_namespace(env, i8);
-        gcc_type_t *gcc_i8 = sss_type_to_gcc(env, i8);
-        load_method(env, ns, "arc4random_uniform", "random", i8, ARG("max", Type(IntType, .bits=32), FakeAST(Int, .i=INT8_MAX, .precision=32)));
-        hset(ns, "min", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MIN)));
-        hset(ns, "max", new(binding_t, .type=i8, .rval=gcc_rvalue_from_long(env->ctx, gcc_i8, INT8_MAX)));
-    }
-
-    // Stringifying methods
-    sss_type_t *types[] = {Type(IntType, .bits=8), Type(IntType, .bits=16), Type(IntType, .bits=32), Type(IntType, .bits=64)};
     sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    struct {
+        bool is_signed;
+        int bits;
+        int64_t min, max;
+    } types[] = {
+        {true, 8, INT8_MIN, INT8_MAX}, {false, 8, 0, UINT8_MAX},
+        {true, 16, INT16_MIN, INT16_MAX}, {false, 16, 0, UINT16_MAX},
+        {true, 32, INT32_MIN, INT32_MAX}, {false, 32, 0, UINT32_MAX},
+        {true, 64, INT64_MIN, INT64_MAX}, {false, 64, 0, UINT64_MAX},
+    };
     for (size_t i = 0; i < sizeof(types)/sizeof(types[0]); i++) {
-        uint16_t bits = Match(types[i], IntType)->bits;
-        const char* name = bits == 64 ? "Int" : heap_strf("Int%d", Match(types[i], IntType)->bits);
-        hset(env->global_bindings, name,
-                    new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=types[i])));
-        sss_hashmap_t *ns = get_namespace(env, types[i]);
-        load_method(env, ns, "sss_string_int_format", "format", str_t, ARG("i",types[i],0), ARG("digits",INT_TYPE,0));
-        load_method(env, ns, "sss_string_hex", "hex", str_t, ARG("i",types[i],0),
+        auto type = types[i];
+        sss_type_t *t = Type(IntType, .bits=type.bits, .is_unsigned=!type.is_signed);
+        sss_hashmap_t *ns = get_namespace(env, t);
+
+        if (type.is_signed) {
+            if (type.bits == 64)
+                load_method(env, ns, "labs", "abs", t, ARG("i",t,0));
+            else
+                load_method(env, ns, "abs", "abs", t, ARG("i",t,0));
+        }
+        sss_type_t *u32 = Type(IntType, .bits=32, .is_unsigned=true);
+        load_method(env, ns, "arc4random_uniform", "random", u32, ARG("max", u32, FakeAST(Int, .i=UINT32_MAX, .precision=32, .is_unsigned=true)));
+
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+        hset(ns, "min", new(binding_t, .type=t, .rval=gcc_rvalue_from_long(env->ctx, gcc_t, type.min)));
+        hset(ns, "max", new(binding_t, .type=t, .rval=gcc_rvalue_from_long(env->ctx, gcc_t, type.max)));
+
+        const char* name = type.is_signed ? "Int" : "UInt";
+        if (type.bits != 64) name = heap_strf("%s%d", name, type.bits);
+        hset(env->global_bindings, name, new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=t)));
+        load_method(env, ns, "sss_string_int_format", "format", str_t, ARG("i",t,0), ARG("digits",INT_TYPE,0));
+        load_method(env, ns, "sss_string_hex", "hex", str_t, ARG("i",t,0),
                     ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
                     ARG("uppercase",Type(BoolType),FakeAST(Bool, .b=true)),
                     ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
-        load_method(env, ns, "sss_string_octal", "octal", str_t, ARG("i",types[i],0),
+        load_method(env, ns, "sss_string_octal", "octal", str_t, ARG("i",t,0),
                     ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
                     ARG("prefix",Type(BoolType),FakeAST(Bool, .b=true)));
     }

@@ -337,6 +337,9 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         return true;
 
     // Numeric promotion:
+    if (is_integral(actual) && is_integral(needed) && Match(actual, IntType)->is_unsigned != Match(needed, IntType)->is_unsigned)
+        return false;
+
     if (is_numeric(actual) && is_numeric(needed) && numtype_priority(actual) <= numtype_priority(needed))
         return streq(type_units(actual), type_units(needed));
 
