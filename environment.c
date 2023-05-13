@@ -327,6 +327,9 @@ static void define_int_types(env_t *env)
         else if (type.bits > 32)
             load_method(env, ns, "arc4random_uniform", "random", t,
                         ARG("max", Type(IntType, .bits=32, .is_unsigned=true), FakeAST(Int, .i=UINT32_MAX, .precision=32, .is_unsigned=true)));
+        else if (type.bits < 32 && !type.is_signed)
+            load_method(env, ns, "arc4random_uniform", "random", t,
+                        ARG("max", t, FakeAST(Int, .i=type.max, .precision=type.bits, .is_unsigned=true)));
 
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         hset(ns, "min", new(binding_t, .type=t, .rval=gcc_rvalue_from_long(env->ctx, gcc_t, type.min)));
