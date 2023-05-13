@@ -40,19 +40,21 @@ Additional command line arguments can be found in the manpages (`man
 
 [See docs/features.md for writeups of some of the features in SSS.](docs/features.md) These include:
 
-- Simple value semantics and mutability rules
 - Memory safety (GC, compiler-enforced null pointer checks, and automatic array bounds checking)
+- Simple value semantics and mutability rules
+- Useful built-in types: arrays, hash tables, tuples, structs, tagged unions
+- Language-level support for correct and automatic function memoization
 - Simple type system with type inference
 - Type-safe DSL strings
+- Exhaustiveness-checking pattern matching for tagged unions
 - Units of measure
 - Better loops
-- Vectorized math operations
-- Low-overhead datastructures
-- Structs, not OOP
+- Vectorized math operations (array programming style)
+- Memory-efficient and high performance datastructures
+- Structs with known-at-compile-time methods, not OOP objects with vtable lookups
 - Module system
 - Semantic versioning
 - Built-in doctests with syntax highlighting
-- Useful built-in types: arrays, tables, tuples, structs, tagged unions
 - Percentages
 
 ## Usage

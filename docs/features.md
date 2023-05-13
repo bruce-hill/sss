@@ -3,6 +3,110 @@
 This article is about some neat features of SSS. Some of them are taken
 from other languages, some of them are original.
 
+## Value Semantics
+
+SSS offers well-defined value semantics for all types in the language. What
+does this mean? It means that for every type in the language, the following
+axioms hold:
+
+- **Axiom 1: Immutability** if `a == b`, then it will always be the case that
+  `a == b`, unless a new value is assigned to either variable.
+- **Axiom 2: Hashing** if `a == b` and `table` is a table, then `table[a] ==
+  table[b]`.
+- **Axiom 3: Memoization** if `a == b` and `fn` is a function that has
+  memoization, then `fn(a) == fn(b)`, provided that `fn` has an unlimited cache
+  size or the return value for `a` is still in the cache when `fn(b)` is
+  called.
+- **Axiom 4: Arrays** if `a` and `b` are both arrays of the same type, then `a
+  == b` if and only if `a` and `b` are the same length and `a[i] == b[i]` for
+  all indices `i`.
+- **Axiom 5: Structs** if `a` and `b` are both structs of the same type, then
+  `a == b` if and only if `a.member == b.member` for all struct members.
+- **Axiom 6: Tagged Unions** if `a` and `b` are both tagged unions of the same
+  type, then `a == b` if and only if both have the same tag, and the same
+  tagged value (if any).
+- **Axiom 7: Tables** if `a` and `b` are both tables of the same type, then `a
+  == b` if and only if `a` and `b` have the same keys and `a[key] == b[key]`
+  for all keys.
+- **Axiom 8: Ordered Comparisons** for all types except tables (which do not
+  support ordered comparisons), all statements that are true for `==` are also
+  true for ordered comparison operators (`<`, `<=`, `>`, `>=`). Ordered
+  comparisons for structs, tagged unions, and arrays are performed elementwise,
+  finding the first non-equal element, if any and returning the comparison for
+  that element. For tagged unions, tagged values are only compared if both
+  tagged unions have the same tag.
+- **Axiom 9: Pointers** assuming `a` and `b` are both pointers to a value that
+  resides in memory somewhere (i.e. the type has an `@`, `?`, or `&`), then `a
+  == b` if and only if they point to the *same* memory and mutating the value
+  at `*a` is the same as mutating the value at `*b`. In other words, for
+  pointers, *referential equality* holds, not structural equality. If you would
+  like to compare the values pointed to by two different pointers, you can
+  access the values by dereferencing the pointers and compare the values: `*a
+  == *b`.
+
+These axioms are meant to empower you to be able to reason about your programs
+more easily. Each one of these statements is a promise from the language to
+you, the programmer, which will allow you to more easily write correct programs.
+
+### Floating Point NaN Values
+
+The one exception to the above rules is that floating point numbers (`Num` and
+`Num32`) comply with the IEEE-754 specification for handling NaN (not-a-number)
+values, which require that if `x` is NaN, then all comparisons with `x` must
+return `no`. However, hashing and memoization work for NaN values:
+`table[Num.NaN] == table[Num.NaN]` and `fn(Num.NaN) == fn(Num.NaN)`
+
+
+## Language-level Function Memoization
+
+One of the most important upsides of the value semantics mentioned above is
+that SSS supports storing any type (other than `Void` or `Abort`) as a table
+key. This makes it possible for the language itself to provide automatic
+memoization of functions if desired:
+
+```
+def fibonacci(n:Int; cached)->Int
+    if n <= 1
+        return 1
+    return
+        return fibonacci(n-2) + fibonacci(n-1)
+```
+
+The example above uses `; cached` to signal to the compiler that the function
+return values should be cached in a table. This is functionally equivalent to:
+
+```
+global fibonacci_cache := @{{Int}=>Int}
+def fibonacci(n:Int; cached)->Int
+    key := {n}
+    if key not in fibonacci_cache
+        if n <= 1
+            fibonacci_cache[key] = 1
+        return
+            fibonacci_cache[key] = fibonacci(n-2) + fibonacci(n-1)
+    return fibonacci_cache[key]
+```
+
+I believe that function memoization is one of the most important techniques in
+writing performant code. However, because many languages lack consistent value
+semantics, it is often not possible to memoize many functions in many
+languages, or requires special case logic to work around the language
+limitations. SSS aims to make it trivially easy (just seven keystrokes:
+`;cached`) to asymptotically improve a function's runtime performance in a way
+that strives to make it easy to write correct code handles cache invalidation
+correctly. When pure functions operate over immutable values, caches never
+need to be invalidated.
+
+Since there is always a tradeoff between memory and speed, sometimes it is
+desirable to give a function a cache, but limit the maximum size of that cache.
+In SSS, this is achieved by adding `; cache_size=N`, where `N` is a constant
+integer value. When a cache size is specified and the cache reaches that size,
+a value is evicted from the cache to make space for new cache entries without
+exceeding the maximum size. The current implementation evicts a _random_ entry
+from the cache, since random eviction is time-efficient and does not require
+any additional memory overhead.
+
+
 ## Better Loops
 
 Loops are one of the most fundamental features of imperative programming
