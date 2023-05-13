@@ -36,9 +36,6 @@ $(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o SipHas
 sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
 
-hashtest: libsss/hashmap.o hashtest.c
-	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
-
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 
