@@ -211,9 +211,14 @@ void range_print(range_t range, FILE *f, void *stack, bool color) {
 
 string_t range_slice(string_t array, range_t range, int64_t item_size)
 {
+    if (range.stride > INT16_MAX)
+        range.stride = INT16_MAX;
+    else if (range.stride < INT16_MIN)
+        range.stride = INT16_MIN;
+
     if (range.stride == 0) {
         // printf("Zero stride\n");
-        return (string_t){array.data, 0, 1};
+        return (string_t){array.data, 0, 1, 0};
     } else if (range.stride < 0) {
         if (range.first == INT64_MIN) range.first = array.length;
         if (range.last == INT64_MAX) range.last = 1;
@@ -225,7 +230,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         if (range.first > array.length) range.first += range.stride;
         if (range.first < 1) {
             // printf("Range outside array\n");
-            return (string_t){array.data, 0, 1};
+            return (string_t){array.data, 0, 1, 0};
         }
     } else {
         if (range.first == INT64_MIN) range.first = 1;
@@ -237,7 +242,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
         while (range.first < 1) range.first += range.stride;
         if (range.first > array.length) {
             // printf("Range outside array\n");
-            return (string_t){array.data, 0, 1};
+            return (string_t){array.data, 0, 1, 0};
         }
     }
 
@@ -249,15 +254,14 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
 
     return (string_t){
         (char*)array.data + item_size*(range.first-1),
-        (int32_t)len,
-        (int32_t)(array.stride * range.stride),
+        (int32_t)len, (int16_t)(array.stride * range.stride), 0,
     };
 }
 
 // Copy on write for arrays:
 void array_cow(void *voidarr, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    struct {char *data; int32_t len; int16_t stride, free;} *arr = voidarr;
     char *copy = atomic ? GC_MALLOC_ATOMIC(arr->len * item_size) : GC_MALLOC(arr->len * item_size);
     if (arr->stride == 1) {
         memcpy(copy, arr->data, arr->len * item_size);
@@ -271,7 +275,7 @@ void array_cow(void *voidarr, size_t item_size, bool atomic)
 
 void array_flatten(void *voidarr, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    struct {char *data; int32_t len; int16_t stride, free;} *arr = voidarr;
     char *copy = atomic ? GC_MALLOC_ATOMIC(arr->len * item_size) : GC_MALLOC(arr->len * item_size);
     if (arr->stride == 1) {
         memcpy(copy, arr->data, arr->len * item_size);
@@ -286,69 +290,69 @@ void array_flatten(void *voidarr, size_t item_size, bool atomic)
 
 void array_insert(void *voidarr, char *item, int64_t index, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    string_t *arr = voidarr;
     if (index < 1) index = 1;
-    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+    else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
     if (!arr->data) {
         arr->data = atomic ? GC_MALLOC_ATOMIC(item_size) : GC_MALLOC(item_size);
         arr->free = 1;
     } else if (arr->free < 1 || arr->stride != 1) {
         arr->free = 6;
-        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int32_t i = 0; i < index-1; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
-        for (int32_t i = index-1; i < arr->len; i++)
+        for (int32_t i = index-1; i < arr->length; i++)
             memcpy(copy + (i+1)*item_size, arr->data + arr->stride*i*item_size, item_size);
         arr->data = copy;
-    } else if (index != arr->len+1) {
-        memmove(arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->len - index)*item_size);
+    } else if (index != arr->length+1) {
+        memmove((char*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index)*item_size);
     }
     --arr->free;
-    ++arr->len;
-    memcpy(arr->data + (index-1)*item_size, item, item_size);
+    ++arr->length;
+    memcpy((char*)arr->data + (index-1)*item_size, item, item_size);
 }
 
 void array_insert_all(void *voidarr, void *voidarr2, int64_t index, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr, *arr2 = voidarr2;
+    string_t *arr = voidarr, *arr2 = voidarr2;
     if (index < 1) index = 1;
-    else if (index > (int64_t)arr->len + 1) index = (int64_t)arr->len + 1;
+    else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
     if (!arr->data) {
-        arr->data = atomic ? GC_MALLOC_ATOMIC(item_size*arr2->len) : GC_MALLOC(item_size*arr2->len);
-        arr->free = arr2->len;
-    } else if (arr->free < arr2->len || arr->stride != 1) {
-        arr->free = arr2->len;
-        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len + arr->free) * item_size) : GC_MALLOC((arr->len + arr->free) * item_size);
+        arr->data = atomic ? GC_MALLOC_ATOMIC(item_size*arr2->length) : GC_MALLOC(item_size*arr2->length);
+        arr->free = arr2->length;
+    } else if ((int64_t)arr->free < (int64_t)arr2->length || arr->stride != 1) {
+        arr->free = arr2->length;
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int32_t i = 0; i < index-1; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
-        for (int32_t i = index-1; i < arr->len; i++)
-            memcpy(copy + (i+arr2->len)*item_size, arr->data + arr->stride*i*item_size, item_size);
+        for (int32_t i = index-1; i < arr->length; i++)
+            memcpy(copy + (i+arr2->length)*item_size, arr->data + arr->stride*i*item_size, item_size);
         arr->data = copy;
-    } else if (index != arr->len+1) {
-        memmove(arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->len - index + arr2->len-1)*item_size);
+    } else if (index != arr->length+1) {
+        memmove((char*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index + arr2->length-1)*item_size);
     }
-    arr->free -= arr2->len;
-    arr->len += arr2->len;
-    for (int64_t i = 0; i < arr2->len; i++)
-        memcpy(arr->data + (index-1 + i)*item_size, arr2->data + i*item_size*arr2->stride, item_size);
+    arr->free -= arr2->length;
+    arr->length += arr2->length;
+    for (int32_t i = 0; i < arr2->length; i++)
+        memcpy((char*)arr->data + (index-1 + i)*item_size, arr2->data + i*item_size*arr2->stride, item_size);
 }
 
 void array_remove(void *voidarr, int64_t index, int64_t count, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
-    if (index < 1 || index > (int64_t)arr->len || count < 1) return;
+    string_t *arr = voidarr;
+    if (index < 1 || index > (int64_t)arr->length || count < 1) return;
 
-    if (count > arr->len - index + 1)
-        count = (arr->len - index) + 1;
+    if (count > arr->length - index + 1)
+        count = (arr->length - index) + 1;
 
-    if (index + count > arr->len) {
+    if (index + count > arr->length) {
         if (arr->free >= 0)
             arr->free += count;
     } else if (arr->free < 0 || arr->stride != 1) { // Copy on write
-        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->len-1) * item_size) : GC_MALLOC((arr->len-1) * item_size);
-        for (int32_t src = 1, dest = 1; src <= arr->len; src++) {
+        char *copy = atomic ? GC_MALLOC_ATOMIC((arr->length-1) * item_size) : GC_MALLOC((arr->length-1) * item_size);
+        for (int32_t src = 1, dest = 1; src <= arr->length; src++) {
             if (src < index || src >= index + count) {
                 memcpy(copy + (dest - 1)*item_size, arr->data + arr->stride*(src - 1)*item_size, item_size);
                 ++dest;
@@ -357,39 +361,39 @@ void array_remove(void *voidarr, int64_t index, int64_t count, size_t item_size,
         arr->data = copy;
         arr->free = 0;
     } else {
-        memmove(arr->data + (index-1)*item_size, arr->data + (index-1 + count)*item_size, (arr->len - index + count - 1)*item_size);
+        memmove((char*)arr->data + (index-1)*item_size, arr->data + (index-1 + count)*item_size, (arr->length - index + count - 1)*item_size);
         arr->free += count;
     }
-    arr->len -= count;
+    arr->length -= count;
 }
 
 typedef int (cmp_fn_t)(const void *a, const void *b);
 void array_sort(void *voidarr, cmp_fn_t compare, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    string_t *arr = voidarr;
     if (arr->free < 0 || arr->stride != 1)
         array_flatten(voidarr, item_size, atomic);
-    qsort(arr->data, arr->len, item_size, compare);
+    qsort((char*)arr->data, arr->length, item_size, compare);
 }
 
 void array_shuffle(void *voidarr, size_t item_size, bool atomic)
 {
-    struct {char *data; int32_t len, stride, free;} *arr = voidarr;
+    string_t *arr = voidarr;
     if (arr->free < 0 || arr->stride != 1)
         array_flatten(voidarr, item_size, atomic);
 
     char tmp[item_size];
-    for (int32_t i = arr->len-1; i > 1; i--) {
+    for (int32_t i = arr->length-1; i > 1; i--) {
         int32_t j = arc4random_uniform(i+1);
         memcpy(tmp, arr->data + i*item_size, item_size);
-        memcpy(arr->data + i*item_size, arr->data + j*item_size, item_size);
-        memcpy(arr->data + j*item_size, tmp, item_size);
+        memcpy((char*)arr->data + i*item_size, arr->data + j*item_size, item_size);
+        memcpy((char*)arr->data + j*item_size, tmp, item_size);
     }
 }
 
 string_t array_join(void *voidarr, void *voidglue, size_t item_size, bool atomic)
 {
-    struct {string_t *data; int32_t length, stride, free;} *strings = voidarr;
+    struct {string_t *data; int32_t length; int16_t stride, free;} *strings = voidarr;
     string_t *glue = voidglue;
     if (strings->length == 0) return (string_t){.stride=1};
 

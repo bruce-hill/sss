@@ -13,8 +13,8 @@ A SSS array of `Foo` items is equivalent to the following C structure:
 struct {
     Foo *items;
     int32_t length; // Number of items in the array
-    int32_t stride; // Increment to step over the array by
-    bool copy_on_write;
+    int16_t stride; // Increment to step over the array by
+    int16_t capacity; // Free capacity (or negative for Copy-on-Write)
 }
 ```
 

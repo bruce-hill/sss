@@ -41,13 +41,12 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_type_t *gcc_t = sss_type_to_gcc(env, info->array_type);
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
     gcc_lvalue_t *array = gcc_rvalue_dereference(info->array_ptr, NULL);
-    gcc_lvalue_t *data_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, 0));
-    gcc_lvalue_t *length_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, 1));
+    gcc_lvalue_t *data_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, ARRAY_DATA_FIELD));
+    gcc_lvalue_t *length_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, ARRAY_LENGTH_FIELD));
 
     // array.length += 1
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
-    gcc_rvalue_t *one32 = gcc_one(env->ctx, i32);
-    gcc_update(*block, NULL, length_field, GCC_BINOP_PLUS, one32);
+    gcc_update(*block, NULL, length_field, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
 
     // array.items = GC_realloc(array.items, item_size*array.length)
     gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
@@ -61,7 +60,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
                gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(sss_type_to_gcc(env, item_type))));
 
     // array.items[array.length-1] = item
-    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), one32);
+    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), gcc_one(env->ctx, i32));
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
     if (!type_eq(t, item_type))
         if (!promote(env, t, &item_val, item_type))
@@ -103,10 +102,10 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
     gcc_assign(*block, loc, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-    gcc_rvalue_t *items = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 0));
-    gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 1));
+    gcc_rvalue_t *items = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
+    gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, len, gcc_type(env->ctx, INT64));
-    gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, 2));
+    gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(array_var), loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
     gcc_block_t *next = gcc_new_block(func, fresh("next_item")),
                 *end = gcc_new_block(func, fresh("done"));
@@ -147,15 +146,17 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
 
 gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr)
 {
-    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
-    return gcc_array_access(env->ctx, NULL, gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(i32)),
-                            gcc_rvalue_from_long(env->ctx, i32, sizeof(void*)/sizeof(int32_t) + 2));
+    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    gcc_type_t *str_gcc_t = sss_type_to_gcc(env, str_t);
+    gcc_struct_t *array_struct = gcc_type_if_struct(str_gcc_t);
+    return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(str_gcc_t)), NULL,
+                                        gcc_get_field(array_struct, ARRAY_CAPACITY_FIELD));
 }
 
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr)
 {
     gcc_lvalue_t *capacity = array_capacity(env, arr_ptr);
-    gcc_assign(*block, NULL, capacity, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), -1));
+    gcc_assign(*block, NULL, capacity, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT16), -1));
 }
 
 void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t *arr)
@@ -164,7 +165,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *needs_cow = gcc_new_block(func, "needs_cow"),
                 *done = gcc_new_block(func, "done_cow");
-    gcc_rvalue_t *should_cow = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(array_capacity(env, arr)), gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
+    gcc_rvalue_t *should_cow = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(array_capacity(env, arr)), gcc_zero(env->ctx, gcc_type(env->ctx, INT16)));
     gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
     *block = needs_cow;
     // Copy array contents:
@@ -209,7 +210,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 #define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
             gcc_func_t *func = gcc_block_func(*block);
-            gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 0));
+            gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD));
             gcc_rvalue_t *offset;
             if (range->first)
                 offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
@@ -228,13 +229,13 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             gcc_rvalue_t *items = gcc_lvalue_address(gcc_array_access(env->ctx, loc, old_items, offset), loc);
             gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, "_slice");
             // assign slice.items and slice.stride
-            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 0)), items);
-            gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 2));
-            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 2)),
+            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD)), items);
+            gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
+            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD)),
                        old_stride);
 
             // len = MIN(array_len, range.last)-first
-            gcc_rvalue_t *array_len = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, 1));
+            gcc_rvalue_t *array_len = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD));
             if (range->last) {
                 gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
                             *range_shorter = gcc_new_block(func, "range_shorter"),
@@ -243,17 +244,17 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, array_len, range_len), array_shorter, range_shorter);
 
-                gcc_assign(array_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                gcc_assign(array_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD)),
                            SUB(array_len, offset));
                 gcc_jump(array_shorter, loc, len_assigned);
 
-                gcc_assign(range_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                gcc_assign(range_shorter, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD)),
                            SUB(range_len, offset));
                 gcc_jump(range_shorter, loc, len_assigned);
 
                 *block = len_assigned;
             } else {
-                gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, 1)),
+                gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD)),
                            SUB(array_len, offset));
             }
 
@@ -280,7 +281,7 @@ static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_l
 {
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
     gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index_val, gcc_one(env->ctx, i64_t));
-    gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 1)), i64_t);
+    gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)), i64_t);
     gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index_val, len64);
     gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
@@ -303,9 +304,9 @@ static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_l
 
     // Bounds check success:
     *block = bounds_safe;
-    gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 0));
+    gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
     gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
-    gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 2)), i64_t);
+    gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i64_t);
     index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
     return gcc_array_access(env->ctx, loc, items, index0);
 }
@@ -347,12 +348,11 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_loc_t *loc = ast_loc(env, arr_ast);
-    gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 0));
-    gcc_rvalue_t *index_val = gcc_cast(env->ctx, loc, compile_expr(env, block, index), i64_t);
+    gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
     gcc_lvalue_t *index_var = gcc_local(func, loc, i64_t, "_index");
-    gcc_assign(*block, loc, index_var, index_val);
-    index_val = gcc_rval(index_var);
-    gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, 2)), i64_t);
+    gcc_assign(*block, loc, index_var, gcc_cast(env->ctx, loc, compile_expr(env, block, index), i64_t));
+    gcc_rvalue_t *index_val = gcc_rval(index_var);
+    gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i64_t);
 
     gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
     index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
@@ -385,9 +385,19 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_rvalue_t *initial_items = min_length == 0 ? 
         gcc_null(env->ctx, gcc_item_ptr_t) : gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
     gcc_assign(*block, loc, array_var, gcc_struct_constructor(
-            env->ctx, loc, gcc_t, 2,
-            (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 2)}, // stride = 1
-            (gcc_rvalue_t*[]){initial_items, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
+            env->ctx, loc, gcc_t, 4,
+            (gcc_field_t*[]){
+                gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
+                gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
+                gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
+                gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
+            },
+            (gcc_rvalue_t*[]){
+                initial_items,
+                gcc_zero(env->ctx, gcc_type(env->ctx, INT32)),
+                gcc_one(env->ctx, gcc_type(env->ctx, INT16)),
+                gcc_zero(env->ctx, gcc_type(env->ctx, INT16)),
+            }));
 
     env_t env2 = *env;
     env2.comprehension_callback = (void*)add_array_item;
@@ -431,7 +441,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     sss_type_t *item_type = array->item_type;
     bool is_string = (item_type->tag == CharType);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-    gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1));
+    gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
 
     gcc_func_t *func = gcc_block_func(*block);
 
@@ -471,9 +481,9 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // i = 1
     gcc_lvalue_t *i = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_i");
     gcc_assign(*block, NULL, i, gcc_zero(env->ctx, gcc_type(env->ctx, INT64)));
-    gcc_rvalue_t *items = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 0));
+    gcc_rvalue_t *items = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
-    gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 2));
+    gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));
     gcc_block_t *add_next_item = gcc_new_block(func, fresh("next_item"));

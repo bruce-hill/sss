@@ -32,6 +32,11 @@
 #define TABLE_LASTFREE_FIELD 6
 #define TABLE_COW_FIELD 7
 
+#define ARRAY_DATA_FIELD 0
+#define ARRAY_LENGTH_FIELD 1
+#define ARRAY_STRIDE_FIELD 2
+#define ARRAY_CAPACITY_FIELD 3
+
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
 const char *fresh(const char *name);
@@ -78,6 +83,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *obj);
 
 // ============================== functions.c ===========================
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
@@ -116,6 +122,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member);
 
 // ============================== tables.c ==============================
+gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t);
 gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out, bool raw);
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast);
 void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val);

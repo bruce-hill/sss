@@ -4,7 +4,8 @@
 
 typedef struct {
     const char *data;
-    int32_t length, stride;
+    int32_t length;
+    int16_t stride, free;
 } string_t;
 
 string_t sss_string_uppercased(string_t s);

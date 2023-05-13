@@ -20,7 +20,7 @@ typedef struct {
     gcc_rvalue_t *table_ptr;
 } table_insert_info_t;
 
-static gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
+gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
 {
     size_t key_size = gcc_sizeof(env, Match(t, TableType)->key_type);
     size_t value_align = gcc_alignof(env, Match(t, TableType)->value_type);
@@ -314,7 +314,7 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_block_t *add_next_entry = gcc_new_block(func, fresh("next_entry"));
     gcc_block_t *done_with_entries = gcc_new_block(func, fresh("done_with_entries"));
 
-    // entry_ptr = array.entries
+    // entry_ptr = table.entries
     gcc_type_t *gcc_entry_t = sss_type_to_gcc(env, entry_t);
     gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_entry_t), "_entry_ptr");
     gcc_assign(*block, NULL, entry_ptr, gcc_cast(env->ctx, NULL, entries, gcc_get_ptr_type(gcc_entry_t)));

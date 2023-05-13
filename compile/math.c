@@ -34,6 +34,9 @@ static gcc_rvalue_t *math_binop_rec(
     }
     gcc_func_t *func = gcc_block_func(*block);
 
+    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+    gcc_type_t *i16 = gcc_type(env->ctx, INT16);
+
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
         // Use the minimum common length:
         // [1,2,3] += [10,20] ==> [11,22]
@@ -52,15 +55,14 @@ static gcc_rvalue_t *math_binop_rec(
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
-        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 1));
-        gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, 2));
+        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
-        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
-        gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
+        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
-        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_rvalue_t *len = ternary(block,
                                     gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
                                     i32, lhs_len32, rhs_len32);
@@ -73,9 +75,16 @@ static gcc_rvalue_t *math_binop_rec(
         size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
         gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
         gcc_assign(*block, loc, result, gcc_struct_constructor(
-                env->ctx, loc, result_gcc_t, 3,
-                (gcc_field_t*[]){gcc_get_field(result_array_struct, 0), gcc_get_field(result_array_struct, 1), gcc_get_field(result_array_struct, 2)},
-                (gcc_rvalue_t*[]){initial_items, len, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
+                env->ctx, loc, result_gcc_t, 4,
+                (gcc_field_t*[]){
+                    gcc_get_field(result_array_struct, ARRAY_DATA_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_LENGTH_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
+                },
+                (gcc_rvalue_t*[]){
+                    initial_items, len, gcc_one(env->ctx, i16), gcc_zero(env->ctx, i16),
+                }));
 
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
@@ -89,13 +98,13 @@ static gcc_rvalue_t *math_binop_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), stride))
-        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(lhs_array_struct, 0));
-        gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_item_ptr, lhs_stride32));
-        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, 0));
-        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride32));
+#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32)))
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
+        gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_item_ptr, lhs_stride16));
+        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride16));
 
-        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, 0));
+        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, ARRAY_DATA_FIELD));
         gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
 
         gcc_rvalue_t *item = math_binop_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, 
@@ -128,10 +137,9 @@ static gcc_rvalue_t *math_binop_rec(
 
         gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
         gcc_struct_t *array_struct = gcc_type_if_struct(array_gcc_t);
-        gcc_rvalue_t *len = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 1));
-        gcc_rvalue_t *stride = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, 2));
+        gcc_rvalue_t *len = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *stride16 = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
-        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
@@ -144,9 +152,15 @@ static gcc_rvalue_t *math_binop_rec(
         size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
         gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
         gcc_assign(*block, loc, result, gcc_struct_constructor(
-                env->ctx, loc, result_gcc_t, 3,
-                (gcc_field_t*[]){gcc_get_field(result_array_struct, 0), gcc_get_field(result_array_struct, 1), gcc_get_field(result_array_struct, 2)},
-                (gcc_rvalue_t*[]){initial_items, len, gcc_one(env->ctx, gcc_type(env->ctx, INT32))}));
+                env->ctx, loc, result_gcc_t, 4, (gcc_field_t*[]){
+                    gcc_get_field(result_array_struct, ARRAY_DATA_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_LENGTH_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
+                },
+                (gcc_rvalue_t*[]){
+                    initial_items, len, gcc_rvalue_int16(env->ctx, 1), gcc_rvalue_int16(env->ctx, 0),
+                }));
 
         gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
         gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
@@ -156,10 +170,10 @@ static gcc_rvalue_t *math_binop_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-        gcc_rvalue_t *array_item_ptr = gcc_rvalue_access_field(array, NULL, gcc_get_field(array_struct, 0));
-        gcc_rvalue_t *array_item = gcc_rval(ITEM(array_item_ptr, stride));
+        gcc_rvalue_t *array_item_ptr = gcc_rvalue_access_field(array, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
+        gcc_rvalue_t *array_item = gcc_rval(ITEM(array_item_ptr, stride16));
 
-        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, 0));
+        gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, ARRAY_DATA_FIELD));
         gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
 
         sss_type_t *array_item_t = Match(array_t, ArrayType)->item_type;
@@ -289,6 +303,7 @@ void math_update_rec(
         compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
 
+    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
         // Use the minimum common length:
         // [1,2,3] += [10,20] ==> [11,22,3]
@@ -301,15 +316,14 @@ void math_update_rec(
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
-        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
-        gcc_rvalue_t *lhs_stride32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
+        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
-        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 1));
-        gcc_rvalue_t *rhs_stride32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, 2));
+        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
-        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_rvalue_t *len = ternary(block,
                                     gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
                                     i32, lhs_len32, rhs_len32);
@@ -326,11 +340,11 @@ void math_update_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), stride))
-        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
-        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, lhs_stride32);
-        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, 0));
-        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride32));
+#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32)))
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
+        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, lhs_stride16);
+        gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride16));
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item,
                         op, Match(rhs_t, ArrayType)->item_type, rhs_item);
@@ -343,10 +357,9 @@ void math_update_rec(
         //     update(&lhs->data[i], rhs)
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
-        gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 1));
-        gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, 2));
+        gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
-        gcc_type_t *i32 = gcc_type(env->ctx, INT32);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
@@ -360,7 +373,7 @@ void math_update_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, 0));
+        gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
         gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, stride);
 #undef ITEM
 

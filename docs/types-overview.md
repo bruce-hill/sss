@@ -165,7 +165,7 @@ where non-optional values need to be produced from an optional value.
 
 Arrays in SSS represent a fixed-size, bounds-checked ordered collection of
 values. The underlying implementation uses a struct value similar to
-`Array{size:Int32, stride:Int32, data:@T}`, where `array.data` is a pointer to
+`Array{data:@T, size:Int32, stride:Int16, capacity:Int16}`, where `array.data` is a pointer to
 a heap-allocated chunk of memory containing items of whatever type is inside
 the array. The type of the array is inferred from the type of its members, or,
 in the case of an empty array, must be explicitly specified.

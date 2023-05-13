@@ -103,15 +103,15 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_item_t = gcc_get_ptr_type(gcc_item_t);
         }
         gcc_assign(*block, NULL, item_ptr,
-                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 0)));
+                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD)));
 
         // len = array->len
         gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
         gcc_assign(*block, NULL, len,
-                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 1)));
+                   gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)));
 
         item_shadow = gcc_local(func, NULL, gcc_item_t, "_item");
-        gcc_rvalue_t *stride = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, 2));
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
         // goto (index > len) ? end : body
         gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var),

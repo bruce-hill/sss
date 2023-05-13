@@ -113,14 +113,14 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     compiler_err(env, ast, "I can't evaluate this value at compile-time. It needs to be a constant value.");
 }
 
-static gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *obj)
+gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *obj)
 {
     gcc_func_t *func = gcc_block_func(*block);
     switch (t->tag) {
     case ArrayType: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, 1)), gcc_type(env->ctx, INT64));
+        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)), gcc_type(env->ctx, INT64));
     }
     case TableType: {
         gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
@@ -640,20 +640,22 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_expr(env, block, WrapAST(ast, StringJoin, .children=LIST(ast_t*, ast)));
     }
 #define STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval) \
-        gcc_struct_constructor(env->ctx, loc, gcc_t, 3, (gcc_field_t*[]){ \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), 0), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), 1), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), 2), \
+        gcc_struct_constructor(env->ctx, loc, gcc_t, 4, (gcc_field_t*[]){ \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_DATA_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_LENGTH_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_STRIDE_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_CAPACITY_FIELD), \
                                       }, (gcc_rvalue_t*[]){ \
                                           str_rval, \
-                                          len_rval, \
-                                          stride_rval, \
+                                          gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT32)), \
+                                          gcc_cast(env->ctx, loc, stride_rval, gcc_type(env->ctx, INT16)), \
+                                          gcc_zero(env->ctx, gcc_type(env->ctx, INT16)), \
                                       })
     case StringLiteral: {
         const char* str = Match(ast, StringLiteral)->str;
         gcc_rvalue_t *str_rval = gcc_str(env->ctx, str);
         gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
-        gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT32));
+        gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT16));
         gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
     }
@@ -668,11 +670,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType), .dsl=string_join->dsl);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, string_t);
+        gcc_type_t *i16_t = gcc_type(env->ctx, INT16);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
         // Optimize the case of empty strings
         if (length(chunks) == 0) {
-            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i32_t));
+            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i16_t));
         } else if (length(chunks) == 1 && LIST_ITEM(chunks, 0)->tag == StringLiteral) {
             // Optimize the case of a single string literal
             return compile_expr(env, block, LIST_ITEM(chunks, 0));
@@ -731,9 +734,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_lvalue_t *i = gcc_local(func, loc, i32, "_i");
                 gcc_assign(*block, loc, i, gcc_zero(env->ctx, i32));
                 gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-                gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 0));
-                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 1));
-                gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, 2));
+                gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
+                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
+                gcc_rvalue_t *stride = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i32_t);
 
                 gcc_block_t *add_next_item = gcc_new_block(func, fresh("next_item")),
                             *done = gcc_new_block(func, fresh("done"));
@@ -749,11 +752,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_eval(add_next_item, loc, gcc_callx(
                         env->ctx, loc, fputc_fn,
                         gcc_rval(gcc_array_access(env->ctx, loc, items,
-                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32, gcc_rval(i), stride))),
+                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, gcc_rval(i), gcc_cast(env->ctx, loc, stride, i32_t)))),
                         gcc_rval(file_var)));
                 
                 // i += 1
-                gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+                gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i32_t));
                 // if (i < len) goto add_next_item;
                 gcc_jump_condition(add_next_item, loc, 
                               gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, gcc_rval(i), len),
@@ -800,7 +803,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *memcpy_fn = hget(env->global_funcs, "memcpy", gcc_func_t*);
         str = gcc_callx(env->ctx, loc, memcpy_fn, str, gcc_rval(buf_var), size);
         str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
-        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i32_t)));
+        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i16_t)));
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
         gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
         return gcc_rval(str_struct_var);
@@ -1338,18 +1341,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     check_cow(env, block, fielded_t, obj_ptr);
 
                 // items = &(array.items->field)
-                gcc_field_t *items_field = gcc_get_field(gcc_array_struct, 0);
+                gcc_field_t *items_field = gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD);
                 gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, items_field);
                 gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, (size_t)i);
                 gcc_lvalue_t *field = gcc_rvalue_dereference_field(items, loc, struct_field);
                 gcc_rvalue_t *field_addr = gcc_lvalue_address(field, loc);
 
                 // length = array->length
-                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 1));
+                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD));
 
                 // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
                 sss_type_t *field_type = ith(struct_type->field_types, i);
-                gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, 2));
+                gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
                 size_t struct_size = gcc_sizeof(env, array->item_type);
                 size_t field_size = gcc_sizeof(env, field_type);
                 if (struct_size % field_size > 0)
@@ -1357,25 +1360,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                  "This unfortunately means I can't produce a constant-time array slice.",
                                  type_to_string(array->item_type), access->field);
 
-                stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT32), stride,
-                                       gcc_rvalue_int32(env->ctx, struct_size/field_size));
+                stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT16), stride,
+                                       gcc_rvalue_int16(env->ctx, struct_size/field_size));
 
                 gcc_type_t *slice_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
                 gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
-                gcc_field_t *fields[3] = {
-                    gcc_get_field(slice_struct, 0),
-                    gcc_get_field(slice_struct, 1),
-                    gcc_get_field(slice_struct, 2),
+                gcc_field_t *fields[] = {
+                    gcc_get_field(slice_struct, ARRAY_DATA_FIELD),
+                    gcc_get_field(slice_struct, ARRAY_LENGTH_FIELD),
+                    gcc_get_field(slice_struct, ARRAY_STRIDE_FIELD),
+                    gcc_get_field(slice_struct, ARRAY_CAPACITY_FIELD),
                 };
 
-                gcc_rvalue_t *rvals[3] = {
+                gcc_rvalue_t *rvals[] = {
                     field_addr,
                     len,
                     stride,
+                    gcc_zero(env->ctx, gcc_type(env->ctx, INT16)),
                 };
 
                 gcc_lvalue_t *result_var = gcc_local(func, loc, slice_gcc_t, "_slice");
-                gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 3, fields, rvals));
+                gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 4, fields, rvals));
                 return gcc_rval(result_var);
             }
             break;
@@ -1431,14 +1436,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (entry_size % key_size > 0)
                     compiler_err(env, ast, "I'm sorry, but this table's entry size is not cleanly divisible by its key size, so I can't create a constant-time slice of the keys");
                 return gcc_struct_constructor(
-                    env->ctx, loc, gcc_t, 3,
-                    (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 1), gcc_get_field(gcc_struct, 2)},
+                    env->ctx, loc, gcc_t, 4,
+                    (gcc_field_t*[]){
+                        gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
+                    },
                     (gcc_rvalue_t*[]){
                         gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD)),
                                  gcc_get_ptr_type(sss_type_to_gcc(env, item_t))), // items
                         gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
                                  gcc_type(env->ctx, INT32)), // len
-                        gcc_rvalue_int32(env->ctx, entry_size/key_size), // stride
+                        gcc_rvalue_int16(env->ctx, entry_size/key_size), // stride
+                        gcc_rvalue_int16(env->ctx, 0), // capacity
                     });
             } else if (streq(access->field, "values")) {
                 sss_type_t *key_t = Match(fielded_t, TableType)->key_type;
@@ -1457,13 +1468,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (entry_size % value_size > 0)
                     compiler_err(env, ast, "I'm sorry, but this table's entry size is not cleanly divisible by its value size, so I can't create a constant-time slice of the keys");
                 return gcc_struct_constructor(
-                    env->ctx, loc, gcc_t, 3,
-                    (gcc_field_t*[]){gcc_get_field(gcc_struct, 0), gcc_get_field(gcc_struct, 1), gcc_get_field(gcc_struct, 2)},
+                    env->ctx, loc, gcc_t, 4,
+                    (gcc_field_t*[]){
+                        gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
+                        gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
+                    },
                     (gcc_rvalue_t*[]){
                         items_ptr, // items
                         gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
                                  gcc_type(env->ctx, INT32)), // len
-                        gcc_rvalue_int32(env->ctx, entry_size/value_size), // stride
+                        gcc_rvalue_int16(env->ctx, entry_size/value_size), // stride
+                        gcc_rvalue_int16(env->ctx, 0), // capacity
                     });
             }
             break;

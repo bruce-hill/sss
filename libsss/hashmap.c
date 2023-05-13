@@ -16,8 +16,6 @@
 
 #include "hashmap.h"
 
-typedef struct { const char *data; int32_t len, stride; } array_t;
-
 #ifdef DEBUG_HASHTABLE
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
 #else

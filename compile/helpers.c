@@ -87,7 +87,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         return gcc_type_size(gcc_t);
 
     switch (sss_t->tag) {
-    case ArrayType: return sizeof (struct {void* items; int32_t len, stride;});
+    case ArrayType: return sizeof (struct {void* items; int32_t len; int16_t stride, free;});
     case TableType: return sizeof (sss_hashmap_t);
     case RangeType: return sizeof (struct {int64_t start,stop,step;});
     case BoolType: return sizeof(bool);
@@ -239,12 +239,13 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
         // GCC type is the same for DSL and non-DSLs:
         if (Match(t, ArrayType)->dsl) return sss_type_to_gcc(env, Type(ArrayType, .item_type=item_type));
-        gcc_field_t *fields[3] = {
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "stride"),
+        gcc_field_t *fields[] = {
+            [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
+            [ARRAY_LENGTH_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
+            [ARRAY_STRIDE_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT16), "stride"),
+            [ARRAY_CAPACITY_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT16), "free"),
         };
-        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), 3, fields);
+        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(array);
         break;
     }
@@ -809,12 +810,12 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, 2)));
+    gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, ARRAY_STRIDE_FIELD)));
     sss_type_t *item_type = Match(t, ArrayType)->item_type;
     gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
                 *already_flat = gcc_new_block(func, fresh("already_flat"));
     gcc_jump_condition(*block, NULL,
-                       gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT32))),
+                       gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, stride_field, gcc_one(env->ctx, gcc_type(env->ctx, INT16))),
                        needs_flattening, already_flat);
     *block = needs_flattening;
     gcc_func_t *flatten = get_function(env, "array_flatten");
@@ -876,11 +877,11 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
             if (ftype->tag == ArrayType || ftype->tag == TableType) {
                 append(hash_members, Type(IntType, .bits=32, .is_unsigned=true));
                 gcc_func_t *item_hash = get_hash_func(env, ftype);
-                gcc_rvalue_t *member = gcc_lvalue_address(gcc_rvalue_dereference_field(gcc_param_as_rvalue(params[0]), NULL, gcc_get_field(struct_t, i)), NULL);
+                gcc_rvalue_t *member = gcc_lvalue_address(gcc_rvalue_dereference_field(obj_ptr, NULL, gcc_get_field(struct_t, i)), NULL);
                 append(values, gcc_callx(env->ctx, NULL, item_hash, member));
             } else {
                 append(hash_members, ftype);
-                gcc_rvalue_t *member = gcc_rval(gcc_rvalue_dereference_field(gcc_param_as_rvalue(params[0]), NULL, gcc_get_field(struct_t, i)));
+                gcc_rvalue_t *member = gcc_rval(gcc_rvalue_dereference_field(obj_ptr, NULL, gcc_get_field(struct_t, i)));
                 append(values, member);
             }
         }
@@ -899,8 +900,11 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         obj_ptr = gcc_lvalue_address(safe_tup, NULL);
         goto memory_hash;
     }
+    case TaggedUnionType: {
+        compiler_err(env, NULL, "Hash functions aren't yet implemented for tagged unions, sorry.");
+    }
     case PointerType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType:
-    case RangeType: case FunctionType: {
+    case RangeType: case FunctionType: case TypeType: {
       memory_hash:;
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, t));
         gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
@@ -920,13 +924,13 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         break;
     }
     case ArrayType: {
-        // If necessary, flatten first:
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_rvalue_t *array = obj_ptr;
-        // flatten_arrays(env, &block, t, array);
+        // If necessary, flatten first:
+        flatten_arrays(env, &block, t, array);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
-        gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 0)));
-        gcc_rvalue_t *length_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, 1)));
+        gcc_rvalue_t *data_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, ARRAY_DATA_FIELD)));
+        gcc_rvalue_t *length_field = gcc_rval(gcc_rvalue_dereference_field(array, NULL, gcc_get_field(struct_t, ARRAY_LENGTH_FIELD)));
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
         gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type));
         gcc_type_t *t_size = gcc_type(env->ctx, SIZE);
@@ -951,7 +955,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
 gcc_rvalue_t *compare_values(env_t *env, sss_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b)
 {
     // (int)((a > b) - (a < b))
-    if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType) {
+    if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType || t->tag == TypeType) {
         gcc_type_t *int_t = gcc_type(env->ctx, INT);
         return gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, int_t,
                              gcc_cast(env->ctx, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, a, b), int_t),
@@ -1070,10 +1074,10 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
         // return lhs.len - rhs.len
 
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 0)),
-                     *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 0));
-        gcc_rvalue_t *lhs_stride = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 2)),
-                     *rhs_stride = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 2));
+        gcc_rvalue_t *lhs_data = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD)),
+                     *rhs_data = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
+        gcc_rvalue_t *lhs_stride = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)),
+                     *rhs_stride = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
@@ -1091,8 +1095,8 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
                            loop_end, loop_condition);
 
         // loop_condition:
-        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, 1)),
-                     *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, 1));
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)),
+                     *rhs_len = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *lhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, lhs_len);
         gcc_rvalue_t *rhs_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GE, index_rval, rhs_len);
         gcc_rvalue_t *either_done = gcc_binary_op(env->ctx, NULL, GCC_BINOP_LOGICAL_OR, gcc_type(env->ctx, BOOL),
@@ -1105,8 +1109,8 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
 
         gcc_func_t *cmp_fn = get_compare_func(env, item_t);
         assert(cmp_fn);
-        gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, lhs_stride);
-        gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, rhs_stride);
+        gcc_rvalue_t *lhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, gcc_cast(env->ctx, NULL, lhs_stride, int32));
+        gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, gcc_cast(env->ctx, NULL, rhs_stride, int32));
         gcc_rvalue_t *difference = gcc_callx(env->ctx, NULL, cmp_fn,
             // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
             gcc_rval(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
@@ -1149,7 +1153,7 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
         break;
     }
     default: {
-        if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType) {
+        if (is_numeric(t) || t->tag == PointerType || t->tag == CharType || t->tag == CStringCharType || t->tag == BoolType || t->tag == TypeType) {
             gcc_return(block, NULL, compare_values(env, t, lhs, rhs));
             break;
         }

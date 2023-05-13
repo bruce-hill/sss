@@ -113,7 +113,9 @@ string_t sss_string_trimmed(string_t s, string_t trim_chars, bool trim_left, boo
 }
 
 string_t sss_string_slice(string_t s, range_t *r) {
-    int32_t stride = (int32_t)r->stride;
+    if (r->stride > INT16_MAX || r->stride < INT16_MIN)
+        errx(1, "Invalid string slice stride: %ld", r->stride);
+    int16_t stride = (int16_t)r->stride;
     int32_t first = (int32_t)CLAMP(r->first-1, 0, (int64_t)s.length-1),
             last = (int32_t)CLAMP(r->last-1, 0, (int64_t)s.length-1);
     int32_t slice_len = (last - first)/stride;
@@ -234,7 +236,7 @@ string_t sss_string_quoted(string_t text, const char *dsl, bool colorize) {
     const char *escape_color = colorize ? "\x1b[1;34m" : "";
     const char *reset_color = colorize ? "\x1b[0;35m" : "";
     fputc('"', mem);
-    for (int i = 0; i < text.length; i++) {
+    for (int32_t i = 0; i < text.length; i++) {
         char c = text.data[i*text.stride];
         switch (c) {
         case '\\': fprintf(mem, "%s\\\\%s", escape_color, reset_color); break;
@@ -304,7 +306,7 @@ string_t sss_string_octal(int64_t i, int64_t digits, bool prefix) {
 
 string_t sss_string_split(string_t str, string_t split_chars) {
     if (str.length == 0) return (string_t){.stride=1};
-    struct { string_t *data; int32_t length, stride; } strings = {.stride=1};
+    struct { string_t *data; int32_t length; int16_t stride, free; } strings = {.stride=1};
     size_t capacity = 0;
     bool separators[256] = {0};
     for (int32_t i = 0; i < split_chars.length; i++)
