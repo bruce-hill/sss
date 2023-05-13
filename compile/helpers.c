@@ -636,6 +636,16 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
         const char *sigil = Match(t, PointerType)->is_stack ? "&" : "@";
 
+        if (pointed_type->tag == VoidType) {
+            block = nonnil_block;
+            COLOR_LITERAL(&block, "\x1b[0;34;1m");
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, heap_strf("%sVoid<%%p>", sigil)), obj));
+            COLOR_LITERAL(&block, "\x1b[m");
+            gcc_return_void(block, NULL);
+            block = NULL;
+            break;
+        }
+
         { // If it's non-nil, check for cycles:
             // Summary of the approach:
             //     index = *hashmap_set(cycle_checker, &obj, NULL)
@@ -689,24 +699,17 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             gcc_update(block, NULL, rec_default, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
         }
 
-        if (pointed_type->tag == VoidType) {
-            COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, heap_strf("%sVoid<0x%%X>", sigil)), obj));
-            COLOR_LITERAL(&block, "\x1b[m");
-            gcc_return_void(block, NULL);
-        } else {
-            // Prepend "@"/"&"
-            COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            WRITE_LITERAL(block, sigil);
-            COLOR_LITERAL(&block, "\x1b[m");
+        // Prepend "@"/"&"
+        COLOR_LITERAL(&block, "\x1b[0;34;1m");
+        WRITE_LITERAL(block, sigil);
+        COLOR_LITERAL(&block, "\x1b[m");
 
-            gcc_func_t *print_fn = get_print_func(env, pointed_type);
-            gcc_eval(block, NULL, gcc_callx(
-                env->ctx, NULL, print_fn,
-                gcc_rval(gcc_rvalue_dereference(obj, NULL)),
-                file, rec, color));
-            gcc_return_void(block, NULL);
-        }
+        gcc_func_t *print_fn = get_print_func(env, pointed_type);
+        gcc_eval(block, NULL, gcc_callx(
+            env->ctx, NULL, print_fn,
+            gcc_rval(gcc_rvalue_dereference(obj, NULL)),
+            file, rec, color));
+        gcc_return_void(block, NULL);
 
         break;
     }

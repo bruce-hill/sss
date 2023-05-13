@@ -1645,6 +1645,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         if (!((is_numeric(src_t) && is_numeric(cast_t))
+              || (src_t->tag == PointerType && cast_t->tag == PointerType && can_promote(src_t, cast_t))
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
               || (is_numeric(cast_t) && (src_t->tag == BoolType || src_t->tag == CharType))))
             compiler_err(env, ast, "I don't know how to convert %s to %s. "
