@@ -344,17 +344,17 @@ bool is_orderable(sss_type_t *t)
     }
 }
 
-bool has_heap_memory(sss_type_t *t)
+bool has_heap_memory(sss_type_t *t, bool count_void_as_heap)
 {
     switch (t->tag) {
     case ArrayType: return true;
     case TableType: return true;
-    case PointerType: return true;
-    case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated);
+    case PointerType: return count_void_as_heap || Match(t, PointerType)->pointed->tag != VoidType;
+    case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated, count_void_as_heap);
     case StructType: {
         auto field_types = Match(t, StructType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
-            if (has_heap_memory(LIST_ITEM(field_types, i)))
+            if (has_heap_memory(LIST_ITEM(field_types, i), count_void_as_heap))
                 return true;
         }
         return false;
@@ -363,7 +363,7 @@ bool has_heap_memory(sss_type_t *t)
         auto members = Match(t, TaggedUnionType)->members;
         for (int64_t i = 0; i < LIST_LEN(members); i++) {
             auto member = LIST_ITEM(members, i);
-            if (member.type && has_heap_memory(member.type))
+            if (member.type && has_heap_memory(member.type, count_void_as_heap))
                 return true;
         }
         return false;
@@ -387,10 +387,6 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (type_eq(actual, needed))
         return true;
 
-    // Numeric promotion:
-    if (is_integral(actual) && is_integral(needed) && Match(actual, IntType)->is_unsigned != Match(needed, IntType)->is_unsigned)
-        return false;
-
     if (!streq(type_units(actual), type_units(needed)))
         return false;
 
@@ -403,14 +399,18 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
-        if (!(needed_ptr->pointed->tag == VoidType || type_eq(needed_ptr->pointed, actual_ptr->pointed)))
+        if (needed_ptr->pointed->tag != VoidType && !type_eq(needed_ptr->pointed, actual_ptr->pointed))
+            // Can't use @Foo for a function that wants @Baz
+            // But you *can* use @Foo for a function that wants @Void
             return false;
-        if (actual_ptr->is_stack)
+        else if (actual_ptr->is_stack && !needed_ptr->is_stack)
+            // Can't use &x for a function that wants a @Foo or ?Foo
             return false;
-        else if (needed_ptr->is_stack)
-            return true;
+        else if (actual_ptr->is_optional && !needed_ptr->is_optional)
+            // Can't use !Foo for a function that wants @Foo
+            return false;
         else
-            return needed_ptr->is_optional;
+            return true;
     }
 
     // Function promotion:

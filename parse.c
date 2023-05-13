@@ -2044,18 +2044,30 @@ PARSER(parse_def) {
         }
 
         whitespace(&pos);
+        ast_t *cache = NULL;
+        for (; whitespace(&pos), (match(&pos, ";") || match(&pos, ",")); ) {
+            const char *flag_start = pos;
+            if (match_word(&pos, "cached")) {
+                if (!cache) cache = NewAST(ctx->file, pos, pos, Int, .i=INT64_MAX, .precision=64);
+            } else if (match_word(&pos, "cache_size")) {
+                if (whitespace(&pos), !match(&pos, "="))
+                    parser_err(ctx, flag_start, pos, "I expected a value for 'cache_size'");
+                whitespace(&pos);
+                cache = expect_ast(ctx, start, &pos, parse_expr, "I expected a maximum size for the cache");
+            }
+        }
         expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function definition");
 
         ast_t *ret_type = NULL;
         spaces(&pos);
-        if (match(&pos, "->") || match(&pos, ":")) {
+        if (match(&pos, "->") || match(&pos, ":"))
             ret_type = optional_ast(ctx, &pos, _parse_type);
-        }
+
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
                                  "This function needs a body block");
         return NewAST(ctx->file, start, pos, FunctionDef,
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body,
+                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache,
                       .is_inline=is_inline);
     } else if (match(&pos, "{|")) { // tagged union: def Foo{|a|b|...|}
         NEW_LIST(const char*, tag_names);

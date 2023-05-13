@@ -1238,7 +1238,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
-        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t, true) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
         if (t->tag == TableType && value->tag != Table)

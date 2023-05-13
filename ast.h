@@ -145,6 +145,7 @@ struct ast_s {
             List(ast_t*) arg_defaults;
             ast_t *ret_type;
             ast_t *body;
+            ast_t *cache;
             bool is_inline;
         } FunctionDef;
         struct {

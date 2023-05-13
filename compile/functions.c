@@ -16,20 +16,117 @@
 #include "../types.h"
 #include "../util.h"
 
+// Given an unpopulated function, populate its body with code that checks if
+// the arguments are in a cache, and if not, populates the cache by calling an
+// inline function with the real computational work (the returned func).
+static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_func_t *func, const char *name, List(const char*) arg_names, ast_t *max_cache_size)
+{
+    auto fn_info = Match(fn_t, FunctionType);
+    NEW_LIST(gcc_param_t*, params);
+    for (int64_t i = 0; i < length(arg_names); i++) {
+        sss_type_t *argtype = ith(fn_info->arg_types, i);
+        gcc_param_t *param = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, argtype), ith(arg_names, i));
+        append(params, param);
+        hset(env->bindings, ith(arg_names, i), new(binding_t, .type=argtype, .lval=gcc_param_as_lvalue(param), .rval=gcc_param_as_rvalue(param)));
+    }
+
+    gcc_func_t *inner_func = gcc_new_func(
+        env->ctx, loc, GCC_FUNCTION_ALWAYS_INLINE,
+        sss_type_to_gcc(env, fn_info->ret), name, length(params), params[0], 0);
+
+    gcc_block_t *block = gcc_new_block(func, fresh("cache_wrapper"));
+    sss_type_t *arg_tuple_t = Type(StructType, .field_names=arg_names, .field_types=fn_info->arg_types);
+    gcc_type_t *arg_tuple_gcc_t = sss_type_to_gcc(env, arg_tuple_t);
+    sss_type_t *cache_t = Type(TableType, .key_type=arg_tuple_t, .value_type=fn_info->ret);
+    gcc_lvalue_t *cache = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, cache_t), fresh("cache"));
+
+    gcc_lvalue_t *arg_tuple = gcc_local(func, loc, arg_tuple_gcc_t, "_cache_key");
+    gcc_assign(block, loc, arg_tuple, gcc_struct_constructor(env->ctx, loc, arg_tuple_gcc_t, 0, NULL, NULL));
+    NEW_LIST(gcc_rvalue_t*, arg_rvals);
+    for (int64_t i = 0; i < length(arg_names); i++) {
+        gcc_assign(block, loc, gcc_lvalue_access_field(arg_tuple, loc, gcc_get_field(gcc_type_if_struct(arg_tuple_gcc_t), i)),
+                   gcc_param_as_rvalue(gcc_func_get_param(func, i)));
+        append(arg_rvals, gcc_param_as_rvalue(gcc_func_get_param(func, i)));
+    }
+
+    gcc_func_t *hashmap_get_fn = get_function(env, "sss_hashmap_get_raw");
+    gcc_func_t *key_hash = get_hash_func(env, arg_tuple_t);
+    gcc_func_t *key_cmp = get_indirect_compare_func(env, arg_tuple_t);
+    gcc_lvalue_t *cached_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret)), "_cached_ptr");
+    gcc_assign(block, loc, cached_ptr, gcc_cast(env->ctx, loc, gcc_callx(
+                env->ctx, loc, hashmap_get_fn,
+                gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
+                gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
+                gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
+                gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
+                gcc_lvalue_address(arg_tuple, loc),
+                table_entry_value_offset(env, cache_t)), gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret))));
+    gcc_block_t *if_cached = gcc_new_block(func, fresh("cached")),
+                *if_not_cached = gcc_new_block(func, fresh("not_cached"));
+    gcc_jump_condition(block, loc,
+                       gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(cached_ptr), gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret)))),
+                       if_cached, if_not_cached);
+
+    block = if_cached;
+    gcc_return(block, loc, gcc_rval(gcc_rvalue_dereference(gcc_rval(cached_ptr), loc)));
+
+    block = if_not_cached;
+
+    if (max_cache_size && (max_cache_size->tag != Int || Match(max_cache_size, Int)->i < UINT32_MAX)) {
+        gcc_rvalue_t *max_val = compile_constant(env, max_cache_size);
+        sss_type_t *max_t = get_type(env, max_cache_size);
+        if (!promote(env, max_t, &max_val, Type(IntType, .bits=64)))
+            compiler_err(env, max_cache_size, "Cache maximum size must be an integer value, not %s", type_to_string(max_t));
+
+        gcc_block_t *needs_pop = gcc_new_block(func, fresh("needs_pop")),
+                    *populate_cache = gcc_new_block(func, fresh("populate_cache"));
+        gcc_jump_condition(block, loc,
+                           gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, compile_len(env, &block, cache_t, gcc_rval(cache)), max_val),
+                           populate_cache, needs_pop);
+
+        block = needs_pop;
+        gcc_eval(block, loc, gcc_callx(env->ctx, loc, get_function(env, "sss_hashmap_remove"),
+                                       gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
+                                       gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
+                                       gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
+                                       gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
+                                       gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+        gcc_jump(block, loc, populate_cache);
+        block = populate_cache;
+    }
+
+    gcc_lvalue_t *cached_var = gcc_local(func, loc, sss_type_to_gcc(env, fn_info->ret), "_cached");
+    gcc_assign(block, loc, cached_var, gcc_call(env->ctx, loc, inner_func, length(arg_rvals), arg_rvals[0]));
+    gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
+    gcc_eval(block, loc, gcc_callx(
+            env->ctx, loc, hashmap_set_fn,
+            gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
+            gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
+            gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
+            gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
+            gcc_lvalue_address(arg_tuple, loc),
+            table_entry_value_offset(env, cache_t),
+            gcc_cast(env->ctx, loc, gcc_lvalue_address(cached_var, loc), gcc_type(env->ctx, VOID_PTR))));
+    gcc_return(block, loc, gcc_rval(cached_var));
+    return inner_func;
+}
+
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 {
-    auto t = Match(get_type(env, def), FunctionType);
+    sss_type_t * fn_t = get_type(env, def);
+    auto fn_info = Match(fn_t, FunctionType);
 
     // Use a set of bindings that don't include any closures
     env = global_scope(env);
-    env->return_type = t->ret;
+    env->return_type = fn_info->ret;
 
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
     auto arg_types = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_types : Match(def, Lambda)->arg_types;
-    auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
+
+    // Populate bindings for the arguments:
     for (int64_t i = 0; i < length(arg_names); i++) {
         const char* argname = ith(arg_names, i);
-        sss_type_t *argtype = ith(t->arg_types, i);
+        sss_type_t *argtype = ith(fn_info->arg_types, i);
         if (argtype->tag == VoidType)
             compiler_err(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
@@ -38,12 +135,30 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         hset(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
+    ast_t *max_cache_size = def->tag == FunctionDef ? Match(def, FunctionDef)->cache : NULL;
+    if (max_cache_size) {
+        if (fn_info->ret->tag == AbortType || fn_info->ret->tag == VoidType || fn_info->ret->tag == GeneratorType)
+            compiler_err(env, def, "Functions can't be cached unless they have a return value.");
+        for (int64_t i = 0; i < length(fn_info->arg_types); i++) {
+            sss_type_t *arg_t = ith(fn_info->arg_types, i);
+            if (has_stack_memory(arg_t))
+                compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %s)",
+                             ith(arg_names, i), type_to_string(arg_t));
+            else if (has_heap_memory(arg_t, false))
+                compiler_err(env, def, "Functions can't be cached if they take a pointer to mutable heap memory, like the argument '%s' (type: %s)",
+                             ith(arg_names, i), type_to_string(arg_t));
+        }
+        const char *name = def->tag == FunctionDef ? fresh(heap_strf("%s__inner", Match(def, FunctionDef)->name)) : fresh("lambda__inner");
+        func = add_cache(env, ast_loc(env, def), fn_t, func, name, arg_names, max_cache_size);
+    }
+
     gcc_block_t *block = gcc_new_block(func, fresh("func"));
+    auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
     compile_statement(env, &block, body);
     if (block) {
-        if (t->ret->tag != VoidType)
+        if (fn_info->ret->tag != VoidType)
             compiler_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
-                  type_to_string(t->ret));
+                  type_to_string(fn_info->ret));
         gcc_return_void(block, NULL);
     }
 }
