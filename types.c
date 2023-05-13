@@ -344,17 +344,17 @@ bool is_orderable(sss_type_t *t)
     }
 }
 
-bool has_heap_memory(sss_type_t *t, bool count_void_as_heap)
+bool has_heap_memory(sss_type_t *t)
 {
     switch (t->tag) {
     case ArrayType: return true;
     case TableType: return true;
-    case PointerType: return count_void_as_heap || Match(t, PointerType)->pointed->tag != VoidType;
-    case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated, count_void_as_heap);
+    case PointerType: return true;
+    case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated);
     case StructType: {
         auto field_types = Match(t, StructType)->field_types;
         for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
-            if (has_heap_memory(LIST_ITEM(field_types, i), count_void_as_heap))
+            if (has_heap_memory(LIST_ITEM(field_types, i)))
                 return true;
         }
         return false;
@@ -363,7 +363,7 @@ bool has_heap_memory(sss_type_t *t, bool count_void_as_heap)
         auto members = Match(t, TaggedUnionType)->members;
         for (int64_t i = 0; i < LIST_LEN(members); i++) {
             auto member = LIST_ITEM(members, i);
-            if (member.type && has_heap_memory(member.type, count_void_as_heap))
+            if (member.type && has_heap_memory(member.type))
                 return true;
         }
         return false;

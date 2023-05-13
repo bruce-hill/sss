@@ -102,7 +102,7 @@ precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b);
 const char* type_units(sss_type_t *t);
 sss_type_t *with_units(sss_type_t *t, const char* units);
 bool is_orderable(sss_type_t *t);
-bool has_heap_memory(sss_type_t *t, bool count_void_as_heap);
+bool has_heap_memory(sss_type_t *t);
 bool has_stack_memory(sss_type_t *t);
 bool can_promote(sss_type_t *actual, sss_type_t *needed);
 bool can_leave_uninitialized(sss_type_t *t);

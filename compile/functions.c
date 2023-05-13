@@ -16,6 +16,34 @@
 #include "../types.h"
 #include "../util.h"
 
+static bool is_cacheable(sss_type_t *t)
+{
+    switch (t->tag) {
+    case ArrayType: return true;
+    case TableType: return true;
+    case PointerType: return Match(t, PointerType)->pointed->tag == VoidType;
+    case GeneratorType: return false;
+    case StructType: {
+        auto field_types = Match(t, StructType)->field_types;
+        for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
+            if (!is_cacheable(LIST_ITEM(field_types, i)))
+                return false;
+        }
+        return true;
+    }
+    case TaggedUnionType: {
+        auto members = Match(t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = LIST_ITEM(members, i);
+            if (member.type && !is_cacheable(member.type))
+                return false;
+        }
+        return true;
+    }
+    default: return true;
+    }
+}
+
 // Given an unpopulated function, populate its body with code that checks if
 // the arguments are in a cache, and if not, populates the cache by calling an
 // inline function with the real computational work (the returned func).
@@ -144,7 +172,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
             if (has_stack_memory(arg_t))
                 compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %s)",
                              ith(arg_names, i), type_to_string(arg_t));
-            else if (has_heap_memory(arg_t, false))
+            else if (!is_cacheable(arg_t))
                 compiler_err(env, def, "Functions can't be cached if they take a pointer to mutable heap memory, like the argument '%s' (type: %s)",
                              ith(arg_names, i), type_to_string(arg_t));
         }

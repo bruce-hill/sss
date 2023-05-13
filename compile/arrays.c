@@ -173,7 +173,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
                                      gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
                                      gcc_rvalue_size(env->ctx, gcc_sizeof(env, Match(arr_t, ArrayType)->item_type)),
-                                     gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t, true))));
+                                     gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t))));
     gcc_jump(*block, NULL, done);
     *block = done;
 }
@@ -378,7 +378,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
     if (item_t->tag == VoidType)
         compiler_err(env, ast, "Arrays can't be defined with a Void item type");
 
-    gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t, true) ? "GC_malloc" : "GC_malloc_atomic");
+    gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
     int64_t min_length = array->items ? length(array->items) : 0;
     gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * min_length));
     gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
@@ -561,7 +561,7 @@ static void define_array_insert(env_t *env, sss_type_t *t)
                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
                                     gcc_param_as_rvalue(params[2]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
@@ -590,7 +590,7 @@ static void define_array_insert_all(env_t *env, sss_type_t *t)
                                     AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
                                     gcc_param_as_rvalue(params[2]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
@@ -619,7 +619,7 @@ static void define_array_remove(env_t *env, sss_type_t *t)
                                     gcc_param_as_rvalue(params[1]),
                                     gcc_param_as_rvalue(params[2]),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
@@ -655,7 +655,7 @@ static void define_array_pop(env_t *env, sss_type_t *t)
                                     gcc_param_as_rvalue(params[1]),
                                     gcc_one(env->ctx, gcc_type(env->ctx, INT64)),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return(block, NULL, gcc_rval(item));
 
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
@@ -680,7 +680,7 @@ static void define_array_shuffle(env_t *env, sss_type_t *t)
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_shuffle_func,
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
@@ -708,7 +708,7 @@ static void define_array_sort(env_t *env, sss_type_t *t)
                                     AS_VOID_PTR(gcc_param_as_rvalue(params[0])),
                                     gcc_cast(env->ctx, NULL, cmp, ptr_cmp_fn_gcc_t),
                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true))));
+                                    gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
@@ -735,7 +735,7 @@ static void define_array_join(env_t *env, sss_type_t *glue_t)
                                      AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
                                      AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL)),
                                      gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t, true)));
+                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)));
     gcc_return(block, NULL, gcc_bitcast(env->ctx, NULL, retval, glue_gcc_t));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "glue"),

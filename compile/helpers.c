@@ -823,7 +823,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
             env->ctx, NULL, flatten,
             gcc_cast(env->ctx, NULL, array_ptr, gcc_get_type(env->ctx, GCC_T_VOID_PTR)),
             gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
-            gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type, true))));
+            gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
 
     gcc_jump(*block, NULL, already_flat);
     *block = already_flat;
@@ -1274,7 +1274,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 gcc_func_t *func = gcc_block_func(*block);
                 if (streq(access->field, "default")) {
                     sss_type_t *key_t = Match(table_t, TableType)->key_type;
-                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t, true) ? "GC_malloc" : "GC_malloc_atomic");
+                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
                     gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, key_t)), "_default_ptr");
                     gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
                                                               gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
@@ -1283,7 +1283,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                     gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
                     return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
                 } else if (streq(access->field, "fallback")) {
-                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t, true) ? "GC_malloc" : "GC_malloc_atomic");
+                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
                     gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, table_t)), "_fallback_ptr");
                     gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
                                                               gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
@@ -1350,7 +1350,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
-        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t, true) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
         return tmp;
