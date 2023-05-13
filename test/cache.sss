@@ -1,0 +1,50 @@
+
+// Log the non-cached calls to this function:
+global calls := @[:{Int,Int}]
+def pow(base:Int, exponent:Int; cached)->Int
+    calls.insert({base, exponent})
+    fail if exponent < 0
+    if exponent == 0
+        return 1
+    else if exponent mod 2 == 0
+        return pow(base, exponent / 2) * pow(base, exponent / 2)
+    else
+        return base * pow(base, exponent - 1)
+
+>>> pow(2, 9)
+=== 512
+// Verify that pow(2, 4) and so on only get called once:
+>>> *calls == [{2,9}, {2,8}, {2,4}, {2,2}, {2,1}, {2,0}]
+=== yes
+// Only unique members here:
+>>> #calls == #{c=>yes for c in *calls}
+=== yes
+
+def heap_for_string(str:String; cached)->@Void
+    return @yes
+
+// Verify that arrays cache the same even when not pointing to the same memory:
+>>> heap_for_string("abc") == heap_for_string("c_b_a"[..by -2])
+=== yes
+>>> heap_for_string("abc") == heap_for_string("xyz")
+=== no
+
+def heap_for_table(table:{Int=>Int}; cached)->@Void
+    return @yes
+
+// Verify that tables cache the same even when not pointing to the same memory:
+>>> heap_for_table({1=>2, 2=>3}) == heap_for_table({2=>3, 1=>2})
+=== yes
+>>> heap_for_table({1=>2, 2=>3}) == heap_for_table({99=>100})
+=== no
+
+def heap_for_int(i:Int; cache_size=1)->@Void
+    return @yes
+
+>>> t := @{heap_for_int(i)=>yes for i in [3,3,3,3,3,3]}
+>>> #t
+=== 1
+
+>>> t := @{heap_for_int(i)=>yes for i in [1,2,1,2,1,2]}
+>>> #t
+=== 6
