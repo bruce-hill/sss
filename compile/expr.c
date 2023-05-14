@@ -840,9 +840,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         };
         return gcc_struct_constructor(env->ctx, loc, sss_type_to_gcc(env, entry_t), 2, fields, rvals);
     }
-    case TaggedUnionDef: {
-        return NULL;
-    }
     case UnitDef: {
         return NULL;
     }
@@ -866,14 +863,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                            .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
-    case StructDef: case Extend: {
+    case StructDef: case Extend: case TaggedUnionDef: {
         sss_type_t *t;
         List(ast_t*) members;
         if (ast->tag == StructDef) {
             auto struct_def = Match(ast, StructDef);
             members = struct_def->definitions;
             binding_t *b = get_binding(env, struct_def->name);
-            if (!b) compiler_err(env, ast, "I couldn't find the type for this struct name");
+            if (!b) compiler_err(env, ast, "I couldn't find the type for the struct named '%s'", struct_def->name);
+            t = Match(b->type, TypeType)->type;
+        } else if (ast->tag == TaggedUnionDef) {
+            auto tu_def = Match(ast, TaggedUnionDef);
+            members = tu_def->definitions;
+            binding_t *b = get_binding(env, tu_def->name);
+            if (!b) compiler_err(env, ast, "I couldn't find the type for the tagged union named '%s'", tu_def->name);
             t = Match(b->type, TypeType)->type;
         } else {
             auto extend = Match(ast, Extend);

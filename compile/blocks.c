@@ -122,7 +122,6 @@ void predeclare_def_types(env_t *env, ast_t *def)
         hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
         hset(env->type_namespaces, name, struct_env->bindings);
-
         foreach (struct_def->definitions, def, _)
             predeclare_def_types(struct_env, *def);
     } else if (def->tag == TaggedUnionDef) {
@@ -133,6 +132,10 @@ void predeclare_def_types(env_t *env, ast_t *def)
         if (hget(env->bindings, name, binding_t*))
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
+        env_t *tu_env = fresh_scope(env);
+        hset(env->type_namespaces, name, tu_env->bindings);
+        foreach (tu_def->definitions, def, _)
+            predeclare_def_types(tu_env, *def);
     } else if (def->tag == UnitDef) {
         auto unit_def = Match(def, UnitDef);
         env->derived_units = new(derived_units_t, 
@@ -176,9 +179,8 @@ void populate_def_members(env_t *env, ast_t *def)
             APPEND(struct_type->field_defaults, default_val);
         }
         binding->rval = gcc_str(env->ctx, type_to_string(t));
-        foreach (struct_def->definitions, def, _) {
+        foreach (struct_def->definitions, def, _)
             populate_def_members(&inner_env, *def);
-        }
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* tu_name = tu_def->name;
@@ -247,8 +249,10 @@ void populate_def_members(env_t *env, ast_t *def)
         }
         binding->rval = gcc_str(env->ctx, tu_name);
 
-        // Populate union fields
-        hset(env->type_namespaces, tu_name, type_ns);
+        env_t inner_env = *env;
+        inner_env.bindings = type_ns;
+        foreach (tu_def->definitions, def, _)
+            populate_def_members(&inner_env, *def);
     } else if (def->tag == DocTest) {
         return populate_def_members(env, Match(def, DocTest)->expr);
     }
@@ -263,13 +267,18 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
                             .func=func, .rval=gcc_get_func_address(func, NULL),
                             .visible_in_closures=true);
         hset(env->bindings, fndef->name, b);
-    } else if (def->tag == StructDef || def->tag == Extend) {
+    } else if (def->tag == StructDef || def->tag == TaggedUnionDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
             auto struct_def = Match(def, StructDef);
             binding_t *b = get_binding(env, struct_def->name);
             env = get_type_env(env, Match(b->type, TypeType)->type);
             members = struct_def->definitions;
+        } else if (def->tag == TaggedUnionDef) {
+            auto tu_def = Match(def, TaggedUnionDef);
+            binding_t *b = get_binding(env, tu_def->name);
+            env = get_type_env(env, Match(b->type, TypeType)->type);
+            members = tu_def->definitions;
         } else {
             auto extend = Match(def, Extend);
             members = Match(extend->body, Block)->statements;

@@ -1941,7 +1941,34 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, const char* name) {
+static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, size_t starting_indent)
+{
+    const char *start = *pos;
+    whitespace(pos);
+    NEW_LIST(ast_t*, definitions);
+    size_t indent = sss_get_indent(ctx->file, *pos);
+    if (indent > starting_indent) {
+        for (;;) {
+            const char *next = *pos;
+            whitespace(&next);
+            if (sss_get_indent(ctx->file, next) != indent) break;
+            ast_t *def = optional_ast(ctx, &next, parse_declaration);
+            if (!def) def = optional_ast(ctx, &next, parse_def);
+            if (!def) {
+                if (sss_get_indent(ctx->file, next) > starting_indent)
+                    parser_err(ctx, next, strchrnul(next, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
+                break;
+            }
+            APPEND(definitions, def);
+            *pos = next;
+        }
+    } else {
+        *pos = start;
+    }
+    return definitions;
+}
+
+static ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, const char* name) {
     if (!match(pos, "{")) return NULL;
     size_t starting_indent = sss_get_indent(ctx->file, *pos);
     NEW_LIST(const char*, field_names);
@@ -1981,23 +2008,7 @@ ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, c
     whitespace(pos);
     expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
 
-    whitespace(pos);
-    NEW_LIST(ast_t*, definitions);
-    size_t indent = sss_get_indent(ctx->file, *pos);
-    if (indent > starting_indent) {
-        for (;;) {
-            whitespace(pos);
-            if (sss_get_indent(ctx->file, *pos) != indent) break;
-            ast_t *def = optional_ast(ctx, pos, parse_declaration);
-            if (!def) def = optional_ast(ctx, pos, parse_def);
-            if (!def) {
-                if (sss_get_indent(ctx->file, *pos) > starting_indent)
-                    parser_err(ctx, *pos, strchrnul(*pos, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
-                break;
-            }
-            APPEND(definitions, def);
-        }
-    }
+    List(ast_t*) definitions = parse_def_definitions(ctx, pos, starting_indent);
     return NewAST(ctx->file, start, *pos, StructDef, .name=name, .field_names=field_names, .field_types=field_types,
                   .field_defaults=field_defaults, .definitions=definitions);
 }
@@ -2070,6 +2081,7 @@ PARSER(parse_def) {
                       .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache,
                       .is_inline=is_inline);
     } else if (match(&pos, "{|")) { // tagged union: def Foo{|a|b|...|}
+        size_t starting_indent = sss_get_indent(ctx->file, pos);
         NEW_LIST(const char*, tag_names);
         NEW_LIST(int64_t, tag_values);
         NEW_LIST(ast_t*, tag_types);
@@ -2108,7 +2120,9 @@ PARSER(parse_def) {
             ++next_value;
         }
         expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
-        return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
+        List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
+        return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
+                      .tag_types=tag_types, .definitions=definitions);
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         --pos;
         return parse_struct_def(ctx, start, &pos, name);
