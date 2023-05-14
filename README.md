@@ -56,7 +56,9 @@ Additional command line arguments can be found in the manpages (`man
 - Vectorized math operations (array programming style)
 - Structs with known-at-compile-time methods, not OOP objects with vtable
   lookups
-- Module system
+- Module system with useful built-in modules: file operations, command line
+  argument parsing, environment variable access, unicode support, shell
+  interoperability, HTTP requests (work in progress)
 - Easy interoperability with C
 - Semantic versioning
 - Built-in doctests with syntax highlighting
