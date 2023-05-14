@@ -2,13 +2,21 @@
 >>> $JSON{{"inner":{"obj":[]}}}
 === $JSON"{\"inner\":{\"obj\":[]}}"
 
+// Verify string methods work:
+>>> $JSON|abc|.starts_with($JSON|a|)
+=== yes
+>>> $JSON|abc|.replace($JSON|b|, $JSON|X|)
+=== $JSON"aXc"
+
 name := "Robert'; drop table students;--"
 
 def s:String as $SQL
     return bitcast "\x1b[0;35m'$(s.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as $SQL
 
-def i:Int as $SQL return bitcast "\x1b[0;35m$i\x1b[m" as $SQL
-def n:Num as $SQL return bitcast "\x1b[0;35m$n\x1b[m" as $SQL
+def i:Int as $SQL
+    return bitcast "\x1b[0;35m$i\x1b[m" as $SQL
+def n:Num as $SQL
+    return bitcast "\x1b[0;35m$n\x1b[m" as $SQL
 
 age := 10
 s := $SQL"SELECT * FROM students WHERE name = $name AND age > $age"

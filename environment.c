@@ -154,13 +154,14 @@ static void load_global_functions(env_t *env)
 #undef PARAM
 }
 
-static sss_type_t *define_string_type(env_t *env)
+sss_type_t *define_string_type(env_t *env, const char *dsl)
 {
-    sss_type_t *str_type = Type(ArrayType, .item_type=Type(CharType));
+    sss_type_t *str_type = Type(ArrayType, .item_type=Type(CharType), .dsl=dsl);
     sss_type_t *c_str_type = Type(PointerType, .pointed=Type(CStringCharType));
-    gcc_rvalue_t *rval = gcc_str(env->ctx, "String");
+    const char *name = type_to_string(str_type);
+    gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
-    hset(env->global_bindings, "String", binding);
+    hset(env->global_bindings, name, binding);
 
     sss_hashmap_t *ns = get_namespace(env, str_type);
     load_method(env, ns, "sss_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
@@ -184,14 +185,6 @@ static sss_type_t *define_string_type(env_t *env)
                 ARG("str",str_type,0),
                 ARG("separators", str_type, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))));
 
-    sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
-    load_method(env, ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_type,0));
-    load_method(env, ns, "from_c_string", "from_pointer", str_type, ARG("str",c_str,0));
-    sss_hashmap_t *ns2 = get_namespace(env, c_str);
-    assert(ns2 == get_namespace(env, c_str));
-    load_method(env, ns2, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
-    sss_hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
-    load_method(env, ns3, "from_c_string", "as_string", str_type, ARG("str",c_str,0));
     return str_type;
 }
 
@@ -367,17 +360,28 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool debu
 
     load_global_functions(env);
 
-    sss_type_t *string_type = define_string_type(env);
+    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    sss_hashmap_t *str_ns = get_namespace(env, str_t);
+
+    sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
+    load_method(env, str_ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_t,0));
+    load_method(env, str_ns, "from_c_string", "from_pointer", str_t, ARG("str",c_str,0));
+    sss_hashmap_t *ns2 = get_namespace(env, c_str);
+    assert(ns2 == get_namespace(env, c_str));
+    load_method(env, ns2, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
+    sss_hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
+    load_method(env, ns3, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
+
     sss_type_t *say_type = Type(
         FunctionType,
         .arg_names=LIST(const char*, "str", "end"),
-        .arg_types=LIST(sss_type_t*, string_type, string_type),
+        .arg_types=LIST(sss_type_t*, str_t, str_t),
         .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringLiteral, .str="\n")),
         .ret=Type(VoidType));
 
     gcc_param_t *gcc_say_params[] = {
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, string_type), "str"),
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, string_type), "end"),
+        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "str"),
+        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "end"),
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
@@ -489,6 +493,9 @@ sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
         ns = new(sss_hashmap_t, .fallback=env->global_bindings);
         copy_global_bindings(ns, env->bindings);
         hset(env->type_namespaces, type_to_string(t), ns);
+        // Ensure DSLs get auto-populated with string-equivalent methods:
+        if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType)
+            (void)define_string_type(env, Match(t, ArrayType)->dsl);
     }
     return ns;
 }
