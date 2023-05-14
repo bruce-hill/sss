@@ -40,22 +40,28 @@ Additional command line arguments can be found in the manpages (`man
 
 [See docs/features.md for writeups of some of the features in SSS.](docs/features.md) These include:
 
-- Memory safety (GC, compiler-enforced null pointer checks, and automatic array bounds checking)
-- Simple value semantics and mutability rules
-- Useful built-in types: arrays, hash tables, tuples, structs, tagged unions
+- Memory safety (garbage collection, compiler-enforced null safety, and
+  automatic array bounds checking)
+- Simple, low-boilerplate type system with type inference
+- Useful and efficient built-in types: arrays, hash tables, tuples, structs,
+  tagged unions
+- Comprehensions for arrays and tables
+- Well-defined value semantics and mutability rules
 - Language-level support for correct and automatic function memoization
-- Simple type system with type inference
-- Type-safe DSL strings
-- Exhaustiveness-checking pattern matching for tagged unions
-- Units of measure
+- Type-safe DSL strings with automatic prevention of code injection
+- Pattern matching for tagged unions with exhaustiveness checking
+- Beautiful and helpful compiler and runtime error messages
+- Units of measure with automatic unit conversions
 - Better loops
 - Vectorized math operations (array programming style)
-- Memory-efficient and high performance datastructures
-- Structs with known-at-compile-time methods, not OOP objects with vtable lookups
+- Structs with known-at-compile-time methods, not OOP objects with vtable
+  lookups
 - Module system
+- Easy interoperability with C
 - Semantic versioning
 - Built-in doctests with syntax highlighting
-- Percentages
+- `defer` statement for safe, automatic cleanup
+- Percentages as a distinct type
 
 ## Usage
 
