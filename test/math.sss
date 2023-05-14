@@ -123,23 +123,23 @@ say "Methods:"
 === "0o30071"
 
 >>> Int.parse("10")
-=== ParseIntResult.success(10)
+=== ParseInt.success(10)
 >>> Int.parse("10@")
-=== ParseIntResult.partial_success(10)
+=== ParseInt.partial_success(10)
 >>> Int.parse("hello")
-=== ParseIntResult.failure(0)
+=== ParseInt.failure(0)
 >>> Int.parse("10", base=16)
-=== ParseIntResult.success(16)
+=== ParseInt.success(16)
 >>> Int.parse("10", base=10000)
-=== ParseIntResult.invalid_base(0)
+=== ParseInt.invalid_base(0)
 >>> Int.parse("FFFFFFFFFFFFFFFFFFFFF", base=16)
-=== ParseIntResult.invalid_range(9223372036854775807)
+=== ParseInt.invalid_range(9223372036854775807)
 >>> Num.parse("2.5")
-=== ParseNumResult.success(2.5)
+=== ParseNum.success(2.5)
 >>> Num.parse("1e2")
-=== ParseNumResult.success(100)
+=== ParseNum.success(100)
 >>> Num.parse("hello")
-=== ParseNumResult.failure(0)
+=== ParseNum.failure(0)
 
 >>> [1,2,3] + [10,20]
 === [11, 22]

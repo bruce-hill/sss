@@ -1,0 +1,13 @@
+>>> "Hello world".b64_encode()
+=== "SGVsbG8gd29ybGQ="
+>>> "".b64_encode()
+=== ""
+
+>>> "SGVsbG8gd29ybGQ=".b64_decode()
+=== Base64Decode.success("Hello world")
+>>> "SGVsbG8gd29ybGQ==".b64_decode()
+=== Base64Decode.failure
+>>> "".b64_decode()
+=== Base64Decode.success("")
+>>> "!!!!".b64_decode()
+=== Base64Decode.failure

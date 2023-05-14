@@ -197,7 +197,7 @@ static void define_num_types(env_t *env)
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num64_type));
         hset(env->global_bindings, "Num", binding);
 
-        sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseNumResult", .members=LIST(
+        sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseNum", .members=LIST(
                 sss_tagged_union_member_t,
                 {"failure", 0, num64_type}, {"invalid_range", 1, num64_type}, {"partial_success", 2, num64_type}, {"success", 3, num64_type}));
         load_method(env, ns64, "sss_string_to_num", "parse", parse_t,
@@ -321,7 +321,7 @@ static void define_int_types(env_t *env)
         }
 
         if (type.is_signed && type.bits == 64) {
-            sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseIntResult", .members=LIST(
+            sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseInt", .members=LIST(
                     sss_tagged_union_member_t,
                     {"failure", 0, t}, {"invalid_range", 1, t}, {"partial_success", 2, t}, {"success", 3, t}, {"invalid_base", 4, t}));
             load_method(env, ns, "sss_string_to_int", "parse", parse_t,
@@ -375,6 +375,11 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool debu
 
     sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     sss_hashmap_t *str_ns = get_namespace(env, str_t);
+
+    load_method(env, str_ns, "base64_encode", "b64_encode", str_t, ARG("str",str_t,0));
+    sss_type_t *result_t = Type(TaggedUnionType, .name="Base64Decode", .members=LIST(
+            sss_tagged_union_member_t, {"failure", 0, NULL}, {"success", 1, str_t}));
+    load_method(env, str_ns, "base64_decode", "b64_decode", result_t, ARG("b64",str_t,0));
 
     sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
     load_method(env, str_ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_t,0));

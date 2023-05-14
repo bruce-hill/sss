@@ -24,13 +24,13 @@ LIBS=-lgc -lgccjit -lcord -lm -L. -l:libsss.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
 LIBFILE=libsss.so.$(VERSION)
-CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c SipHash/halfsiphash.c
+CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c libsss/base64.c SipHash/halfsiphash.c
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libsss/list.h libsss/string.h libsss/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 
 all: sss $(LIBFILE) sss.1
 
-$(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o SipHash/halfsiphash.o
+$(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss/base64.o SipHash/halfsiphash.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
