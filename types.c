@@ -35,13 +35,13 @@ static CORD type_to_cord(sss_type_t *t, bool expand_structs) {
         }
         case RangeType: return "Range";
         case ArrayType: {
-            auto list = Match(t, ArrayType);
-            if (list->item_type->tag == CharType) {
-                if (list->dsl)
-                    return CORD_cat("$", list->dsl);
+            auto array = Match(t, ArrayType);
+            if (array->item_type->tag == CharType) {
+                if (array->dsl)
+                    return CORD_cat("$", array->dsl);
                 return "String";
             }
-            return CORD_cat("[", CORD_cat(type_to_cord(list->item_type, false), "]"));
+            return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, false), "]"));
         }
         case TableType: {
             CORD c = "{";
