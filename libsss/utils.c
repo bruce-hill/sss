@@ -510,7 +510,13 @@ string_t get_line(FILE *f)
 // Conversion functions:
 typedef struct {
     unsigned char tag;
-    int64_t value;
+    union {
+        int64_t value;
+        struct {
+            int64_t value;
+            string_t remaining;
+        } partial;
+    } data;
 } int_conversion_t;
 
 static const unsigned char FAILURE = 0, INVALID_RANGE = 1, PARTIAL_SUCCESS = 2, SUCCESS = 3, INVALID_BASE = 4;
@@ -522,21 +528,36 @@ int_conversion_t sss_string_to_int(string_t str, int64_t base)
     errno = 0;
     int64_t n = strtol(str.data, &endptr, base);
     switch (errno) {
-    case EINVAL: return (int_conversion_t){.tag=INVALID_BASE, .value=n};
-    case ERANGE: return (int_conversion_t){.tag=INVALID_RANGE, .value=n};
+    case EINVAL: return (int_conversion_t){.tag=INVALID_BASE, .data.value=n};
+    case ERANGE: return (int_conversion_t){.tag=INVALID_RANGE, .data.value=n};
     default:
         if (endptr == str.data)
-            return (int_conversion_t){.tag=FAILURE, .value=n};
+            return (int_conversion_t){.tag=FAILURE, .data.value=n};
         else if (endptr < &str.data[str.length])
-            return (int_conversion_t){.tag=PARTIAL_SUCCESS, .value=n};
+            return (int_conversion_t){
+                .tag=PARTIAL_SUCCESS,
+                .data.partial.value=n,
+                .data.partial.remaining=(string_t){
+                    .data=endptr,
+                    .length=str.length - (int32_t)(endptr - str.data),
+                    .stride=1,
+                    .free=0,
+                },
+            };
         else
-            return (int_conversion_t){.tag=SUCCESS, .value=n};
+            return (int_conversion_t){.tag=SUCCESS, .data.value=n};
     }
 }
 
 typedef struct {
     unsigned char tag;
-    double value;
+    union {
+        double value;
+        struct {
+            double value;
+            string_t remaining;
+        } partial;
+    } data;
 } num_conversion_t;
 
 num_conversion_t sss_string_to_num(string_t str)
@@ -546,13 +567,22 @@ num_conversion_t sss_string_to_num(string_t str)
     errno = 0;
     double num = strtod(str.data, &endptr);
     switch (errno) {
-    case ERANGE: return (num_conversion_t){.tag=INVALID_RANGE, .value=num};
+    case ERANGE: return (num_conversion_t){.tag=INVALID_RANGE, .data.value=num};
     default:
         if (endptr == str.data)
-            return (num_conversion_t){.tag=FAILURE, .value=num};
+            return (num_conversion_t){.tag=FAILURE, .data.value=num};
         else if (endptr < &str.data[str.length])
-            return (num_conversion_t){.tag=PARTIAL_SUCCESS, .value=num};
+            return (num_conversion_t){
+                .tag=PARTIAL_SUCCESS,
+                .data.partial.value=num,
+                .data.partial.remaining=(string_t){
+                    .data=endptr,
+                    .length=str.length - (int32_t)(endptr - str.data),
+                    .stride=1,
+                    .free=0,
+                },
+            };
         else
-            return (num_conversion_t){.tag=SUCCESS, .value=num};
+            return (num_conversion_t){.tag=SUCCESS, .data.value=num};
     }
 }

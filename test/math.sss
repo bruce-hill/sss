@@ -125,7 +125,7 @@ say "Methods:"
 >>> Int.parse("10")
 === ParseInt.success(10)
 >>> Int.parse("10@")
-=== ParseInt.partial_success(10)
+=== ParseInt.partial_success({value=10, remainder="@"})
 >>> Int.parse("hello")
 === ParseInt.failure(0)
 >>> Int.parse("10", base=16)

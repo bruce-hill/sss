@@ -197,9 +197,11 @@ static void define_num_types(env_t *env)
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num64_type));
         hset(env->global_bindings, "Num", binding);
 
+        sss_type_t *partial_t = Type(StructType, NULL, LIST(const char*, "value", "remainder"),
+                                     LIST(sss_type_t*, num64_type, Type(ArrayType, .item_type=Type(CharType))));
         sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseNum", .members=LIST(
                 sss_tagged_union_member_t,
-                {"failure", 0, num64_type}, {"invalid_range", 1, num64_type}, {"partial_success", 2, num64_type}, {"success", 3, num64_type}));
+                {"failure", 0, num64_type}, {"invalid_range", 1, num64_type}, {"partial_success", 2, partial_t}, {"success", 3, num64_type}));
         load_method(env, ns64, "sss_string_to_num", "parse", parse_t,
                     ARG("str",Type(ArrayType, .item_type=Type(CharType)),0));
         load_method(env, ns64, "drand48", "random", num64_type);
@@ -321,9 +323,11 @@ static void define_int_types(env_t *env)
         }
 
         if (type.is_signed && type.bits == 64) {
+            sss_type_t *partial_t = Type(StructType, NULL, LIST(const char*, "value", "remainder"),
+                                         LIST(sss_type_t*, t, Type(ArrayType, .item_type=Type(CharType))));
             sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseInt", .members=LIST(
                     sss_tagged_union_member_t,
-                    {"failure", 0, t}, {"invalid_range", 1, t}, {"partial_success", 2, t}, {"success", 3, t}, {"invalid_base", 4, t}));
+                    {"failure", 0, t}, {"invalid_range", 1, t}, {"partial_success", 2, partial_t}, {"success", 3, t}, {"invalid_base", 4, t}));
             load_method(env, ns, "sss_string_to_int", "parse", parse_t,
                         ARG("str",Type(ArrayType, .item_type=Type(CharType)),0),
                         ARG("base",Type(IntType, .bits=64),FakeAST(Int, .i=10, .precision=64)));
