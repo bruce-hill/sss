@@ -191,23 +191,27 @@ sss_type_t *define_string_type(env_t *env, const char *dsl)
 static void define_num_types(env_t *env)
 {
     sss_type_t *num64_type = Type(NumType, .bits=64);
+    sss_hashmap_t *ns64 = get_namespace(env, num64_type);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num64_type));
         hset(env->global_bindings, "Num", binding);
+
+        sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseNumResult", .members=LIST(
+                sss_tagged_union_member_t,
+                {"failure", 0, num64_type}, {"invalid_range", 1, num64_type}, {"partial_success", 2, num64_type}, {"success", 3, num64_type}));
+        load_method(env, ns64, "sss_string_to_num", "parse", parse_t,
+                    ARG("str",Type(ArrayType, .item_type=Type(CharType)),0));
+        load_method(env, ns64, "drand48", "random", num64_type);
     }
 
     sss_type_t *num32_type = Type(NumType, .bits=32);
+    sss_hashmap_t *ns32 = get_namespace(env, num32_type);
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num32_type));
         hset(env->global_bindings, "Num32", binding);
     }
-
-    sss_hashmap_t *ns64 = get_namespace(env, num64_type);
-    sss_hashmap_t *ns32 = get_namespace(env, num32_type);
-
-    load_method(env, ns64, "drand48", "random", num64_type);
 
     struct { const char *c_name, *sss_name; } unary_methods[] = {
         {"acos",0},{"asin",0},{"atan",0},{"cos",0},{"sin",0},{"tan",0},{"cosh",0},{"sinh",0},
@@ -314,6 +318,15 @@ static void define_int_types(env_t *env)
                 load_method(env, ns, "labs", "abs", t, ARG("i",t,0));
             else
                 load_method(env, ns, "abs", "abs", t, ARG("i",t,0));
+        }
+
+        if (type.is_signed && type.bits == 64) {
+            sss_type_t *parse_t = Type(TaggedUnionType, .name="ParseIntResult", .members=LIST(
+                    sss_tagged_union_member_t,
+                    {"failure", 0, t}, {"invalid_range", 1, t}, {"partial_success", 2, t}, {"success", 3, t}, {"invalid_base", 4, t}));
+            load_method(env, ns, "sss_string_to_int", "parse", parse_t,
+                        ARG("str",Type(ArrayType, .item_type=Type(CharType)),0),
+                        ARG("base",Type(IntType, .bits=64),FakeAST(Int, .i=10, .precision=64)));
         }
         if (type.bits == 32 && !type.is_signed)
             load_method(env, ns, "arc4random_uniform", "random", t, ARG("max", t, FakeAST(Int, .i=UINT32_MAX, .precision=32, .is_unsigned=true)));

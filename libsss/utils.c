@@ -506,3 +506,53 @@ string_t get_line(FILE *f)
     if (buf) free(buf);
     return ret;
 }
+
+// Conversion functions:
+typedef struct {
+    unsigned char tag;
+    int64_t value;
+} int_conversion_t;
+
+static const unsigned char FAILURE = 0, INVALID_RANGE = 1, PARTIAL_SUCCESS = 2, SUCCESS = 3, INVALID_BASE = 4;
+
+int_conversion_t sss_string_to_int(string_t str, int64_t base)
+{
+    str = flatten(str);
+    char *endptr = (char*)&str.data[str.length];
+    errno = 0;
+    int64_t n = strtol(str.data, &endptr, base);
+    switch (errno) {
+    case EINVAL: return (int_conversion_t){.tag=INVALID_BASE, .value=n};
+    case ERANGE: return (int_conversion_t){.tag=INVALID_RANGE, .value=n};
+    default:
+        if (endptr == str.data)
+            return (int_conversion_t){.tag=FAILURE, .value=n};
+        else if (endptr < &str.data[str.length])
+            return (int_conversion_t){.tag=PARTIAL_SUCCESS, .value=n};
+        else
+            return (int_conversion_t){.tag=SUCCESS, .value=n};
+    }
+}
+
+typedef struct {
+    unsigned char tag;
+    double value;
+} num_conversion_t;
+
+num_conversion_t sss_string_to_num(string_t str)
+{
+    str = flatten(str);
+    char *endptr = (char*)&str.data[str.length];
+    errno = 0;
+    double num = strtod(str.data, &endptr);
+    switch (errno) {
+    case ERANGE: return (num_conversion_t){.tag=INVALID_RANGE, .value=num};
+    default:
+        if (endptr == str.data)
+            return (num_conversion_t){.tag=FAILURE, .value=num};
+        else if (endptr < &str.data[str.length])
+            return (num_conversion_t){.tag=PARTIAL_SUCCESS, .value=num};
+        else
+            return (num_conversion_t){.tag=SUCCESS, .value=num};
+    }
+}
