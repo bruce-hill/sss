@@ -2039,6 +2039,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (*block)
             gcc_jump(*block, loc, done);
         *block = done;
+        // Ensure the (unreachable) done block is terminated when every branch aborts:
+        if (*block && result_t->tag == AbortType) {
+            gcc_jump(*block, loc, *block);
+            *block = NULL;
+        }
         return has_value ? gcc_rval(when_value) : NULL;
     }
     case Range: {
