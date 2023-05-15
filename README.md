@@ -40,8 +40,8 @@ Additional command line arguments can be found in the manpages (`man
 
 [See docs/features.md for writeups of some of the features in SSS.](docs/features.md) These include:
 
-- Memory safety (garbage collection, compiler-enforced null safety, and
-  automatic array bounds checking)
+- Memory safety (garbage collection, compiler-enforced null safety, automatic
+  array bounds checking, and no uninitialized variables)
 - Simple, low-boilerplate type system with type inference
 - Useful and efficient built-in types: arrays, hash tables, tuples, structs,
   tagged unions
