@@ -305,7 +305,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
     } else if (t->tag == StructType) {
         // TODO: allow exhaustive struct matches, e.g. {yes}|{no}
     }
-    return "Not all possible values are handled";
+    return "I can't prove that every case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'";
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
