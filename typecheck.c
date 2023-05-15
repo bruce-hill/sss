@@ -238,6 +238,94 @@ static sss_type_t *generate(sss_type_t *t)
         return Type(GeneratorType, .generated=t);
 }
 
+static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
+{
+    switch (pattern->tag) {
+    case Var: {
+        const char *name = Match(pattern, Var)->name;
+        if (t->tag == TaggedUnionType) {
+            auto tu_t = Match(t, TaggedUnionType);
+            foreach (tu_t->members, member, _) {
+                if (streq(member->name, name))
+                    return;
+            }
+        }
+
+        binding_t *b = get_binding(env, name);
+        if (!b)
+            hset(env->bindings, name, new(binding_t, .type=t));
+        return;
+    }
+    case HeapAllocate: {
+        if (t->tag != PointerType) return;
+        bind_match_patterns(env, Match(t, PointerType)->pointed, Match(pattern, HeapAllocate)->value);
+        return;
+    }
+    case Struct: {
+        auto pat_struct = Match(pattern, Struct);
+        if (t->tag != StructType) {
+            return;
+        } else if (pat_struct->type) {
+            sss_type_t *pat_t = get_type(env, pat_struct->type);
+            if (!type_eq(t, pat_t)) return;
+        } else if (Match(t, StructType)->name) {
+            return;
+        } else if (!streq(Match(t, StructType)->units, pat_struct->units)) {
+            return;
+        }
+
+        auto struct_info = Match(t, StructType);
+        sss_hashmap_t checked = {0};
+        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
+            ast_t *field_ast = ith(pat_struct->members, i);
+            const char *name = Match(field_ast, StructField)->name;
+            if (hget(&checked, name, ast_t*))
+                compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
+
+            ast_t *pat_member = Match(field_ast, StructField)->value;
+            hset(&checked, name, pat_member);
+            for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
+                if (!streq(ith(struct_info->field_names, j), name)) continue;
+                bind_match_patterns(env, ith(struct_info->field_types, j), pat_member);
+                goto found_field_name;
+            }
+            compiler_err(env, field_ast, "There is no field called '%s' on the struct %s", name, type_to_string(t));
+
+          found_field_name: continue;
+        }
+        return;
+    }
+    case FunctionCall: {
+        auto call = Match(pattern, FunctionCall);
+        if (call->fn->tag != Var) return;
+
+        const char *fn_name = Match(call->fn, Var)->name;
+        if (t->tag != TaggedUnionType) return;
+
+        // Tagged Union Constructor:
+        auto tu_t = Match(t, TaggedUnionType);
+        int64_t tag_index = -1;
+        for (int64_t i = 0; i < LIST_LEN(tu_t->members); i++) {
+            if (streq(ith(tu_t->members, i).name, fn_name)) {
+                tag_index = i;
+                break;
+            }
+        }
+        if (tag_index < 0) return;
+
+        auto member = ith(tu_t->members, tag_index);
+        if (!member.type)
+            compiler_err(env, pattern, "This tagged union member doesn't have any value");
+        else if (LIST_LEN(call->args) != 1)
+            compiler_err(env, pattern, "This tagged union constructor needs to have exactly 1 argument");
+
+        bind_match_patterns(env, member.type, ith(call->args, 0));
+        return;
+    }
+    default: return;
+    }
+}
+
 sss_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -900,11 +988,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case When: {
         auto when = Match(ast, When);
-        // sss_type_t *subject_t = get_type(env, when->subject);
+        sss_type_t *subject_t = get_type(env, when->subject);
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
-            // TODO: pattern bindings
-            sss_type_t *case_t = get_type(env, ith(when->blocks, i));
+            env_t *case_env = fresh_scope(env);
+            bind_match_patterns(case_env, subject_t, ith(when->patterns, i));
+            sss_type_t *case_t = get_type(case_env, ith(when->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2 || (t && !streq(type_units(t), type_units(case_t))))
                 compiler_err(env, ith(when->blocks, i),

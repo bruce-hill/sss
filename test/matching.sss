@@ -1,0 +1,69 @@
+
+>>> when 5 is 5
+    yes
+is _
+    no
+=== yes
+
+>>> when 5 is 9
+    -1
+is x
+    x
+=== 5
+
+>>> when -0.0 is 0.0 then yes
+is _ then no
+=== yes
+
+>>> cases := [{1,2}, {3,4}, {5,6}]
+>>> [
+    for c in cases
+        when c is {1,2}
+            "first"
+        is {x,4}
+            "has four and $x"
+        is other
+            "otherwise $other"
+]
+=== ["first", "has four and 3", "otherwise {_1=5, _2=6}"]
+
+>>> when "two" is "one" then 1
+is "two" then 2
+is other then -1
+=== 2
+
+def Foo{|int(Int)=5|num(Num)|str(String)|vec({x:Num,y:Num})|null|ptr(?Int)|}
+
+>>> cases := [
+    Foo.int(5), Foo.num(2.3), Foo.vec({1,2}), Foo.vec({2,3}), Foo.vec({99,100}),
+    Foo.null, Foo.str("xxx"), Foo.str("yyy"),
+    Foo.ptr(@5), Foo.ptr(!Int), Foo.ptr(@6),
+]
+>>> [
+    for f in cases
+        >>> f
+        when f
+        is int(x); num(x)
+            "Int or num: $x"
+        is vec({x=1,y=2})
+            "one-two Vec"
+        is vec({x=99})
+            "99-x Vec"
+        is vec({x=1,y=x})
+            "one-x Vec: $x"
+        is vec(v)
+            "Vec: $v"
+        is str("xxx")
+            "String of 'x'"
+        is ptr(@5)
+            "Five ptr"
+        is ptr(@x)
+            "Nonnull ptr: $x"
+        is ptr(!Int)
+            "Nil ptr"
+        is null
+            "Null"
+        is other
+            "Fallback: $other"
+]
+=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: {x=2, y=3}", "99-x Vec", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]

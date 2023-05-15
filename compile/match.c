@@ -106,7 +106,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
 
-        // First check named parameters in order:
         sss_hashmap_t checked = {0};
         for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
             ast_t *field_ast = ith(pat_struct->members, i);
