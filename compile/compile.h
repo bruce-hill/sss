@@ -134,4 +134,11 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *range_len(env_t *env, gcc_type_t *gcc_t, gcc_rvalue_t *range);
 gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_t *member);
 
+// ============================== match.c ===============================
+typedef struct {
+    gcc_block_t *match_block, *no_match_block;
+    env_t *match_env;
+} match_outcomes_t;
+match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *val, ast_t *pattern);
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

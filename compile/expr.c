@@ -2003,137 +2003,69 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case When: {
         auto when = Match(ast, When);
-        gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
         sss_type_t *subject_t = get_type(env, when->subject);
-        while (subject_t->tag == PointerType) {
-            auto ptr = Match(subject_t, PointerType);
-            if (ptr->is_optional)
-                compiler_err(env, when->subject, "This value may be nil, so it can't be safely dereferenced");
-            subject_t = ptr->pointed;
-            subject = gcc_rval(gcc_rvalue_dereference(subject, ast_loc(env, when->subject)));
-        }
-        if (subject_t->tag != TaggedUnionType)
-            compiler_err(env, when->subject, "'when' blocks must use enums, but this is a %s", type_to_string(subject_t));
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
 
+        if (subject_t->tag == TaggedUnionType) {
+            sss_hashmap_t unhandled = {0};
+            auto members = Match(subject_t, TaggedUnionType)->members;
+            for (int64_t i = 0; i < LIST_LEN(members); i++) {
+                auto member = ith(members, i);
+                hset(&unhandled, member.name, (int64_t)1);
+            }
+
+            foreach (when->patterns, pat, _) {
+                if ((*pat)->tag == FunctionCall) {
+                    ast_t *fn = Match((*pat), FunctionCall)->fn;
+                    if (fn->tag == Var)
+                        hremove(&unhandled, Match(fn, Var)->name, int64_t);
+                } else if ((*pat)->tag == Var) {
+                    if (!hget(&unhandled, Match((*pat), Var)->name, int64_t))
+                        goto passed_exhaustiveness;
+                    hremove(&unhandled, Match((*pat), Var)->name, int64_t);
+                }
+            }
+
+            if (unhandled.count > 0) {
+                auto entry = hnth(&unhandled, 1, const char*, int64_t);
+                compiler_err(env, ast, "This 'when' doesn't cover all tagged union cases. For example, it doesn't handle '%s'", entry->key);
+            }
+        } else {
+            // TODO: exhaustiveness checks for other types?
+        }
+
+      passed_exhaustiveness:;
+
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
+        gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, "_when_subject");
         gcc_assign(*block, loc, subject_var, subject);
         subject = gcc_rval(subject_var);
 
+        gcc_block_t *done = gcc_new_block(func, fresh("finished"));
+
         sss_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, result_t), "_when_value") : NULL;
-        gcc_block_t *end_when = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("end_when"));
-
-        gcc_type_t *gcc_union_t = get_union_type(env, subject_t);
-
-        auto tagged = Match(subject_t, TaggedUnionType);
-        NEW_LIST(gcc_case_t*, gcc_cases);
-        sss_hashmap_t handled_cases = {0};
-        foreach (when->cases, case_, _) {
-            const char* tag_name = Match(case_->tag, Var)->name;
-            hset(&handled_cases, tag_name, case_->body);
-            gcc_loc_t *case_loc = ast_loc(env, case_->tag);
-            env_t *case_env = env;
-            int64_t tag_value = 0;
-            if (case_->var) {
-                case_env = fresh_scope(env);
-
-                gcc_rvalue_t *case_rval = NULL;
-                sss_type_t *case_t = NULL;
-                for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
-                    auto member = ith(tagged->members, i);
-                    if (streq(member.name, tag_name)) {
-                        if (!member.type)
-                            compiler_err(env, case_->var, "This tagged union tag has no value, so it can't be bound to anything");
-                        gcc_rvalue_t *data = gcc_rvalue_access_field(subject, case_loc, gcc_get_field(gcc_type_if_struct(gcc_t), 1));
-                        case_rval = gcc_rvalue_access_field(data, case_loc, gcc_get_union_field(gcc_union_t, i));
-                        case_t = member.type;
-                        tag_value = member.tag_value;
-                        goto found_tag;
-                    }
+        for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
+            auto outcomes = perform_conditional_match(env, block, subject_t, subject, ith(when->patterns, i));
+            gcc_rvalue_t *result = compile_expr(outcomes.match_env, &outcomes.match_block, ith(when->blocks, i));
+            assert(*block == NULL);
+            if (outcomes.match_block) {
+                if (result) {
+                    if (has_value)
+                        gcc_assign(outcomes.match_block, loc, when_value, result);
+                    else
+                        gcc_eval(outcomes.match_block, loc, result);
                 }
-                compiler_err(env, case_->var, "I couldn't find a tag with this name");
-
-              found_tag:
-                binding_t *case_binding = new(binding_t, .type=case_t, .rval=case_rval);
-                hset(case_env->bindings, Match(case_->var, Var)->name, case_binding);
-            } else {
-                foreach (tagged->members, member, _) {
-                    if (streq(member->name, tag_name)) {
-                        tag_value = member->tag_value;
-                        goto found_tag_without_value;
-                    }
-                }
-                compiler_err(env, case_->var, "I couldn't find a tag with this name");
-              found_tag_without_value:;
+                gcc_jump(outcomes.match_block, loc, done);
             }
-
-            gcc_block_t *case_block = gcc_new_block(func, fresh(heap_strf("case_%s", tag_name)));
-            gcc_rvalue_t *tag_rval = gcc_rvalue_from_long(env->ctx, get_tag_type(env, subject_t), tag_value);
-            gcc_case_t *gcc_case = gcc_new_case(env->ctx, tag_rval, tag_rval, case_block);
-            APPEND(gcc_cases, gcc_case);
-
-            gcc_rvalue_t *branch_val = compile_expr(case_env, &case_block, case_->body);
-            if (branch_val) {
-                if (has_value) {
-                    sss_type_t *actual = get_type(case_env, case_->body);
-                    if (!promote(case_env, actual, &branch_val, result_t))
-                        compiler_err(case_env, case_->body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
-                              type_to_string(result_t), type_to_string(actual));
-                    gcc_assign(case_block, case_loc, when_value, branch_val);
-                } else {
-                    gcc_eval(case_block, case_loc, branch_val);
-                }
-            }
-            if (case_block)
-                gcc_jump(case_block, case_loc, end_when);
+            *block = outcomes.no_match_block;
         }
-
-        bool any_unhandled_cases = false;
-        foreach (tagged->members, member, _) {
-            if (!hget(&handled_cases, member->name, ast_t*)) {
-                any_unhandled_cases = true;
-                break;
-            }
-        }
-
-        gcc_block_t *default_block;
-        if (when->default_body) {
-            if (!any_unhandled_cases)
-                compiler_err(env, ast, "This 'when' has an 'else' block, but every single case is handled before the 'else', so it will never run.");
-
-            default_block = gcc_new_block(func, fresh("default"));
-            gcc_block_t *end_of_default = default_block;
-            gcc_rvalue_t *branch_val = compile_expr(env, &end_of_default, when->default_body);
-            gcc_loc_t *else_loc = ast_loc(env, when->default_body);
-            if (branch_val && end_of_default) {
-                if (has_value) {
-                    sss_type_t *actual = get_type(env, when->default_body);
-                    if (!promote(env, actual, &branch_val, result_t))
-                        compiler_err(env, when->default_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
-                              type_to_string(result_t), type_to_string(actual));
-                    gcc_assign(end_of_default, else_loc, when_value, branch_val);
-                } else {
-                    gcc_eval(end_of_default, else_loc, branch_val);
-                }
-            }
-            if (end_of_default)
-                gcc_jump(end_of_default, else_loc, end_when);
-        } else {
-            if (any_unhandled_cases)
-                compiler_err(env, ast, "This 'when' does not cover all cases and needs an 'else' block to be comprehensive.");
-            default_block = gcc_new_block(func, "unreachable");
-            gcc_func_t *fail_func = hget(env->global_funcs, "fail", gcc_func_t*);
-            gcc_eval(default_block, loc, gcc_callx(env->ctx, loc, fail_func, gcc_str(env->ctx, "Unreachable")));
-            gcc_jump(default_block, loc, default_block); // technically unreachable, but make GCC happy
-        }
-
-        gcc_rvalue_t *tag_val = gcc_rvalue_access_field(subject, loc, gcc_get_field(gcc_type_if_struct(gcc_t), 0));
-        gcc_switch(*block, loc, tag_val, default_block, length(gcc_cases), gcc_cases[0]);
-        *block = end_when;
-        return when_value ? gcc_rval(when_value) : NULL;
+        if (*block)
+            gcc_jump(*block, loc, done);
+        *block = done;
+        return has_value ? gcc_rval(when_value) : NULL;
     }
     case Range: {
         return compile_range(env, block, ast);

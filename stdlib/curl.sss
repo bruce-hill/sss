@@ -337,15 +337,15 @@ def _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
     defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
     for header in headers
-        when header is url:URL
+        when header is URL(url)
             (extern curl_easy_setopt:(@_CURL,Int32,@CStringChar)->Void)(curl, header as Int32, url)
-        is fn:WRITEFUNCTION
+        is WRITEFUNCTION(fn)
             (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int,Int,?Void)->Int)->Void)(curl, header as Int32, fn)
-        is data:WRITEDATA
+        is WRITEDATA(data)
             (extern curl_easy_setopt:(@_CURL,Int32,?Void)->Void)(curl, header as Int32, data)
-        is val:VERBOSE|HEADER
+        is VERBOSE(val); HEADER(val)
             (extern curl_easy_setopt:(@_CURL,Int32,Int)->Void)(curl, header as Int32, (1 if val else 0))
-        is http_headers:HTTPHEADER
+        is HTTPHEADER(http_headers)
             list := !_CurlSList
             for h in http_headers
                 list = (extern curl_slist_append:(?_CurlSList,@CStringChar)->?_CurlSList)(list, h)

@@ -557,7 +557,6 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         auto tagged = Match(t, TaggedUnionType);
         COLOR_LITERAL(&block, "\x1b[0;1;36m");
         WRITE_LITERAL(block, tagged->name);
-        COLOR_LITERAL(&block, "\x1b[0;2;36m");
         WRITE_LITERAL(block, ".");
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
@@ -567,7 +566,6 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             auto member = ith(tagged->members, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
             gcc_block_t *rest_of_tag_block = tag_block;
-            COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
             WRITE_LITERAL(rest_of_tag_block, member.name);
             if (member.type) {
                 WRITE_LITERAL(rest_of_tag_block, "(");

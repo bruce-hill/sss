@@ -63,7 +63,7 @@ typedef enum {
 typedef struct ast_s ast_t;
 
 typedef struct {
-    ast_t *var, *tag, *body;
+    ast_t *pattern, *body;
 } ast_case_t;
 
 struct ast_s {
@@ -182,8 +182,8 @@ struct ast_s {
         } Repeat;
         struct {
             ast_t *subject;
-            List(ast_case_t) cases;
-            ast_t *default_body;
+            List(ast_t*) patterns;
+            List(ast_t*) blocks;
         } When;
         struct {
             const char *target;

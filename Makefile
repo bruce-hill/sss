@@ -24,7 +24,9 @@ LIBS=-lgc -lgccjit -lcord -lm -L. -l:libsss.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
 LIBFILE=libsss.so.$(VERSION)
-CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c util.c libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c libsss/base64.c SipHash/halfsiphash.c
+CFILES=span.c files.c parse.c ast.c environment.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c \
+			 compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c \
+			 compile/match.c util.c libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c libsss/base64.c SipHash/halfsiphash.c
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libsss/list.h libsss/string.h libsss/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 

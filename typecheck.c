@@ -541,6 +541,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
+        if (LIST_LEN(block->statements) == 0)
+            return Type(VoidType);
         ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
@@ -898,42 +900,16 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case When: {
         auto when = Match(ast, When);
-        sss_type_t *tagged_t = get_type(env, when->subject);
-        if (tagged_t->tag != TaggedUnionType)
-            compiler_err(env, when->subject, "A 'when' statement requires the subject be a tagged union, not %s",
-                        type_to_string(tagged_t));
-
+        // sss_type_t *subject_t = get_type(env, when->subject);
         sss_type_t *t = NULL;
-        LIST_FOR (when->cases, case_, _) {
-            env_t *case_env = env;
-            if (case_->var) {
-                case_env = fresh_scope(env);
-                const char* tagname = Match(case_->tag, Var)->name;
-                auto members = Match(tagged_t, TaggedUnionType)->members;
-                foreach (members, member, _) {
-                    if (streq(member->name, tagname)) {
-                        hset(case_env->bindings, Match(case_->var, Var)->name, new(binding_t, .type=member->type));
-                        goto env_ready;
-                    }
-                }
-                compiler_err(env, case_->tag, "I couldn't find a tagged union value with this tag.");
-            }
-          env_ready:;
-            sss_type_t *case_t = get_type(case_env, (case_)->body);
+        for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
+            // TODO: pattern bindings
+            sss_type_t *case_t = get_type(env, ith(when->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2 || (t && !streq(type_units(t), type_units(case_t))))
-                compiler_err(env, (case_)->body,
+                compiler_err(env, ith(when->blocks, i),
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(case_t));
-            t = t2;
-        }
-        if (when->default_body) {
-            sss_type_t *else_type = get_type(env, when->default_body);
-            sss_type_t *t2 = type_or_type(t, else_type);
-            if (!t2 || (t && !streq(type_units(t), type_units(else_type))))
-                compiler_err(env, when->default_body,
-                            "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
-                            type_to_string(t), type_to_string(else_type));
             t = t2;
         }
         return t;

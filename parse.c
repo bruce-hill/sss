@@ -43,7 +43,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat",
-    "or","oneof","not","no","mod1","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
+    "or","not","no","mod1","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
     "defer","def","by","bitcast","between","as","and", NULL,
 };
 
@@ -505,16 +505,14 @@ PARSER(parse_tagged_union_type) {
         const char* tag_name = get_id(&pos);
         if (!tag_name) break;
         spaces(&pos);
-        if (match(&pos, "=")) {
-            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
-            next_value = Match(val, Int)->i;
-        }
 
         spaces(&pos);
         ast_t *type = NULL;
-        if (match(&pos, ":")) {
+        if (match(&pos, "(")) {
             whitespace(&pos);
             type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
+            whitespace(&pos);
+            expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         }
 
         // Check for duplicate values:
@@ -528,11 +526,16 @@ PARSER(parse_tagged_union_type) {
         APPEND(tag_types, type);
 
         whitespace(&pos);
+        if (match(&pos, "=")) {
+            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+            next_value = Match(val, Int)->i;
+            whitespace(&pos);
+        }
         match(&pos, "|");
 
         ++next_value;
     }
-    expect_closing(ctx, &pos, "|}", "I wasn't able to parse the rest of this tagged union");
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
     return NewAST(ctx->file, start, pos, TypeTaggedUnion, .name=name, .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
 }
 
@@ -992,45 +995,32 @@ PARSER(parse_when) {
     ast_t *subj = expect_ast(ctx, start, &pos, parse_expr,
                              "I expected to find an expression for this 'when'");
 
-    NEW_LIST(ast_case_t, cases);
+    NEW_LIST(ast_t*, patterns);
+    NEW_LIST(ast_t*, blocks);
     for (;;) {
         const char *clause = pos;
         whitespace(&clause);
         if (sss_get_indent(ctx->file, clause) != starting_indent) break;
         if (!match_word(&clause, "is")) break;
         pos = clause;
-        ast_t *var = optional_ast(ctx, &pos, parse_var);
-        ast_t *tag;
-        spaces(&pos);
-        if (var && match(&pos, ":")) {
-            tag = optional_ast(ctx, &pos, parse_var);
-        } else {
-            tag = var;
-            var = NULL;
-        }
-        List(ast_t*) tags = LIST(ast_t*, tag);
-        for (spaces(&pos); match(&pos, "|"); spaces(&pos)) {
-            tag = optional_ast(ctx, &pos, parse_var);
-            if (!tag) break;
-            APPEND(tags, tag);
+        ast_t *pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
+        List(ast_t*) clause_patterns = LIST(ast_t*, pattern);
+        while (spaces(&pos), match(&pos, ";")) {
+            spaces(&pos);
+            pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
+            if (!pattern) break;
+            APPEND(clause_patterns, pattern);
         }
 
         match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when'"); 
-        for (int64_t i = 0, len = LIST_LEN(tags); i < len; i++) {
-            ast_case_t case_ = {.var=var, .tag=LIST_ITEM(tags, i), .body=body};
-            list_append((list_t*)cases, sizeof(ast_case_t), &case_);
+        for (int64_t i = 0, len = LIST_LEN(clause_patterns); i < len; i++) {
+            APPEND(patterns, LIST_ITEM(clause_patterns, i));
+            APPEND(blocks, body);
         }
     }
 
-    ast_t *else_ = NULL;
-    const char *else_start = pos;
-    whitespace(&else_start);
-    if (sss_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
-        pos = else_start;
-        else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-    }
-    return NewAST(ctx->file, start, pos, When, .subject=subj, .cases=cases, .default_body=else_);
+    return NewAST(ctx->file, start, pos, When, .subject=subj, .patterns=patterns, .blocks=blocks);
 }
 
 PARSER(parse_do) {
@@ -2080,29 +2070,17 @@ PARSER(parse_def) {
                       .name=name, .arg_names=arg_names, .arg_types=arg_types,
                       .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache,
                       .is_inline=is_inline);
-    } else if (match(&pos, "{|")) { // tagged union: def Foo{|a|b|...|}
+    } else if (match(&pos, "{|")) { // tagged union: def Foo|a|b(Int)=5|...|
         size_t starting_indent = sss_get_indent(ctx->file, pos);
         NEW_LIST(const char*, tag_names);
         NEW_LIST(int64_t, tag_values);
         NEW_LIST(ast_t*, tag_types);
         int64_t next_value = 0;
+        whitespace(&pos);
         for (;;) {
-            whitespace(&pos);
             const char *tag_start = pos;
             const char* tag_name = get_id(&pos);
             if (!tag_name) break;
-            spaces(&pos);
-            if (match(&pos, "=")) {
-                ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
-                next_value = Match(val, Int)->i;
-            }
-
-            spaces(&pos);
-            ast_t *type = NULL;
-            if (match(&pos, ":")) {
-                whitespace(&pos);
-                type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
-            }
 
             // Check for duplicate values:
             for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
@@ -2110,13 +2088,35 @@ PARSER(parse_def) {
                     parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
             }
 
+            spaces(&pos);
+            ast_t *type = NULL;
+            if (match(&pos, "(")) {
+                whitespace(&pos);
+                type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
+                whitespace(&pos);
+                expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
+            }
+
+            spaces(&pos);
+            if (match(&pos, "=")) {
+                ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+                next_value = Match(val, Int)->i;
+            }
+
             APPEND(tag_names, tag_name);
             APPEND(tag_values, next_value);
             APPEND(tag_types, type);
 
-            whitespace(&pos);
-            match(&pos, "|");
-
+            const char *next_pos = pos;
+            whitespace(&next_pos);
+            if (match(&next_pos, "|")) {
+                whitespace(&next_pos);
+            } else if (sss_get_indent(ctx->file, next_pos) <= starting_indent) {
+                break;
+            } else {
+                spaces(&next_pos);
+            }
+            pos = next_pos;
             ++next_value;
         }
         expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
