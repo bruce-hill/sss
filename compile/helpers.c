@@ -1252,61 +1252,63 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             return slice;
         }
         gcc_rvalue_t *fielded_rval = compile_expr(env, block, access->fielded);
-      keep_going:
-        switch (fielded_t->tag) { 
-        case PointerType: {
-            auto fielded_ptr = Match(fielded_t, PointerType);
-            if (fielded_ptr->is_optional)
-                compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
 
-            if (fielded_ptr->pointed->tag == StructType) {
-                auto fielded_struct = Match(fielded_ptr->pointed, StructType);
-                for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
-                    if (streq(ith(fielded_struct->field_names, i), access->field)) {
-                        gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_ptr->pointed));
-                        gcc_field_t *field = gcc_get_field(gcc_struct, i);
-                        return gcc_rvalue_dereference_field(fielded_rval, loc, field);
-                    }
-                }
-                compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
-                      type_to_string(fielded_ptr->pointed), access->field);
-            } else if (fielded_ptr->pointed->tag == TableType) {
-                sss_type_t *table_t = fielded_ptr->pointed;
-                gcc_func_t *func = gcc_block_func(*block);
-                if (streq(access->field, "default")) {
-                    sss_type_t *key_t = Match(table_t, TableType)->key_type;
-                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
-                    gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, key_t)), "_default_ptr");
-                    gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
-                                                              gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
-                    gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
-                    gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
-                    return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
-                } else if (streq(access->field, "fallback")) {
-                    gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
-                    gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, table_t)), "_fallback_ptr");
-                    gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
-                                                              gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
-                    gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
-                    gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(fallback_ptr));
-                    return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
+        if (fielded_t->tag != PointerType)
+            compiler_err(env, ast, "This is an immutable value, it can't be modified");
+
+        auto ptr = Match(fielded_t, PointerType);
+        while (ptr->pointed->tag == PointerType) {
+            if (ptr->is_optional)
+                compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+            ptr = Match(ptr->pointed, PointerType);
+            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, loc));
+            fielded_t = ptr->pointed;
+        }
+        if (ptr->is_optional)
+            compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+        else if (ptr->is_stack)
+            compiler_err(env, ast, "This pointer is to an immutable value that lives on the stack, so it can't be mutated (only reassigned).");
+
+        if (ptr->pointed->tag == StructType) {
+            auto fielded_struct = Match(ptr->pointed, StructType);
+            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+                if (streq(ith(fielded_struct->field_names, i), access->field)) {
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, ptr->pointed));
+                    gcc_field_t *field = gcc_get_field(gcc_struct, i);
+                    return gcc_rvalue_dereference_field(fielded_rval, loc, field);
                 }
             }
-
-            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, loc));
-            fielded_t = fielded_ptr->pointed;
-            goto keep_going;
-        }
-        case StructType: {
-            compiler_err(env, ast, "The fields of a struct value cannot be modified directly");
-        }
-        // TODO: support using TaggedUnion field and Type fields as lvalues
-        default: {
+            compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
+                  type_to_string(ptr->pointed), access->field);
+        } else if (ptr->pointed->tag == TableType) {
+            sss_type_t *table_t = ptr->pointed;
+            gcc_func_t *func = gcc_block_func(*block);
+            if (streq(access->field, "default")) {
+                sss_type_t *key_t = Match(table_t, TableType)->key_type;
+                gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
+                gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, key_t)), "_default_ptr");
+                gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
+                                                          gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
+                gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
+                gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
+                gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
+                return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
+            } else if (streq(access->field, "fallback")) {
+                gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
+                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, table_t)), "_fallback_ptr");
+                gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
+                                                          gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
+                gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
+                gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
+                gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(fallback_ptr));
+                return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
+            } else {
+                compiler_err(env, ast, "The only fields that can be mutated on a table are '.default' and '.fallback', not '.%s'", access->field);
+            }
+        } else {
+            // TODO: support using TaggedUnion field and Type fields as lvalues
             compiler_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
                   type_to_string(fielded_t));
-        }
         }
     }
     case Index: {
@@ -1322,8 +1324,17 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             compiler_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
 
         sss_type_t *pointed_type = indexed_t;
-        while (pointed_type->tag == PointerType)
-            pointed_type = Match(pointed_type, PointerType)->pointed;
+        bool is_stack = false;
+        while (pointed_type->tag == PointerType) {
+            auto ptr = Match(pointed_type, PointerType);
+            if (ptr->is_optional)
+                compiler_err(env, ast, "Accessing an index on this value could result in trying to dereference a nil value, since the type is optional");
+            is_stack = ptr->is_stack;
+            pointed_type = ptr->pointed;
+        }
+
+        if (is_stack)
+            compiler_err(env, ast, "This pointer is to a stack value, so it can't be mutated.");
 
         if (pointed_type->tag == ArrayType) {
             return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
