@@ -38,7 +38,8 @@ Additional command line arguments can be found in the manpages (`man
 
 ## Language Features
 
-[See docs/features.md for writeups of some of the features in SSS.](docs/features.md) These include:
+[See docs/features.md for writeups of some of the features in
+SSS.](docs/features.md) These include:
 
 - Memory safety (garbage collection, compiler-enforced null safety, automatic
   array bounds checking, and no uninitialized variables)
@@ -49,8 +50,9 @@ Additional command line arguments can be found in the manpages (`man
 - Well-defined value semantics and mutability rules
 - Language-level support for correct and automatic function memoization
 - Type-safe DSL strings with automatic prevention of code injection
-- Pattern matching for tagged unions with exhaustiveness checking
-- Beautiful and helpful compiler and runtime error messages
+- Destructuring pattern matching with exhaustiveness checking
+- Beautiful and helpful compiler and runtime error messages with emphasis on
+  user-friendliness
 - Units of measure with automatic unit conversions
 - Better loops
 - Vectorized math operations (array programming style)
