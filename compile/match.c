@@ -198,4 +198,114 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     }
     }
 }
+
+const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns)
+{
+    // Wildcard pattern:
+    if (t->tag != TaggedUnionType) {
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == Var && !get_binding(env, Match(*pat, Var)->name))
+                return NULL;
+        }
+    }
+
+    if (t->tag == TaggedUnionType) {
+        sss_hashmap_t member_handlers = {0};
+        auto members = Match(t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = ith(members, i);
+            NEW_LIST(ast_t*, list);
+            hset(&member_handlers, member.name, list);
+        }
+
+        // Wildcard pattern (but not counting tagged union field names)
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Var) continue;
+            const char *name = Match(*pat, Var)->name;
+            if (!get_binding(env, name) && !hget(&member_handlers, name, List(ast_t*)))
+                return NULL;
+        }
+
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == FunctionCall) {
+                ast_t *fn = Match((*pat), FunctionCall)->fn;
+                if (fn->tag == Var) {
+                    const char *name = Match(fn, Var)->name;
+                    List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                    if (handlers) {
+                        auto args = Match(*pat, FunctionCall)->args;
+                        if (LIST_LEN(args) != 1)
+                            compiler_err(env, *pat, "This constructor expected exactly one argument");
+                        append(handlers, ith(args, 0));
+                    }
+                }
+            } else if ((*pat)->tag == Var) {
+                const char *name = Match(*pat, Var)->name;
+                List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                if (handlers)
+                    append(handlers, *pat);
+            }
+        }
+
+        const char *unhandled = NULL;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = ith(members, i);
+            List(ast_t*) handlers = hget(&member_handlers, member.name, List(ast_t*));
+            if (LIST_LEN(handlers) == 0) {
+                if (unhandled)
+                    unhandled = heap_strf("%s, nor is %s.%s",
+                                          unhandled, type_to_string(t), member.name);
+                else
+                    unhandled = heap_strf("The tagged union member %s.%s is not handled",
+                                          type_to_string(t), member.name);
+            } else if (member.type) {
+                const char *missing = get_missing_pattern(env, member.type, handlers);
+                if (!missing) continue;
+                if (unhandled)
+                    unhandled = heap_strf("%s, also for %s.%s(...): %s",
+                                          unhandled, type_to_string(t), member.name, missing);
+                else
+                    unhandled = heap_strf("Among the patterns for %s.%s(...): %s",
+                                          type_to_string(t), member.name, missing);
+            }
+        }
+        return unhandled;
+    } else if (t->tag == PointerType) {
+        auto ptr = Match(t, PointerType);
+        if (ptr->is_optional) {
+            bool handled_null = false;
+            foreach (patterns, pat, _) {
+                if ((*pat)->tag == Nil
+                    || ((*pat)->tag == Var && !get_binding(env, Match(*pat, Var)->name))) {
+                    handled_null = true;
+                    break;
+                }
+            }
+            if (!handled_null) return "The null value is not handled";
+        }
+
+        NEW_LIST(ast_t*, value_handlers);
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == HeapAllocate)
+                append(value_handlers, Match(*pat, HeapAllocate)->value);
+            else if ((*pat)->tag == StackReference)
+                append(value_handlers, Match(*pat, StackReference)->value);
+        }
+        return get_missing_pattern(env, ptr->pointed, value_handlers);
+    } else if (t->tag == BoolType) {
+        bool cases_handled[2] = {false, false};
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Bool) continue;
+            cases_handled[(int)Match(*pat, Bool)->b] = true;
+        }
+        if (!cases_handled[0])
+            return "'no' is not handled";
+        else if (!cases_handled[1])
+            return "'yes' is not handled";
+    } else if (t->tag == StructType) {
+        // TODO: allow exhaustive struct matches, e.g. {yes}|{no}
+    }
+    return "Not all possible values are handled";
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

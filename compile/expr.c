@@ -2005,35 +2005,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto when = Match(ast, When);
         sss_type_t *subject_t = get_type(env, when->subject);
 
-        if (subject_t->tag == TaggedUnionType) {
-            sss_hashmap_t unhandled = {0};
-            auto members = Match(subject_t, TaggedUnionType)->members;
-            for (int64_t i = 0; i < LIST_LEN(members); i++) {
-                auto member = ith(members, i);
-                hset(&unhandled, member.name, (int64_t)1);
-            }
-
-            foreach (when->patterns, pat, _) {
-                if ((*pat)->tag == FunctionCall) {
-                    ast_t *fn = Match((*pat), FunctionCall)->fn;
-                    if (fn->tag == Var)
-                        hremove(&unhandled, Match(fn, Var)->name, int64_t);
-                } else if ((*pat)->tag == Var) {
-                    if (!hget(&unhandled, Match((*pat), Var)->name, int64_t))
-                        goto passed_exhaustiveness;
-                    hremove(&unhandled, Match((*pat), Var)->name, int64_t);
-                }
-            }
-
-            if (unhandled.count > 0) {
-                auto entry = hnth(&unhandled, 1, const char*, int64_t);
-                compiler_err(env, ast, "This 'when' doesn't cover all tagged union cases. For example, it doesn't handle '%s'", entry->key);
-            }
-        } else {
-            // TODO: exhaustiveness checks for other types?
-        }
-
-      passed_exhaustiveness:;
+        // Check exhaustiveness:
+        const char *missing = get_missing_pattern(env, subject_t, when->patterns);
+        if (missing) compiler_err(env, ast, missing);
 
         gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
