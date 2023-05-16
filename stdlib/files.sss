@@ -9,7 +9,7 @@ def FileInfo {
     accessed, modified, moved:time.Timestamp
 }
 
-def Result {| Failure:String | Success |}
+def Result {| Failure(String) | Success |}
 
 // Opaque struct representing C's FILE struct:
 def _CFile{}
@@ -55,7 +55,7 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-def OpenResult {| Failure:String | Success:@File |}
+def OpenResult {| Failure(String) | Success(@File) |}
 
 open := extern sss_fopen:(path:String,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
@@ -75,7 +75,39 @@ def remove(path:String)->Result
         return Result.Failure((extern last_err:()->String)())
 
 def spoof(text:String)->@File
+    temporary := extern sss_tmpfile:()->@File
     f := temporary()
     _ := f.write(text)
     f.rewind()
     return f
+
+extend $Glob
+    def expand(g:$Glob  )->[String]
+        def glob_t{
+            gl_pathc:Int
+            gl_pathv:?@CStringChar
+            gl_offs:Int
+            gl_flags:Int32
+        }
+        def GlobResult{|SUCCESS=0|NOSPACE=1|ABORTED=2|NOMATCH=3|}
+        do_glob := extern glob:(@CStringChar,Int32,?Void,&glob_t)->GlobResult
+        flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
+        globbuf := glob_t{}
+        result := do_glob((bitcast g as String).c_string(), flags, !Void, &globbuf)
+        globfree := extern globfree:(&glob_t)->Void
+        defer globfree(&globbuf)
+        when result is SUCCESS
+            c_ptrs := bitcast ({globbuf.gl_pathv or fail, globbuf.gl_pathc as Int32, 1i16, 0i16}) as [@CStringChar]
+            paths := [String.from_pointer(cstr) for cstr in c_ptrs]
+            return [for p in paths unless p.ends_with("/./") or p.ends_with("/../") then p]
+        is _
+            return [:String]
+
+def s:String as $Glob
+    return bitcast ([
+        for c in s
+            when c is `\;`{;`};`*;`?;`[;`]
+                ++[`\, c]
+            is plain
+                ++[plain]
+    ]) as $Glob
