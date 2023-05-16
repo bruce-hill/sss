@@ -81,6 +81,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
 
     char *copy = GC_MALLOC_ATOMIC(file_size+1);
     memcpy(copy, file_buf, file_size);
+    copy[file_size] = '\0';
     fclose(mem);
 
     free(file_buf);
