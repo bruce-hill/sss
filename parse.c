@@ -731,23 +731,9 @@ PARSER(parse_array) {
 
     for (;;) {
         whitespace(&pos);
-        const char *item_start = pos;
-        if (match(&pos, "++")) {
-            ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
-            if (item) {
-                ast_t *loop = NewAST(ctx->file, item_start, item->span.end, For,
-                                     .iter=item,
-                                     .value=WrapAST(item, Var, .name="item"),
-                                     .body=WrapAST(item, Var, .name="item"));
-                APPEND(items, loop);
-                goto added_item;
-            }
-            pos = item_start;
-        }
         ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
         if (!item) break;
         APPEND(items, item);
-      added_item:
         whitespace(&pos);
         if (!match(&pos, ",")) break;
     }
@@ -1237,6 +1223,17 @@ PARSER(parse_bool) {
         return NULL;
 }
 
+PARSER(parse_splat) {
+    const char *start = pos;
+    if (!match(&pos, "++")) return NULL;
+    ast_t *item = optional_ast(ctx, &pos, parse_expr);
+    if (!item) return NULL;
+    return NewAST(ctx->file, start, item->span.end, For,
+                  .iter=item,
+                  .value=WrapAST(item, Var, .name="item"),
+                  .body=WrapAST(item, Var, .name="item"));
+}
+
 PARSER(parse_char) {
     const char *start = pos;
     if (*pos == '`') {
@@ -1522,6 +1519,7 @@ PARSER(parse_term) {
         || (term=parse_stack_reference(ctx, pos))
         || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
+        || (term=parse_splat(ctx, pos))
         || (term=parse_maybe(ctx, pos))
         || (term=parse_bool(ctx, pos))
         || (term=parse_char(ctx, pos))
