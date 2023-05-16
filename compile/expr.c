@@ -2005,10 +2005,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto when = Match(ast, When);
         sss_type_t *subject_t = get_type(env, when->subject);
 
-        // Check exhaustiveness:
-        const char *missing = get_missing_pattern(env, subject_t, when->patterns);
-        if (missing) compiler_err(env, ast, missing);
-
         gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
         gcc_func_t *func = gcc_block_func(*block);
@@ -2020,6 +2016,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         sss_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
+
+        // Check exhaustiveness:
+        if (has_value) {
+            const char *missing = get_missing_pattern(env, subject_t, when->patterns);
+            if (missing) compiler_err(env, ast, missing);
+        }
+
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, result_t), "_when_value") : NULL;
         for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
             auto outcomes = perform_conditional_match(env, block, subject_t, subject, ith(when->patterns, i));
@@ -2044,6 +2047,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, loc, *block);
             *block = NULL;
         }
+
         return has_value ? gcc_rval(when_value) : NULL;
     }
     case Range: {
