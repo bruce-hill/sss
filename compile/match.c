@@ -89,6 +89,9 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
                          type_to_string(t));
         } else if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
+            if (pat_t->tag != TypeType)
+                compiler_err(env, pat_struct->type, "This is not a valid struct type");
+            pat_t = Match(pat_t, TypeType)->type;
             if (!type_eq(t, pat_t))
                 compiler_err(env, pattern, "This pattern is a %s, but you're attempting to match it against a value with type %s",
                              type_to_string(pat_t), type_to_string(t));
@@ -102,31 +105,55 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 
         auto struct_info = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
+        sss_hashmap_t field_types = {0};
+        for (int64_t i = 0; i < length(struct_info->field_names); i++) {
+            const char *name = ith(struct_info->field_names, i); 
+            sss_type_t *type = ith(struct_info->field_types, i); 
+            hset(&field_types, name, type);
+        }
 
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
 
-        sss_hashmap_t checked = {0};
+        sss_hashmap_t field_pats = {0};
+        // Named fields:
         for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
             ast_t *field_ast = ith(pat_struct->members, i);
             const char *name = Match(field_ast, StructField)->name;
-            if (hget(&checked, name, ast_t*))
+            if (!name) continue;
+            if (hget(&field_pats, name, ast_t*))
                 compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
+            else if (!hget(&field_types, name, sss_type_t*))
+                compiler_err(env, field_ast, "This is not a valid member of the struct %s", type_to_string(t));
 
             ast_t *pat_member = Match(field_ast, StructField)->value;
-            hset(&checked, name, pat_member);
-            for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
-                if (!streq(ith(struct_info->field_names, j), name)) continue;
-                gcc_rvalue_t *member_val = gcc_rvalue_access_field(val, loc, gcc_get_field(gcc_struct, j));
-                auto submatch_outcomes = perform_conditional_match(outcomes.match_env, &outcomes.match_block, ith(struct_info->field_types, j), member_val, pat_member);
-                outcomes.match_block = submatch_outcomes.match_block;
-                outcomes.match_env = submatch_outcomes.match_env;
-                gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);
-                goto found_field_name;
+            hset(&field_pats, name, pat_member);
+        }
+        // Unnamed fields:
+        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
+            ast_t *field_ast = ith(pat_struct->members, i);
+            const char *name = Match(field_ast, StructField)->name;
+            if (name) continue;
+            ast_t *pat_member = Match(field_ast, StructField)->value;
+            foreach (struct_info->field_names, name, _) {
+                if (!hget(&field_pats, (*name), ast_t*)) {
+                    hset(&field_pats, (*name), pat_member);
+                    goto found_name;
+                }
             }
-            compiler_err(env, field_ast, "There is no field called '%s' on the struct %s", name, type_to_string(t));
+            compiler_err(env, field_ast, "This is one field too many for this struct");
+          found_name: continue;
+        }
 
-          found_field_name: continue;
+        for (int64_t i = 0; i < LIST_LEN(struct_info->field_names); i++) {
+            const char *name = ith(struct_info->field_names, i);
+            auto pat = hget(&field_pats, name, ast_t*);
+            if (!pat) continue;
+            gcc_rvalue_t *member_val = gcc_rvalue_access_field(val, loc, gcc_get_field(gcc_struct, i));
+            auto submatch_outcomes = perform_conditional_match(outcomes.match_env, &outcomes.match_block, ith(struct_info->field_types, i), member_val, pat);
+            outcomes.match_block = submatch_outcomes.match_block;
+            outcomes.match_env = submatch_outcomes.match_env;
+            gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);
         }
         return outcomes;
     }
@@ -303,7 +330,45 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
         else if (!cases_handled[1])
             return "'yes' is not handled";
     } else if (t->tag == StructType) {
-        // TODO: allow exhaustive struct matches, e.g. {yes}|{no}
+        auto field_names = Match(t, StructType)->field_names;
+        auto field_type_list = Match(t, StructType)->field_types;
+        sss_hashmap_t field_types = {0};
+        for (int64_t i = 0; i < length(field_names); i++) {
+            auto name = ith(field_names, i);
+            auto type = ith(field_type_list, i);
+            hset(&field_types, name, type);
+        }
+
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Struct) continue;
+            auto struct_ = Match(*pat, Struct);
+            sss_hashmap_t named_members = {0};
+            foreach (struct_->members, member, _) {
+                auto memb = Match(*member, StructField);
+                if (!memb->name) continue;
+                hset(&named_members, memb->name, memb->value);
+            }
+            foreach (struct_->members, member, _) {
+                auto memb = Match(*member, StructField);
+                if (memb->name) continue;
+                for (int64_t i = 0; i < length(field_names); i++) {
+                    const char *name = ith(field_names, i);
+                    if (!hget(&named_members, name, ast_t*)) {
+                        hset(&named_members, name, memb->value);
+                        break;
+                    }
+                }
+            }
+
+            const char *missing = NULL;
+            for (int64_t i = 1; i <= named_members.count; i++) {
+                auto entry = hnth(&named_members, i, const char*, ast_t*);
+                sss_type_t *type = hget(&field_types, entry->key, sss_type_t*);
+                missing = get_missing_pattern(env, type, LIST(ast_t*, entry->value));
+                if (missing) break;
+            }
+            if (!missing) return NULL;
+        }
     }
     return "I can't prove that every case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'";
 }

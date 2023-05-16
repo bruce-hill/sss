@@ -32,10 +32,13 @@ is "two" then 2
 is other then -1
 === 2
 
-def Foo{|int(Int)=5|num(Num)|str(String)|vec({x:Num,y:Num})|null|ptr(?Int)|}
+def Vec{x,y:Num}
+def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int)|}
 
 >>> cases := [
-    Foo.int(5), Foo.num(2.3), Foo.vec({1,2}), Foo.vec({2,3}), Foo.vec({99,100}),
+    Foo.int(5), Foo.num(2.3),
+    Foo.vec(Vec{1,2}), Foo.vec(Vec{2,3}), Foo.vec(Vec{99,100}),
+    Foo.tuple({1,2}), Foo.tuple({2,3}), Foo.tuple({99,100}),
     Foo.null, Foo.str("xxx"), Foo.str("yyy"),
     Foo.ptr(@5), Foo.ptr(!Int), Foo.ptr(@6),
 ]
@@ -45,14 +48,22 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec({x:Num,y:Num})|null|ptr(?Int)|}
         when f
         is int(x); num(x)
             "Int or num: $x"
-        is vec({x=1,y=2})
+        is vec(Vec{1,2})
             "one-two Vec"
-        is vec({x=99})
+        is vec(Vec{x=99})
             "99-x Vec"
-        is vec({x=1,y=x})
+        is vec(Vec{x=1,y=x})
             "one-x Vec: $x"
         is vec(v)
             "Vec: $v"
+        is tuple({1,2})
+            "one-two tuple"
+        is tuple({99})
+            "99-x tuple"
+        is tuple({1,x})
+            "one-x tuple: $x"
+        is tuple(v)
+            "tuple: $v"
         is str("xxx")
             "String of 'x'"
         is ptr(@5)
@@ -66,4 +77,4 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec({x:Num,y:Num})|null|ptr(?Int)|}
         is other
             "Fallback: $other"
 ]
-=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: {x=2, y=3}", "99-x Vec", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
+=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {_1=2, _2=3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
