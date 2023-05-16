@@ -78,3 +78,14 @@ if yes
         the end (no trailing newline)
     ")
     say "Multliline:\n<START>$multiline<END>"
+
+>>> "foo.txt".without_suffix(".txt")
+=== "foo"
+>>> "foo.zip".without_suffix(".txt")
+=== "foo.zip"
+>>> "foo.txt".without_prefix("foo")
+=== ".txt"
+>>> "foo.txt".without_prefix("baz")
+=== "foo.txt"
+>>> "a_b_c_d"[..by 2].without_prefix("ab")
+=== "cd"

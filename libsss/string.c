@@ -81,6 +81,34 @@ bool sss_string_ends_with(string_t s, string_t suffix) {
     return true;
 }
 
+string_t sss_string_without_prefix(string_t s, string_t prefix) {
+    if (s.length < prefix.length) return s;
+    for (int32_t i = 0; i < prefix.length; i++) {
+        if (s.data[i*s.stride] != prefix.data[i*prefix.stride])
+            return s;
+    }
+    return (string_t){
+        s.data + prefix.length*s.stride,
+        s.length - prefix.length,
+        s.stride,
+        0,
+    };
+}
+
+string_t sss_string_without_suffix(string_t s, string_t suffix) {
+    if (s.length < suffix.length) return s;
+    for (int32_t i = 0; i < suffix.length; i++) {
+        if (s.data[(s.length - suffix.length + i)*s.stride] != suffix.data[i*suffix.stride])
+            return s;
+    }
+    return (string_t){
+        s.data,
+        s.length - suffix.length,
+        s.stride,
+        0,
+    };
+}
+
 string_t sss_string_trimmed(string_t s, string_t trim_chars, bool trim_left, bool trim_right)
 {
     int32_t len = s.length;

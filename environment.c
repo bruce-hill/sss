@@ -174,6 +174,8 @@ sss_type_t *define_string_type(env_t *env, const char *dsl)
                 ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
     load_method(env, ns, "sss_string_starts_with", "starts_with", Type(BoolType), ARG("str",str_type,0), ARG("prefix",str_type,0));
     load_method(env, ns, "sss_string_ends_with", "ends_with", Type(BoolType), ARG("str",str_type,0), ARG("suffix",str_type,0));
+    load_method(env, ns, "sss_string_without_prefix", "without_prefix", str_type, ARG("str",str_type,0), ARG("prefix",str_type,0));
+    load_method(env, ns, "sss_string_without_suffix", "without_suffix", str_type, ARG("str",str_type,0), ARG("suffix",str_type,0));
     load_method(env, ns, "sss_string_trimmed", "trimmed", str_type,
                 ARG("str",str_type,0),
                 ARG("chars",str_type,FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))),
