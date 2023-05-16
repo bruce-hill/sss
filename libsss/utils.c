@@ -116,12 +116,6 @@ double sane_fmod(double num, double modulus)
     return (result < 0) != (modulus < 0) ? result + modulus : result;
 }
 
-const char *readdir_str(DIR* dir)
-{
-    struct dirent *ent = readdir(dir);
-    return ent ? heap_str(ent->d_name) : NULL;
-}
-
 string_t last_err()
 {
     const char *str = strerror(errno);
