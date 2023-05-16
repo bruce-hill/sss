@@ -302,6 +302,7 @@ int main(int argc, char *argv[])
                 errx(1, "I expected an argument for a program to execute");
             const char *src = isatty(STDOUT_FILENO) ? heap_strf(">>> %s", argv[++i]) : heap_strf("say \"$(%s)\"", argv[++i]);
             sss_file_t *f = sss_spoof_file("<argument>", src);
+            argv[i] = argv[0];
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
         }
 
@@ -318,10 +319,12 @@ int main(int argc, char *argv[])
             errx(1, "Couldn't open file: %s", argv[i]);
         }
 
-        if (run_program)
+        if (run_program) {
+            argv[i] = argv[0];
             return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
-        else
+        } else {
             return compile_to_file(ctx, f, verbose, argc-i, &argv[i]);
+        }
     }
 
     run_repl(ctx, verbose);
