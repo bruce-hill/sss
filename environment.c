@@ -81,6 +81,7 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_void_ptr, "memcpy", PARAM(t_void_ptr, "dest"), PARAM(t_void_ptr, "src"), PARAM(t_size, "size"));
     load_global_func(env, t_file, "open_memstream", PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
     load_global_func(env, t_void, "free", PARAM(t_void_ptr, "ptr"));
+    load_global_func(env, gcc_type(ctx, STRING), "getenv", PARAM(gcc_type(ctx, STRING), "name"));
     load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
     load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
     load_global_func(env, t_int, "puts", PARAM(t_str, "str"));

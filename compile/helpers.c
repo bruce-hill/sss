@@ -1385,25 +1385,64 @@ void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer)
 
 void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...)
 {
-    char *info = NULL;
-    size_t size = 0;
-    FILE *f = open_memstream(&info, &size);
-    if (span)
-        fprint_span(f, *span, "\x1b[31;1m", 2, true);
-    fputc('\0', f);
-    fflush(f);
+    char *info = NULL, *info_nocolor = NULL;
+    {
+        char *buf = NULL; size_t size = 0;
+        FILE *f = open_memstream(&info, &size);
+        if (span)
+            fprint_span(f, *span, "\x1b[31;1m", 2, true);
+        fflush(f);
+        info = heap_strn(buf, size);
+        fclose(f);
+        free(buf);
+    }
+    {
+        char *buf = NULL; size_t size = 0;
+        FILE *f = open_memstream(&buf, &size);
+        if (span)
+            fprint_span(f, *span, NULL, 2, false);
+        fflush(f);
+        info_nocolor = heap_strn(buf, size);
+        fclose(f);
+        free(buf);
+    }
+
     gcc_func_t *fail = get_function(env, "fail");
-    const char* fmt_str;
-    if (span)
-        fmt_str = heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
-                            span->file->relative_filename,
-                            sss_get_line_number(span->file, span->start),
-                            sss_get_line_column(span->file, span->start),
-                            user_fmt,
-                            info);
-    else
-        fmt_str = heap_strf("\x1b[31;1;7m%s\x1b[m\n\n%s", user_fmt, info);
-    gcc_rvalue_t *fmt_val = gcc_str(env->ctx, fmt_str);
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *fmt_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_fmt");
+    gcc_block_t *use_color = gcc_new_block(func, fresh("use_color")),
+                *no_color = gcc_new_block(func, fresh("no_color")),
+                *carry_on = gcc_new_block(func, fresh("fmt_set"));
+    gcc_func_t *getenv_fn = hget(env->global_funcs, "getenv", gcc_func_t*);
+    gcc_jump_condition(*block, NULL,
+        gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, gcc_callx(env->ctx, NULL, getenv_fn, gcc_str(env->ctx, "NO_COLOR")),
+                       gcc_null(env->ctx, gcc_type(env->ctx, STRING))),
+        no_color, use_color);
+
+    if (span) {
+        gcc_assign(no_color, NULL, fmt_var, gcc_str(
+            env->ctx, heap_strf("%s:%ld.%ld: %s\n\n%s",
+                span->file->relative_filename,
+                sss_get_line_number(span->file, span->start),
+                sss_get_line_column(span->file, span->start),
+                user_fmt,
+                info_nocolor)));
+        gcc_assign(use_color, NULL, fmt_var, gcc_str(
+            env->ctx, heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
+                span->file->relative_filename,
+                sss_get_line_number(span->file, span->start),
+                sss_get_line_column(span->file, span->start),
+                user_fmt,
+                info)));
+    } else {
+        gcc_assign(use_color, NULL, fmt_var, gcc_str(env->ctx, heap_strf("\x1b[31;1;7m%s\x1b[m\n\n%s", user_fmt, info)));
+        gcc_assign(no_color, NULL, fmt_var, gcc_str(env->ctx, heap_strf("%s\n\n%s", user_fmt, info_nocolor)));
+    }
+    gcc_jump(use_color, NULL, carry_on);
+    gcc_jump(no_color, NULL, carry_on);
+    *block = carry_on;
+
+    gcc_rvalue_t *fmt_val = gcc_rval(fmt_var);
 
     NEW_LIST(gcc_rvalue_t*, args);
     append(args, fmt_val);
@@ -1417,7 +1456,6 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
     gcc_func_t *alloc_fn = hget(env->global_funcs, "GC_malloc_atomic", gcc_func_t*);
     gcc_func_t *memcpy_fn = hget(env->global_funcs, "memcpy", gcc_func_t*);
-    gcc_func_t *func = gcc_block_func(*block);
 
     for (const char *p = user_fmt; *p; p++) {
         if (*p != '%') continue;
@@ -1487,8 +1525,6 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
 
     gcc_rvalue_t *failure = gcc_jit_context_new_call(env->ctx, NULL, fail, LIST_LEN(args), args[0]);
     gcc_eval(*block, NULL, failure);
-    fclose(f);
-    free(info);
     gcc_jump(*block, NULL, *block);
     *block = NULL;
 }
