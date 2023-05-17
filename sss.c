@@ -85,14 +85,38 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool verbose,
 
 int run_repl(gcc_jit_context *ctx, bool verbose)
 {
-    const char *prompt = "\x1b[33;1m>>>\x1b[m ";
-    const char *continue_prompt = "\x1b[33;1m...\x1b[m ";
+    bool use_color = !getenv("NO_COLOR");
+    const char *prompt = !use_color ? ">>> " : "\x1b[33;1m>>>\x1b[m ";
+    const char *continue_prompt = !use_color ? "... " : "\x1b[33;1m...\x1b[m ";
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
 
-    printf("\n     \x1b[1;4mWelcome to the SSS v%s interactive console!\x1b[m\n", SSS_VERSION);
-    printf("          press 'enter' twice to run a command\n");
-    printf("     \x1b[2mnote: variables do not persist across commands\x1b[m\n\n\n");
+    if (use_color) {
+        printf("\n     \x1b[1;4mWelcome to the SSS v%s interactive console!\x1b[m\n", SSS_VERSION);
+        printf("          press 'enter' twice to run a command\n");
+        printf("     \x1b[2mnote: variables do not persist across commands\x1b[m\n\n\n");
+    } else {
+        printf("\n     Welcome to the SSS v%s interactive console!\n", SSS_VERSION);
+        printf("          press 'enter' twice to run a command\n");
+        printf("     note: variables do not persist across commands\n\n\n");
+    }
+
+    // Set up `PROGRAM_NAME`
+    sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
+    gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
+    hset(env->global_bindings, "PROGRAM_NAME",
+         new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));
+
+    // Set up `ARGS`
+    gcc_type_t *args_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=string_t));
+    gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
+    hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
+
+    // Set up `USE_COLOR`
+    gcc_lvalue_t *use_color_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
+    gcc_jit_global_set_initializer_rvalue(use_color_var, gcc_rvalue_bool(ctx, use_color));
+    hset(env->global_bindings, "USE_COLOR",
+         new(binding_t, .rval=gcc_rval(use_color_var), .type=Type(BoolType), .visible_in_closures=true));
 
     // Read lines until we get a blank line
     for (;;) {
@@ -124,20 +148,27 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
                 fflush(stdout);
                 return 0;
             } else if (streq(line, "help\n")) {
+                if (use_color)
+                    puts("\x1b[0;3;36;1m");
                 puts(
-                    "\n\x1b[0;3;36;1m"
-                    "Hello! This is the SSS read-evaluate-print-loop (REPL).\n"
+                    "\nHello! This is the SSS read-evaluate-print-loop (REPL).\n"
                     "Here, you can type SSS statements or expressions to see them evaluted and printed.\n"
-                    "For example:\n\n"
-                    "    \x1b[0;33;1m>>>\x1b[m 1+2\n"
-                    "    \x1b[2m= \x1b[0;35m3\x1b[0;2m : Int\x1b[m\n"
-                    "\n"
-                    "\x1b[0;3;36;1m"
+                    "For example:\n");
+                if (use_color) {
+                    puts("    \x1b[0;33;1m>>>\x1b[m 1+2\n"
+                         "    \x1b[2m= \x1b[0;35m3\x1b[0;2m : Int\x1b[m\n"
+                         "\x1b[0;3;36;1m");
+                } else {
+                    puts("    >>> 1+2\n"
+                         "    = 3 : Int\n");
+                }
+                puts(
                     "The REPL reads expressions until it reaches a blank line,\n"
-                    "so press Enter twice after each expression to see it evaluated and printed.\n"
-                    "\n"
-                    "Hit \x1b[0;1mCtrl-D\x1b[0;3;36;1m to exit.\n"
-                    "\x1b[m");
+                    "so press Enter twice after each expression to see it evaluated and printed.\n");
+                if (use_color)
+                    puts("Hit \x1b[0;1mCtrl-D\x1b[0;3;36;1m to exit.\n\x1b[m");
+                else
+                    puts("Hit Ctrl-D to exit.\n");
                 CLEANUP();
                 goto next_line;
             }
@@ -150,7 +181,10 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
 
         fflush(buf_file);
         if (buf_size == 0) {
-            printf("\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
+            if (use_color)
+                printf("\x1b[G\x1b[K\x1b[1mGoodbye!\x1b[m\n");
+            else
+                printf("Goodbye!\n");
             CLEANUP();
             break;
         }
@@ -203,10 +237,12 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
         assert(run_line);
-        fprintf(stdout, "\x1b[A\x1b[G\x1b[K\x1b[0;1m");
+        if (use_color)
+            fprintf(stdout, "\x1b[A\x1b[G\x1b[K\x1b[0;1m");
         fflush(stdout);
         run_line();
-        fputs("\x1b[m", stdout);
+        if (use_color)
+            fputs("\x1b[m", stdout);
         fflush(stdout);
 
         // Copy out the global variables to GC memory
