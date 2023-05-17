@@ -99,17 +99,17 @@ static PARSER(parse_ellipsis);
 //
 __attribute__((noreturn))
 static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, va_list args) {
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;1;7m", stderr);
     fprintf(stderr, "%s:%ld.%ld: ", ctx->file->relative_filename, sss_get_line_number(ctx->file, start),
             sss_get_line_column(ctx->file, start));
     vfprintf(stderr, fmt, args);
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs(" \x1b[m", stderr);
     fputs("\n\n", stderr);
 
     span_t span = {.file=ctx->file, .start=start, .end=end};
-    fprint_span(stderr, span, "\x1b[31;1;7m", 2, isatty(STDERR_FILENO));
+    fprint_span(stderr, span, "\x1b[31;1;7m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
     fputs("\n", stderr);
 
     if (ctx->on_err)
@@ -202,7 +202,7 @@ static void expect_str(
             return;
     }
 
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);
@@ -225,7 +225,7 @@ static void expect_closing(
     
     const char *end = eol < next ? eol : next;
 
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);
@@ -245,7 +245,7 @@ static ast_t *expect_ast(
         return ast;
     }
 
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;1;7m", stderr);
     va_list args;
     va_start(args, fmt);

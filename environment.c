@@ -451,7 +451,7 @@ env_t *global_scope(env_t *env)
 
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;7;1m", stderr);
     if (ast)
         fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->relative_filename, sss_get_line_number(ast->span.file, ast->span.start),
@@ -460,11 +460,11 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
     va_end(args);
-    if (isatty(STDERR_FILENO))
+    if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs(" \x1b[m", stderr);
     fputs("\n\n", stderr);
     if (ast)
-        fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO));
+        fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
 
     if (env->on_err)
         longjmp(*env->on_err, 1);
