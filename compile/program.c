@@ -30,6 +30,10 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     hset(env->global_bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
 
+    gcc_lvalue_t *use_color = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
+    hset(env->global_bindings, "USE_COLOR",
+         new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
+
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
@@ -51,6 +55,11 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
         }, 0);
     gcc_assign(main_block, NULL, program_name, gcc_callx(env->ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
+
+    gcc_func_t *getenv_fn = hget(env->global_funcs, "getenv", gcc_func_t*);
+    gcc_assign(main_block, NULL, use_color,
+        gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_callx(env->ctx, NULL, getenv_fn, gcc_str(env->ctx, "NO_COLOR")),
+                       gcc_null(env->ctx, gcc_type(env->ctx, STRING))));
 
     // Initialize `ARGS`
     gcc_func_t *arg_func = gcc_new_func(

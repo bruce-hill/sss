@@ -1413,11 +1413,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     gcc_block_t *use_color = gcc_new_block(func, fresh("use_color")),
                 *no_color = gcc_new_block(func, fresh("no_color")),
                 *carry_on = gcc_new_block(func, fresh("fmt_set"));
-    gcc_func_t *getenv_fn = hget(env->global_funcs, "getenv", gcc_func_t*);
-    gcc_jump_condition(*block, NULL,
-        gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, gcc_callx(env->ctx, NULL, getenv_fn, gcc_str(env->ctx, "NO_COLOR")),
-                       gcc_null(env->ctx, gcc_type(env->ctx, STRING))),
-        no_color, use_color);
+    gcc_jump_condition(*block, NULL, get_binding(env, "USE_COLOR")->rval, use_color, no_color);
 
     if (span) {
         gcc_assign(no_color, NULL, fmt_var, gcc_str(
