@@ -161,19 +161,11 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
     sss_type_t *iter_t = get_type(env, iter);
     while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
     switch (iter_t->tag) {
-    case ArrayType: {
-        auto list_t = Match(iter_t, ArrayType);
-        return list_t->item_type;
-    }
-    case TableType: {
-        return table_entry_type(iter_t);
-    }
-    case RangeType: {
-        return INT_TYPE;
-    }
-    case StructType: {
-        return Type(PointerType, .pointed=iter_t, .is_optional=false);
-    }
+    case ArrayType: return Match(iter_t, ArrayType)->item_type;
+    case TableType: return table_entry_type(iter_t);
+    case RangeType: return INT_TYPE;
+    case StructType: return Type(PointerType, .pointed=iter_t, .is_optional=false);
+    case GeneratorType: return Match(iter_t, GeneratorType)->generated;
     default:
         compiler_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
         break;
@@ -1012,17 +1004,17 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case For: {
         auto for_loop = Match(ast, For);
-        sss_type_t *key_type = INT_TYPE,
+        sss_type_t *index_type = INT_TYPE,
                   *value_type = get_iter_type(env, for_loop->iter);
 
         env_t *loop_env = fresh_scope(env);
-        if (for_loop->key) {
-            ast_t *key = for_loop->key;
-            if (key->tag == Dereference) {
-                key = Match(key, Dereference)->value;
-                key_type = Type(PointerType, .pointed=key_type, .is_optional=false);
+        if (for_loop->index) {
+            ast_t *index = for_loop->index;
+            if (index->tag == Dereference) {
+                index = Match(index, Dereference)->value;
+                index_type = Type(PointerType, .pointed=index_type, .is_optional=false);
             }
-            hset(loop_env->bindings, Match(key, Var)->name, new(binding_t, .type=key_type));
+            hset(loop_env->bindings, Match(index, Var)->name, new(binding_t, .type=index_type));
         }
         if (for_loop->value) {
             ast_t *value = for_loop->value;

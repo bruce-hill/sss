@@ -381,7 +381,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             if (!promote(env, t_rhs, &rval, t_lhs))
                 compiler_err(env, rhs, "You're assigning this %s value to a variable with type %s and I can't figure out how to make that work.",
-                      type_to_string(t_rhs), type_to_string(t_lhs));
+                    type_to_string(t_rhs), type_to_string(t_lhs));
 
             gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(env, t_lhs), "to_assign");
             assert(rval);
@@ -2183,26 +2183,34 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Reduction: {
         auto reduction = Match(ast, Reduction);
         sss_type_t *t = get_type(env, ast);
-        const char* name = fresh("reduction");
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *ret = gcc_local(func, loc, sss_type_to_gcc(env, t), name);
+        gcc_lvalue_t *ret = gcc_local(func, loc, sss_type_to_gcc(env, t), fresh("reduction"));
 
         env = fresh_scope(env);
 
-        ast_t *prev_var = WrapAST(ast, Var, .name="x");
-        ast_t *iter_var = WrapAST(ast, Var, .name="y");
-        hset(env->bindings, "x", new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        ast_t *accum_var = WrapAST(ast, Var, .name="x");
+        hset(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        ast_t *incoming_var = WrapAST(ast, Var, .name="y");
 
-        ast_t *first = WrapAST(reduction->combination, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, iter_var));
-        ast_t *between = WrapAST(reduction->combination, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->combination));
-        ast_t *empty;
+        ast_t *index, *value, *iter, *first, *between, *empty;
+        if (reduction->iter->tag == For) {
+            auto loop = Match(reduction->iter, For);
+            if (loop->index) index = WrapAST(ast, Var, .name=fresh("#i"));
+        } else {
+            index = NULL;
+        }
+        value = incoming_var;
+        iter = reduction->iter;
+        first = WrapAST(reduction->combination, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, value));
+        between = WrapAST(reduction->combination, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, reduction->combination));
+
         if (reduction->fallback)
-            empty = WrapAST(reduction->fallback, Assign, LIST(ast_t*, prev_var), LIST(ast_t*, reduction->fallback));
+            empty = WrapAST(reduction->fallback, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, reduction->fallback));
         else
             empty = WrapAST(reduction->iter, Fail, .message=StringAST(reduction->iter, "This collection was empty"));
-        ast_t *for_ast = WrapAST(ast, For, .value=iter_var, .iter=reduction->iter, .first=first, .between=between, .empty=empty);
-        compile_statement(env, block, for_ast);
 
+        ast_t *for_ast = WrapAST(ast, For, .index=index, .value=value, .iter=iter, .first=first, .between=between, .body=FakeAST(Skip), .empty=empty);
+        compile_statement(env, block, for_ast);
         return gcc_rval(ret);
     }
     case Fail: {

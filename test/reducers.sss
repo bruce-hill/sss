@@ -4,32 +4,32 @@
 >>> nums := [2,-3,4]
 
 // 'x' and 'y' are implicit variables for the reduction:
->>> |nums, x+y|
+>>> |nums; x+y|
 === 3
 
 // Infix operators can be used directly:
->>> |nums,+|
+>>> |nums; +|
 === 3
 
->>> |nums,%max|
+>>> |nums; %max|
 === 4
->>> |nums,%min|
+>>> |nums; %min|
 === -3
 
->>> |nums,*|
+>>> |nums; *|
 === -24
 
->>> |nums,x.abs()+y.abs()|
+>>> |nums; x.abs()+y.abs()|
 === 9
 
->>> |nums,x if x.abs() < y.abs() else y|
+>>> |nums; x if x.abs() < y.abs() else y|
 === 2
 
->>> |nums,+,100|
+>>> |nums; +; 100|
 === 3
 
->>> |[:Int],+,100|
+>>> |[:Int]; +; 100|
 === 100
 
->>> |["one","two","three"], x++" "++y, ""|
+>>> |["one","two","three"]; x++" "++y; ""|
 === "one two three"

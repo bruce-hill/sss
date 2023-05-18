@@ -35,6 +35,68 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto for_ = Match(ast, For);
 
+    ast_t *iter = for_->iter;
+    sss_type_t *iter_t = get_type(env, iter);
+
+    if (iter_t->tag == GeneratorType) {
+        switch (for_->iter->tag) {
+        case For: {
+            auto inner = Match(for_->iter, For);
+            if (inner->between)
+                compiler_err(env, inner->between, "The language doesn't support iterating over inner loops with a 'between' block");
+
+            // (outer_body for x in (inner_body for y in 1..10)) --> ((do x := inner_body; outer_body) for y in 1..10)
+            // (outer_body for x1,x2 in (inner_body for y1,y2 in 1..10)) --> ((do x1 := y1; x2 := inner_body; outer_body) for y1,y2 in 1..10)
+            ast_t *index = inner->index ? inner->index : for_->index;
+            assert(for_->value);
+            ast_t *value = inner->value ? inner->value : for_->value;
+            ast_t *first, *body, *between, *empty;
+            if (for_->first) {
+                NEW_LIST(ast_t*, stmts);
+                if (inner->index && for_->index)
+                    append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
+                append(stmts, WrapAST(ast, Declare, for_->value, inner->first ? inner->first : inner->body));
+                append(stmts, for_->first);
+                first = WrapAST(ast, Block, stmts);
+            } else {
+                first = inner->first;
+            }
+
+            if (for_->body) {
+                NEW_LIST(ast_t*, stmts);
+                if (inner->index && for_->index)
+                    append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
+                if (!inner->body) compiler_err(env, ast, "I can't iterate over a loop that doesn't have a body");
+                append(stmts, WrapAST(ast, Declare, for_->value, inner->body));
+                append(stmts, for_->body);
+                body = WrapAST(ast, Block, stmts);
+            }
+
+            if (for_->between) {
+                NEW_LIST(ast_t*, stmts);
+                if (inner->index && for_->index)
+                    append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
+                append(stmts, WrapAST(ast, Declare, for_->value, inner->between ? inner->between : inner->body));
+                append(stmts, for_->between);
+                between = WrapAST(ast, Block, stmts);
+            } else {
+                between = inner->between;
+            }
+
+            if (for_->empty && inner->empty) {
+                empty = WrapAST(for_->empty, Block, LIST(ast_t*, inner->empty, for_->empty));
+            } else {
+                empty = inner->empty ? inner->empty : for_->empty;
+            }
+
+            ast_t *rebuilt = WrapAST(ast, For, .index=index, .value=value, .iter=inner->iter, .first=first, .body=body, .between=between, .empty=empty);
+            return compile_for_loop(env, block, rebuilt);
+        }
+        default:
+            compiler_err(env, ast, "This type of iteration is not currently supported by the compiler");
+        }
+    }
+
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *for_first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
                 *for_body = gcc_new_block(func, fresh("for_body")),
@@ -44,8 +106,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
                 *for_end = gcc_new_block(func, fresh("for_end"));
 
     gcc_comment(*block, NULL, "For Loop");
-    ast_t *iter = for_->iter;
-    sss_type_t *iter_t = get_type(env, iter);
     gcc_rvalue_t *iter_rval = compile_expr(env, block, iter);
     gcc_type_t *gcc_iter_t = sss_type_to_gcc(env, iter_t);
     gcc_rvalue_t *original_pointer = NULL;
@@ -341,9 +401,9 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     env_t *loop_env = fresh_scope(env);
 
     auto label_names = LIST(const char*, "for");
-    if (for_->key) {
-        append(label_names, loop_var_name(for_->key));
-        hset(loop_env->bindings, loop_var_name(for_->key),
+    if (for_->index) {
+        append(label_names, loop_var_name(for_->index));
+        hset(loop_env->bindings, loop_var_name(for_->index),
              new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {

@@ -172,7 +172,7 @@ struct ast_s {
             ast_t *condition, *body, *else_body;
         } If;
         struct {
-            ast_t *key, *value, *iter, *first, *body, *between, *empty;
+            ast_t *index, *value, *iter, *first, *body, *between, *empty;
         } For;
         struct {
             ast_t *condition, *body, *between;
