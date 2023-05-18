@@ -2196,6 +2196,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (reduction->iter->tag == For) {
             auto loop = Match(reduction->iter, For);
             if (loop->index) index = WrapAST(ast, Var, .name=fresh("#i"));
+            else index = NULL;
         } else {
             index = NULL;
         }
