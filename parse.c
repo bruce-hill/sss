@@ -44,7 +44,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat",
     "or","not","no","mod1","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
-    "defer","def","by","bitcast","between","as","and", NULL,
+    "defer","def","by","bitcast","between","as","and","_min_","_max_",NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -889,11 +889,6 @@ PARSER(parse_ellipsis) {
 PARSER(parse_reduction) {
     const char *start = pos;
     if (!match(&pos, "|")) return NULL;
-    ast_t *iter = optional_ast(ctx, &pos, parse_extended_expr);
-    if (!iter) return NULL;
-    spaces(&pos);
-    if (!match(&pos, ";"))
-        parser_err(ctx, pos, pos, "I expected a comma and another expression for this Reduction");
 
     spaces(&pos);
     const char *combo_start = pos;
@@ -908,14 +903,16 @@ PARSER(parse_reduction) {
                                  "I expected to find an expression here for how to merge two values");
     }
 
-    ast_t *fallback = NULL;
     spaces(&pos);
-    if (match(&pos, ";")) {
-        spaces(&pos);
-        fallback = optional_ast(ctx, &pos, parse_extended_expr);
-    }
-
     expect_closing(ctx, &pos, "|", "I wasn't able to parse the rest of this reduction");
+
+    ast_t *iter = optional_ast(ctx, &pos, parse_extended_expr);
+    if (!iter) return NULL;
+
+    ast_t *fallback = NULL;
+    if (match_word(&pos, "else"))
+        fallback = optional_ast(ctx, &pos, parse_extended_expr);
+
     return NewAST(ctx->file, start, pos, Reduction, .iter=iter, .combination=combination, .fallback=fallback);
 }
 
@@ -1100,6 +1097,8 @@ PARSER(parse_for) {
     if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
         whitespace(&pos);
+    } else {
+        pos = body->span.end;
     }
 
     const char *else_start = pos;
@@ -1670,8 +1669,8 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "by")) return RANGE_STEP;
         else if (match_word(pos, "not in")) return NotIn;
         else if (match_word(pos, "in")) return In;
-        else if (match_word(pos, "%min")) return Min;
-        else if (match_word(pos, "%max")) return Max;
+        else if (match_word(pos, "_min_")) return Min;
+        else if (match_word(pos, "_max_")) return Max;
         else if (match(pos, "..")) return Range;
         else return Unknown;
     }
