@@ -164,7 +164,15 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
     case ArrayType: return Match(iter_t, ArrayType)->item_type;
     case TableType: return table_entry_type(iter_t);
     case RangeType: return INT_TYPE;
-    case StructType: return Type(PointerType, .pointed=iter_t, .is_optional=false);
+    case StructType: {
+        auto struct_ = Match(iter_t, StructType);
+        for (int64_t i = 0; i < length(struct_->field_names); i++) {
+            if (streq(ith(struct_->field_names, i), "next")
+                && type_eq(ith(struct_->field_types, i), Type(PointerType, .pointed=iter_t, .is_optional=true)))
+                return Type(PointerType, .pointed=iter_t, .is_optional=false);
+        }
+        compiler_err(env, iter, "I don't know how to iterate over %s structs that don't have a .next member", type_to_string(iter_t));
+    }
     case GeneratorType: return Match(iter_t, GeneratorType)->generated;
     default:
         compiler_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
@@ -1039,14 +1047,21 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Reduction: {
         env = fresh_scope(env);
         auto reduction = Match(ast, Reduction);
+        sss_type_t *item_type = get_iter_type(env, reduction->iter);
+        hset(env->bindings, "x", new(binding_t, .type=item_type));
+        hset(env->bindings, "y", new(binding_t, .type=item_type));
+        sss_type_t *combo_t = get_type(env, reduction->combination);
+        if (!can_promote(item_type, combo_t))
+            compiler_err(env, ast, "This reduction expression has type %s, but it's iterating over %s values, so I wouldn't know what to produce if there was only one value.",
+                         type_to_string(combo_t), type_to_string(item_type));
+
         if (reduction->fallback) {
-            return get_type(env, reduction->fallback);
-        } else {
-            sss_type_t *item_type = get_iter_type(env, reduction->iter);
-            hset(env->bindings, "x", new(binding_t, .type=item_type));
-            hset(env->bindings, "y", new(binding_t, .type=item_type));
-            return get_type(env, reduction->combination);
+            sss_type_t *fallback_t = get_type(env, reduction->fallback);
+            if (!can_promote(fallback_t, combo_t))
+                compiler_err(env, ast, "This reduction expression has type %s, but the fallback has type %s",
+                             type_to_string(combo_t), type_to_string(fallback_t));
         }
+        return combo_t;
     }
     case Defer: {
         return Type(VoidType);
