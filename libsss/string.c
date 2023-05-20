@@ -161,6 +161,15 @@ string_t flatten(string_t str)
 
 const char *c_string(string_t str)
 {
+    if (str.length == 0)
+        return "";
+    else if (str.stride == 1
+        // Verify that the '\0' would be on the same page, so unlikely to segfault:
+        && (((uint64_t)str.data + str.length + 1) & 0xFFF) != 0
+        // Check for nul-termination
+        && str.data[str.length+1] == '\0')
+        return str.data;
+
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
     for (int32_t i = 0; i < str.length; i++)
         buf[i] = str.data[i*str.stride];
@@ -174,6 +183,7 @@ string_t from_c_string(const char *str)
     if (len == 0) return (string_t){.length=0, .stride=0};
     char *buf = GC_MALLOC_ATOMIC(len + 1);
     memcpy(buf, str, len+1);
+    buf[len+1] = '\0';
     return (string_t){.data=buf, .length=len, .stride=1};
 }
 
