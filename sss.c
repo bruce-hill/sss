@@ -94,11 +94,11 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     if (use_color) {
         printf("\n     \x1b[1;4mWelcome to the SSS v%s interactive console!\x1b[m\n", SSS_VERSION);
         printf("          press 'enter' twice to run a command\n");
-        printf("     \x1b[2mnote: variables do not persist across commands\x1b[m\n\n\n");
+        printf("     \x1b[2mnote: importing with 'use' isn't supported yet\x1b[m\n\n\n");
     } else {
         printf("\n     Welcome to the SSS v%s interactive console!\n", SSS_VERSION);
         printf("          press 'enter' twice to run a command\n");
-        printf("     note: variables do not persist across commands\n\n\n");
+        printf("     note: importing with 'use' isn't supported yet\n\n\n");
     }
 
     // Set up `PROGRAM_NAME`
