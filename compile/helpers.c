@@ -43,6 +43,9 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         ssize_t align = 0;
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
+            if (type_eq(*ftype, sss_t))
+                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                             type_to_string(sss_t), type_to_string(sss_t));
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > align) align = field_align;
         }
@@ -100,6 +103,9 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         ssize_t max_align = 0;
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
+            if (type_eq(*ftype, sss_t))
+                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                             type_to_string(sss_t), type_to_string(sss_t));
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > 1 && size % field_align)
                 size += field_align - (size % field_align); // padding
@@ -187,7 +193,7 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
-    static sss_hashmap_t cache = {0};
+    static sss_hashmap_t cache = {0}, opaque_structs = {0};
     t = with_units(t, NULL);
     gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
@@ -287,20 +293,26 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     case StructType: {
         auto struct_t = Match(t, StructType);
+        const char *t_str = type_to_string(t);
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(&cache, type_to_string(t), gcc_t);
+        hset(&cache, t_str, gcc_t);
+        hset(&opaque_structs, type_to_string(t), gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
-        foreach (struct_t->field_types, sss_ft, _) {
-            int i = (int)(sss_ft - *struct_t->field_types);
-            gcc_type_t *gcc_ft = sss_type_to_gcc(env, *sss_ft);
+        for (int64_t i = 0; i < length(struct_t->field_types); i++) {
+            sss_type_t *sss_ft = ith(struct_t->field_types, i);
+            if (hget(&opaque_structs, type_to_string(sss_ft), gcc_type_t*))
+                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                             type_to_string(t), type_to_string(t));
+            gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
             assert(gcc_ft);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(struct_t->field_names, i));
             append(fields, field);
         }
         gcc_set_fields(gcc_struct, NULL, length(fields), fields[0]);
         gcc_t = gcc_struct_as_type(gcc_struct);
+        hremove(&opaque_structs, t_str, gcc_type_t*);
         break;
     }
     case TaggedUnionType: {
