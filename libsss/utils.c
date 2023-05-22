@@ -86,6 +86,25 @@ void say(string_t str, string_t end)
     }
 }
 
+void warn(string_t str, string_t end, bool colorize)
+{
+    if (colorize) write(STDERR_FILENO, "\x1b[33m", 5);
+    if (str.stride == 1) {
+        write(STDERR_FILENO, str.data, str.length);
+    } else {
+        for (int32_t i = 0; i < str.length; i++)
+            write(STDERR_FILENO, str.data + i*str.stride, 1);
+    }
+
+    if (end.stride == 1) {
+        write(STDERR_FILENO, end.data, end.length);
+    } else {
+        for (int32_t i = 0; i < end.length; i++)
+            write(STDERR_FILENO, end.data + i*end.stride, 1);
+    }
+    if (colorize) write(STDERR_FILENO, "\x1b[m", 3);
+}
+
 void fail(const char *fmt, ...)
 {
     va_list args;

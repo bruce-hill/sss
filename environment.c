@@ -410,7 +410,20 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool debu
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
-    hset(env->global_bindings, "say", new(binding_t, .rval=say_rvalue, .type=say_type));
+    hset(env->global_bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
+    sss_type_t *warn_type = Type(
+        FunctionType,
+        .arg_names=LIST(const char*, "str", "end", "colorize"),
+        .arg_types=LIST(sss_type_t*, str_t, str_t, Type(BoolType)),
+        .arg_defaults=LIST(ast_t*, NULL, FakeAST(StringLiteral, .str="\n"), FakeAST(Var, "USE_COLOR")),
+        .ret=Type(VoidType));
+    gcc_param_t *gcc_warn_params[] = {
+        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "str"),
+        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "end"),
+        gcc_new_param(ctx, NULL, gcc_type(env->ctx, BOOL), "colorize"),
+    };
+    gcc_func_t *warn_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "warn", 3, gcc_warn_params, 0);
+    hset(env->global_bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
     define_num_types(env);
 #define DEFTYPE(t) hset(env->global_bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
@@ -454,7 +467,7 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;7;1m", stderr);
-    if (ast)
+    if (ast && ast->span.file)
         fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->relative_filename, sss_get_line_number(ast->span.file, ast->span.start),
                 sss_get_line_column(ast->span.file, ast->span.start));
     va_list args;

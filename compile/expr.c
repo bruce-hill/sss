@@ -204,7 +204,7 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
 
 static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
 {
-    gcc_rvalue_t *stdout_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stdout"));
+    gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
     gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *use_dim = gcc_new_block(func, fresh("use_dim")),
@@ -212,10 +212,10 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
                 *done_with_dim = gcc_new_block(func, "done_with_dim");
     gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim, no_dim);
 
-    gcc_eval(use_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf("\x1b[2m%s\x1b[m", info)), stdout_val)); 
+    gcc_eval(use_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf("\x1b[2m%s\x1b[m", info)), stderr_val)); 
     gcc_jump(use_dim, loc, done_with_dim);
 
-    gcc_eval(no_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stdout_val)); 
+    gcc_eval(no_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stderr_val)); 
     gcc_jump(no_dim, loc, done_with_dim);
 
     *block = done_with_dim;
@@ -229,7 +229,7 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
     gcc_assign(*block, loc, gcc_lvalue_access_field(
             cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
         gcc_lvalue_address(next_index, loc));
-    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stdout_val,
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stderr_val,
                                    gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), gcc_type(env->ctx, VOID_PTR)),
                                    get_binding(env, "USE_COLOR")->rval));
 
@@ -237,9 +237,9 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
                 *no_dim_type = gcc_new_block(func, fresh("no_dim_type")),
                 *done_with_type = gcc_new_block(func, fresh("done_with_type"));
     gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim_type, no_dim_type);
-    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[2m: %s\x1b[m\n", type_to_string(t))), stdout_val)); 
+    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[2m: %s\x1b[m\n", type_to_string(t))), stderr_val)); 
     gcc_jump(use_dim_type, loc, done_with_type);
-    gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string(t))), stdout_val)); 
+    gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string(t))), stderr_val)); 
     gcc_jump(no_dim_type, loc, done_with_type);
     *block = done_with_type;
 }
@@ -2235,10 +2235,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // Print source code of the doctest:
             const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
             const char* plain_src = heap_strf(">>> %.*s", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-            ast_t *say_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="say"),
+            ast_t *warn_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="warn"),
                                      .args=LIST(ast_t*, WrapAST(ast, If, .condition=FakeAST(Var, .name="USE_COLOR"),
-                                                                .body=StringAST(expr, color_src), .else_body=StringAST(expr, plain_src))));
-            compile_statement(env, block, say_src);
+                                                                .body=StringAST(expr, color_src), .else_body=StringAST(expr, plain_src)),
+                                                FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
+            compile_statement(env, block, warn_src);
         }
 
         if (expr->tag == Return && Match(expr, Return)->value) {
@@ -2317,12 +2318,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             NEW_LIST(ast_t*, statements);
             ast_t *stmt = WrapAST(expr, Declare, .var=WrapAST(expr, Var, .name="=expr"), .value=expr);
             APPEND(statements, stmt);
-            stmt = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="say"), .args=LIST(ast_t*,
+            stmt = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="warn"), .args=LIST(ast_t*,
                 WrapAST(expr, StringJoin, .children=LIST(ast_t*, 
                     WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"), StringAST(expr, "\x1b[0;2m= \x1b[m"), StringAST(expr, "= "))),
                     WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
                     WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"), StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t))), StringAST(expr, heap_strf(" : %s", type_to_string(t))))),
-                ))));
+                )),
+                FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
             APPEND(statements, stmt);
             if (test->output) {
                 // TODO: use insert_failure()
