@@ -17,6 +17,8 @@
 #include "../types.h"
 #include "../util.h"
 
+static sss_hashmap_t opaque_structs = {0};
+
 const char *fresh(const char *name)
 {
     static sss_hashmap_t seen = {0};
@@ -44,7 +46,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             if (type_eq(*ftype, sss_t))
-                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
                              type_to_string(sss_t), type_to_string(sss_t));
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > align) align = field_align;
@@ -104,7 +106,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             if (type_eq(*ftype, sss_t))
-                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
                              type_to_string(sss_t), type_to_string(sss_t));
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > 1 && size % field_align)
@@ -180,6 +182,9 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
     auto tagged = Match(t, TaggedUnionType);
     auto fields = LIST(gcc_field_t*);
     foreach (tagged->members, member, _) {
+        if (member->type && hget(&opaque_structs, type_to_string(member->type), gcc_type_t*))
+            compiler_err(env, NULL, "The tagged union '%s' recursively contains itself, which could be infinitely large. If you want to reference other %s values, use a pointer or an array.",
+                         type_to_string(t), type_to_string(t));
         gcc_type_t *gcc_ft = member->type ? sss_type_to_gcc(env, member->type)
             : gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, member->name, 0, NULL)); // empty struct
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, member->name);
@@ -193,7 +198,7 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
-    static sss_hashmap_t cache = {0}, opaque_structs = {0};
+    static sss_hashmap_t cache = {0};
     t = with_units(t, NULL);
     gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
@@ -297,13 +302,13 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, t_str, gcc_t);
-        hset(&opaque_structs, type_to_string(t), gcc_t);
+        hset(&opaque_structs, t_str, gcc_t);
 
         NEW_LIST(gcc_field_t*, fields);
         for (int64_t i = 0; i < length(struct_t->field_types); i++) {
             sss_type_t *sss_ft = ith(struct_t->field_types, i);
             if (hget(&opaque_structs, type_to_string(sss_ft), gcc_type_t*))
-                compiler_err(env, NULL, "The struct %s recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
+                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
                              type_to_string(t), type_to_string(t));
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
             assert(gcc_ft);
@@ -317,13 +322,16 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
+        const char *t_str = type_to_string(t);
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name);
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, type_to_string(t), gcc_t);
+        hset(&opaque_structs, t_str, gcc_t);
         gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
             gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
             gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
         });
+        hremove(&opaque_structs, t_str, gcc_type_t*);
         break;
     }
     case TypeType: {
