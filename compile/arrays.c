@@ -27,8 +27,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
 
     sss_type_t *t = get_type(env, item); // item type
     if (t->tag == GeneratorType || t->tag == VoidType || t->tag == AbortType) {
-        gcc_rvalue_t *val = compile_expr(env, block, item);
-        assert(!val);
+        (void)compile_expr(env, block, item);
         return;
     }
 
