@@ -6,8 +6,8 @@ from other languages, some of them are original.
 ## Value Semantics
 
 SSS offers well-defined value semantics for all types in the language. What
-does this mean? It means that for every type in the language, the following
-axioms hold:
+does this mean? It means that for every type in the language except for pointer
+types, the following axioms hold:
 
 - **Axiom 1: Immutability** if `a == b`, then it will always be the case that
   `a == b`, unless a new value is assigned to either variable.
@@ -35,18 +35,22 @@ axioms hold:
   finding the first non-equal element, if any and returning the comparison for
   that element. For tagged unions, tagged values are only compared if both
   tagged unions have the same tag.
-- **Axiom 9: Pointers** assuming `a` and `b` are both pointers to a value that
-  resides in memory somewhere (i.e. the type has an `@`, `?`, or `&`), then `a
-  == b` if and only if they point to the *same* memory and mutating the value
-  at `*a` is the same as mutating the value at `*b`. In other words, for
-  pointers, *referential equality* holds, not structural equality. If you would
-  like to compare the values pointed to by two different pointers, you can
-  access the values by dereferencing the pointers and compare the values: `*a
-  == *b`.
 
 These axioms are meant to empower you to be able to reason about your programs
 more easily. Each one of these statements is a promise from the language to
 you, the programmer, which will allow you to more easily write correct programs.
+
+### Pointers
+
+Pointers, unlike the types mentioned above, use reference semantics. That is to
+say, pointers are a numeric value that represents a memory address, and
+comparisons between pointers or hashing pointers means comparing or hashing the
+_address_, not the content of the memory that resides there. Two pointers are
+equal if and only if they refer to the same location in memory. This means that
+if `a` and `b` point to the same location in memory, assigning a new value to
+`*a` is equivalent to assigning a new value to `*b`. If you want to check for
+structural equality between two pointers, you can access the underlying values
+by dereferencing the pointers: `*a == *b`.
 
 ### Floating Point NaN Values
 

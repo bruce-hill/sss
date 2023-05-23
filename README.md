@@ -47,7 +47,7 @@ SSS.](docs/features.md) These include:
 - Useful and efficient built-in types: arrays, hash tables, tuples, structs,
   tagged unions
 - Comprehensions for arrays and tables
-- Well-defined value semantics and mutability rules
+- Well-defined reference and value semantics and mutability rules
 - Language-level support for correct and automatic function memoization
 - Type-safe DSL strings with automatic prevention of code injection
 - Destructuring pattern matching with exhaustiveness checking

@@ -1,9 +1,9 @@
 # Mutability and Value Semantics
 
-All SSS values are either immutable values with value semantics or addresses
-of heap-allocated memory whose contents may change over time. The sigil for the
-address of mutable, heap-allocated memory is the `@` symbol (mnemonic cue: "@"
-for **a**ddress of memory).
+All SSS values are either immutable values with value semantics or addresses of
+heap-allocated memory whose contents may change over time (reference
+semantics). The sigil for the address of mutable, heap-allocated memory is the
+`@` symbol (mnemonic cue: "@" for **a**ddress of memory).
 
 ## Primitive Values
 
