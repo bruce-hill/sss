@@ -181,34 +181,37 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 {
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     sss_type_t *arr_t = get_type(env, arr_ast);
-    gcc_rvalue_t *arr = compile_expr(env, block, arr_ast);
-    while (arr_t->tag == PointerType) {
-        auto ptr = Match(arr_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
-
-        // Copy on write
-        if (ptr->pointed->tag == ArrayType) {
-            if (access == ACCESS_WRITE)
-                check_cow(env, block, ptr->pointed, arr);
-            else if (access == ACCESS_READ)
-                mark_array_cow(env, block, arr);
-        }
-
-        arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
-        arr_t = ptr->pointed;
-    }
 
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
+    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *arr_var;
+    if (access == ACCESS_WRITE) {
+        arr_var = get_lvalue(env, block, arr_ast, true);
+        check_cow(env, block, arr_t, gcc_lvalue_address(arr_var, loc));
+    } else {
+        gcc_rvalue_t *arr = compile_expr(env, block, arr_ast);
+        while (arr_t->tag == PointerType) {
+            auto ptr = Match(arr_t, PointerType);
+            if (ptr->is_optional)
+                compiler_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
+
+            arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
+            arr_t = ptr->pointed;
+        }
+        arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
+        gcc_assign(*block, loc, arr_var, arr);
+        mark_array_cow(env, block, gcc_lvalue_address(arr_var, loc));
+    }
+    gcc_rvalue_t *arr = gcc_rval(arr_var);
+
     // Specially optimized case for creating slices using range literals
     // This actually makes a noticeable performance difference
     if (index->tag == Range) {
         auto range = Match(index, Range);
         if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
-            gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
             gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 #define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
-            gcc_func_t *func = gcc_block_func(*block);
             gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD));
             gcc_rvalue_t *offset;
             if (range->first)
@@ -256,6 +259,8 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
                 gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD)),
                            SUB(array_len, offset));
             }
+            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
+                       gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
 
             return gcc_rval(slice);
 #undef SUB
@@ -266,14 +271,103 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_rvalue_t *index_val = compile_expr(env, block, index);
     gcc_type_t *str_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
     gcc_func_t *slice_fn = get_function(env, "range_slice");
-    return gcc_bitcast(
+    gcc_lvalue_t *slice_var = gcc_local(func, loc, array_gcc_t, "_slice");
+    gcc_assign(*block, loc, slice_var, gcc_bitcast(
         env->ctx, loc,
         gcc_callx(
             env->ctx, loc, slice_fn,
             gcc_bitcast(env->ctx, loc, arr, str_gcc_t),
             index_val,
             gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(arr_t, ArrayType)->item_type))),
-        array_gcc_t);
+        array_gcc_t));
+    // Set COW field:
+    gcc_assign(*block, loc, gcc_lvalue_access_field(slice_var, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
+               gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
+    return gcc_rval(slice_var);
+}
+
+gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access)
+{
+    sss_type_t *array_t = get_type(env, ast);
+    gcc_loc_t *loc = ast_loc(env, ast);
+    if (array_t->tag == PointerType) {
+        auto ptr = Match(array_t, PointerType);
+        if (ptr->is_optional)
+            compiler_err(env, ast, "This value can't be sliced, because it may or may not be null.");
+        return array_field_slice(env, block, WrapAST(ast, Dereference, ast), field_name, access);
+    }
+
+    if (array_t->tag != ArrayType)
+        return NULL;
+
+    auto array = Match(array_t, ArrayType);
+    gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
+    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+
+    gcc_type_t *item_gcc_t = sss_type_to_gcc(env, array->item_type);
+    gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
+
+    auto struct_type = Match(array->item_type, StructType);
+    for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
+        if (!streq(ith(struct_type->field_names, i), field_name))  continue;
+
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *arr_var;
+        if (access == ACCESS_WRITE) {
+            arr_var = get_lvalue(env, block, ast, true);
+            if (access == ACCESS_WRITE)
+                check_cow(env, block, array_t, gcc_lvalue_address(arr_var, loc));
+        } else {
+            arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
+            gcc_assign(*block, loc, arr_var, compile_expr(env, block, ast));
+            mark_array_cow(env, block, gcc_lvalue_address(arr_var, loc));
+        }
+        gcc_rvalue_t *arr_val = gcc_rval(arr_var);
+
+        // items = &(array.items->field)
+        gcc_field_t *items_field = gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD);
+        gcc_rvalue_t *items = gcc_rvalue_access_field(arr_val, loc, items_field);
+        gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, (size_t)i);
+        gcc_lvalue_t *field = gcc_rvalue_dereference_field(items, loc, struct_field);
+        gcc_rvalue_t *field_addr = gcc_lvalue_address(field, loc);
+
+        // length = array->length
+        gcc_rvalue_t *len = gcc_rvalue_access_field(arr_val, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD));
+
+        // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
+        sss_type_t *field_type = ith(struct_type->field_types, i);
+        gcc_rvalue_t *stride = gcc_rvalue_access_field(arr_val, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
+        size_t struct_size = gcc_sizeof(env, array->item_type);
+        size_t field_size = gcc_sizeof(env, field_type);
+        if (struct_size % field_size > 0)
+            compiler_err(env, ast, "I'm sorry, but the structs in this array (%s) are not evenly divisible by the size of the given field (.%s). "
+                         "This unfortunately means I can't produce a constant-time array slice.",
+                         type_to_string(array->item_type), field_name);
+
+        stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT16), stride,
+                               gcc_rvalue_int16(env->ctx, struct_size/field_size));
+
+        gcc_type_t *slice_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
+        gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
+        gcc_field_t *fields[] = {
+            gcc_get_field(slice_struct, ARRAY_DATA_FIELD),
+            gcc_get_field(slice_struct, ARRAY_LENGTH_FIELD),
+            gcc_get_field(slice_struct, ARRAY_STRIDE_FIELD),
+            gcc_get_field(slice_struct, ARRAY_CAPACITY_FIELD),
+        };
+
+        gcc_rvalue_t *rvals[] = {
+            field_addr,
+            len,
+            stride,
+            gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0),
+        };
+
+        gcc_lvalue_t *result_var = gcc_local(func, loc, slice_gcc_t, "_slice");
+        gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 4, fields, rvals));
+        return gcc_rval(result_var);
+    }
+    return NULL;
 }
 
 static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_loc_t *loc, span_t *span, gcc_struct_t *array_struct, gcc_rvalue_t *arr, gcc_rvalue_t *index_val)
@@ -362,7 +456,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         return bounds_checked_index(env, block, loc, &index->span, array_struct, arr, index_val);
 }
 
-gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
+gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow)
 {
     auto array = Match(ast, Array);
     sss_type_t *t = get_type(env, ast);
@@ -395,7 +489,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast)
                 initial_items,
                 gcc_zero(env->ctx, gcc_type(env->ctx, INT32)),
                 gcc_one(env->ctx, gcc_type(env->ctx, INT16)),
-                gcc_zero(env->ctx, gcc_type(env->ctx, INT16)),
+                gcc_rvalue_int16(env->ctx, mark_cow ? -1 : 0),
             }));
 
     env_t env2 = *env;

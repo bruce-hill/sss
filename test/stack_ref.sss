@@ -1,0 +1,40 @@
+def Vec{x,y:Num}
+
+
+def add_num(ref:&Num)
+    ref += 100
+
+// Test with nums:
+>>> x := 1.5
+>>> add_num(&x)
+>>> x
+=== 101.5
+
+// Test with structs:
+>>> v := Vec{1, 2}
+>>> copy := v
+>>> add_num(&v.x)
+>>> v
+=== Vec{x=101, y=2}
+>>> copy
+=== Vec{x=1, y=2}
+>>> v_ref := &v
+>>> v_ref.x = 999
+>>> v
+=== Vec{x=999, y=2}
+>>> copy
+=== Vec{x=1, y=2}
+
+>>> w := &Vec{1,2}
+>>> w.x = 100
+>>> w
+=== &Vec{x=100, y=2}
+
+// Test with arrays:
+>>> arr := [1.0, 2.0, 3.0]
+>>> copy := arr
+>>> add_num(&(&arr)[1])
+>>> arr
+=== [101, 2, 3]
+>>> copy
+=== [1, 2, 3]

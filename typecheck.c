@@ -387,17 +387,17 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         switch (value->tag) {
         case Dereference: {
             sss_type_t *dereferenced_t = get_type(env, Match(value, Dereference)->value);
-            is_stack = dereferenced_t->tag == PointerType && Match(dereferenced_t, PointerType)->is_stack;
+            is_stack = dereferenced_t->tag == PointerType ? Match(dereferenced_t, PointerType)->is_stack : true;
             break;
         }
         case FieldAccess: {
             sss_type_t *fielded_t = get_type(env, Match(value, FieldAccess)->fielded);
-            is_stack = fielded_t->tag == PointerType && Match(fielded_t, PointerType)->is_stack;
+            is_stack = fielded_t->tag == PointerType ? Match(fielded_t, PointerType)->is_stack : true;
             break;
         }
         case Index: {
             sss_type_t *indexed_t = get_type(env, Match(value, Index)->indexed);
-            is_stack = indexed_t->tag == PointerType && Match(indexed_t, PointerType)->is_stack;
+            is_stack = indexed_t->tag == PointerType ? Match(indexed_t, PointerType)->is_stack : true;
             break;
         }
         default: break;

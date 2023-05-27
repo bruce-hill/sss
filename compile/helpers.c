@@ -1260,48 +1260,49 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         sss_type_t *fielded_t = get_type(env, access->fielded);
-        // arr.x => [item.x for x in arr]
-        if (fielded_t->tag == ArrayType) {
-            compiler_err(env, ast, "I can't assign to immutable array slice values");
-        } else if (fielded_t->tag == PointerType && Match(fielded_t, PointerType)->pointed->tag == ArrayType) {
-            if (!allow_slices)
-                compiler_err(env, ast, "I can't assign to array slices");
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *slice = gcc_local(func, loc, sss_type_to_gcc(env, get_type(env, ast)), "_slice");
-            gcc_assign(*block, loc, slice, compile_expr(env, block, ast));
-            return slice;
-        }
-        gcc_rvalue_t *fielded_rval = compile_expr(env, block, access->fielded);
 
-        if (fielded_t->tag != PointerType)
-            compiler_err(env, ast, "This is an immutable value, it can't be modified");
-
-        auto ptr = Match(fielded_t, PointerType);
-        while (ptr->pointed->tag == PointerType) {
+        gcc_lvalue_t *fielded_lval;
+        if (fielded_t->tag == PointerType) {
+            gcc_rvalue_t *ptr_rval = compile_expr(env, block, access->fielded);
+            auto ptr = Match(fielded_t, PointerType);
+          dereference_again:
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-            ptr = Match(ptr->pointed, PointerType);
-            fielded_rval = gcc_rval(gcc_rvalue_dereference(fielded_rval, loc));
+            fielded_lval = gcc_rvalue_dereference(ptr_rval, loc);
             fielded_t = ptr->pointed;
-        }
-        if (ptr->is_optional)
-            compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-        else if (ptr->is_stack)
-            compiler_err(env, ast, "This pointer is to an immutable value that lives on the stack, so it can't be mutated (only reassigned).");
+            if (fielded_t->tag == PointerType) {
+                ptr_rval = gcc_rval(fielded_lval);
+                ptr = Match(fielded_t, PointerType);
+                goto dereference_again;
+            }
+        } else {
+            fielded_lval = get_lvalue(env, block, access->fielded, allow_slices);
+        } 
 
-        if (ptr->pointed->tag == StructType) {
-            auto fielded_struct = Match(ptr->pointed, StructType);
+        if (fielded_t->tag == StructType) {
+            auto fielded_struct = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
                 if (streq(ith(fielded_struct->field_names, i), access->field)) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, ptr->pointed));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, i);
-                    return gcc_rvalue_dereference_field(fielded_rval, loc, field);
+                    return gcc_lvalue_access_field(fielded_lval, loc, field);
                 }
             }
             compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
-                  type_to_string(ptr->pointed), access->field);
-        } else if (ptr->pointed->tag == TableType) {
-            sss_type_t *table_t = ptr->pointed;
+                  type_to_string(fielded_t), access->field);
+        } else if (fielded_t->tag == ArrayType) { 
+            // arr.x => [item.x for x in arr]
+            if (!allow_slices)
+                compiler_err(env, ast, "I can't use array slices as assignment targets");
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_rvalue_t *slice_val = array_field_slice(env, block, access->fielded, access->field, ACCESS_WRITE);
+            if (!slice_val)
+                compiler_err(env, ast, "This isn't a valid slice that I can assign to.");
+            gcc_lvalue_t *slice = gcc_local(func, loc, sss_type_to_gcc(env, get_type(env, ast)), "_slice");
+            gcc_assign(*block, loc, slice, slice_val);
+            return slice;
+        } else if (fielded_t->tag == TableType) {
+            sss_type_t *table_t = fielded_t;
             gcc_func_t *func = gcc_block_func(*block);
             if (streq(access->field, "default")) {
                 sss_type_t *key_t = Match(table_t, TableType)->key_type;
@@ -1311,7 +1312,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                                                           gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
                 gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
-                gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(def_ptr));
+                gcc_assign(*block, loc, gcc_lvalue_access_field(fielded_lval, loc, field), gcc_rval(def_ptr));
                 return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
             } else if (streq(access->field, "fallback")) {
                 gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
@@ -1320,7 +1321,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                                                           gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
                 gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
-                gcc_assign(*block, loc, gcc_rvalue_dereference_field(fielded_rval, loc, field), gcc_rval(fallback_ptr));
+                gcc_assign(*block, loc, gcc_lvalue_access_field(fielded_lval, loc, field), gcc_rval(fallback_ptr));
                 return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
             } else {
                 compiler_err(env, ast, "The only fields that can be mutated on a table are '.default' and '.fallback', not '.%s'", access->field);
@@ -1338,55 +1339,38 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             compiler_err(env, ast, "I can't assign to array slices");
 
         sss_type_t *indexed_t = get_type(env, indexing->indexed);
-        if (indexed_t->tag == ArrayType)
-            compiler_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
-        else if (indexed_t->tag == TableType)
-            compiler_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
+        if (indexed_t->tag == ArrayType) {
+            if (!allow_slices)
+                compiler_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");
+        } else if (indexed_t->tag == TableType) {
+            if (!allow_slices)
+                compiler_err(env, ast, "I can't assign to a table value (which is immutable), only to table pointers.");
+        }
 
         sss_type_t *pointed_type = indexed_t;
-        bool is_stack = false;
         while (pointed_type->tag == PointerType) {
             auto ptr = Match(pointed_type, PointerType);
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing an index on this value could result in trying to dereference a nil value, since the type is optional");
-            is_stack = ptr->is_stack;
             pointed_type = ptr->pointed;
         }
-
-        if (is_stack)
-            compiler_err(env, ast, "This pointer is to a stack value, so it can't be mutated.");
 
         if (pointed_type->tag == ArrayType) {
             return array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_WRITE);
         } else if (pointed_type->tag == TableType) {
-            return table_lvalue(env, block, pointed_type, compile_expr(env, block, indexing->indexed), indexing->index);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *table_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, pointed_type)), "_table");
+            gcc_assign(*block, loc, table_ptr, compile_expr(env, block, indexing->indexed));
+            mark_table_cow(env, block, gcc_rval(table_ptr));
+            return table_lvalue(env, block, pointed_type, gcc_rval(table_ptr), indexing->index);
         } else {
             compiler_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
         }
     }
-    case HeapAllocate: {
-        ast_t *value = Match(ast, HeapAllocate)->value;
-        if (value->tag == FieldAccess && get_type(env, Match(value, FieldAccess)->fielded)->tag == PointerType)
-            goto safe;
-        else if (value->tag == Index && get_type(env, Match(value, Index)->indexed)->tag == PointerType)
-            goto safe;
-        else
-            compiler_err(env, ast, "I don't know how to assign to this value. Maybe it's immutable?");
-      safe:;
-        gcc_rvalue_t *rval = compile_expr(env, block, value);
-        sss_type_t *t = get_type(env, value);
-        gcc_func_t *func = gcc_block_func(*block);
-        ssize_t gcc_size = gcc_sizeof(env, t);
-        if (t->tag == ArrayType)
-            gcc_size += 4; // Hidden "capacity" field
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
-        gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
-        gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, heap_strf("_heap_%s", type_to_string(t)));
-        gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
-        gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
-        gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
-        return tmp;
-    }
+    case StackReference:
+        compiler_err(env, ast, "I can't assign to a stack reference. You don't need the '&', you can just assign to the value directly.");
+    case HeapAllocate:
+        compiler_err(env, ast, "I can't assign to a heap allocation. You don't need the '@', you can just assign to the value directly.");
     default:
         compiler_err(env, ast, "This is not a valid value for assignment");
     }

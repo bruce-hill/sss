@@ -29,6 +29,17 @@ gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
     return gcc_rvalue_size(env->ctx, value_offset);
 }
 
+void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr)
+{
+    sss_type_t *table_t = Type(TableType, .key_type=Type(BoolType), .value_type=Type(BoolType));
+    gcc_type_t *table_gcc_t = sss_type_to_gcc(env, table_t);
+    gcc_struct_t *table_struct = gcc_type_if_struct(table_gcc_t);
+    gcc_lvalue_t *cow = gcc_rvalue_dereference_field(
+        gcc_cast(env->ctx, NULL, table_ptr, gcc_get_ptr_type(table_gcc_t)), NULL,
+        gcc_get_field(table_struct, TABLE_COW_FIELD));
+    gcc_assign(*block, NULL, cow, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1));
+}
+
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast)
 {
     gcc_func_t *func = gcc_block_func(*block);
@@ -188,7 +199,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     return gcc_rval(value_lval);
 }
 
-gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
+gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow)
 {
     auto table = Match(ast, Table);
     sss_type_t *t = get_type(env, ast);
@@ -202,7 +213,11 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_loc_t *loc = ast_loc(env, ast);
     gcc_lvalue_t *table_var = gcc_local(func, loc, gcc_t, "_table");
 
-    gcc_assign(*block, loc, table_var, gcc_struct_constructor(env->ctx, loc, gcc_t, 0, NULL, NULL));
+    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+    gcc_assign(*block, loc, table_var,
+        gcc_struct_constructor(env->ctx, loc, gcc_t, 1,
+            (gcc_field_t*[]){gcc_get_field(gcc_struct, TABLE_COW_FIELD)},
+            (gcc_rvalue_t*[]){gcc_rvalue_bool(env->ctx, mark_cow ? 1 : 0)}));
 
     env_t env2 = *env;
     env2.comprehension_callback = (void*)add_table_entry;

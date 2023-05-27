@@ -286,9 +286,6 @@ void math_update_rec(
         if (ptr->is_optional)
             compiler_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
 
-        if (Match(lhs_t, PointerType)->pointed->tag == ArrayType)
-            check_cow(env, block, Match(lhs_t, PointerType)->pointed, gcc_rval(lhs));
-
         return math_update_rec(env, block, ast, ptr->pointed, gcc_rvalue_dereference(gcc_rval(lhs), ast_loc(env, ast)), op, rhs_t, rhs);
     }
 
@@ -308,6 +305,8 @@ void math_update_rec(
 
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
+        check_cow(env, block, lhs_t, gcc_lvalue_address(lhs, loc));
+
         // Use the minimum common length:
         // [1,2,3] += [10,20] ==> [11,22,3]
         // [1,2,3] += [10,20,30,40] ==> [11,22,33]
@@ -355,6 +354,8 @@ void math_update_rec(
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
     } else if (lhs_t->tag == ArrayType) {
+        check_cow(env, block, lhs_t, gcc_lvalue_address(lhs, loc));
+
         // Pseudocode:
         // for (i = 0; i < lhs->len; i++)
         //     update(&lhs->data[i], rhs)
@@ -427,11 +428,6 @@ gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     ast_t *lhs = ast->__data.AddUpdate.lhs, *rhs = ast->__data.AddUpdate.rhs;
     // End unsafe
 
-    // switch (get_type(env, lhs)->tag) {
-    // case ArrayType: case TableType:
-    //     compiler_err(env, lhs, "This is an immutable value and it can't be updated");
-    // default: break;
-    // }
     gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs, true);
     gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 

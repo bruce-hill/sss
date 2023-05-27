@@ -267,7 +267,7 @@ string_t range_slice(string_t array, range_t range, int64_t item_size)
 
     return (string_t){
         (char*)array.data + item_size*(range.first-1),
-        (int32_t)len, (int16_t)(array.stride * range.stride), 0,
+        (int32_t)len, (int16_t)(array.stride * range.stride), -1,
     };
 }
 

@@ -672,7 +672,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                           str_rval, \
                                           gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT32)), \
                                           gcc_cast(env->ctx, loc, stride_rval, gcc_type(env->ctx, INT16)), \
-                                          gcc_zero(env->ctx, gcc_type(env->ctx, INT16)), \
+                                          gcc_rvalue_int16(env->ctx, -1), \
                                       })
     case StringLiteral: {
         const char* str = Match(ast, StringLiteral)->str;
@@ -832,10 +832,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(str_struct_var);
     }
     case Array: {
-        return compile_array(env, block, ast);
+        return compile_array(env, block, ast, true);
     }
     case Table: {
-        return compile_table(env, block, ast);
+        return compile_table(env, block, ast, true);
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
@@ -1251,7 +1251,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Maybe: case HeapAllocate: {
         ast_t *value = ast->tag == Maybe ? Match(ast, Maybe)->value : Match(ast, HeapAllocate)->value;
-        gcc_rvalue_t *rval = compile_expr(env, block, value);
+        gcc_rvalue_t *rval;
+        // Don't mark these as COW as they would otherwise be:
+        if (value->tag == Array)
+            rval = compile_array(env, block, value, false);
+        else if (value->tag == Table)
+            rval = compile_table(env, block, value, false);
+        else
+            rval = compile_expr(env, block, value);
         sss_type_t *t = get_type(env, value);
         if (t->tag == VoidType)
             compiler_err(env, value, "This expression is a Void type, which can't be heap allocated");
@@ -1266,14 +1273,43 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, loc, tmp, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_t));
         gcc_assign(*block, loc, gcc_rvalue_dereference(gcc_rval(tmp), loc), rval);
         if (t->tag == TableType && value->tag != Table)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "sss_hashmap_mark_cow"), gcc_rval(tmp)));
+            mark_table_cow(env, block, gcc_rval(tmp));
         else if (t->tag == ArrayType && value->tag != Array)
             mark_array_cow(env, block, gcc_rval(tmp));
         return gcc_rval(tmp);
     }
     case StackReference: {
-        gcc_lvalue_t *lval = get_lvalue(env, block, Match(ast, StackReference)->value, false);
-        return gcc_lvalue_address(lval, loc);
+        ast_t *value = Match(ast, StackReference)->value;
+        sss_type_t *t = get_type(env, value);
+        gcc_func_t *func = gcc_block_func(*block);
+        switch (value->tag) {
+        case Var: case FieldAccess: case Index: case Dereference: {
+            gcc_lvalue_t *lval = get_lvalue(env, block, value, false);
+            // With &x, &x.y, &x[i], &*x, we need to set the COW flag for arrays/tables:
+            if (t->tag == TableType)
+                mark_table_cow(env, block, gcc_lvalue_address(lval, loc));
+            else if (t->tag == ArrayType)
+                mark_array_cow(env, block, gcc_lvalue_address(lval, loc));
+            return gcc_lvalue_address(lval, loc);
+        }
+        case Array: {
+            // Don't mark &[...] literals as COW, since there are no other possible aliases yet
+            gcc_lvalue_t *var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
+            gcc_assign(*block, loc, var, compile_array(env, block, value, false));
+            return gcc_lvalue_address(var, loc);
+        }
+        case Table: {
+            // Don't mark &{..=>..} literals as COW, since there are no other possible aliases yet
+            gcc_lvalue_t *var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_table");
+            gcc_assign(*block, loc, var, compile_table(env, block, value, false));
+            return gcc_lvalue_address(var, loc);
+        }
+        default: {
+            gcc_lvalue_t *var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_value");
+            gcc_assign(*block, loc, var, compile_expr(env, block, value));
+            return gcc_lvalue_address(var, loc);
+        }
+        }
     }
     case Dereference: {
         sss_type_t *t = get_type(env, ast); // Check this is a pointer type
@@ -1282,7 +1318,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == ArrayType)
             mark_array_cow(env, block, obj);
         else if (t->tag == TableType)
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "sss_hashmap_mark_cow"), obj));
+            mark_table_cow(env, block, obj);
         return gcc_rval(gcc_rvalue_dereference(obj, loc));
     }
     case AssertNonNull: {
@@ -1312,14 +1348,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return len;
     }
     case FieldAccess: {
-        (void)get_type(env, ast); // typecheck
         auto access = Match(ast, FieldAccess);
+        gcc_rvalue_t *slice = array_field_slice(env, block, access->fielded, access->field, ACCESS_READ);
+        if (slice) return slice;
+
+        (void)get_type(env, ast); // typecheck
         sss_type_t *fielded_t = get_type(env, access->fielded);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *obj_lval = gcc_local(func, loc, sss_type_to_gcc(env, fielded_t), "_fielded");
         gcc_assign(*block, loc, obj_lval, compile_expr(env, block, access->fielded));
         gcc_rvalue_t *obj = gcc_rval(obj_lval);
-        gcc_rvalue_t *obj_ptr = NULL;
 
       get_field:
         switch (fielded_t->tag) {
@@ -1327,11 +1365,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto ptr = Match(fielded_t, PointerType);
             if (ptr->is_optional)
                 compiler_err(env, ast, "This field access is unsafe because the value may be nil");
+
             if (ptr->pointed->tag == ArrayType)
                 mark_array_cow(env, block, obj);
             else if (ptr->pointed->tag == TableType)
-                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "sss_hashmap_mark_cow"), obj));
-            obj_ptr = obj;
+                mark_table_cow(env, block, obj);
+
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
             fielded_t = ptr->pointed;
             goto get_field;
@@ -1345,69 +1384,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, loc, field);
                 }
-            }
-            break;
-        }
-        case ArrayType: { // [Vec{1,2}, Vec{3,4}].x ==> [1,3]
-            auto array = Match(fielded_t, ArrayType);
-            if (array->item_type->tag != StructType)
-                break; // TODO: support pointers?
-
-            gcc_type_t *array_gcc_t = sss_type_to_gcc(env, fielded_t);
-            gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
-
-            gcc_type_t *item_gcc_t = sss_type_to_gcc(env, array->item_type);
-            gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
-
-            auto struct_type = Match(array->item_type, StructType);
-            for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
-                if (!streq(ith(struct_type->field_names, i), access->field))  continue;
-
-                if (obj_ptr)
-                    check_cow(env, block, fielded_t, obj_ptr);
-
-                // items = &(array.items->field)
-                gcc_field_t *items_field = gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD);
-                gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, items_field);
-                gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, (size_t)i);
-                gcc_lvalue_t *field = gcc_rvalue_dereference_field(items, loc, struct_field);
-                gcc_rvalue_t *field_addr = gcc_lvalue_address(field, loc);
-
-                // length = array->length
-                gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD));
-
-                // stride = array->stride * sizeof(array->items[0]) / sizeof(array->items[0].field)
-                sss_type_t *field_type = ith(struct_type->field_types, i);
-                gcc_rvalue_t *stride = gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
-                size_t struct_size = gcc_sizeof(env, array->item_type);
-                size_t field_size = gcc_sizeof(env, field_type);
-                if (struct_size % field_size > 0)
-                    compiler_err(env, ast, "I'm sorry, but the structs in this array (%s) are not evenly divisible by the size of the given field (.%s). "
-                                 "This unfortunately means I can't produce a constant-time array slice.",
-                                 type_to_string(array->item_type), access->field);
-
-                stride = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_type(env->ctx, INT16), stride,
-                                       gcc_rvalue_int16(env->ctx, struct_size/field_size));
-
-                gcc_type_t *slice_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
-                gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
-                gcc_field_t *fields[] = {
-                    gcc_get_field(slice_struct, ARRAY_DATA_FIELD),
-                    gcc_get_field(slice_struct, ARRAY_LENGTH_FIELD),
-                    gcc_get_field(slice_struct, ARRAY_STRIDE_FIELD),
-                    gcc_get_field(slice_struct, ARRAY_CAPACITY_FIELD),
-                };
-
-                gcc_rvalue_t *rvals[] = {
-                    field_addr,
-                    len,
-                    stride,
-                    gcc_zero(env->ctx, gcc_type(env->ctx, INT16)),
-                };
-
-                gcc_lvalue_t *result_var = gcc_local(func, loc, slice_gcc_t, "_slice");
-                gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 4, fields, rvals));
-                return gcc_rval(result_var);
             }
             break;
         }
@@ -1475,7 +1451,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
                                  gcc_type(env->ctx, INT32)), // len
                         gcc_rvalue_int16(env->ctx, entry_size/key_size), // stride
-                        gcc_rvalue_int16(env->ctx, 0), // capacity
+                        gcc_rvalue_int16(env->ctx, -1), // capacity
                     });
             } else if (streq(access->field, "values")) {
                 sss_type_t *key_t = Match(fielded_t, TableType)->key_type;
@@ -1506,7 +1482,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
                                  gcc_type(env->ctx, INT32)), // len
                         gcc_rvalue_int16(env->ctx, entry_size/value_size), // stride
-                        gcc_rvalue_int16(env->ctx, 0), // capacity
+                        gcc_rvalue_int16(env->ctx, -1), // capacity
                     });
             }
             break;

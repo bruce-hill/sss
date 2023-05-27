@@ -114,10 +114,11 @@ void math_update_rec(
 typedef enum {ACCESS_READ, ACCESS_WRITE} access_type_e;
 gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access);
 gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, access_type_e access);
+gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access);
 gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t *arr);
-gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
 gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member);
 
@@ -126,8 +127,9 @@ gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t);
 gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out, bool raw);
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast);
 void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val);
-gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast);
+gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
 void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
+void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
