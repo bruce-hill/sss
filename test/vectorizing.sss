@@ -19,10 +19,10 @@ def Vec{x,y:Num}
 >>> vecs
 === @[Vec{x=-112, y=124}, Vec{x=-206, y=208}, Vec{x=-310, y=312}]
 
-
-
->>> vecs_val := [Vec{1,2}, Vec{3,4}, Vec{5,6}]
+>>> vecs_val := [Vec{1,2}, Vec{3,4}]
 >>> vecs_val_copy := vecs_val
 >>> vecs_val.x *= -1
 >>> vecs_val
+=== [Vec{x=-1, y=2}, Vec{x=-3, y=4}]
 >>> vecs_val_copy
+=== [Vec{x=1, y=2}, Vec{x=3, y=4}]
