@@ -79,6 +79,7 @@ struct sss_type_s {
         struct {
             const char* name;
             List(sss_tagged_union_member_t) members;
+            unsigned short int tag_bits;
         } TaggedUnionType;
         struct {
             const char *path;

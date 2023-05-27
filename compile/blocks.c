@@ -127,7 +127,7 @@ void predeclare_def_types(env_t *env, ast_t *def)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* name = tu_def->name;
-        sss_type_t *t = Type(TaggedUnionType, .name=name, .members=LIST(sss_tagged_union_member_t));
+        sss_type_t *t = Type(TaggedUnionType, .name=name, .members=LIST(sss_tagged_union_member_t), .tag_bits=tu_def->tag_bits);
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         if (hget(env->bindings, name, binding_t*))
             compiler_err(env, def, "The name '%s' is already being used by something else", name);

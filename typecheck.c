@@ -142,7 +142,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .name=tu->name, .members=members);
+        return Type(TaggedUnionType, .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeDSL: {
         auto dsl = Match(ast, TypeDSL);

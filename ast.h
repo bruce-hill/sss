@@ -255,6 +255,7 @@ struct ast_s {
             List(int64_t) tag_values;
             List(ast_t *) tag_types;
             List(ast_t*) definitions;
+            unsigned short int tag_bits;
         } TaggedUnionDef, TypeTaggedUnion;
         struct {
             const char *name;

@@ -84,6 +84,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           List(ast_t*): ast_list_to_str, \
                           const char *: label_str, \
                           int64_t: label_int, \
+                          unsigned short int: label_int, \
                           double: label_double, \
                           bool: label_bool, \
                           unsigned char: label_bool, \
@@ -149,8 +150,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Struct, F(type), F(members))
         T(StructDef, F(name), F(field_names), F(field_types), F(field_defaults), F(definitions))
         T(StructField, F(name), F(value))
-        T(TaggedUnionDef, F(name), F(tag_names), "tag_values=...", F(tag_types), F(definitions))
-        T(TypeTaggedUnion, F(name), F(tag_names), "tag_values=...", F(tag_types))
+        T(TaggedUnionDef, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_types), F(definitions))
+        T(TypeTaggedUnion, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_types))
         T(TaggedUnionField, F(name), F(value))
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))

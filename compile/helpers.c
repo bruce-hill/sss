@@ -120,21 +120,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     }
     case TaggedUnionType: {
         auto tagged = Match(sss_t, TaggedUnionType);
-        int64_t max_tag = 0;
-        foreach (tagged->members, member, _) {
-            if (member->tag_value > max_tag)
-                max_tag = member->tag_value;
-        }
-        ssize_t size = 0;
-        if (max_tag > INT32_MAX)
-            size = 8;
-        else if (max_tag > INT16_MAX)
-            size = 4;
-        else if (max_tag > INT8_MAX)
-            size = 2;
-        else
-            size = 1;
-
+        ssize_t size = tagged->tag_bits / 8;
         ssize_t union_align = size;
         ssize_t union_size = 0;
         foreach (tagged->members, member, _) {
@@ -158,20 +144,13 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
 gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
 {
     auto tagged = Match(t, TaggedUnionType);
-    int64_t max_tag = 0;
-    foreach (tagged->members, member, _) {
-        if (member->tag_value > max_tag)
-            max_tag = member->tag_value;
+    switch (tagged->tag_bits) {
+    case 64: return gcc_type(env->ctx, INT64);
+    case 32: return gcc_type(env->ctx, INT32);
+    case 16: return gcc_type(env->ctx, INT16);
+    case 8: return gcc_type(env->ctx, INT8);
+    default: compiler_err(env, NULL, "Unsupported tagged enum size: %d\n", tagged->tag_bits); 
     }
-
-    if (max_tag > INT32_MAX)
-        return gcc_type(env->ctx, INT64);
-    else if (max_tag > INT16_MAX)
-        return gcc_type(env->ctx, INT32);
-    else if (max_tag > INT8_MAX)
-        return gcc_type(env->ctx, INT16);
-    else
-        return gcc_type(env->ctx, INT8);
 }
 
 gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
