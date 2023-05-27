@@ -1590,6 +1590,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL, true);
             gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_value_t, TableType)->value_type)));
             ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
+        } else if (container_value_t->tag == ArrayType) {
+            ret = array_contains(env, block, in->container, in->member);
         } else if (member_t->tag == TaggedUnionType && type_eq(member_t, container_t)) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
