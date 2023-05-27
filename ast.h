@@ -122,8 +122,11 @@ struct ast_s {
         } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
             AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
             Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
-            And, Or, Xor, Min, Max, Concatenate,
+            And, Or, Xor, Concatenate,
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
+        struct {
+            ast_t *lhs, *rhs, *key;
+        } Min, Max;
         struct {
             ast_t *value;
         } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, StackReference, Dereference, AssertNonNull;

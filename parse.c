@@ -909,7 +909,25 @@ PARSER(parse_reduction) {
     const char *combo_start = pos;
     ast_tag_e binop = match_binary_operator(&pos);
     ast_t *combination;
-    if (binop != Unknown) {
+    if (binop == Min || binop == Max) {
+        ast_t *key = NewAST(ctx->file, pos, pos, Var, binop == Min ? "_min_" : "_max_");
+        for (bool progress = true; progress; ) {
+            ast_t *new_term;
+            progress = (false
+                || (new_term=parse_index_suffix(ctx, key))
+                || (new_term=parse_field_suffix(ctx, key))
+                || (new_term=parse_bang_suffix(ctx, key))
+                || (new_term=parse_fncall_suffix(ctx, key, true))
+                );
+            if (progress) key = new_term;
+        }
+        if (key->tag == Var) key = NULL;
+        else pos = key->span.end;
+        combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Min={
+                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"),
+                             .key=key});
+    } else if (binop != Unknown) {
         combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Add={
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y")});
@@ -1700,10 +1718,29 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
     auto terms = LIST(ast_t*, term);
     NEW_LIST(ast_tag_e, binops);
+    NEW_LIST(ast_t*, minmax_keys);
     for (;;) {
         spaces(&pos);
         ast_tag_e tag = match_binary_operator(&pos);
         if (tag == Unknown) break;
+
+        ast_t *key = NULL;
+        if (tag == Min || tag == Max) {
+            key = NewAST(ctx->file, pos, pos, Var, tag == Min ? "_min_" : "_max_");
+            for (bool progress = true; progress; ) {
+                ast_t *new_term;
+                progress = (false
+                    || (new_term=parse_index_suffix(ctx, key))
+                    || (new_term=parse_field_suffix(ctx, key))
+                    || (new_term=parse_bang_suffix(ctx, key))
+                    || (new_term=parse_fncall_suffix(ctx, key, true))
+                    );
+                if (progress) key = new_term;
+            }
+            if (key->tag == Var) key = NULL;
+            else pos = key->span.end;
+        }
+
         assert(op_tightness[tag]);
         spaces(&pos);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, pos) : parse_term(ctx, pos);
@@ -1716,6 +1753,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         pos = rhs->span.end;
         APPEND(terms, rhs);
         APPEND(binops, tag);
+        APPEND(minmax_keys, key);
     }
 
     // Sort out the op precedence (everything is left-associative here)
@@ -1730,8 +1768,10 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         }
 
         auto tag = LIST_ITEM(binops, tightest_op);
+        ast_t *key = LIST_ITEM(minmax_keys, tightest_op);
         // Bind two terms into one:
         LIST_REMOVE(binops, tightest_op);
+        LIST_REMOVE(minmax_keys, tightest_op);
         ast_t *lhs = LIST_ITEM(terms, tightest_op);
         ast_t *rhs = LIST_ITEM(terms, tightest_op + 1);
 
@@ -1750,8 +1790,9 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 ast_t,
                 .span.file=ctx->file, .span.start=lhs->span.start, .span.end=rhs->span.end,
                 .tag=tag,
-                .__data.Add.lhs=lhs,
-                .__data.Add.rhs=rhs);
+                .__data.Min.lhs=lhs,
+                .__data.Min.rhs=rhs,
+                .__data.Min.key=key);
             // End unsafe
         }
 

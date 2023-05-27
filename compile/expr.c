@@ -2140,16 +2140,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case Min: case Max: {
-        ast_t *lhs_ast, *rhs_ast;
+        ast_t *lhs_ast, *rhs_ast, *key;
         gcc_comparison_e cmp;
         if (ast->tag == Min) {
             cmp = GCC_COMPARISON_LE;
             lhs_ast = Match(ast, Min)->lhs;
             rhs_ast = Match(ast, Min)->rhs;
+            key = Match(ast, Min)->key;
         } else {
             cmp = GCC_COMPARISON_GE;
             lhs_ast = Match(ast, Max)->lhs;
             rhs_ast = Match(ast, Max)->rhs;
+            key = Match(ast, Max)->key;
         }
         gcc_func_t *func = gcc_block_func(*block);
         sss_type_t *t = get_type(env, ast);
@@ -2174,11 +2176,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                   type_to_string(lhs_t));
 
         gcc_rvalue_t *should_choose_lhs;
-        if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
-            should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
-        else
-            should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
-                                               gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        if (key) {
+            env_t *lhs_env = fresh_scope(env), *rhs_env = fresh_scope(env);
+            const char *var_name = (ast->tag == Min) ? "_min_" : "_max_";
+            // Note: These both use 't' because promotion has already occurred.
+            hset(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
+            hset(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
+
+            sss_type_t *cmp_lhs_t = get_type(lhs_env, key);
+            gcc_rvalue_t *lhs_cmp_val = compile_expr(lhs_env, block, key),
+                         *rhs_cmp_val = compile_expr(rhs_env, block, key);
+            if (is_numeric(cmp_lhs_t) || cmp_lhs_t->tag == PointerType)
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_cmp_val, rhs_cmp_val);
+            else
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, cmp_lhs_t, lhs_cmp_val, rhs_cmp_val),
+                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        } else {
+            if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
+            else
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
+                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        }
 
         gcc_block_t *choose_lhs = gcc_new_block(func, fresh("choose_lhs")),
                     *choose_rhs = gcc_new_block(func, fresh("choose_rhs")),
