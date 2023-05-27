@@ -282,6 +282,7 @@ void array_cow(void *voidarr, size_t item_size, bool atomic)
         for (int32_t i = 0; i < arr->len; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i*item_size, item_size);
     }
+    arr->stride = 1;
     arr->data = copy;
     arr->free = 0;
 }
