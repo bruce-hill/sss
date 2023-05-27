@@ -193,7 +193,7 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
     u2 = unit_derive(u2, NULL, env->derived_units);
 
     const char* units;
-    if (tag == Add || tag == Subtract) {
+    if (tag == Add || tag == Subtract || tag == And || tag == Or || tag == Xor) {
         if (!streq(u1, u2))
             compiler_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
         units = u1;
@@ -224,6 +224,10 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         return with_units(rhs_t, units);
     } else if (is_numeric(rhs_t) && (lhs_t->tag == StructType || lhs_t->tag == ArrayType)) {
         return with_units(lhs_t, units);
+    } else if (lhs_t->tag == BoolType && (rhs_t->tag == StructType || rhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+        return rhs_t;
+    } else if (rhs_t->tag == BoolType && (lhs_t->tag == StructType || lhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+        return lhs_t;
     } else {
         compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
@@ -656,6 +660,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
+        case AndUpdate: case OrUpdate: case XorUpdate:
         case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
             return Type(VoidType);
         default: break;
@@ -733,7 +738,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Negative: {
         sss_type_t *t = get_type(env, Match(ast, Negative)->value);
         if (!is_numeric(t))
-            compiler_err(env, ast, "I only know how to negate numeric types, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to get negatives of numeric types, not %s", type_to_string(t));
         return t;
     }
     case And: {
@@ -747,20 +752,16 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return lhs_t;
         } else if (rhs_t->tag == AbortType) {
             return lhs_t;
+        } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
+            return lhs_t;
         } else if (lhs_t->tag == PointerType && rhs_t->tag == PointerType) {
             auto lhs_ptr = Match(lhs_t, PointerType);
             auto rhs_ptr = Match(rhs_t, PointerType);
             if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
                 return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional);
-        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            if (!streq(type_units(lhs_t), type_units(rhs_t)))
-                compiler_err(env, ast, "These two types have different units: %s vs %s", type_to_string(lhs_t), type_to_string(rhs_t));
-            sss_type_t *t = type_or_type(lhs_t, rhs_t);
-            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
-                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
-            return t;
+        } else {
+            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
-
         compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
@@ -772,6 +773,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
             return lhs_t;
         else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType)
+            return lhs_t;
+        else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t))
             return lhs_t;
         else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
@@ -789,6 +792,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
                     return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional);
             }
+        } else {
+            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
         compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
@@ -798,21 +803,26 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *lhs_t = get_type(env, xor->lhs),
                   *rhs_t = get_type(env, xor->rhs);
 
-        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
+        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
             return lhs_t;
-        else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+        } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
+            return lhs_t;
+        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
             if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
                 compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
             return t;
+        } else {
+            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
 
         compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
                     type_to_string(lhs_t), type_to_string(rhs_t));
     }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate: {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
+    case AndUpdate: case OrUpdate: case XorUpdate:
         return Type(VoidType);
-    }
+
     case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: case Modulus1: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
         ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
@@ -850,7 +860,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case Not: {
         sss_type_t *t = get_type(env, Match(ast, Not)->value);
-        if (t->tag == BoolType || is_integral(t))
+        if (t->tag == TaggedUnionType)
+            return t;
+        else if (t->tag == BoolType || is_integral(t))
             return t;
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
             return Type(BoolType);

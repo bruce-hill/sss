@@ -212,24 +212,33 @@ static gcc_rvalue_t *math_binop_rec(
                 compiler_err(env, ast, "%s tagged union values can't be combined because some tags have data attached to them.",
                              type_to_string(lhs_t));
         }
-        if (op == GCC_BINOP_PLUS) {
-            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
-                    tag_field,
-                }, (gcc_rvalue_t*[]){
-                    gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_OR, tag_gcc_t,
-                                  gcc_rvalue_access_field(lhs, loc, tag_field),
-                                  gcc_rvalue_access_field(rhs, loc, tag_field)),
-                });
+        gcc_rvalue_t *result_tag;
+        if (op == GCC_BINOP_PLUS || op == GCC_BINOP_BITWISE_OR) {
+            result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_OR, tag_gcc_t,
+                                       gcc_rvalue_access_field(lhs, loc, tag_field),
+                                       gcc_rvalue_access_field(rhs, loc, tag_field));
         } else if (op == GCC_BINOP_MINUS) {
-            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
-                    tag_field,
-                }, (gcc_rvalue_t*[]){
-                    gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
-                                  gcc_rvalue_access_field(lhs, loc, tag_field),
-                                  gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, tag_gcc_t, gcc_rvalue_access_field(rhs, loc, tag_field))),
-                });
+            result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
+                                       gcc_rvalue_access_field(lhs, loc, tag_field),
+                                       gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, tag_gcc_t, gcc_rvalue_access_field(rhs, loc, tag_field)));
+        } else if (op == GCC_BINOP_BITWISE_XOR) {
+            result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, tag_gcc_t,
+                                       gcc_rvalue_access_field(lhs, loc, tag_field),
+                                       gcc_rvalue_access_field(rhs, loc, tag_field));
+        } else if (op == GCC_BINOP_BITWISE_AND) {
+            result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
+                                       gcc_rvalue_access_field(lhs, loc, tag_field),
+                                       gcc_rvalue_access_field(rhs, loc, tag_field));
         } else {
             compiler_err(env, ast, "This math operation is not supported on tagged union types");
+        }
+        return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
+    } else if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
+        switch (op) {
+        case GCC_BINOP_BITWISE_AND: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        case GCC_BINOP_BITWISE_OR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_OR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        case GCC_BINOP_BITWISE_XOR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        default: compiler_err(env, ast, "I don't know how to do math operations on boolean values.");
         }
     } else {
         if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
@@ -293,6 +302,9 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
     case Subtract: op = GCC_BINOP_MINUS; break;
     case Multiply: op = GCC_BINOP_MULT; break;
     case Divide: op = GCC_BINOP_DIVIDE; break;
+    case And: op = GCC_BINOP_BITWISE_AND; break;
+    case Or: op = GCC_BINOP_BITWISE_OR; break;
+    case Xor: op = GCC_BINOP_BITWISE_XOR; break;
     default: compiler_err(env, ast, "Unsupported math operation");
     }
 
@@ -447,7 +459,16 @@ void math_update_rec(
         if (!promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
             compiler_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
                         type_to_string(rhs_t), type_to_string(lhs_t));
+        if ((op == GCC_BINOP_BITWISE_AND || op == GCC_BINOP_BITWISE_OR || op == GCC_BINOP_BITWISE_XOR) && lhs_t->tag == NumType)
+            compiler_err(env, ast, "Bitwise operations cannot be performed in floating point numbers.");
         return gcc_update(*block, loc, lhs, op, rhs);
+    } else if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
+        switch (op) {
+        case GCC_BINOP_BITWISE_AND: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_AND, rhs);
+        case GCC_BINOP_BITWISE_OR: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_OR, rhs);
+        case GCC_BINOP_BITWISE_XOR: return gcc_update(*block, loc, lhs, GCC_BINOP_BITWISE_XOR, rhs);
+        default: compiler_err(env, ast, "I don't know how to do math operations on boolean values.");
+        }
     } else {
         compiler_err(env, ast, "I don't know how to do math update operations between %s and %s",
                     type_to_string(lhs_t), type_to_string(rhs_t));
@@ -469,6 +490,9 @@ gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast)
     case SubtractUpdate: op = GCC_BINOP_MINUS; break;
     case MultiplyUpdate: op = GCC_BINOP_MULT; break;
     case DivideUpdate: op = GCC_BINOP_DIVIDE; break;
+    case AndUpdate: op = GCC_BINOP_BITWISE_AND; break;
+    case OrUpdate: op = GCC_BINOP_BITWISE_OR; break;
+    case XorUpdate: op = GCC_BINOP_BITWISE_XOR; break;
     default: compiler_err(env, ast, "Unsupported math operation");
     }
 

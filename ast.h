@@ -23,7 +23,7 @@ typedef enum {
     StringLiteral, StringJoin, Interp,
     Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-    AndUpdate, OrUpdate, ConcatenateUpdate,
+    AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
     Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
     And, Or, Xor, Min, Max, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
@@ -120,7 +120,7 @@ struct ast_s {
         struct {
             ast_t *lhs, *rhs;
         } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-            AndUpdate, OrUpdate, ConcatenateUpdate,
+            AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
             Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
             And, Or, Xor, Min, Max, Concatenate,
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;

@@ -1776,7 +1776,8 @@ PARSER(parse_update) {
     else if (match(&pos, "*=")) tag = MultiplyUpdate;
     else if (match(&pos, "/=")) tag = DivideUpdate;
     else if (match(&pos, "and=")) tag = AndUpdate;
-    else if (match(&pos, "or=")) tag = AndUpdate;
+    else if (match(&pos, "or=")) tag = OrUpdate;
+    else if (match(&pos, "xor=")) tag = XorUpdate;
     else return NULL;
     ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
     switch (tag) {
@@ -1786,6 +1787,7 @@ PARSER(parse_update) {
     case DivideUpdate: return NewAST(ctx->file, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
     case AndUpdate: return NewAST(ctx->file, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
     case OrUpdate: return NewAST(ctx->file, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
+    case XorUpdate: return NewAST(ctx->file, start, pos, XorUpdate, .lhs=lhs, .rhs=rhs);
     case ConcatenateUpdate: return NewAST(ctx->file, start, pos, ConcatenateUpdate, .lhs=lhs, .rhs=rhs);
     default: return NULL;
     }

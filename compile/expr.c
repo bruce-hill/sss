@@ -1694,7 +1694,24 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
-        else
+        else if (t->tag == TaggedUnionType) {
+            gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
+            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+            gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+            int64_t all_tags = 0;
+            auto members = Match(t, TaggedUnionType)->members;
+            for (int64_t i = 0; i < length(members); i++) {
+                if (ith(members, i).type)
+                    compiler_err(env, ast, "%s tagged union values can't be negated because some tags have data attached to them.",
+                                 type_to_string(t));
+                all_tags |= ith(members, i).tag_value;
+            }
+            gcc_rvalue_t *result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, tag_gcc_t,
+                                                     gcc_rvalue_access_field(val, loc, tag_field),
+                                                     gcc_rvalue_from_long(env->ctx, tag_gcc_t, all_tags));
+            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
+        } else
             compiler_err(env, ast, "The 'not' operator isn't supported for values with type %s.", type_to_string(t));
     }
     case Equal: case NotEqual:
@@ -1739,7 +1756,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *value = Match(ast, Negative)->value;
         sss_type_t *t = get_type(env, value);
         if (!is_numeric(t))
-            compiler_err(env, ast, "I only know how to negate numbers, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to get negative numbers, not %s", type_to_string(t));
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_rvalue_t *rval = compile_expr(env, block, value);
         return gcc_unary_op(env->ctx, loc, GCC_UNOP_MINUS, gcc_t, rval);
@@ -1750,6 +1767,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, ast);
         sss_type_t *lhs_t = get_type(env, lhs);
         sss_type_t *rhs_t = get_type(env, rhs);
+
+        if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
+            return math_binop(env, block, ast);
+
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
@@ -1792,6 +1813,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, ast);
         sss_type_t *lhs_t = get_type(env, lhs);
         sss_type_t *rhs_t = get_type(env, rhs);
+
+        if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
+            return math_binop(env, block, ast);
+
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
         gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
@@ -1829,34 +1854,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(result);
     }
     case Xor: {
-        ast_t *lhs = Match(ast, Xor)->lhs, *rhs = Match(ast, Xor)->rhs;
-        sss_type_t *t = get_type(env, ast);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_XOR, sss_type_to_gcc(env, t), lhs_val, rhs_val);
+        return math_binop(env, block, ast);
     }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
+    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case OrUpdate: case AndUpdate: case XorUpdate: {
         return math_update(env, block, ast);
     }
-    // case Add: {
-    //     if (rhs_t->tag != TaggedUnionType || !type_eq(lhs_t, rhs_t))
-    //         compiler_err(env, ast, "The two sides of this 'and' operation do not match: %s vs %s",
-    //                      type_to_string(lhs_t), type_to_string(rhs_t));
-
-    //     gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, lhs_t);
-    //     gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
-    //     gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-    //     gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
-    //     gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-    //     return gcc_struct_constructor(
-    //         env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
-    //             tag_field,
-    //         }, (gcc_rvalue_t*[]){
-    //             gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, tag_gcc_t,
-    //                           gcc_rvalue_access_field(lhs_val, loc, tag_field),
-    //                           gcc_rvalue_access_field(rhs_val, loc, tag_field)),
-    //         });
-    // }
     case Add: case Subtract: case Divide: case Multiply: {
         return math_binop(env, block, ast);
     }
@@ -2287,7 +2289,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             sss_type_t *lhs_t = NULL;
             const char *info = NULL;
             switch (expr->tag) {
-            case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate: case ConcatenateUpdate:
+            case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate: case XorUpdate: case ConcatenateUpdate:
             case Declare: {
                 // UNSAFE: this assumes all these types have the same layout:
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;

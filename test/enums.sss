@@ -41,3 +41,7 @@ def Flags {| None=0 | A=1 | B=2 | C=4 | D=8 |}
 === no
 >>> abc - Flags.B
 === Flags.A+C
+>>> not (Flags.A or Flags.B)
+=== Flags.C+D
+>>> (Flags.A+Flags.B) xor Flags.B
+=== Flags.A
