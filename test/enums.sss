@@ -28,3 +28,16 @@ for b in bazzes
     is Nil
         say "nil"
 
+// Flags:
+def Flags {| None=0 | A=1 | B=2 | C=4 | D=8 |}
+>>> abc := Flags.A + Flags.B + Flags.C
+>>> abc
+=== Flags.A+B+C
+>>> abc + Flags.A
+=== Flags.A+B+C
+>>> Flags.B in abc
+=== yes
+>>> Flags.D in abc
+=== no
+>>> abc - Flags.B
+=== Flags.A+C

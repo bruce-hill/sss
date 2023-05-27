@@ -580,10 +580,15 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         WRITE_LITERAL(block, ".");
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+        gcc_lvalue_t *tag_var = gcc_local(func, NULL, tag_gcc_t, "_tag");
+        gcc_assign(block, NULL, tag_var, tag);
+        tag = gcc_rval(tag_var);
         gcc_type_t *union_gcc_t = get_union_type(env, t);
         NEW_LIST(gcc_case_t*, cases);
+        bool any_values = false;
         for (int64_t i = 0; i < length(tagged->members); i++) {
             auto member = ith(tagged->members, i);
+            if (member.type) any_values = true;
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
             gcc_block_t *rest_of_tag_block = tag_block;
             WRITE_LITERAL(rest_of_tag_block, member.name);
@@ -608,10 +613,51 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             APPEND(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        COLOR_LITERAL(&default_block, "\x1b[31;1m");
-        WRITE_LITERAL(default_block, "<Unknown value>");
-        COLOR_LITERAL(&default_block, "\x1b[m");
-        gcc_jump(default_block, NULL, done);
+        gcc_block_t *rest_of_default = default_block;
+        if (any_values) {
+            COLOR_LITERAL(&rest_of_default, "\x1b[31;1m");
+            WRITE_LITERAL(rest_of_default, "???");
+            COLOR_LITERAL(&rest_of_default, "\x1b[m");
+        } else {
+            // for each tag, if val&tag, print "+Tag", then print "+???" if anything left over
+            gcc_block_t *continue_loop = gcc_new_block(func, fresh("find_tags")),
+                        *done = gcc_new_block(func, fresh("done"));
+            WRITE_LITERAL(continue_loop, "+");
+            gcc_jump(continue_loop, NULL, rest_of_default);
+
+            // gcc_jump(rest_of_default, NULL, continue_loop);
+            // rest_of_default = continue_loop;
+            for (int64_t i = 0; i < length(tagged->members); i++) {
+                // Pseudocode:
+                //     if (tag & member_tag == member_tag) {
+                //         print(member_tag);
+                //         tag &= ~member_tag;
+                //     }
+                auto member = ith(tagged->members, i);
+                if (member.tag_value == 0) continue;
+                gcc_block_t *has_tag = gcc_new_block(func, fresh("has_tag")),
+                            *done_with_tag = gcc_new_block(func, fresh("done_with_tag"));
+                gcc_rvalue_t *member_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
+                gcc_rvalue_t *bit_and = gcc_binary_op(env->ctx, NULL, GCC_BINOP_BITWISE_AND, tag_gcc_t, tag, member_tag);
+                gcc_jump_condition(rest_of_default, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, bit_and, member_tag),
+                                   has_tag, done_with_tag);
+                WRITE_LITERAL(has_tag, member.name);
+                gcc_update(has_tag, NULL, tag_var, GCC_BINOP_BITWISE_AND, gcc_unary_op(env->ctx, NULL, GCC_UNOP_BITWISE_NEGATE, tag_gcc_t, member_tag));
+                gcc_jump_condition(has_tag, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, tag, gcc_zero(env->ctx, tag_gcc_t)),
+                                   continue_loop, done);
+                rest_of_default = done_with_tag;
+            }
+
+            gcc_block_t *has_leftovers = gcc_new_block(func, fresh("has_leftovers"));
+            gcc_jump_condition(rest_of_default, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, tag, gcc_zero(env->ctx, tag_gcc_t)),
+                               has_leftovers, done);
+            COLOR_LITERAL(&has_leftovers, "\x1b[31;1m");
+            WRITE_LITERAL(has_leftovers, "???");
+            COLOR_LITERAL(&has_leftovers, "\x1b[m");
+            gcc_jump(has_leftovers, NULL, done);
+            rest_of_default = done;
+        }
+        gcc_jump(rest_of_default, NULL, done);
 
         gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
 

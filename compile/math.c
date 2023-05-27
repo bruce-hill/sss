@@ -199,6 +199,38 @@ static gcc_rvalue_t *math_binop_rec(
         struct_t = lhs_t;
     } else if (rhs_t->tag == StructType) {
         struct_t = rhs_t;
+    } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
+        // For tagged unions, Foo.One + Foo.Two --> bitwise or of the tags
+        // TODO: confirm no values
+        gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, lhs_t);
+        gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+        gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+        gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
+        auto members = Match(lhs_t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < length(members); i++) {
+            if (ith(members, i).type)
+                compiler_err(env, ast, "%s tagged union values can't be combined because some tags have data attached to them.",
+                             type_to_string(lhs_t));
+        }
+        if (op == GCC_BINOP_PLUS) {
+            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
+                    tag_field,
+                }, (gcc_rvalue_t*[]){
+                    gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_OR, tag_gcc_t,
+                                  gcc_rvalue_access_field(lhs, loc, tag_field),
+                                  gcc_rvalue_access_field(rhs, loc, tag_field)),
+                });
+        } else if (op == GCC_BINOP_MINUS) {
+            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
+                    tag_field,
+                }, (gcc_rvalue_t*[]){
+                    gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
+                                  gcc_rvalue_access_field(lhs, loc, tag_field),
+                                  gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, tag_gcc_t, gcc_rvalue_access_field(rhs, loc, tag_field))),
+                });
+        } else {
+            compiler_err(env, ast, "This math operation is not supported on tagged union types");
+        }
     } else {
         if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
             compiler_err(env, ast, "I don't know how to do math operations between %s and %s",

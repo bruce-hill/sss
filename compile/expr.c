@@ -1577,21 +1577,32 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *member_t = get_type(env, in->member);
         sss_type_t *container_t = get_type(env, in->container);
 
-        while (container_t->tag == PointerType)
-            container_t = Match(container_t, PointerType)->pointed;
+        sss_type_t *container_value_t = container_t;
+        while (container_value_t->tag == PointerType)
+            container_value_t = Match(container_value_t, PointerType)->pointed;
 
         gcc_rvalue_t *ret;
-        if (container_t->tag == TableType) {
-            if (!type_is_a(member_t, Match(container_t, TableType)->key_type))
+        if (container_value_t->tag == TableType) {
+            if (!type_is_a(member_t, Match(container_value_t, TableType)->key_type))
                 compiler_err(env, ast, "This is checking for the presence of a key with type %s, but the table has type %s",
-                            type_to_string(member_t), type_to_string(container_t));
+                            type_to_string(member_t), type_to_string(container_value_t));
 
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL, true);
-            gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_t, TableType)->value_type)));
+            gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_value_t, TableType)->value_type)));
             ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
-        } else if (container_t->tag == ArrayType) {
-            ret = array_contains(env, block, in->container, in->member);
-        } else if (container_t->tag == RangeType) {
+        } else if (member_t->tag == TaggedUnionType && type_eq(member_t, container_t)) {
+            gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
+            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+            gcc_type_t *tag_gcc_t = get_tag_type(env, member_t);
+            gcc_rvalue_t *member_val = compile_expr(env, block, in->member);
+            gcc_rvalue_t *container_val = compile_expr(env, block, in->container);
+            ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE,
+                                 gcc_zero(env->ctx, tag_gcc_t),
+                                 gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, tag_gcc_t,
+                                               gcc_rvalue_access_field(member_val, loc, tag_field),
+                                               gcc_rvalue_access_field(container_val, loc, tag_field)));
+        } else if (container_value_t->tag == RangeType) {
             ret = range_contains(env, block, in->container, in->member);
         } else {
             compiler_err(env, ast, "'in' membership testing is only supported for Arrays and Tables, not %s", type_to_string(container_t));
@@ -1656,8 +1667,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Bitcast: {
         auto bitcast = Match(ast, Bitcast);
-        gcc_rvalue_t *val = compile_expr(env, block, bitcast->value);
         sss_type_t *t = get_type(env, ast);
+        if (gcc_sizeof(env, get_type(env, bitcast->value)) != gcc_sizeof(env, t))
+            compiler_err(env, ast, "This value can't be cast to the given type, because it has a different size."); 
+        gcc_rvalue_t *val = compile_expr(env, block, bitcast->value);
         return gcc_bitcast(env->ctx, loc, val, sss_type_to_gcc(env, t));
     }
     case Nil: {
@@ -1823,6 +1836,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: {
         return math_update(env, block, ast);
     }
+    // case Add: {
+    //     if (rhs_t->tag != TaggedUnionType || !type_eq(lhs_t, rhs_t))
+    //         compiler_err(env, ast, "The two sides of this 'and' operation do not match: %s vs %s",
+    //                      type_to_string(lhs_t), type_to_string(rhs_t));
+
+    //     gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, lhs_t);
+    //     gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+    //     gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+    //     gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
+    //     gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
+    //     return gcc_struct_constructor(
+    //         env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){
+    //             tag_field,
+    //         }, (gcc_rvalue_t*[]){
+    //             gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, tag_gcc_t,
+    //                           gcc_rvalue_access_field(lhs_val, loc, tag_field),
+    //                           gcc_rvalue_access_field(rhs_val, loc, tag_field)),
+    //         });
+    // }
     case Add: case Subtract: case Divide: case Multiply: {
         return math_binop(env, block, ast);
     }
