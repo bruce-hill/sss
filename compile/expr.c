@@ -237,7 +237,7 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
                 *no_dim_type = gcc_new_block(func, fresh("no_dim_type")),
                 *done_with_type = gcc_new_block(func, fresh("done_with_type"));
     gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim_type, no_dim_type);
-    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[2m: %s\x1b[m\n", type_to_string(t))), stderr_val)); 
+    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[0;2m: %s\x1b[m\n", type_to_string(t))), stderr_val)); 
     gcc_jump(use_dim_type, loc, done_with_type);
     gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string(t))), stderr_val)); 
     gcc_jump(no_dim_type, loc, done_with_type);
