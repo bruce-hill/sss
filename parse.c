@@ -1610,9 +1610,10 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens) {
 
     const char *paren_pos = pos;
     if (match(&pos, "{")) return NULL;
-    if (match(&pos, "("))
+    if (match(&pos, "(")) {
+        whitespace(&pos);
         requires_parens = true;
-    else if (requires_parens)
+    } else if (requires_parens)
         return NULL;
 
     spaces(&pos);
