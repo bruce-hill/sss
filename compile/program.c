@@ -79,6 +79,14 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
                                        gcc_param_as_rvalue(main_params[0]),
                                        gcc_param_as_rvalue(main_params[1]));
     gcc_assign(main_block, NULL, args, arg_list);
+
+    // Seed the RNG used for random floats
+    gcc_func_t *arc4_rng = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, UINT32), "arc4random", 0, NULL, false);
+    gcc_func_t *srand48_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "srand48", 1, (gcc_param_t*[]){
+        gcc_new_param(ctx, NULL, gcc_type(ctx, UINT32), "seed")}, false);
+    gcc_eval(main_block, NULL, gcc_callx(ctx, NULL, srand48_func, gcc_callx(ctx, NULL, arc4_rng)));
+
+    // Run the program:
     gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename, .file=f));
     gcc_eval(main_block, NULL, val);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
