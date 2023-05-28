@@ -193,7 +193,8 @@ static gcc_rvalue_t *math_binop_rec(
 
     sss_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (!type_eq(lhs_t, rhs_t)) compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+        if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
+            compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
         struct_t = lhs_t;
     } else if (lhs_t->tag == StructType) {
         struct_t = lhs_t;

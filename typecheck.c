@@ -213,7 +213,7 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         compiler_err(env, ast, "Unsupported math operation");
     }
 
-    if (type_eq(lhs_t, rhs_t)) {
+    if (type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL))) {
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
