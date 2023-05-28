@@ -25,7 +25,7 @@ typedef enum {
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
     AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
     Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
-    And, Or, Xor, Min, Max, Concatenate,
+    And, Or, Xor, Min, Max, Mix, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In, NotIn,
     Not, Negative, Len, Maybe,
@@ -126,7 +126,7 @@ struct ast_s {
             Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
         struct {
             ast_t *lhs, *rhs, *key;
-        } Min, Max;
+        } Min, Max, Mix;
         struct {
             ast_t *value;
         } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, StackReference, Dereference, AssertNonNull;

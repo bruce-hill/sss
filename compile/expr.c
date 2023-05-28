@@ -2211,6 +2211,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = done;
         return gcc_rval(result);
     }
+    case Mix: {
+        auto mix = Match(ast, Mix);
+        sss_type_t *mix_t = get_type(env, mix->key);
+        if (!is_numeric(mix_t))
+            compiler_err(env, mix->key, "The mix amount here is not a numeric value.");
+
+        // (1-amount)*lhs + amount*rhs
+        ast_t *amount_var = WrapAST(mix->key, Var, "$mix_amount");
+        ast_t *amount = mix->key;
+        if (streq(type_units(mix_t), "%"))
+            amount = WrapAST(mix->key, Divide, amount, WrapAST(mix->key, Num, .n=1.0, .precision=32, .units="%"));
+        ast_t *mix_equation = WrapAST(ast, Block, LIST(ast_t*,
+            WrapAST(mix->key, Declare, amount_var, amount),
+            WrapAST(ast, Add,
+                WrapAST(mix->lhs, Multiply,
+                    WrapAST(mix->lhs, Subtract, WrapAST(mix->lhs, Num, .n=1.0, .precision=32), amount_var),
+                    mix->lhs),
+                WrapAST(mix->rhs, Multiply, amount_var, mix->rhs))));
+        return compile_expr(env, block, mix_equation);
+    }
     case Reduction: {
         auto reduction = Match(ast, Reduction);
         sss_type_t *t = get_type(env, ast);

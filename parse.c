@@ -31,7 +31,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
     [Multiply]=2, [Divide]=2,
     [Add]=3, [Subtract]=3, [Concatenate]=3,
     [Modulus]=4, [Modulus1]=4,
-    [Min]=5, [Max]=5,
+    [Min]=5, [Max]=5, [Mix]=5,
     [Range]=6,
     [RANGE_STEP]=7,
     [Cast]=7,
@@ -42,9 +42,9 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat",
+    "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
     "or","not","no","mod1","mod","is","inline","in","if","global","for","fail","extern","extend","else","do","del",
-    "defer","def","by","bitcast","between","as","and","_min_","_max_",NULL,
+    "defer","def","by","bitcast","between","as","and","_mix_","_min_","_max_",NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -927,6 +927,12 @@ PARSER(parse_reduction) {
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"),
                              .key=key});
+    } else if (binop == Mix) {
+        ast_t *key = expect_ast(ctx, start, &pos, parse_expr, "I expected an amount to mix by");
+        if (!match_word(&pos, "of"))
+            parser_err(ctx, pos, pos, "I expected the word 'of' here");
+        combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"), .key=key);
     } else if (binop != Unknown) {
         combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Add={
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
@@ -1704,6 +1710,7 @@ ast_tag_e match_binary_operator(const char **pos)
         else if (match_word(pos, "in")) return In;
         else if (match_word(pos, "_min_")) return Min;
         else if (match_word(pos, "_max_")) return Max;
+        else if (match_word(pos, "_mix_")) return Mix;
         else if (match(pos, "..")) return Range;
         else return Unknown;
     }
@@ -1739,6 +1746,10 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             }
             if (key->tag == Var) key = NULL;
             else pos = key->span.end;
+        } else if (tag == Mix) {
+            key = expect_ast(ctx, pos, &pos, parse_expr, "I expected an amount to mix by");
+            if (!match_word(&pos, "of"))
+                parser_err(ctx, pos, pos, "I expected the word 'of' here");
         }
 
         assert(op_tightness[tag]);

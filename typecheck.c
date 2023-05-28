@@ -847,7 +847,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Less: case LessEqual: case Greater: case GreaterEqual: case In: case NotIn: {
         return Type(BoolType);
     }
-    case Min: case Max: {
+    case Min: case Max: case Mix: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
         ast_t *lhs = ast->__data.Min.lhs, *rhs = ast->__data.Min.rhs;
         // Okay safe again
