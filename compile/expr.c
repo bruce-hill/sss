@@ -1024,7 +1024,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         // Populate default struct field values (or nil for optional types)
-        for (size_t field_index = 0; field_index < num_fields; field_index++) {
+        for (size_t field_index = 0; num_values < num_fields && field_index < num_fields; field_index++) {
             sss_type_t *ft = ith(struct_type->field_types, field_index);
             ast_t *def = struct_type->field_defaults ? ith(struct_type->field_defaults, field_index) : NULL;
             if (def != NULL) {
