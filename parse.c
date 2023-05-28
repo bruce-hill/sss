@@ -529,6 +529,14 @@ PARSER(parse_tagged_union_type) {
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         }
 
+        whitespace(&pos);
+        if (match(&pos, "=")) {
+            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+            next_value = Match(val, Int)->i;
+            whitespace(&pos);
+        }
+        match(&pos, "|");
+
         // Check for duplicate values:
         for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
             if (LIST_ITEM(tag_values, i) == next_value)
@@ -538,14 +546,6 @@ PARSER(parse_tagged_union_type) {
         APPEND(tag_names, tag_name);
         APPEND(tag_values, next_value);
         APPEND(tag_types, type);
-
-        whitespace(&pos);
-        if (match(&pos, "=")) {
-            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
-            next_value = Match(val, Int)->i;
-            whitespace(&pos);
-        }
-        match(&pos, "|");
 
         ++next_value;
     }
@@ -2150,12 +2150,6 @@ PARSER(parse_def) {
             const char* tag_name = get_id(&pos);
             if (!tag_name) break;
 
-            // Check for duplicate values:
-            for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
-                if (LIST_ITEM(tag_values, i) == next_value)
-                    parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
-            }
-
             spaces(&pos);
             ast_t *type = NULL;
             if (match(&pos, "(")) {
@@ -2169,6 +2163,12 @@ PARSER(parse_def) {
             if (match(&pos, "=")) {
                 ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
                 next_value = Match(val, Int)->i;
+            }
+
+            // Check for duplicate values:
+            for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
+                if (LIST_ITEM(tag_values, i) == next_value)
+                    parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
             }
 
             APPEND(tag_names, tag_name);
