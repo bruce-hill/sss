@@ -91,6 +91,9 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
     jmp_buf on_err;
     env_t *env = new_environment(ctx, &on_err, NULL, verbose);
 
+    // Seed the RNG used for Num.random()
+    srand48(arc4random());
+
     if (use_color) {
         printf("\n     \x1b[1;4mWelcome to the SSS v%s interactive console!\x1b[m\n", SSS_VERSION);
         printf("          press 'enter' twice to run a command\n");
