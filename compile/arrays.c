@@ -18,6 +18,7 @@
 typedef struct {
     sss_type_t *array_type;
     gcc_rvalue_t *array_ptr;
+    bool dynamic_size;
 } array_insert_info_t;
 
 static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_insert_info_t *info)
@@ -47,16 +48,18 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
     gcc_update(*block, NULL, length_field, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
 
-    // array.items = GC_realloc(array.items, item_size*array.length)
-    gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
-    gcc_rvalue_t *new_size = gcc_binary_op(
-        env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_rval(length_field), gcc_size_t),
-        gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
-    gcc_func_t *gc_realloc_func = get_function(env, "GC_realloc");
-    gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
-                                       gcc_rval(data_field), new_size);
-    gcc_assign(*block, NULL, data_field,
-               gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(sss_type_to_gcc(env, item_type))));
+    if (info->dynamic_size) {
+        // array.items = GC_realloc(array.items, item_size*array.length)
+        gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
+        gcc_rvalue_t *new_size = gcc_binary_op(
+            env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_rval(length_field), gcc_size_t),
+            gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
+        gcc_func_t *gc_realloc_func = get_function(env, "GC_realloc");
+        gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
+                                           gcc_rval(data_field), new_size);
+        gcc_assign(*block, NULL, data_field,
+                   gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(sss_type_to_gcc(env, item_type))));
+    }
 
     // array.items[array.length-1] = item
     gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), gcc_one(env->ctx, i32));
@@ -492,13 +495,13 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
                 gcc_rvalue_int16(env->ctx, mark_cow ? -1 : 0),
             }));
 
-    env_t env2 = *env;
-    env2.comprehension_callback = (void*)add_array_item;
-    array_insert_info_t info = {t, gcc_lvalue_address(array_var, loc)};
-    env2.comprehension_userdata = &info;
-    env = &env2;
-
     if (array->items) {
+        env_t env2 = *env;
+        env2.comprehension_callback = (void*)add_array_item;
+        array_insert_info_t info = {t, gcc_lvalue_address(array_var, loc), false};
+        env2.comprehension_userdata = &info;
+        env = &env2;
+
         gcc_block_t *array_done = gcc_new_block(func, fresh("array_done"));
         foreach (array->items, item_ast, _) {
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
@@ -509,6 +512,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
                 .stop_label = array_done,
             };
 
+            info.dynamic_size = info.dynamic_size || (get_type(env, *item_ast)->tag == GeneratorType);
             add_array_item(env, block, *item_ast, &info);
 
             if (*block)
