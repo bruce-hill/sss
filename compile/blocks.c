@@ -91,6 +91,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
             }
             gcc_return(do_loading, NULL, gcc_rval(module_val));
         }
+        env->derived_units = module_env.derived_units;
     }
     return b->func;
 }

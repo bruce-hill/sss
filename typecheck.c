@@ -541,7 +541,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
                     sss_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
                     if (struct_t->units)
-                        field_t = with_units(field_t, struct_t->units);
+                        field_t = with_units(field_t, unit_derive(struct_t->units, NULL, env->derived_units));
                     return field_t;
                 }
             }
@@ -973,7 +973,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 APPEND(field_types, field_type);
             }
 
-            sss_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types, .units=struct_->units);
+            sss_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types,
+                                 .units=unit_derive(struct_->units, NULL, env->derived_units));
             sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
             if (memoized) {
                 t = memoized;
@@ -999,7 +1000,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (t == NULL)
             compiler_err(env, ast, "There isn't any kind of struct like this");
 
-        return struct_->units ? with_units(t, struct_->units) : t;
+        return struct_->units ? with_units(t, unit_derive(struct_->units, NULL, env->derived_units)) : t;
     }
 
     case If: {
