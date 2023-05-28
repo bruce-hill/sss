@@ -928,6 +928,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Struct: {
         auto struct_ = Match(ast, Struct);
         sss_type_t *t;
+        double unit_scaling = 1.0;
+        if (struct_->units)
+            unit_derive(struct_->units, &unit_scaling, env->derived_units);
         binding_t *binding;
         if (struct_->type) {
             binding = get_ast_binding(env, struct_->type);
@@ -1061,6 +1064,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
                       type_to_string(expected), type_to_string(t), ith(struct_type->field_names, entries[i].field_num),
                       type_to_string(actual));
+
+            if (unit_scaling != 1.0 && is_numeric(expected)) {
+                gcc_type_t *expected_gcc_t = sss_type_to_gcc(env, expected);
+                rvalues[i] = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, expected_gcc_t,
+                                           rvalues[i], gcc_rvalue_from_double(env->ctx, expected_gcc_t, unit_scaling));
+            }
 
             populated_fields[i] = entries[i].field;
         }
