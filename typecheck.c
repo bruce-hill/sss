@@ -221,8 +221,10 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
                              type_to_string(lhs_t), type_to_string(rhs_t));
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
+        if (streq(units, "%")) units = NULL;
         return with_units(rhs_t, units);
     } else if (is_numeric(rhs_t) && (lhs_t->tag == StructType || lhs_t->tag == ArrayType)) {
+        if (streq(units, "%")) units = NULL;
         return with_units(lhs_t, units);
     } else if (lhs_t->tag == BoolType && (rhs_t->tag == StructType || rhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
         return rhs_t;
