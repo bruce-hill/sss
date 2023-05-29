@@ -240,23 +240,12 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
 
 bool is_integral(sss_type_t *t)
 {
-    switch (t->tag) {
-    case IntType: case CharType: case CStringCharType:
-        return true;
-    default:
-        return false;
-    }
+    return t->tag == IntType || t->tag == CharType || t->tag == CStringCharType;
 }
 
 bool is_numeric(sss_type_t *t)
 {
-    switch (t->tag) {
-    case IntType: case NumType:
-        return true;
-    case CharType: case CStringCharType: return false;
-    default:
-        return false;
-    }
+    return t->tag == IntType || t->tag == NumType;
 }
 
 typedef enum {

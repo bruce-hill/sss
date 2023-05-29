@@ -92,10 +92,10 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         }
 
         if (i < min)
-            compiler_err(env, ast, "This integer literal is too small to fit in a %d bit %s integer %ld",
+            compiler_err(env, ast, "This integer literal is too small to fit in a %d bit %s integer: %ld",
                          intval->precision, intval->is_unsigned ? "unsigned" : "signed", i);
         else if (i > max)
-            compiler_err(env, ast, "This integer literal is too big to fit in a %d bit %s integer %ld",
+            compiler_err(env, ast, "This integer literal is too big to fit in a %d bit %s integer: %ld",
                          intval->precision, intval->is_unsigned ? "unsigned" : "signed", i);
 
         return gcc_rvalue_from_long(env->ctx, gcc_t, i);
@@ -1058,12 +1058,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         for (size_t i = 0; i < num_values; i++) {
             // Check type:
             sss_type_t *expected = ith(struct_type->field_types, entries[i].field_num);
+            if (demote_int_literals(&entries[i].ast, expected))
+                entries[i].value = compile_expr(env, block, entries[i].ast);
             sss_type_t *actual = get_type(env, entries[i].ast);
             rvalues[i] = entries[i].value;
-            if (!promote(env, actual, &rvalues[i], expected))
+            if (!promote(env, actual, &rvalues[i], expected)) {
                 compiler_err(env, entries[i].ast, "I was expecting a value of type %s for the %s.%s field, but this value is a %s.", 
                       type_to_string(expected), type_to_string(t), ith(struct_type->field_names, entries[i].field_num),
                       type_to_string(actual));
+            }
 
             if (unit_scaling != 1.0 && is_numeric(expected)) {
                 gcc_type_t *expected_gcc_t = sss_type_to_gcc(env, expected);
@@ -1169,9 +1172,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             arg_index ^= MASK;
             if (arg_vals[arg_index])
                 compiler_err(env, *arg, "This argument was already passed in earlier to this function call");
-            gcc_rvalue_t *val = compile_expr(env, block, kwarg->arg);
-            sss_type_t *actual = get_type(env, *arg);
             sss_type_t *expected = ith(fn_t->arg_types, arg_index);
+            ast_t *arg_val = kwarg->arg;
+            demote_int_literals(&arg_val, expected);
+            gcc_rvalue_t *val = compile_expr(env, block, arg_val);
+            sss_type_t *actual = get_type(env, arg_val);
             if (!promote(env, actual, &val, expected))
                 compiler_err(env, *arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));
@@ -1192,9 +1197,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compiler_err(env, arg, "This is one argument too many for this function call");
                 assert(pos < num_args);
             }
+            sss_type_t *expected = ith(fn_t->arg_types, pos);
+            demote_int_literals(&arg, expected);
             gcc_rvalue_t *val = compile_expr(env, block, arg);
             sss_type_t *actual = get_type(env, arg);
-            sss_type_t *expected = ith(fn_t->arg_types, pos);
             if (!promote(env, actual, &val, expected))
                 compiler_err(env, arg, "This function expected this argument to have type %s, but this value is a %s",
                       type_to_string(expected), type_to_string(actual));

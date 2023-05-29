@@ -69,6 +69,8 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices);
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *needed);
+// Integer demotion in select cases:
+bool demote_int_literals(ast_t **ast, sss_type_t *needed);
 // Compile all the deferred statements up to a given point
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes

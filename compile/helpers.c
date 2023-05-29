@@ -338,6 +338,20 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     return gcc_t;
 }
 
+bool demote_int_literals(ast_t **ast, sss_type_t *needed)
+{
+    if ((*ast)->tag != Int || needed->tag != IntType) return false;
+
+    auto needed_int = Match(needed, IntType);
+    auto int_ast = Match(*ast, Int);
+    if (streq(needed_int->units, int_ast->units)) {
+        *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=needed_int->bits, .is_unsigned=needed_int->is_unsigned, .units=needed_int->units);
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *needed)
 {
     if (!can_promote(actual, needed))
