@@ -947,7 +947,15 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         goto memory_hash;
     }
     case TaggedUnionType: {
-        compiler_err(env, NULL, "Hash functions aren't yet implemented for tagged unions, sorry.");
+        // TODO: properly implement hashes here: hash(tag, hash(value))
+        auto tagged = Match(t, TaggedUnionType);
+        for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
+            auto member = ith(tagged->members, i);
+            if (member.type && has_heap_memory(member.type))
+                compiler_err(env, NULL, "This program is attempting to use a '%s' tagged union value as a table key, but hashing isn't implemented for tagged union with members like '%s' that have complex values.",
+                             type_to_string(t), member.name);
+        }
+        goto memory_hash;
     }
     case PointerType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType:
     case RangeType: case FunctionType: case TypeType: {
