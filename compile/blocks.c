@@ -87,7 +87,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
                 gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, entry->value->type), fresh(entry->key));
                 gcc_assign(do_loading, NULL, global, entry->value->rval);
                 hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global,
-                                                .visible_in_closures=entry->value->visible_in_closures));
+                                                .visible_in_closures=true));
             }
             gcc_return(do_loading, NULL, gcc_rval(module_val));
         }
@@ -315,14 +315,15 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     // - Function arguments can be struct/tagged union values/pointers defined anywhere in the file
     // - Function bodies can have references to functions declared anywhere in the file (corecursion)
     // Therefore the order of operations is:
-    // 1) Predeclare all structs/tagged union with placeholder opaque structs/tagged union
-    //    1B) Also predeclare all struct/tagged union 
-    // 2) Populate all struct/tagged union members
-    // 3) Predeclare all functions
-    //    3B) Also predeclare all inner methods
-    // 4) Populate all function bodies
-    //    4B) Also populate all inner method bodies
-    // 5) Compile each statement
+    // 1) Load imports
+    // 2) Predeclare all structs/tagged union with placeholder opaque structs/tagged union
+    //    2B) Also predeclare all struct/tagged union 
+    // 3) Populate all struct/tagged union members
+    // 4) Predeclare all functions
+    //    4B) Also predeclare all inner methods
+    // 5) Populate all function bodies
+    //    5B) Also populate all inner method bodies
+    // 6) Compile each statement
 
     // Handle 'use' imports
     foreach (statements, stmt, _) {

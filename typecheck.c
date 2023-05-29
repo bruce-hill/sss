@@ -670,6 +670,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         env = fresh_scope(env);
 
+        // Handle 'use' imports
+        foreach (block->statements, stmt, _) {
+
+            populate_uses(env, *stmt);
+        }
         // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
         foreach (block->statements, stmt, _) {
             predeclare_def_types(env, *stmt);
