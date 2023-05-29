@@ -314,7 +314,6 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
     } else if (def->tag == DocTest) {
         return predeclare_def_funcs(env, Match(def, DocTest)->expr);
     }
-    // TODO: tagged union methods
 }
 
 gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool give_expression)
