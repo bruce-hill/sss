@@ -1904,7 +1904,8 @@ PARSER(parse_statement) {
     if ((stmt=parse_declaration(ctx, pos))
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_doctest(ctx, pos))
-        || (stmt=parse_linker(ctx,pos)))
+        || (stmt=parse_linker(ctx,pos))
+        || (stmt=parse_use(ctx,pos)))
         return stmt;
 
     if (!(false 

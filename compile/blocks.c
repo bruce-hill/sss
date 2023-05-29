@@ -103,6 +103,20 @@ void populate_uses(env_t *env, ast_t *ast)
         (void)prepare_use(env, Match(ast, Declare)->value);
         hset(env->bindings, Match(Match(ast, Declare)->var, Var)->name,
              new(binding_t, .type=Type(TypeType, .type=Type(ModuleType, .path=use->path))));
+    } else if (ast->tag == Use) {
+        auto use = Match(ast, Use);
+        (void)prepare_use(env, ast);
+        sss_type_t *t = Type(ModuleType, .path=use->path);
+        sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
+        for (uint32_t i = 1; i <= namespace->count; i++) {
+            auto entry = hnth(namespace, i, const char*, binding_t*);
+            if (entry->value->func) continue;
+            if (hget(env->bindings, entry->key, binding_t*))
+                compiler_err(env, ast, "This 'use' statement is importing '%s', which already exists in this namespace. "
+                             "Please change the 'use' to declare a variable to hold the import namespace and avoid collisions.",
+                             entry->key);
+            hset(env->bindings, entry->key, entry->value);
+        }
     } else if (ast->tag == DocTest) {
         return populate_uses(env, Match(ast, DocTest)->expr);
     }
