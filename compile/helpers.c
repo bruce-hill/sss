@@ -947,15 +947,64 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         goto memory_hash;
     }
     case TaggedUnionType: {
-        // TODO: properly implement hashes here: hash(tag, hash(value))
         auto tagged = Match(t, TaggedUnionType);
+        bool any_values = false;
+        for (int64_t i = 0, len = length(tagged->members); i < len; i++)
+            any_values = any_values || ith(tagged->members, i).type != NULL;
+        if (!any_values)
+            goto memory_hash;
+
+        // Step 1: compute hash of member value (if any) using a switch statement
+        // Step 2: create a struct with {tag, hash(value) or 0}
+        // Step 3: return a hash of that struct
+        gcc_struct_t *tagged_struct = gcc_type_if_struct(gcc_t);
+        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+        gcc_type_t *union_gcc_t = get_union_type(env, t);
+        gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
+        gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
+
+        gcc_field_t *info_fields[] = {
+            gcc_new_field(env->ctx, NULL, tag_gcc_t, "tag"),
+            gcc_new_field(env->ctx, NULL, u32, "value_hash"),
+        };
+        gcc_struct_t *info_struct = gcc_new_struct_type(env->ctx, NULL, "TaggedUnionHashInfo", 2, info_fields);
+        gcc_type_t *info_t = gcc_struct_as_type(info_struct);
+        gcc_lvalue_t *info = gcc_local(func, NULL, info_t, "hash_info");
+        gcc_rvalue_t *tag = gcc_rval(gcc_rvalue_dereference_field(obj_ptr, NULL, tag_field));
+        gcc_assign(block, NULL, info, gcc_struct_constructor(env->ctx, NULL, info_t, 1, &info_fields[0], &tag));
+
+        NEW_LIST(gcc_case_t*, cases);
+        gcc_block_t *done = gcc_new_block(func, fresh("done"));
         for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
             auto member = ith(tagged->members, i);
-            if (member.type && has_heap_memory(member.type))
-                compiler_err(env, NULL, "This program is attempting to use a '%s' tagged union value as a table key, but hashing isn't implemented for tagged union with members like '%s' that have complex values.",
-                             type_to_string(t), member.name);
+            if (!member.type) continue;
+            gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
+            gcc_lvalue_t *data = gcc_rvalue_dereference_field(obj_ptr, NULL, data_field);
+            gcc_field_t *union_field = gcc_get_union_field(union_gcc_t, i);
+            gcc_lvalue_t *member_val = gcc_lvalue_access_field(data, NULL, union_field);
+
+            gcc_func_t *hash_func = get_hash_func(env, member.type);
+            gcc_rvalue_t *value_hash = gcc_callx(env->ctx, NULL, hash_func, gcc_lvalue_address(member_val, NULL));
+            gcc_assign(tag_block, NULL, gcc_lvalue_access_field(info, NULL, info_fields[1]), value_hash);
+            gcc_jump(tag_block, NULL, done);
+
+            gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
+            gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
+            APPEND(cases, case_);
         }
-        goto memory_hash;
+        gcc_switch(block, NULL, tag, done, length(cases), cases[0]);
+
+        block = done;
+
+        size_t info_size = tagged->tag_bits == 64 ? 16 : 8;
+        gcc_rvalue_t *inlen = gcc_rvalue_size(env->ctx, info_size);
+        gcc_rvalue_t *outlen = gcc_rvalue_size(env->ctx, sizeof(uint32_t));
+        gcc_rvalue_t *call = gcc_callx(
+            env->ctx, NULL, halfsiphash, gcc_lvalue_address(info, NULL), inlen, k,
+            gcc_cast(env->ctx, NULL, gcc_lvalue_address(hashval, NULL), t_void_ptr), outlen);
+        gcc_eval(block, NULL, call);
+        break;
+
     }
     case PointerType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType:
     case RangeType: case FunctionType: case TypeType: {
