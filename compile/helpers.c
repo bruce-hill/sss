@@ -55,21 +55,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
     }
     case TaggedUnionType: {
         auto tagged = Match(sss_t, TaggedUnionType);
-        int64_t max_tag = 0;
-        foreach (tagged->members, member, _) {
-            if (member->tag_value > max_tag)
-                max_tag = member->tag_value;
-        }
-        ssize_t align = 0;
-        if (max_tag > INT32_MAX)
-            align = 8;
-        else if (max_tag > INT16_MAX)
-            align = 4;
-        else if (max_tag > INT8_MAX)
-            align = 2;
-        else
-            align = 1;
-
+        ssize_t align = tagged->tag_bits/8;
         foreach (tagged->members, member, _) {
             if (!member->type) continue;
             ssize_t member_align = gcc_alignof(env, member->type);
