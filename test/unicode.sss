@@ -1,3 +1,4 @@
+use ../stdlib/unicode.sss
 
 >>> smile := "smile: 😀"
 >>> smile
@@ -5,46 +6,45 @@
 say "$smile"
 >>> #smile
 === 11
->>> unicode := use ../stdlib/unicode.sss
->>> unicode.length(smile)
+>>> smile.utf8_length()
 === 8
->>> unicode.width(smile)
+>>> smile.utf8_width()
 === 9
->>> codepoints := unicode.codepoints(smile)
->>> codepoints
+>>> codepoints := smile.codepoints()
+>>> [c.n for c in codepoints]
 === [115_i32, 109_i32, 105_i32, 108_i32, 101_i32, 58_i32, 32_i32, 128512_i32]
->>> unicode.from_codepoints(codepoints) == smile
+>>> String.from_codepoints(codepoints) == smile
 === yes
 
 >>> amelie := "Amélie"
 >>> #amelie
 === 7
->>> unicode.length(amelie)
+>>> amelie.utf8_length()
 === 6
->>> unicode.width(amelie)
+>>> amelie.utf8_width()
 === 6
->>> unicode.codepoints(amelie)
+>>> [c.n for c in amelie.codepoints()]
 === [65_i32, 109_i32, 233_i32, 108_i32, 105_i32, 101_i32]
->>> amelie_alt := unicode.from_codepoints([0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32])
+>>> amelie_alt := String.from_codepoints([CodePoint{n} for n in [0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32]])
 >>> amelie == amelie_alt
 === no
 say "$:amelie $:amelie_alt"
->>> unicode.normalize(amelie) == amelie_alt
+>>> amelie.utf8_normalized() == amelie_alt
 === yes
->>> unicode.normalize(amelie_alt) == amelie_alt
+>>> amelie_alt.utf8_normalized() == amelie_alt
 === yes
->>> unicode.lowercased(amelie) == "amélie"
+>>> amelie.lowercased() == "amélie"
 === yes
->>> unicode.uppercased(amelie) == "AMÉLIE"
+>>> amelie.uppercased() == "AMÉLIE"
 === yes
->>> unicode.titlecased(unicode.lowercased(amelie)) == amelie
+>>> amelie.lowercased().titlecased() == amelie
 === yes
 
->>> unicode.is_valid(smile)
+>>> smile.is_valid_utf8()
 === yes
->>> unicode.is_valid("\xFF\xFF")
+>>> "\xFF\xFF".is_valid_utf8()
 === no
 
->>> c := unicode.first_codepoint("😀...")
->>> unicode.is_emoji(c)
+>>> c := "😀...".first_codepoint()
+>>> c.is_emoji()
 === yes
