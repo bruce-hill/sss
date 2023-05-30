@@ -297,7 +297,15 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         } else {
             auto extend = Match(def, Extend);
             members = Match(extend->body, Block)->statements;
+            sss_hashmap_t *bindings = env->bindings;
             env = get_type_env(env, parse_type_ast(env, extend->type));
+            for (; bindings; bindings = bindings->fallback) {
+                for (uint32_t i = 1; i <= bindings->count; i++) {
+                    auto entry = hnth(bindings, i, const char*, binding_t*);
+                    if (!hget(env->bindings, entry->key, binding_t*))
+                        hset(env->bindings, entry->key, entry->value);
+                }
+            }
         }
         foreach (members, member, _) {
             if ((*member)->tag == FunctionDef) {
