@@ -74,9 +74,7 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed);
 // Compile all the deferred statements up to a given point
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes
-void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array);
 void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...);
-binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
@@ -124,6 +122,8 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
 void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
 gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member);
+binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name);
+void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array);
 
 // ============================== tables.c ==============================
 gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t);
