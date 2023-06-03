@@ -212,7 +212,7 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
                 *done_with_dim = gcc_new_block(func, "done_with_dim");
     gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim, no_dim);
 
-    gcc_eval(use_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf("\x1b[2m%s\x1b[m", info)), stderr_val)); 
+    gcc_eval(use_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf("\x1b[0;2m%s\x1b[m", info)), stderr_val)); 
     gcc_jump(use_dim, loc, done_with_dim);
 
     gcc_eval(no_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stderr_val)); 
@@ -2362,7 +2362,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
                 } else {
-                    // TODO: figure out a way to print multi-assigns as comma-separated values instead of as {_1=..., _2=...}
                     ast_t *last = ith(assign->targets, length(assign->targets)-1);
                     info = heap_strf("%.*s = ", (int)(last->span.end - first->span.start), first->span.start);
                     NEW_LIST(ast_t*, members);
@@ -2388,7 +2387,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 WrapAST(expr, StringJoin, .children=LIST(ast_t*, 
                     WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"), StringAST(expr, "\x1b[0;2m= \x1b[m"), StringAST(expr, "= "))),
                     WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
-                    WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"), StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[m", type_to_string(t))), StringAST(expr, heap_strf(" : %s", type_to_string(t))))),
+                    WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"),
+                                                         StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string(t))),
+                                                         StringAST(expr, heap_strf(" : %s", type_to_string(t))))),
                 )),
                 FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
             APPEND(statements, stmt);
