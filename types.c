@@ -82,7 +82,7 @@ static CORD type_to_cord(sss_type_t *t, bool expand_structs) {
                 if (i > 0)
                     c = CORD_cat(c, ",");
 
-                if (fname)
+                if (fname && !streq(fname, heap_strf("_%lu", i+1)))
                     c = CORD_cat(CORD_cat(c, fname), ":");
 
                 CORD fstr = type_to_cord(ft, false);

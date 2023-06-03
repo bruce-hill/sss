@@ -25,7 +25,7 @@ is _ then no
         is other
             "otherwise $other"
 ]
-=== ["first", "has four and 3", "otherwise {_1=5, _2=6}"]
+=== ["first", "has four and 3", "otherwise {5, 6}"]
 
 >>> when "two" is "one" then 1
 is "two" then 2
@@ -77,4 +77,4 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
         is other
             "Fallback: $other"
 ]
-=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {_1=2, _2=3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
+=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]

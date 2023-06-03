@@ -779,7 +779,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             }
 
             const char* name = ith(struct_t->field_names, i);
-            if (name) {
+            if (name && !streq(name, heap_strf("_%lu", i+1))) {
                 COLOR_LITERAL(&block, "\x1b[m");
                 WRITE_LITERAL(block, name);
                 COLOR_LITERAL(&block, "\x1b[33m");
