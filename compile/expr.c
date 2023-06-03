@@ -273,7 +273,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
         const char* name = Match(decl->var, Var)->name;
-        const char* sym_name = (name);
+        const char* sym_name = decl->is_global ? fresh(name) : name;
         if (decl->is_global) {
             lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
         } else {
@@ -284,10 +284,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
             compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        else if (clobbered && decl->is_global && clobbered->rval)
-            compiler_err(env, ast, "This name is already being used for a global");
-        hset(decl->is_global ? env->global_bindings : env->bindings, name,
-             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL));
+        hset(env->bindings, name,
+             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL,
+                 .visible_in_closures=decl->is_global));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);

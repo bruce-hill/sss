@@ -78,17 +78,23 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
         module_env.file = file;
         if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
         ast_t *module_ast = parse_file(file, env->on_err);
+        // Convert top-level declarations to global
+        if (module_ast->tag == Block) {
+            List(ast_t*) old_statements = Match(module_ast, Block)->statements;
+            NEW_LIST(ast_t*, statements);
+            for (int64_t i = 0; i < LIST_LEN(old_statements); i++) {
+                ast_t *stmt = ith(old_statements, i);
+                if (stmt->tag == Declare) {
+                    auto decl = Match(stmt, Declare);
+                    stmt = WrapAST(stmt, Declare, decl->var, decl->value, .is_global=true);
+                }
+                append(statements, stmt);
+            }
+            module_ast = WrapAST(module_ast, Block, statements);
+        }
         gcc_rvalue_t *exported = compile_block_expr(&module_env, &do_loading, module_ast);
         if (do_loading) {
             if (exported) gcc_eval(do_loading, NULL, exported);
-            for (uint32_t i = 1; i <= namespace->count; i++) {
-                auto entry = hnth(namespace, i, const char*, binding_t*);
-                if (entry->value->func) continue;
-                gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, entry->value->type), fresh(entry->key));
-                gcc_assign(do_loading, NULL, global, entry->value->rval);
-                hset(namespace, entry->key, new(binding_t, .type=entry->value->type, .rval=gcc_rval(global), .lval=global,
-                                                .visible_in_closures=true));
-            }
             gcc_return(do_loading, NULL, gcc_rval(module_val));
         }
         env->derived_units = module_env.derived_units;
@@ -99,10 +105,11 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
 void populate_uses(env_t *env, ast_t *ast)
 {
     if (ast->tag == Declare && Match(ast, Declare)->value->tag == Use) {
-        auto use = Match(Match(ast, Declare)->value, Use);
+        auto decl = Match(ast, Declare);
+        auto use = Match(decl->value, Use);
         (void)prepare_use(env, Match(ast, Declare)->value);
         hset(env->bindings, Match(Match(ast, Declare)->var, Var)->name,
-             new(binding_t, .type=Type(TypeType, .type=Type(ModuleType, .path=use->path))));
+             new(binding_t, .type=Type(TypeType, .type=Type(ModuleType, .path=use->path)), .visible_in_closures=decl->is_global));
     } else if (ast->tag == Use) {
         auto use = Match(ast, Use);
         (void)prepare_use(env, ast);

@@ -694,7 +694,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             case Declare: {
                 auto decl = Match(stmt, Declare);
                 sss_type_t *t = get_type(env, decl->value);
-                hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t));
+                hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
                 break;
             }
             default:

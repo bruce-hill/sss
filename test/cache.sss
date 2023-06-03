@@ -1,6 +1,6 @@
 
 // Log the non-cached calls to this function:
-global calls := @[:{Int,Int}]
+calls := @[:{Int,Int}]
 def pow(base:Int, exponent:Int; cached)->Int
     calls.insert({base, exponent})
     fail if exponent < 0

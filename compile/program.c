@@ -96,9 +96,11 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         auto entry = hnth(env->ast_functions, i, ast_t*, gcc_func_t*);
         sss_type_t *t = Type(ModuleType, .path=entry->key->span.file->filename);
         sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
-        env_t module_env = *env;
-        module_env.bindings = namespace;
-        compile_function(&module_env, entry->value, entry->key);
+        env_t func_env = *env;
+        func_env.bindings = namespace;
+        if (!namespace->fallback)
+            namespace->fallback = env->global_bindings;
+        compile_function(&func_env, entry->value, entry->key);
     }
 
     *result = gcc_compile(ctx);
