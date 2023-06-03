@@ -8,7 +8,7 @@ sss - A language that prioritizes Safety, Simplicity, and Speed.
 
 # SYNOPSIS
 
-`sss` \[*options...*\] *program.sss* \[\[`--`\] *args...*\]
+`sss` \[*options...*\] \[*program.sss*\] \[\[`--`\] *args...*\]
 
 # DESCRIPTION
 
@@ -42,6 +42,9 @@ which can produce compiled binaries or run files directly.
 
 `-e`,`--eval` *expr*
 : Evaluate an expression passed in as a command line argument and print the result.
+
+*program.sss*
+: If a program is passed as an argument, it will be run. If not, the REPL will be run instead.
 
 *args...*
 : Extra arguments are passed to the compiled SSS program when it runs.
