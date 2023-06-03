@@ -75,6 +75,8 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed);
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes
 void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...);
+// Add a byte offset to a pointer
+gcc_rvalue_t *pointer_offset(env_t *env, gcc_type_t *ptr_type, gcc_rvalue_t *ptr, gcc_rvalue_t *offset);
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);

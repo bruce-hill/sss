@@ -83,7 +83,7 @@ static gcc_rvalue_t *math_binop_rec(
                     gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
                 },
                 (gcc_rvalue_t*[]){
-                    initial_items, len, gcc_one(env->ctx, i16), gcc_zero(env->ctx, i16),
+                    initial_items, len, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), gcc_zero(env->ctx, i16),
                 }));
 
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
@@ -98,14 +98,14 @@ static gcc_rvalue_t *math_binop_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32)))
+#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32))), NULL)
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
-        gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_item_ptr, lhs_stride16));
+        gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_t, lhs_item_ptr, lhs_stride16));
         gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
-        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride16));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_t, rhs_item_ptr, rhs_stride16));
 
         gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, ARRAY_DATA_FIELD));
-        gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
+        gcc_lvalue_t *result_item = ITEM(result_t, result_item_ptr, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)));
 
         gcc_rvalue_t *item = math_binop_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, 
                                             Match(rhs_t, ArrayType)->item_type, rhs_item);
@@ -159,7 +159,7 @@ static gcc_rvalue_t *math_binop_rec(
                     gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
                 },
                 (gcc_rvalue_t*[]){
-                    initial_items, len, gcc_rvalue_int16(env->ctx, 1), gcc_rvalue_int16(env->ctx, 0),
+                    initial_items, len, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), gcc_rvalue_int16(env->ctx, 0),
                 }));
 
         gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
@@ -171,10 +171,10 @@ static gcc_rvalue_t *math_binop_rec(
 
         *block = loop_body;
         gcc_rvalue_t *array_item_ptr = gcc_rvalue_access_field(array, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
-        gcc_rvalue_t *array_item = gcc_rval(ITEM(array_item_ptr, stride16));
+        gcc_rvalue_t *array_item = gcc_rval(ITEM(array_t, array_item_ptr, stride16));
 
         gcc_rvalue_t *result_item_ptr = gcc_rvalue_access_field(gcc_rval(result), NULL, gcc_get_field(result_array_struct, ARRAY_DATA_FIELD));
-        gcc_lvalue_t *result_item = ITEM(result_item_ptr, gcc_one(env->ctx, i32));
+        gcc_lvalue_t *result_item = ITEM(result_t, result_item_ptr, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)));
 
         sss_type_t *array_item_t = Match(array_t, ArrayType)->item_type;
         gcc_rvalue_t *item;
@@ -387,11 +387,11 @@ void math_update_rec(
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(item_ptr, stride) gcc_array_access(env->ctx, NULL, item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32)))
+#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32))), NULL)
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
-        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, lhs_stride16);
+        gcc_lvalue_t *lhs_item = ITEM(lhs_t, lhs_item_ptr, lhs_stride16);
         gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
-        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_item_ptr, rhs_stride16));
+        gcc_rvalue_t *rhs_item = gcc_rval(ITEM(rhs_t, rhs_item_ptr, rhs_stride16));
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item,
                         op, Match(rhs_t, ArrayType)->item_type, rhs_item);
@@ -423,7 +423,7 @@ void math_update_rec(
 
         *block = loop_body;
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
-        gcc_lvalue_t *lhs_item = ITEM(lhs_item_ptr, stride);
+        gcc_lvalue_t *lhs_item = ITEM(lhs_t, lhs_item_ptr, stride);
 #undef ITEM
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, rhs_t, rhs);

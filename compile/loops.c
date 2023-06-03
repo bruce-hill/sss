@@ -189,8 +189,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
 
         // Now populate .next block
-        gcc_assign(for_next, NULL, item_ptr,
-                   gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(item_ptr), stride), NULL));
+        gcc_assign(for_next, NULL, item_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(item_ptr), stride));
 
         // goto is_done ? end : between
         gcc_jump_condition(for_next, NULL, is_done, for_end,
@@ -238,8 +237,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
 
         // Now populate .next block
-        gcc_assign(for_next, NULL, entry_ptr,
-                   gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_rval(entry_ptr), gcc_one(env->ctx, gcc_type(env->ctx, INT32))), NULL));
+        gcc_assign(for_next, NULL, entry_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(entry_ptr),
+                                                             gcc_rvalue_int32(env->ctx, gcc_sizeof(env, item_t))));
 
         // goto is_done ? end : between
         gcc_jump_condition(for_next, NULL, is_done, for_end,

@@ -44,12 +44,23 @@ def Mat2D {rows,cols:Int, data:[Num]}
         s = "$s]"
         return s
 
-mat := Mat2D.from_nested([[1.,2,3], [4.,5,6]])
-say "$:mat $(mat.row(1)) $(mat.col(1))"
-say "$:mat $(mat.row(2)) $(mat.col(2))"
+>>> mat := Mat2D.from_nested([[1.,2,3], [4.,5,6]])
+>>> mat.row(1)
+=== [1, 2, 3]
+>>> mat.row(2)
+=== [4, 5, 6]
+>>> mat.col(1)
+=== [1, 4]
+>>> mat.col(2)
+=== [2, 5]
+>>> mat.col(3)
+=== [3, 6]
 
-a := Mat2D.from_nested([[1.,0,1],[2.,1,1],[0.,1,1],[1.,1,2]])
-b := Mat2D.from_nested([[1.,2,1],[2.,3,1],[4.,2,2]])
-say "$(a.tostring())"
-say "$(b.tostring())"
-say "$(a.mul(b).tostring())"
+>>> a := Mat2D.from_nested([[1.,0,1],[2.,1,1],[0.,1,1],[1.,1,2]])
+>>> b := Mat2D.from_nested([[1.,2,1],[2.,3,1],[4.,2,2]])
+>>> a.tostring()
+=== "[1 0 1; 2 1 1; 0 1 1; 1 1 2]"
+>>> b.tostring()
+=== "[1 2 1; 2 3 1; 4 2 2]"
+>>> a.mul(b).tostring()
+=== "[5 4 3; 8 9 5; 6 5 3; 11 9 6]"

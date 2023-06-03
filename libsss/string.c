@@ -343,8 +343,8 @@ string_t sss_string_octal(int64_t i, int64_t digits, bool prefix) {
 }
 
 string_t sss_string_split(string_t str, string_t split_chars) {
-    if (str.length == 0) return (string_t){.stride=1};
-    struct { string_t *data; int32_t length; int16_t stride, free; } strings = {.stride=1};
+    if (str.length == 0) return (string_t){.stride=sizeof(string_t)};
+    struct { string_t *data; int32_t length; int16_t stride, free; } strings = {.stride=sizeof(string_t)};
     size_t capacity = 0;
     bool separators[256] = {0};
     for (int32_t i = 0; i < split_chars.length; i++)

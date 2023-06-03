@@ -1183,6 +1183,7 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
 
         // loop_body:
         sss_type_t *item_t = Match(t, ArrayType)->item_type;
+        gcc_type_t *gcc_item_ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, item_t));
 
         gcc_func_t *cmp_fn = get_compare_func(env, item_t);
         assert(cmp_fn);
@@ -1190,8 +1191,8 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
         gcc_rvalue_t *rhs_offset = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, int32, index_rval, gcc_cast(env->ctx, NULL, rhs_stride, int32));
         gcc_rvalue_t *difference = gcc_callx(env->ctx, NULL, cmp_fn,
             // lhs.data[i*lhs.stride], rhs.data[i*rhs.stride]
-            gcc_rval(gcc_array_access(env->ctx, NULL, lhs_data, lhs_offset)),
-            gcc_rval(gcc_array_access(env->ctx, NULL, rhs_data, rhs_offset)));
+            gcc_rval(gcc_rvalue_dereference(pointer_offset(env, gcc_item_ptr_t, lhs_data, lhs_offset), NULL)),
+            gcc_rval(gcc_rvalue_dereference(pointer_offset(env, gcc_item_ptr_t, rhs_data, rhs_offset), NULL)));
 
         gcc_block_t *early_return = gcc_new_block(func, fresh("return_early")),
                     *keep_going = gcc_new_block(func, fresh("keep_going"));
@@ -1583,6 +1584,15 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     gcc_eval(*block, NULL, failure);
     gcc_jump(*block, NULL, *block);
     *block = NULL;
+}
+
+gcc_rvalue_t *pointer_offset(env_t *env, gcc_type_t *ptr_type, gcc_rvalue_t *ptr, gcc_rvalue_t *offset)
+{
+    // Equivalent to: (t*)&(((char*)ptr)[offset])
+    return gcc_cast(
+        env->ctx, NULL,
+        gcc_lvalue_address(gcc_array_access(env->ctx, NULL, gcc_cast(env->ctx, NULL, ptr, gcc_type(env->ctx, STRING)), offset), NULL),
+        ptr_type);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
