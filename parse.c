@@ -45,7 +45,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
-    "or","not","no","mod1","mod","is","inline","in","if","for","fail","extern","extend","else","do","del",
+    "or","not","no","mod1","mod","is","in","if","for","fail","extern","extend","else","do","del",
     "defer","def","by","bitcast","between","as","and","_mix_","_min_","_max_",NULL,
 };
 
@@ -2086,7 +2086,7 @@ PARSER(parse_def) {
     const char *start = pos;
     if (!match_word(&pos, "def")) return NULL;
 
-    bool is_inline = match_word(&pos, "inline");
+    bool is_inline = false;
     spaces(&pos);
     const char* name = get_id(&pos);
     if (!name) {
@@ -2127,7 +2127,9 @@ PARSER(parse_def) {
         ast_t *cache = NULL;
         for (; whitespace(&pos), (match(&pos, ";") || match(&pos, ",")); ) {
             const char *flag_start = pos;
-            if (match_word(&pos, "cached")) {
+            if (match_word(&pos, "inline")) {
+                is_inline = true;
+            } else if (match_word(&pos, "cached")) {
                 if (!cache) cache = NewAST(ctx->file, pos, pos, Int, .i=INT64_MAX, .precision=64);
             } else if (match_word(&pos, "cache_size")) {
                 if (whitespace(&pos), !match(&pos, "="))
