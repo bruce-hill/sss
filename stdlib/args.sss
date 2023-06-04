@@ -7,10 +7,10 @@
 //        exit 1i32
 
 def ArgumentResult{|
-    Success:{flags:{String=>String},positional:[String]}
-    InvalidArgument:String
-    MissingValue:String
-    DuplicateValue:String
+    Success({flags:{String=>String},positional:[String]})
+    InvalidArgument(String)
+    MissingValue(String)
+    DuplicateValue(String)
 |}
 
 def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_args:[String]}
