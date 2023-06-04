@@ -7,6 +7,8 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistr.h>
+#include <unictype.h>
 
 #include "ast.h"
 #include "parse.h"
@@ -187,6 +189,12 @@ size_t match(const char **pos, const char *target) {
     return len;
 }
 
+static inline bool is_xid_continue_next(const char *pos) {
+    ucs4_t point = 0;
+    u8_next(&point, (const uint8_t*)pos);
+    return uc_is_property_xid_continue(point);
+}
+
 //
 // Expect a string (potentially after whitespace) and emit a parser error if it's not there
 //
@@ -197,8 +205,7 @@ static void expect_str(
         char lastchar = target[strlen(target)-1];
         if (!(isalpha(lastchar) || isdigit(lastchar) || lastchar == '_'))
             return;
-        char nextchar = **pos;
-        if (!(isalpha(nextchar) || isdigit(nextchar) || lastchar == '_'))
+        if (!is_xid_continue_next(*pos))
             return;
     }
 
@@ -266,11 +273,11 @@ static inline ast_t *optional_ast(parse_ctx_t *ctx, const char **pos, parser_t *
 size_t match_word(const char **out, const char *word) {
     const char *pos = *out;
     spaces(&pos);
-    if (match(&pos, word) && !isalpha(*pos) && !isdigit(*pos) && *pos != '_') {
-        *out = pos;
-        return strlen(word);
-    }
-    return 0;
+    if (!match(&pos, word) || is_xid_continue_next(pos))
+        return 0;
+
+    *out = pos;
+    return strlen(word);
 }
 
 bool match_group(const char **out, char open) {
@@ -290,16 +297,20 @@ bool match_group(const char **out, char open) {
 }
 
 const char *get_word(const char **inout) {
-    const char *pos = *inout;
-    spaces(&pos);
-    if (!isalpha(*pos) && *pos != '_')
+    const char *word = *inout;
+    spaces(&word);
+    const uint8_t *pos = (const uint8_t*)word;
+    ucs4_t point;
+    pos = u8_next(&point, pos);
+    if (!uc_is_property_xid_start(point) && point != '_')
         return NULL;
-    const char *word = pos;
-    ++pos;
-    while (isalpha(*pos) || isdigit(*pos) || *pos == '_')
-        ++pos;
-    *inout = pos;
-    return heap_strn(word, (size_t)(pos - word));
+
+    for (const uint8_t *next; (next = u8_next(&point, pos)); pos = next) {
+        if (!uc_is_property_xid_continue(point))
+            break;
+    }
+    *inout = (const char*)pos;
+    return heap_strn(word, (size_t)((const char*)pos - word));
 }
 
 const char *get_id(const char **inout) {
@@ -1232,7 +1243,8 @@ ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
 ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix, bool exprs_ok) {
     const char *start = pos;
     if (!match(&pos, prefix)) return NULL;
-    if (isalpha(prefix[0]) && (isalpha(*pos) || isdigit(*pos) || *pos == '_')) return NULL;
+    if ((isalpha(prefix[0]) || prefix[0] == '_') && is_xid_continue_next(pos))
+        return NULL;
     whitespace(&pos);
     ast_t *val = exprs_ok ? parse_expr(ctx, pos) : parse_term(ctx, pos);
     if (!val) return NULL;
@@ -1309,7 +1321,7 @@ PARSER(parse_string) {
     const char *dsl = NULL;
     char open, close;
     if (match(&pos, "$")) {
-        dsl = isalpha(*pos) || *pos == '_' ? get_id(&pos) : NULL;
+        dsl = is_xid_continue_next(pos) ? get_id(&pos) : NULL;
         open = *pos;
         close = closing[(int)open] ? closing[(int)open] : open;
         ++pos;

@@ -20,7 +20,7 @@ OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo 
 EXTRA=
 G=-ggdb
 O=-O0
-LIBS=-lgc -lgccjit -lcord -lm -L. -l:libsss.so.$(VERSION)
+LIBS=-lgc -lgccjit -lcord -lm -lunistring -L. -l:libsss.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
 LIBFILE=libsss.so.$(VERSION)
