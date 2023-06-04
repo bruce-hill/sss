@@ -31,7 +31,6 @@ def File{raw_c_file:?_CFile}
     read := extern sss_readfile:(f:@File,bytes=Int.max)->String
 
     def write(f:@File, text:String)->Result
-        t := @{:@_CFile=>Int; default=1}
         file := f.raw_c_file or fail "File has already been closed"
         fputc := (extern fputc:(Char,@_CFile)->Int32)
         for char in text
