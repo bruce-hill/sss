@@ -185,8 +185,6 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     sss_type_t *arr_t = get_type(env, arr_ast);
 
-    gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
-    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *arr_var;
     if (access == ACCESS_WRITE) {
@@ -202,10 +200,13 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
             arr_t = ptr->pointed;
         }
+        gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
         arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
         gcc_assign(*block, loc, arr_var, arr);
         mark_array_cow(env, block, gcc_lvalue_address(arr_var, loc));
     }
+    gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
+    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
     gcc_rvalue_t *arr = gcc_rval(arr_var);
 
     // Specially optimized case for creating slices using range literals
