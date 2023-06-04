@@ -1020,7 +1020,7 @@ PARSER(parse_if) {
 }
 
 PARSER(parse_when) {
-    // when <expr> is [<var>:]<tag>[*(,<tag>)] <body> *(is ...) else <body>
+    // when <expr> is [<var>:]<tag>[*(,<tag>)] <body> *(is ...) [else <body>]
     const char *start = pos;
     if (!match_word(&pos, "when"))
         return NULL;
@@ -1034,6 +1034,15 @@ PARSER(parse_when) {
         const char *clause = pos;
         whitespace(&clause);
         if (sss_get_indent(ctx->file, clause) != starting_indent) break;
+
+        if (match_word(&clause, "else")) {
+            pos = clause;
+            ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
+            APPEND(patterns, NewAST(ctx->file, clause, clause, Var, .name="*"));
+            APPEND(blocks, body);
+            break;
+        }
+
         if (!match_word(&clause, "is")) break;
         pos = clause;
         ast_t *pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
@@ -1046,7 +1055,7 @@ PARSER(parse_when) {
         }
 
         match_word(&pos, "then");
-        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when'"); 
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when' clause"); 
         for (int64_t i = 0, len = LIST_LEN(clause_patterns); i < len; i++) {
             APPEND(patterns, LIST_ITEM(clause_patterns, i));
             APPEND(blocks, body);
