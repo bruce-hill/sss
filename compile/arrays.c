@@ -578,6 +578,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));
     gcc_block_t *add_next_item = gcc_new_block(func, fresh("next_item"));
+    gcc_block_t *continue_next_item = add_next_item;
     gcc_block_t *end = gcc_new_block(func, fresh("done"));
 
     // item_ptr = array.items
@@ -594,17 +595,58 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     // item = *item_ptr
     gcc_rvalue_t *item = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
     // print(item)
-    gcc_func_t *item_print = get_print_func(env, item_type);
-    assert(item_print);
-    gcc_eval(add_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, item, file, rec, color));
+    if (is_string) {
+        // Custom logic for strings: inline the char printing to prevent ANSI color escapes from breaking up utf8 codepoints
+        // and generally spamming the console with more characters than necessary
+        // (i.e. print `\x1b[35m"Hello"\x1b[m` instead of `\x1b[35m"\x1b[35mH\x1b[m\x1b[35me\x1b[m...` )
+        continue_next_item = gcc_new_block(func, fresh("carry_on"));
+
+        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",['"']="\\\""};
+        NEW_LIST(gcc_case_t*, cases);
+#define ADD_CASE(block, lo, hi) APPEND(cases, gcc_new_case(env->ctx, gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), block))
+        for (int i = 0; i < 128; i++) {
+            char *escape_str = escapes[i];
+            if (!escape_str) continue;
+            gcc_block_t *case_block = gcc_new_block(func, fresh("char_escape"));
+            ADD_CASE(case_block, i, i);
+            COLOR_LITERAL(&case_block, "\x1b[1;34m");
+            WRITE_LITERAL(case_block, escape_str);
+            COLOR_LITERAL(&case_block, "\x1b[0;35m");
+            gcc_jump(case_block, NULL, continue_next_item);
+        }
+
+        // Hex escape:
+        gcc_block_t *hex_block = gcc_new_block(func, fresh("char_hex_escape"));
+        ADD_CASE(hex_block, '\x00', '\x06');
+        ADD_CASE(hex_block, '\x0E', '\x1A');
+        ADD_CASE(hex_block, '\x1C', '\x1F');
+        ADD_CASE(hex_block, '\x7F', '\x7F');
+        COLOR_LITERAL(&hex_block, "\x1b[1;34m");
+        gcc_func_t *fprintf_fn = get_function(env, "fprintf");
+        gcc_eval(hex_block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "\\x%02X"), item));
+        COLOR_LITERAL(&hex_block, "\x1b[0;35m");
+        gcc_jump(hex_block, NULL, continue_next_item);
+#undef ADD_CASE
+
+        gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
+        gcc_switch(add_next_item, NULL, item, default_block, length(cases), cases[0]);
+
+        gcc_func_t *fputc_fn = get_function(env, "fputc");
+        gcc_eval(default_block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, item, file));
+        gcc_jump(default_block, NULL, continue_next_item);
+    } else {
+        gcc_func_t *item_print = get_print_func(env, item_type);
+        assert(item_print);
+        gcc_eval(continue_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, item, file, rec, color));
+    }
     
     // i += 1
     assert(i);
-    gcc_update(add_next_item, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+    gcc_update(continue_next_item, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
     // item_ptr = (void*)item_ptr + stride
-    gcc_assign(add_next_item, NULL, item_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(item_ptr), stride));
+    gcc_assign(continue_next_item, NULL, item_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(item_ptr), stride));
     // if (i < len) goto add_comma;
-    gcc_jump_condition(add_next_item, NULL, 
+    gcc_jump_condition(continue_next_item, NULL, 
                   gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(i), len64),
                   add_comma, end);
 
