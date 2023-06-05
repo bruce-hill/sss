@@ -193,8 +193,8 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    gcc_func_t *func = hget(env->ast_functions, def, gcc_func_t*);
-    if (func) return func;
+    func_context_t *func_context = hget(env->ast_functions, def, func_context_t*);
+    if (func_context) return func_context->func;
 
     auto t = Match(get_type(env, def), FunctionType);
     NEW_LIST(gcc_param_t*, params);
@@ -207,10 +207,11 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
     }
 
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
-    func = gcc_new_func(
+    gcc_func_t *func = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         sss_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
-    hset(env->ast_functions, def, func);
+    func_context = new(func_context_t, .func=func, .env=*env);
+    hset(env->ast_functions, def, func_context);
     return func;
 }
 

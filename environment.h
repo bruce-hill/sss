@@ -50,7 +50,7 @@ typedef struct env_s {
     sss_hashmap_t *global_funcs; // name -> func
     sss_hashmap_t *type_namespaces; // sss_type_t* -> name -> binding_t*
     sss_hashmap_t *def_types; // ast_t* -> binding_t*
-    sss_hashmap_t *ast_functions; // ast_t* -> gcc_func_t*
+    sss_hashmap_t *ast_functions; // ast_t* -> func_context_t*
     sss_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;
@@ -59,6 +59,11 @@ typedef struct env_s {
     defer_t *deferred;
     bool debug, is_deferred;
 } env_t;
+
+typedef struct {
+    gcc_func_t* func;
+    env_t env;
+} func_context_t;
 
 __attribute__((noreturn, format(printf,3,4)))
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);

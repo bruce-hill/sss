@@ -93,14 +93,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Actually compile the functions:
     for (uint32_t i = 1; i <= env->ast_functions->count; i++) {
-        auto entry = hnth(env->ast_functions, i, ast_t*, gcc_func_t*);
-        sss_type_t *t = Type(ModuleType, .path=entry->key->span.file->filename);
-        sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
-        env_t func_env = *env;
-        func_env.bindings = namespace;
-        if (!namespace->fallback)
-            namespace->fallback = env->global_bindings;
-        compile_function(&func_env, entry->value, entry->key);
+        auto entry = hnth(env->ast_functions, i, ast_t*, func_context_t*);
+        compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 
     *result = gcc_compile(ctx);

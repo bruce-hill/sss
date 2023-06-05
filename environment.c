@@ -1,4 +1,5 @@
 // Code related to the ambient state/environment used in compilation
+#include <libgccjit.h>
 #include <limits.h>
 #include <math.h>
 #include <setjmp.h>
