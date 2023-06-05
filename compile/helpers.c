@@ -1383,8 +1383,36 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             } else {
                 compiler_err(env, ast, "The only fields that can be mutated on a table are '.default' and '.fallback', not '.%s'", access->field);
             }
+        } else if (fielded_t->tag == TaggedUnionType) {
+            auto tagged = Match(fielded_t, TaggedUnionType);
+            for (int64_t i = 0; i < length(tagged->members); i++) {
+                auto member = ith(tagged->members, i);
+                if (!streq(access->field, member.name)) continue;
+
+                gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
+                gcc_rvalue_t *tag = gcc_rval(gcc_lvalue_access_field(fielded_lval, NULL, tag_field));
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
+                            *right_tag = gcc_new_block(func, fresh("right_tag"));
+
+                gcc_type_t *tag_gcc_t = get_tag_type(env, fielded_t);
+                gcc_rvalue_t *correct_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
+                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
+                                   wrong_tag, right_tag);
+                *block = wrong_tag;
+                insert_failure(env, block, &ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
+                               fielded_t, gcc_rval(fielded_lval));
+                if (*block) gcc_jump(*block, loc, *block);
+
+                *block = right_tag;
+                gcc_type_t *gcc_union_t = get_union_type(env, fielded_t);
+                return gcc_lvalue_access_field(gcc_lvalue_access_field(fielded_lval, NULL, gcc_get_field(tagged_struct, 1)), loc,
+                                               gcc_get_union_field(gcc_union_t, i));
+            }
+            compiler_err(env, ast, "The field '%s' is not a valid tag on the tagged union type %s",
+                         access->field, type_to_string(fielded_t));
         } else {
-            // TODO: support using TaggedUnion field and Type fields as lvalues
             compiler_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
                   type_to_string(fielded_t));
         }
