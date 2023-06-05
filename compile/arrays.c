@@ -700,7 +700,7 @@ static void define_array_insert(env_t *env, sss_type_t *t)
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "item", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t), item_t, Type(IntType, .bits=64)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), item_t, Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "insert", b);
@@ -729,7 +729,7 @@ static void define_array_insert_all(env_t *env, sss_type_t *t)
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "other", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t), t, Type(IntType, .bits=64)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), t, Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "insert_all", b);
@@ -758,7 +758,7 @@ static void define_array_remove(env_t *env, sss_type_t *t)
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index", "count"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t), Type(IntType, .bits=64), Type(IntType, .bits=64)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64), Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, len, FakeAST(Int, .precision=64, .i=1)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "remove", b);
@@ -795,7 +795,7 @@ static void define_array_pop(env_t *env, sss_type_t *t)
     ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t), Type(IntType, .bits=64)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64)),
                                   .arg_defaults=LIST(ast_t*, NULL, len),
                                   .ret=item_t));
     set_in_namespace(env, t, "pop", b);
@@ -819,7 +819,7 @@ static void define_array_shuffle(env_t *env, sss_type_t *t)
 
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "shuffle", b);
 }
@@ -847,7 +847,7 @@ static void define_array_sort(env_t *env, sss_type_t *t)
 
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t)),
+                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "sort", b);
 }
