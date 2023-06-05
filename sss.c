@@ -196,7 +196,7 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         env->file = f;
         if (setjmp(on_err) != 0) {
             CLEANUP();
-            continue;
+            goto next_line;
         }
 
         ast_t *ast = parse_file(f, &on_err);
@@ -206,6 +206,14 @@ int run_repl(gcc_jit_context *ctx, bool verbose)
         NEW_LIST(ast_t*, stmts);
         for (int64_t i = 0; i < LIST_LEN(statements); i++) {
             ast_t *stmt = LIST_ITEM(statements, i);
+            if (stmt->tag == Use || (stmt->tag == Declare && Match(stmt, Declare)->value->tag == Use)) {
+                if (use_color) fprintf(stdout, "\x1b[31;1m");
+                fprintf(stdout, "I'm sorry, but 'use' statements are not currently supported in the REPL!\n");
+                if (use_color) fprintf(stdout, "\x1b[m");
+                CLEANUP();
+                goto next_line;
+            }
+
             if (stmt->tag == Declare)
                 stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_global=true);
             stmt = WrapAST(stmt, DocTest, .expr=stmt, .skip_source=true);
