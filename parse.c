@@ -484,7 +484,9 @@ PARSER(parse_struct_type) {
         const char *field_start = pos;
         const char *field_name = get_id(&pos);
         whitespace(&pos);
-        if (match(&pos, ":")) {
+        if (*pos == '}') {
+            break;
+        } else if (match(&pos, ":")) {
             whitespace(&pos);
         } else {
             field_name = heap_strf("_%d", i);
