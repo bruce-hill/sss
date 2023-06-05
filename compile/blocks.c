@@ -56,6 +56,7 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
     // Look up old value to avoid recompiling the same module if it's reimported:
     if (!b) {
         env_t module_env = *env;
+        module_env.global_bindings = namespace;
         module_env.bindings = namespace;
         gcc_func_t *load_func = gcc_new_func(
             env->ctx, NULL, GCC_FUNCTION_EXPORTED, sss_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
@@ -288,7 +289,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         binding_t *b =  new(binding_t, .type=get_type(env, def),
                             .func=func, .rval=gcc_get_func_address(func, NULL),
                             .visible_in_closures=true);
-        hset(env->bindings, fndef->name, b);
+        hset(env->global_bindings, fndef->name, b);
     } else if (def->tag == StructDef || def->tag == TaggedUnionDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {
