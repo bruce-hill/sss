@@ -23,6 +23,8 @@ are available from your package manager of choice, for example: `pacman -S
 libgccjit gc`). The compiler uses a few GCC extensions, so other C compilers
 are not supported.
 
+If you use Vim, you may also want to use the [SSS Vim Language Plugin.](https://github.com/bruce-hill/vim-sss)
+
 ## Usage
 
 To build the compiler, simply run `make`. To install the compiler run `sudo
