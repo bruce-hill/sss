@@ -2089,8 +2089,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = done;
         // Ensure the (unreachable) done block is terminated when every branch aborts:
         if (*block && result_t->tag == AbortType) {
-            gcc_jump(*block, loc, *block);
-            *block = NULL;
+            // If there's a way out of this without aborting, nevermind.
+            // *Technically* this should be typechecked as a generator type,
+            // but the type checker doesn't check for exhaustiveness.
+            if (!get_missing_pattern(env, subject_t, when->patterns)) {
+                gcc_jump(*block, loc, *block);
+                *block = NULL;
+            }
         }
 
         return has_value ? gcc_rval(when_value) : NULL;
