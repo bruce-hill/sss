@@ -2043,13 +2043,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case When: {
         auto when = Match(ast, When);
-        sss_type_t *subject_t = get_type(env, when->subject);
+        sss_type_t *subject_t = when->subject->tag == Declare ? get_type(env, Match(when->subject, Declare)->value) : get_type(env, when->subject);
 
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, "_when_subject");
         gcc_assign(*block, loc, subject_var, subject);
+        if (when->subject->tag == Declare) {
+            env = fresh_scope(env);
+            hset(env->bindings, Match(Match(when->subject, Declare)->var, Var)->name,
+                 new(binding_t, .type=subject_t, .lval=subject_var, .rval=gcc_rval(subject_var)));
+        }
         subject = gcc_rval(subject_var);
 
         gcc_block_t *done = gcc_new_block(func, fresh("finished"));

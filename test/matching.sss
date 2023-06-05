@@ -78,3 +78,10 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
             "Fallback: $other"
 ]
 === ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
+
+// Binding:
+when f := Foo.str("abc") is str
+    >>> f
+    === Foo.str("abc")
+else
+    fail "Unreachable"

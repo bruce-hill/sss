@@ -1025,8 +1025,9 @@ PARSER(parse_when) {
     if (!match_word(&pos, "when"))
         return NULL;
     size_t starting_indent = sss_get_indent(ctx->file, pos);
-    ast_t *subj = expect_ast(ctx, start, &pos, parse_expr,
-                             "I expected to find an expression for this 'when'");
+    ast_t *subj = optional_ast(ctx, &pos, parse_declaration);
+    if (!subj) subj = expect_ast(ctx, start, &pos, parse_expr,
+                                 "I expected to find an expression for this 'when'");
 
     NEW_LIST(ast_t*, patterns);
     NEW_LIST(ast_t*, blocks);

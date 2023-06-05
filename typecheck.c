@@ -1029,7 +1029,15 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case When: {
         auto when = Match(ast, When);
-        sss_type_t *subject_t = get_type(env, when->subject);
+        sss_type_t *subject_t;
+        if (when->subject->tag == Declare) {
+            subject_t = get_type(env, Match(when->subject, Declare)->value);
+            env = fresh_scope(env);
+            hset(env->bindings, Match(Match(when->subject, Declare)->var, Var)->name,
+                 new(binding_t, .type=subject_t));
+        } else {
+            subject_t = get_type(env, when->subject);
+        }
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
             env_t *case_env = fresh_scope(env);
