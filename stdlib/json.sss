@@ -150,3 +150,6 @@ if env.get("TEST") == "1"
     === JSON.obj({"x"=>JSON.bool(yes)})
     >>> $JSON|[1,2]|.deserialize()
     === JSON.list([JSON.num(1), JSON.num(2)])
+    >>> x := JSON.obj({"x"=> JSON.str("hello")})
+    >>> x.obj["x"].str
+    === "hello"
