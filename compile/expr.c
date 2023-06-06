@@ -624,47 +624,50 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto ret = Match(ast, Return);
         assert(env->return_type);
 
-        if (env->return_type->tag == VoidType) {
-            if (ret->value) {
-                sss_type_t *value_t = get_type(env, ret->value);
-                if (value_t->tag != VoidType)
-                    compiler_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
+        if (!ret->value) {
+            if (env->return_type->tag != VoidType)
+                compiler_err(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
+                             type_to_string(env->return_type));
 
-                if (ret->value->tag == FunctionCall && env->tail_calls && !env->deferred) {
-                    gcc_rvalue_t *val = compile_expr(env, block, ret->value);
-                    gcc_rvalue_require_tail_call(val, 1);
-                    gcc_eval(*block, loc, val);
-                } else {
-                    compile_statement(env, block, ret->value);
-                }
-            }
             insert_defers(env, block, NULL);
             gcc_return_void(*block, loc);
-        } else {
-            if (!ret->value)
-                compiler_err(env, ast, "I was expecting this `return` to have a value of type %s because of the function's type signature, but no value is being returned here.",
-                      type_to_string(env->return_type));
-            sss_type_t *t = get_type(env, ret->value);
-            gcc_rvalue_t *val = compile_expr(env, block, ret->value);
-            if (!promote(env, t, &val, env->return_type))
-                compiler_err(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
-                      type_to_string(env->return_type), type_to_string(t));
-
-            if (env->deferred) {
-                // Put in a temporary variable so defers can run after evaluating return expr:
-                gcc_func_t *func = gcc_block_func(*block);
-                gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, env->return_type), "_return_val");
-                gcc_assign(*block, loc, return_var, val);
-
-                // Now run defers:
-                insert_defers(env, block, NULL);
-                gcc_return(*block, loc, gcc_rval(return_var));
-            } else {
-                if (ret->value->tag == FunctionCall && env->tail_calls && type_eq(t, env->return_type))
-                    gcc_rvalue_require_tail_call(val, 1);
-                gcc_return(*block, loc, val);
-            }
+            *block = NULL;
+            return NULL;
         }
+
+        // Validate and compile the return value:
+        sss_type_t *value_t = get_type(env, ret->value);
+        if (env->return_type->tag == VoidType && value_t->tag != VoidType)
+            compiler_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
+
+        gcc_rvalue_t *val = compile_expr(env, block, ret->value);
+        if (!promote(env, value_t, &val, env->return_type))
+            compiler_err(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
+                  type_to_string(env->return_type), type_to_string(value_t));
+
+        // Tail call optimization under the right conditions:
+        if (ret->value->tag == FunctionCall && env->tail_calls && !env->deferred && type_eq(value_t, env->return_type))
+            gcc_rvalue_require_tail_call(val, 1);
+
+        // Evaluate return expression before returning void or defers (if any):
+        if (env->return_type->tag == VoidType && val) {
+            gcc_eval(*block, loc, val);
+            val = NULL;
+        } else if (env->deferred) {
+            // Cache the return value in a variable before running defers:
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, env->return_type), "_return_val");
+            gcc_assign(*block, loc, return_var, val);
+            val = gcc_rval(return_var);
+        }
+
+        insert_defers(env, block, NULL);
+
+        if (env->return_type->tag == VoidType)
+            gcc_return_void(*block, loc);
+        else
+            gcc_return(*block, loc, val);
+
         *block = NULL;
         return NULL;
     }
