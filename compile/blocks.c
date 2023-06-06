@@ -245,7 +245,7 @@ void populate_def_members(env_t *env, ast_t *def)
                 gcc_param_t *params[] = {
                     gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, member.type), fresh(member.name)),
                 };
-                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, sss_type_to_gcc(env, t),
+                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_ALWAYS_INLINE, sss_type_to_gcc(env, t),
                                                 fresh(member.name), 1, params, 0);
                 gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
                 assert(gcc_get_union_field(union_gcc_t, i));
