@@ -653,7 +653,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 insert_defers(env, block, NULL);
                 gcc_return(*block, loc, gcc_rval(return_var));
             } else {
-                if (ret->value->tag == FunctionCall && env->tail_calls)
+                if (ret->value->tag == FunctionCall && env->tail_calls && type_eq(t, env->return_type))
                     gcc_rvalue_require_tail_call(val, 1);
                 gcc_return(*block, loc, val);
             }
