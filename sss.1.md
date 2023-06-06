@@ -35,7 +35,10 @@ which can produce compiled binaries or run files directly.
 : Compile the program to a file, rather than running it.
 
 `-O` *level*
-: Set the optimization level.
+: Set the optimization level, e.g. `-O3`
+
+`-G` *GCC flag*
+: Set a GCC flag, e.g. `-Gfno-trapv`
 
 `-o` *file*
 : Specify the output file when compiling to a file.

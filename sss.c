@@ -325,7 +325,7 @@ int main(int argc, char *argv[])
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
             puts("sss - The SSS programming language runner");
-            puts("Usage: sss [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O optimization] [file.sss | -e '<expr>']");
+            puts("Usage: sss [-h|--help] [-v|--verbose] [--version] [-c|--compile] [-o outfile] [-A|--asm] [-O<optimization>] [-G<GCC flag>] [file.sss | -e '<expr>']");
             return 0;
         } else if (streq(argv[i], "-V")) {
             ++i;
@@ -347,9 +347,12 @@ int main(int argc, char *argv[])
             gcc_jit_context_add_command_line_option(ctx, "-fverbose-asm");
             verbose = true;
             continue;
-        } else if (strncmp(argv[i], "-O", 2) == 0) {
+        } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
             int opt = atoi(argv[i]+2);
             gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
+            continue;
+        } else if (strncmp(argv[i], "-G", 2) == 0) { // GCC Flag
+            gcc_jit_context_add_command_line_option(ctx, heap_strf("-%s", argv[i]+2));
             continue;
         } else if (streq(argv[i], "-e") || streq(argv[i], "--eval")) {
             if (i+1 >= argc)
