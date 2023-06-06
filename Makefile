@@ -19,7 +19,7 @@ CWARN=-Wall -Wextra
 OSFLAGS != case $$(uname -s) in *BSD|Darwin) echo '-D_BSD_SOURCE';; Linux) echo '-D_GNU_SOURCE';; *) echo '-D_DEFAULT_SOURCE';; esac
 EXTRA=
 G=-ggdb
-O=-O0
+O=-Og
 LIBS=-lgc -lgccjit -lcord -lm -lunistring -L. -l:libsss.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
