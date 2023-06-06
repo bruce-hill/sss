@@ -70,6 +70,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
                 append(stmts, WrapAST(ast, Declare, for_->value, inner->body));
                 append(stmts, for_->body);
                 body = WrapAST(ast, Block, stmts);
+            } else {
+                body = NULL;
             }
 
             if (for_->between) {
