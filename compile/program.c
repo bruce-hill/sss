@@ -17,9 +17,9 @@
 #include "libgccjit_abbrev.h"
 #include "../SipHash/halfsiphash.h"
 
-main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool debug, gcc_jit_result **result)
+main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, bool debug, gcc_jit_result **result)
 {
-    env_t *env = new_environment(ctx, on_err, f, debug);
+    env_t *env = new_environment(ctx, on_err, f, tail_calls, debug);
 
     sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);

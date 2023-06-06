@@ -57,7 +57,7 @@ typedef struct env_s {
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     defer_t *deferred;
-    bool debug, is_deferred;
+    bool tail_calls:1, debug:1, is_deferred:1;
 } env_t;
 
 typedef struct {
@@ -68,7 +68,7 @@ typedef struct {
 __attribute__((noreturn, format(printf,3,4)))
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
-env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool debug);
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool debug);
 env_t *fresh_scope(env_t *env);
 env_t *global_scope(env_t *env);
 sss_type_t *define_string_type(env_t *env, const char *dsl);

@@ -643,14 +643,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, ast, "I was expecting this `return` to have value of type %s because of the function's type signature, but this value has type %s",
                       type_to_string(env->return_type), type_to_string(t));
 
-            // Put in a temporary variable so defers can run after evaluating return expr:
-            gcc_func_t *func = gcc_block_func(*block);
-            gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, env->return_type), "_return_val");
-            gcc_assign(*block, loc, return_var, val);
+            if (env->deferred) {
+                // Put in a temporary variable so defers can run after evaluating return expr:
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *return_var = gcc_local(func, loc, sss_type_to_gcc(env, env->return_type), "_return_val");
+                gcc_assign(*block, loc, return_var, val);
 
-            // Now run defers:
-            insert_defers(env, block, NULL);
-            gcc_return(*block, loc, gcc_rval(return_var));
+                // Now run defers:
+                insert_defers(env, block, NULL);
+                gcc_return(*block, loc, gcc_rval(return_var));
+            } else {
+                if (ret->value->tag == FunctionCall && env->tail_calls)
+                    gcc_rvalue_require_tail_call(val, 1);
+                gcc_return(*block, loc, val);
+            }
         }
         *block = NULL;
         return NULL;

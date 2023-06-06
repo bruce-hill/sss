@@ -16,7 +16,7 @@
 
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
-int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool verbose, int argc, char *argv[])
+int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool tail_calls, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -29,7 +29,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool verbose, int argc,
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, NULL, f, ast, true, &result);
+    main_func_t run = compile_file(ctx, NULL, f, ast, tail_calls, true, &result);
     if (!run)
         errx(1, "run func is NULL");
 
@@ -60,7 +60,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool verbose, int argc,
     return 0;
 }
 
-int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool verbose, int argc, char *argv[])
+int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool verbose, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -73,7 +73,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool verbose,
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t main_fn = compile_file(ctx, on_err, f, ast, true, &result);
+    main_func_t main_fn = compile_file(ctx, on_err, f, ast, tail_calls, true, &result);
     if (!main_fn) errx(1, "run func is NULL");
 
     if (verbose)
@@ -83,13 +83,13 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool verbose,
     return 0;
 }
 
-int run_repl(gcc_jit_context *ctx, bool verbose)
+int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
 {
     bool use_color = !getenv("NO_COLOR");
     const char *prompt = !use_color ? ">>> " : "\x1b[33;1m>>>\x1b[m ";
     const char *continue_prompt = !use_color ? "... " : "\x1b[33;1m...\x1b[m ";
     jmp_buf on_err;
-    env_t *env = new_environment(ctx, &on_err, NULL, verbose);
+    env_t *env = new_environment(ctx, &on_err, NULL, tail_calls, verbose);
 
     // Seed the RNG used for Num.random()
     srand48(arc4random());
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 #endif
 
     GC_INIT();
-    bool verbose = false;
+    bool verbose = false, tail_calls = false;
     char *prog_name = strrchr(argv[0], '/');
     prog_name = prog_name ? prog_name + 1 : argv[0];
     bool run_program = true;
@@ -349,9 +349,12 @@ int main(int argc, char *argv[])
             continue;
         } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
             int opt = atoi(argv[i]+2);
+            tail_calls = opt >= 2;
             gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
             continue;
         } else if (strncmp(argv[i], "-G", 2) == 0) { // GCC Flag
+            if (streq(argv[i]+2, "Ofast") || streq(argv[i]+2, "O2") || streq(argv[i]+2,"O3"))
+                tail_calls = true;
             gcc_jit_context_add_command_line_option(ctx, heap_strf("-%s", argv[i]+2));
             continue;
         } else if (streq(argv[i], "-e") || streq(argv[i], "--eval")) {
@@ -360,7 +363,7 @@ int main(int argc, char *argv[])
             const char *src = isatty(STDOUT_FILENO) ? heap_strf(">>> %s", argv[++i]) : heap_strf("say \"$(%s)\"", argv[++i]);
             sss_file_t *f = sss_spoof_file("<argument>", src);
             argv[i] = argv[0];
-            return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
+            return run_file(ctx, NULL, f, tail_calls, verbose, argc-i, &argv[i]);
         }
 
 #ifdef __OpenBSD__
@@ -378,13 +381,13 @@ int main(int argc, char *argv[])
 
         if (run_program) {
             argv[i] = argv[0];
-            return run_file(ctx, NULL, f, verbose, argc-i, &argv[i]);
+            return run_file(ctx, NULL, f, tail_calls, verbose, argc-i, &argv[i]);
         } else {
-            return compile_to_file(ctx, f, verbose, argc-i, &argv[i]);
+            return compile_to_file(ctx, f, tail_calls, verbose, argc-i, &argv[i]);
         }
     }
 
-    run_repl(ctx, verbose);
+    run_repl(ctx, tail_calls, verbose);
 
     gcc_jit_context_release(ctx);
 
