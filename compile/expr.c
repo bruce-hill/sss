@@ -626,10 +626,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         if (env->return_type->tag == VoidType) {
             if (ret->value) {
-                sss_type_t *child_type = get_type(env, ret->value);
-                if (child_type->tag != VoidType)
+                sss_type_t *value_t = get_type(env, ret->value);
+                if (value_t->tag != VoidType)
                     compiler_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
-                compile_statement(env, block, ret->value);
+
+                if (ret->value->tag == FunctionCall && env->tail_calls && !env->deferred) {
+                    gcc_rvalue_t *val = compile_expr(env, block, ret->value);
+                    gcc_rvalue_require_tail_call(val, 1);
+                    gcc_eval(*block, loc, val);
+                } else {
+                    compile_statement(env, block, ret->value);
+                }
             }
             insert_defers(env, block, NULL);
             gcc_return_void(*block, loc);
