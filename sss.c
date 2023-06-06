@@ -307,6 +307,12 @@ int main(int argc, char *argv[])
     // Set $SSSPATH (without overriding if it already exists)
     setenv("SSSPATH", heap_strf(".:%s/.local/share/sss/modules:/usr/local/share/sss/modules", getenv("HOME")), 0);
 
+    const char *gcc_flags[] = {
+        "-ftrapv", "-freg-struct-return",
+    };
+    for (size_t i = 0; i < sizeof(gcc_flags)/sizeof(gcc_flags[0]); i++)
+        gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
+
     const char *driver_flags[] = {
         "-lgc", "-lcord", "-lm", "-ldl", "-L.", "-l:libsss.so."SSS_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
@@ -338,6 +344,7 @@ int main(int argc, char *argv[])
             continue;
         } else if (streq(argv[i], "-A") || streq(argv[i], "--asm")) {
             gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE, 1);
+            gcc_jit_context_add_command_line_option(ctx, "-fverbose-asm");
             verbose = true;
             continue;
         } else if (strncmp(argv[i], "-O", 2) == 0) {
