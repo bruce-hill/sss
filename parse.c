@@ -481,12 +481,12 @@ PARSER(parse_struct_type) {
     NEW_LIST(ast_t*, member_types);
     for (int i = 1; ; i++) {
         whitespace(&pos);
+        if (*pos == '}')
+            break;
         const char *field_start = pos;
         const char *field_name = get_id(&pos);
         whitespace(&pos);
-        if (*pos == '}') {
-            break;
-        } else if (match(&pos, ":")) {
+        if (match(&pos, ":")) {
             whitespace(&pos);
         } else {
             field_name = heap_strf("_%d", i);
