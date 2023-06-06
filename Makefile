@@ -33,7 +33,7 @@ OBJFILES=$(CFILES:.c=.o)
 all: sss $(LIBFILE) sss.1
 
 $(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss/base64.o SipHash/halfsiphash.o
-	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -fvisibility=hidden -shared -o $@
 
 sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
