@@ -853,28 +853,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_table(env, block, ast, true);
     }
     case TableEntry: {
-        auto entry = Match(ast, TableEntry);
-        sss_type_t *key_t = get_type(env, entry->key);
-        sss_type_t *value_t = get_type(env, entry->value);
-        if (key_t->tag == VoidType || value_t->tag == VoidType)
-            compiler_err(env, ast, "Void values can't be put into a table");
-        sss_type_t *entry_t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                                  .field_types=LIST(sss_type_t*, key_t, value_t));
-        gcc_type_t *entry_gcc_t = sss_type_to_gcc(env, entry_t);
-        gcc_field_t *fields[] = {
-            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 0),
-            gcc_get_field(gcc_type_if_struct(entry_gcc_t), 1),
-        };
-
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *key_lval = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "_key");
-        gcc_assign(*block, loc, key_lval, compile_expr(env, block, entry->key));
-        flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
-        gcc_rvalue_t *rvals[] = {
-            gcc_rval(key_lval),
-            compile_expr(env, block, entry->value),
-        };
-        return gcc_struct_constructor(env->ctx, loc, sss_type_to_gcc(env, entry_t), 2, fields, rvals);
+        env->comprehension_callback(env, block, ast, env->comprehension_userdata);
+        return NULL;
     }
     case UnitDef: {
         return NULL;
@@ -1990,75 +1970,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return ret;
     }
     case If: {
-        sss_type_t *if_t = get_type(env, ast);
-        auto if_ = Match(ast, If);
-        bool has_value = !(if_t->tag == GeneratorType || if_t->tag == AbortType || if_t->tag == VoidType);
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *if_ret = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, if_t), "_if_value") : NULL;
-
-        gcc_block_t *end_if = if_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
-
-        ast_t *condition = if_->condition;
-        ast_t *body = if_->body;
-        gcc_block_t *if_truthy = gcc_new_block(func, fresh("if_true"));
-        gcc_block_t *if_falsey = gcc_new_block(func, fresh("else"));
-
-        env_t *branch_env = fresh_scope(env);
-        check_truthiness(branch_env, block, condition, if_truthy, if_falsey);
-        *block = NULL;
-
-        if (if_t->tag == GeneratorType && env->comprehension_callback) {
-            if (!env->comprehension_callback)
-                compiler_err(env, ast, "This 'if' is being used as a value, but it might not have a value");
-            env->comprehension_callback(branch_env, &if_truthy, body, env->comprehension_userdata);
-            assert(end_if);
-            if (if_truthy)
-                gcc_jump(if_truthy, loc, end_if);
-        } else {
-            gcc_rvalue_t *branch_val = compile_expr(branch_env, &if_truthy, body);
-            if (if_truthy) {
-                if (branch_val) {
-                    if (has_value) {
-                        sss_type_t *actual = get_type(env, body);
-                        if (!promote(env, actual, &branch_val, if_t))
-                            compiler_err(env, body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
-                                  type_to_string(if_t), type_to_string(actual));
-                        gcc_assign(if_truthy, loc, if_ret, branch_val);
-                    } else {
-                        gcc_eval(if_truthy, loc, branch_val);
-                    }
-                }
-                assert(end_if);
-                gcc_jump(if_truthy, loc, end_if);
-            }
-        }
-
-        *block = if_falsey;
-        if (if_->else_body) {
-            gcc_rvalue_t *branch_val = compile_expr(env, block, if_->else_body);
-            if (branch_val) {
-                if (has_value) {
-                    assert(*block);
-                    sss_type_t *actual = get_type(env, if_->else_body);
-                    if (!promote(env, actual, &branch_val, if_t))
-                        compiler_err(env, if_->else_body, "The earlier branches of this conditional have type %s, but this branch has type %s and I can't figure out how to make that work.",
-                              type_to_string(if_t), type_to_string(actual));
-                    gcc_assign(*block, loc, if_ret, branch_val);
-                } else if (*block) {
-                    gcc_eval(*block, loc, branch_val);
-                }
-            }
-        }
-
-        if (*block) {
-            assert(end_if);
-            gcc_jump(*block, loc, end_if);
-        }
-        *block = end_if;
-        return has_value ? gcc_rval(if_ret) : NULL;
-    }
-    case When: {
-        auto when = Match(ast, When);
+        auto when = Match(ast, If);
         sss_type_t *subject_t = when->subject->tag == Declare ? get_type(env, Match(when->subject, Declare)->value) : get_type(env, when->subject);
 
         gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
@@ -2172,6 +2084,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = NULL;
         return NULL;
     }
+    case Pass: return NULL;
     case Min: case Max: {
         ast_t *lhs_ast, *rhs_ast, *key;
         gcc_comparison_e cmp;
@@ -2320,8 +2233,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
             const char* plain_src = heap_strf(">>> %.*s", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
             ast_t *warn_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="warn"),
-                                     .args=LIST(ast_t*, WrapAST(ast, If, .condition=FakeAST(Var, .name="USE_COLOR"),
-                                                                .body=StringAST(expr, color_src), .else_body=StringAST(expr, plain_src)),
+                                     .args=LIST(ast_t*, WrapAST(ast, If, .subject=FakeAST(Var, .name="USE_COLOR"),
+                                                                .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
+                                                                .blocks=LIST(ast_t*, StringAST(expr, color_src), StringAST(expr, plain_src))),
                                                 FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
             compile_statement(env, block, warn_src);
         }
@@ -2403,11 +2317,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             APPEND(statements, stmt);
             stmt = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="warn"), .args=LIST(ast_t*,
                 WrapAST(expr, StringJoin, .children=LIST(ast_t*, 
-                    WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"), StringAST(expr, "\x1b[0;2m= \x1b[m"), StringAST(expr, "= "))),
+                    WrapAST(expr, Interp, .value=FakeAST(If, .subject=FakeAST(Var, "USE_COLOR"),
+                                                        .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
+                                                        .blocks=LIST(ast_t*, StringAST(expr, "\x1b[0;2m= \x1b[m"), StringAST(expr, "= ")))),
                     WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
-                    WrapAST(expr, Interp, .value=FakeAST(If, FakeAST(Var, "USE_COLOR"),
-                                                         StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string(t))),
-                                                         StringAST(expr, heap_strf(" : %s", type_to_string(t))))),
+                    WrapAST(expr, Interp, .value=FakeAST(If, .subject=FakeAST(Var, "USE_COLOR"),
+                                                         .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
+                                                         .blocks=LIST(ast_t*, StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string(t))),
+                                                                      StringAST(expr, heap_strf(" : %s", type_to_string(t)))))),
                 )),
                 FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
             APPEND(statements, stmt);
@@ -2419,9 +2336,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         WrapAST(ast, StringLiteral, .str=heap_strf("Test failed, expected: %s, but got: ", test->output)), 
                         WrapAST(ast, Interp, .value=WrapAST(expr, Var, .name="=expr"))));
                 stmt = WrapAST(expr, If,
-                   .condition=WrapAST(expr, NotEqual, .lhs=WrapAST(expr, Interp, .quote_string=true, .value=WrapAST(expr, Var, .name="=expr")),
+                   .subject=WrapAST(expr, NotEqual, .lhs=WrapAST(expr, Interp, .quote_string=true, .value=WrapAST(expr, Var, .name="=expr")),
                                                       .rhs=WrapAST(expr, StringLiteral, .str=test->output)),
-                   .body=WrapAST(expr, Fail, .message=message));
+                   .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
+                   .blocks=LIST(ast_t*, WrapAST(expr, Fail, .message=message), FakeAST(Pass)));
                 APPEND(statements, stmt);
             }
             compile_statement(env, block, WrapAST(expr, Block, .statements=statements));

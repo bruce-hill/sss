@@ -51,7 +51,8 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 
         binding_t *b = get_binding(env, name);
         if (!b) {
-            hset(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
+            if (!streq(name, "*"))
+                hset(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
             gcc_jump(*block, loc, outcomes.match_block);
             *block = NULL;
             return outcomes;
@@ -231,7 +232,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
     // Wildcard pattern:
     if (t->tag != TaggedUnionType) {
         foreach (patterns, pat, _) {
-            if ((*pat)->tag == Var && !get_binding(env, Match(*pat, Var)->name))
+            if ((*pat)->tag == Var && (streq(Match(*pat, Var)->name, "*") || !get_binding(env, Match(*pat, Var)->name)))
                 return NULL;
         }
     }
@@ -329,6 +330,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             return "'no' is not handled";
         else if (!cases_handled[1])
             return "'yes' is not handled";
+        else
+            return NULL;
     } else if (t->tag == StructType) {
         auto field_names = Match(t, StructType)->field_names;
         auto field_type_list = Match(t, StructType)->field_types;
@@ -370,7 +373,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             if (!missing) return NULL;
         }
     }
-    return "I can't prove that every case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'";
+    return heap_strf("I can't prove that every %s case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'",
+                     type_to_string(t));
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

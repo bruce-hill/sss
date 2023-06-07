@@ -35,8 +35,8 @@ typedef enum {
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
     Block,
-    Do, If, For, While, Repeat, When,
-    Skip, Stop,
+    Do, For, While, Repeat, If,
+    Skip, Stop, Pass,
     Return,
     Fail,
     Extern,
@@ -172,9 +172,6 @@ struct ast_s {
             ast_t *body, *else_body;
         } Do;
         struct {
-            ast_t *condition, *body, *else_body;
-        } If;
-        struct {
             ast_t *index, *value, *iter, *first, *body, *between, *empty;
         } For;
         struct {
@@ -187,10 +184,11 @@ struct ast_s {
             ast_t *subject;
             List(ast_t*) patterns;
             List(ast_t*) blocks;
-        } When;
+        } If;
         struct {
             const char *target;
         } Skip, Stop;
+        struct {} Pass;
         struct {
             ast_t *value;
         } Return;

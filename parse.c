@@ -44,7 +44,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","when","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
+    "yes","xor","with","while","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
     "or","not","no","mod1","mod","is","in","if","for","fail","extern","extend","else","do","del",
     "defer","def","by","bitcast","between","as","and","_mix_","_min_","_max_",NULL,
 };
@@ -65,19 +65,17 @@ static inline ast_tag_e match_binary_operator(const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool requires_parens);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *lhs);
-static ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static PARSER(parse_indented_block);
-static PARSER(parse_if);
 static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
 static PARSER(parse_defer);
 static PARSER(parse_with);
 static PARSER(parse_do);
-static PARSER(parse_when);
+static PARSER(parse_if);
 static PARSER(parse_extend);
 static PARSER(parse_expr);
 static PARSER(parse_extended_expr);
@@ -95,6 +93,7 @@ static PARSER(parse_doctest);
 static PARSER(parse_use);
 static PARSER(parse_linker);
 static PARSER(parse_ellipsis);
+static ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast);
 
 //
 // Print a parse error and exit (or use the on_err longjmp)
@@ -761,6 +760,7 @@ PARSER(parse_array) {
         whitespace(&pos);
         ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
         if (!item) break;
+        item = optional_suffix_condition(ctx, item, &pos, FakeAST(Skip));
         APPEND(items, item);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
@@ -806,13 +806,13 @@ PARSER(parse_table) {
             progress = (false
                 || (new_entry=parse_index_suffix(ctx, entry))
                 || (new_entry=parse_field_suffix(ctx, entry))
-                || (new_entry=parse_suffix_if(ctx, entry, false))
                 || (new_entry=parse_suffix_for(ctx, entry))
                 || (new_entry=parse_suffix_while(ctx, entry))
                 || (new_entry=parse_fncall_suffix(ctx, entry, true))
             );
             if (progress) entry = new_entry;
         }
+        entry = optional_suffix_condition(ctx, entry, &pos, FakeAST(Skip));
         pos = entry->span.end;
 
         APPEND(entries, entry);
@@ -983,56 +983,89 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
 }
 
-PARSER(parse_if) {
-    // if cond then body else body
-    const char *start = pos;
+ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast)
+{
+    const char *start = *pos;
     bool is_unless;
-    if (match_word(&pos, "if")) is_unless = false;
-    else if (match_word(&pos, "unless")) is_unless = true;
-    else return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
-    ast_t *cond = is_unless ? NULL : optional_ast(ctx, &pos, parse_declaration);
-    if (!cond)
-        cond = expect_ast(ctx, start, &pos, parse_expr,
-                          "I expected to find a condition for this 'if'");
-    if (is_unless) cond = NewAST(ctx->file, cond->span.start, cond->span.end, Not, .value=cond);
-
-    ast_t *body;
-    if (match_word(&pos, "then"))
-        body = optional_ast(ctx, &pos, parse_opt_indented_block);
+    if (match_word(pos, "if"))
+        is_unless = false;
+    else if (match_word(pos, "unless"))
+        is_unless = true;
     else
-        body = optional_ast(ctx, &pos, parse_indented_block); 
+        return ast;
 
-    if (!body) {
-        spaces(&pos);
-        if (*pos == '\n')
-            parser_err(ctx, start, pos, "I expected a body for this 'if'");
+    ast_t *subj = optional_ast(ctx, pos, parse_declaration);
+    if (!subj) subj = expect_ast(ctx, start, pos, parse_expr, "I expected to find an expression for this 'if'");
+
+    ast_t *pattern;
+    if (match_word(pos, "is")) {
+        pattern = expect_ast(ctx, *pos, pos, parse_expr, "I expected a pattern to match here");
+        if (is_unless)
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Var, "*")),
+                          .blocks=LIST(ast_t*, else_ast, ast));
         else
-            parser_err(ctx, pos, strchrnul(pos, '\n'), "I couldn't parse the rest of this 'if' condition");
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Var, "*")),
+                          .blocks=LIST(ast_t*, ast, else_ast));
+    } else {
+        return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, WrapAST(ast, Bool, .b=!is_unless), WrapAST(ast, Bool, .b=is_unless)),
+                      .blocks=LIST(ast_t*, ast, else_ast));
     }
-
-    ast_t *else_ = NULL;
-    const char *else_start = pos;
-    whitespace(&else_start);
-    if (sss_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
-        pos = else_start;
-        else_ = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-    }
-    return NewAST(ctx->file, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
-PARSER(parse_when) {
-    // when <expr> is [<var>:]<tag>[*(,<tag>)] <body> *(is ...) [else <body>]
+PARSER(parse_if) {
+    // if <expr> [is <pattern> (; <pattern>)* <body> (is ...)*] [else <body>]
     const char *start = pos;
-    if (!match_word(&pos, "when"))
-        return NULL;
     size_t starting_indent = sss_get_indent(ctx->file, pos);
+
+    if (match_word(&pos, "unless")) {
+        ast_t *subj = optional_ast(ctx, &pos, parse_declaration);
+        if (!subj) subj = expect_ast(ctx, start, &pos, parse_expr, "I expected to find an expression for this 'unless'");
+
+        ast_t *pattern = match_word(&pos, "is") ? 
+            expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here")
+            : FakeAST(Bool, true);
+
+        match_word(&pos, "then");
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'unless' statement"); 
+
+        if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
+            ast_t *else_body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Var, "*")),
+                          .blocks=LIST(ast_t*, else_body, body));
+        } else {
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Var, "*")),
+                          .blocks=LIST(ast_t*, FakeAST(Pass), body));
+        }
+    }
+
+    if (!match_word(&pos, "if"))
+        return NULL;
+
     ast_t *subj = optional_ast(ctx, &pos, parse_declaration);
     if (!subj) subj = expect_ast(ctx, start, &pos, parse_expr,
-                                 "I expected to find an expression for this 'when'");
+                                 "I expected to find an expression for this 'if'");
 
     NEW_LIST(ast_t*, patterns);
     NEW_LIST(ast_t*, blocks);
+
+    const char *tmp = pos;
+    if (!match_word(&tmp, "is")) {
+        match_word(&pos, "then");
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if' statement"); 
+        APPEND(patterns, NewAST(ctx->file, pos, pos, Bool, .b=true));
+        APPEND(blocks, body);
+
+        tmp = pos;
+        whitespace(&tmp);
+        if (sss_get_indent(ctx->file, tmp) == starting_indent && match_word(&tmp, "else")) {
+            pos = tmp;
+            ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
+            APPEND(patterns, NewAST(ctx->file, pos, pos, Var, .name="*"));
+            APPEND(blocks, body);
+        }
+        return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=patterns, .blocks=blocks);
+    }
+
     for (;;) {
         const char *clause = pos;
         whitespace(&clause);
@@ -1058,14 +1091,14 @@ PARSER(parse_when) {
         }
 
         match_word(&pos, "then");
-        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'when' clause"); 
+        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if' clause"); 
         for (int64_t i = 0, len = LIST_LEN(clause_patterns); i < len; i++) {
             APPEND(patterns, LIST_ITEM(clause_patterns, i));
             APPEND(blocks, body);
         }
     }
 
-    return NewAST(ctx->file, start, pos, When, .subject=subj, .patterns=patterns, .blocks=blocks);
+    return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=patterns, .blocks=blocks);
 }
 
 PARSER(parse_do) {
@@ -1153,19 +1186,21 @@ PARSER(parse_for) {
         match_word(&pos, first ? "then" : "do"); // optional
 
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'"); 
-    whitespace(&pos);
     ast_t *between = NULL;
     const char *between_start = pos;
-    if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between")) {
-        between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
-        whitespace(&pos);
+    whitespace(&between_start);
+    if (sss_get_indent(ctx->file, between_start) == starting_indent && match_word(&between_start, "between")) {
+        pos = between_start;
+        between = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     } else {
         pos = body->span.end;
     }
 
     const char *else_start = pos;
-    if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
-        empty = expect_ast(ctx, else_start, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+    whitespace(&else_start);
+    if (sss_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
+        pos = else_start;
+        empty = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
     }
     return NewAST(ctx->file, start, pos, For, .index=value ? index : NULL, .value=value ? value : index, .iter=iter,
                   .first=first, .body=body, .between=between, .empty=empty);
@@ -1183,6 +1218,7 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
         value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
+    body = optional_suffix_condition(ctx, body, &pos, FakeAST(Skip));
     return NewAST(ctx->file, start, pos, For, .index=value ? index : NULL, .value=value ? value : index, .iter=iter, .body=body);
 }
 
@@ -1223,33 +1259,8 @@ ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
     const char *pos = body->span.end;
     if (!match_word(&pos, "while")) return NULL;
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
+    body = optional_suffix_condition(ctx, body, &pos, FakeAST(Skip));
     return NewAST(ctx->file, start, pos, While, .condition=cond, .body=body);
-}
-
-ast_t *parse_suffix_if(parse_ctx_t *ctx, ast_t *body, bool require_else) {
-    // true_val if cond then val else else_val
-    if (!body) return NULL;
-    const char *start = body->span.start;
-    const char *pos = body->span.end;
-    bool is_unless;
-    if (match_word(&pos, "unless")) is_unless = true;
-    else if (match_word(&pos, "if")) is_unless = false;
-    else return NULL;
-    ast_t *cond = expect_ast(ctx, start, &pos, parse_expr,
-                             "I expected to find a condition for this 'if'");
-
-    if (is_unless) cond = NewAST(ctx->file, cond->span.start, cond->span.end, Not, .value=cond);
-
-    ast_t *else_ = NULL;
-    const char *else_start = pos;
-    if (match_word(&pos, "else")) {
-        whitespace(&pos);
-        else_ = expect_ast(ctx, else_start, &pos, parse_expr, "I couldn't find a body for this 'else' block");
-    }
-    if (else_) pos = else_->span.end;
-    else if (require_else) return NULL;
-
-    return NewAST(ctx->file, start, pos, If, .condition=cond, .body=body, .else_body=else_);
 }
 
 ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char *prefix, bool exprs_ok) {
@@ -1472,7 +1483,8 @@ PARSER(parse_skip) {
     else if (match_word(&pos, "while")) target = "while";
     else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
-    return NewAST(ctx->file, start, pos, Skip, .target=target);
+    ast_t *skip = NewAST(ctx->file, start, pos, Skip, .target=target);
+    return optional_suffix_condition(ctx, skip, &pos, FakeAST(Pass));
 }
 
 PARSER(parse_stop) {
@@ -1484,7 +1496,8 @@ PARSER(parse_stop) {
     else if (match_word(&pos, "while")) target = "while";
     else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
-    return NewAST(ctx->file, start, pos, Stop, .target=target);
+    ast_t *stop = NewAST(ctx->file, start, pos, Stop, .target=target);
+    return optional_suffix_condition(ctx, stop, &pos, FakeAST(Pass));
 }
 
 PARSER(parse_return) {
@@ -1492,7 +1505,9 @@ PARSER(parse_return) {
     if (!match_word(&pos, "return")) return NULL;
     spaces(&pos);
     ast_t *value = optional_ast(ctx, &pos, parse_expr);
-    return NewAST(ctx->file, start, pos, Return, .value=value);
+    ast_t *ret = NewAST(ctx->file, start, pos, Return, .value=value);
+    if (!value) ret = optional_suffix_condition(ctx, ret, &pos, FakeAST(Pass));
+    return ret;
 }
 
 PARSER(parse_lambda) {
@@ -1548,7 +1563,9 @@ PARSER(parse_fail) {
     const char *start = pos;
     if (!match_word(&pos, "fail")) return NULL;
     ast_t *msg = parse_term(ctx, pos);
-    return NewAST(ctx->file, start, msg ? msg->span.end : pos, Fail, .message=msg);
+    if (msg) pos = msg->span.end;
+    ast_t *fail = NewAST(ctx->file, start, pos, Fail, .message=msg);
+    return optional_suffix_condition(ctx, fail, &pos, FakeAST(Pass));
 }
 
 PARSER(parse_var) {
@@ -1936,18 +1953,18 @@ PARSER(parse_statement) {
         || (stmt=parse_update(ctx, pos))
         || (stmt=parse_assignment(ctx, pos))
     ))
-        return parse_extended_expr(ctx, pos);
+        stmt = parse_extended_expr(ctx, pos);
 
     for (bool progress = true; progress; ) {
         ast_t *new_stmt;
         progress = (false
-            || (new_stmt=parse_index_suffix(ctx, stmt))
-            || (new_stmt=parse_field_suffix(ctx, stmt))
-            || (new_stmt=parse_suffix_if(ctx, stmt, false))
             || (new_stmt=parse_suffix_for(ctx, stmt))
             || (new_stmt=parse_suffix_while(ctx, stmt))
-            || (new_stmt=parse_fncall_suffix(ctx, stmt, true))
         );
+
+        if (stmt->tag == Var && !progress)
+            progress = (new_stmt=parse_fncall_suffix(ctx, stmt, false));
+
         if (progress) stmt = new_stmt;
     }
     return stmt;
@@ -1958,10 +1975,9 @@ PARSER(parse_extended_expr) {
     ast_t *expr = NULL;
 
     if (false
-        || (expr=optional_ast(ctx, &pos, parse_if))
         || (expr=optional_ast(ctx, &pos, parse_for))
         || (expr=optional_ast(ctx, &pos, parse_while))
-        || (expr=optional_ast(ctx, &pos, parse_when))
+        || (expr=optional_ast(ctx, &pos, parse_if))
         || (expr=optional_ast(ctx, &pos, parse_repeat))
         || (expr=optional_ast(ctx, &pos, parse_do))
         || (expr=optional_ast(ctx, &pos, parse_defer))
@@ -1971,8 +1987,9 @@ PARSER(parse_extended_expr) {
         return expr;
 
     if (!(false
-          || (expr=parse_fncall_suffix(ctx, parse_term(ctx, pos), false))
+          || (expr=parse_fncall_suffix(ctx, parse_term(ctx, pos), true))
           || (expr=parse_expr(ctx, pos))
+          || (expr=parse_term(ctx, pos))
           ))
         return NULL;
 
@@ -1981,7 +1998,6 @@ PARSER(parse_extended_expr) {
         progress = (false
             || (new_stmt=parse_index_suffix(ctx, expr))
             || (new_stmt=parse_field_suffix(ctx, expr))
-            || (new_stmt=parse_suffix_if(ctx, expr, false))
             || (new_stmt=parse_suffix_for(ctx, expr))
             || (new_stmt=parse_suffix_while(ctx, expr))
             || (new_stmt=parse_fncall_suffix(ctx, expr, true))

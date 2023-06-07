@@ -25,7 +25,7 @@
 >>> |+| n.abs() for n in nums
 === 9
 
->>> |x if x.abs() < y.abs() else y| nums
+>>> |(if x.abs() < y.abs() then x else y)| nums
 === 2
 
 >>> |+| nums else 100

@@ -1,24 +1,24 @@
 
->>> when 5 is 5
+>>> if 5 is 5
     yes
 is _
     no
 === yes
 
->>> when 5 is 9
+>>> if 5 is 9
     -1
 is x
     x
 === 5
 
->>> when -0.0 is 0.0 then yes
+>>> if -0.0 is 0.0 then yes
 is _ then no
 === yes
 
 >>> cases := [{1,2}, {3,4}, {5,6}]
 >>> [
     for c in cases
-        when c is {1,2}
+        if c is {1,2}
             "first"
         is {x,4}
             "has four and $x"
@@ -27,7 +27,7 @@ is _ then no
 ]
 === ["first", "has four and 3", "otherwise {5, 6}"]
 
->>> when "two" is "one" then 1
+>>> if "two" is "one" then 1
 is "two" then 2
 is other then -1
 === 2
@@ -45,8 +45,7 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
 >>> [
     for f in cases
         >>> f
-        when f
-        is int(x); num(x)
+        if f is int(x); num(x)
             "Int or num: $x"
         is vec(Vec{1,2})
             "one-two Vec"
@@ -80,7 +79,7 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
 === ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
 
 // Binding:
-when f := Foo.str("abc") is str
+if f := Foo.str("abc") is str
     >>> f
     === Foo.str("abc")
 else

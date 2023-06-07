@@ -180,11 +180,10 @@ extend String
                 if prev_alpha
                     prev_alpha = is_alphabetic(c)
                     tolower(c)
+                else if is_alphabetic(c)
+                    prev_alpha = yes
+                    totitle(c)
                 else
-                    if is_alphabetic(c)
-                        prev_alpha = yes
-                        totitle(c)
-                    else
-                        prev_alpha = no
-                        c
+                    prev_alpha = no
+                    c
         ])

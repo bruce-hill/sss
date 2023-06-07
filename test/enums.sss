@@ -4,7 +4,7 @@ say "$(Foo.A)"
 fail unless "$(Foo.A)" == "Foo.A"
 
 for x in [Foo.A, Foo.B, Foo.C, Foo.D]
-    when x is A
+    if x is A
         say "$x is A!"
     is B
         say "$x is B!"
@@ -21,7 +21,7 @@ def Baz {|
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2({2.4, 4}), Baz.Nil]
 
 for b in bazzes
-    when b is Text(t)
+    if b is Text(t)
         say "$t"
     is Integer(x); Vec2(x)
         say "$x"

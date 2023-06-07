@@ -104,10 +104,10 @@ void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *
 
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)
 {
-    sss_type_t *raw_entry_t = get_type(env, entry);
-    if (raw_entry_t->tag == GeneratorType) {
+    if (entry->tag != TableEntry) {
         gcc_rvalue_t *val = compile_expr(env, block, entry);
-        assert(!val);
+        if (!block) return;
+        if (val) gcc_eval(*block, NULL, val);
         return;
     }
 

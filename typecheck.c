@@ -16,13 +16,6 @@
 // Cache of type string -> tuple type
 static sss_hashmap_t tuple_types = {0};
 
-static sss_type_t *get_clause_type(env_t *env, ast_t *condition, ast_t *body)
-{
-    if (condition && condition->tag == Declare)
-        compiler_err(env, condition, "Declare is not supported in conditions for now");
-    return get_type(env, body);
-}
-
 sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -733,6 +726,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Return: case Fail: case Stop: case Skip: {
         return Type(AbortType);
     }
+    case Pass: return Type(VoidType);
     case Cast: {
         return parse_type_ast(env, Match(ast, Cast)->type);
     }
@@ -1009,26 +1003,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
 
     case If: {
-        auto if_ = Match(ast, If);
-        ast_t *cond = if_->condition;
-        ast_t *body = if_->body;
-        sss_type_t *t = get_clause_type(env, cond, body);
-        if (if_->else_body) {
-            sss_type_t *else_type = get_type(env, if_->else_body);
-            sss_type_t *t2 = type_or_type(t, else_type);
-            if (!t2 || !streq(type_units(t), type_units(else_type)))
-                compiler_err(env, if_->else_body,
-                            "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
-                            type_to_string(t), type_to_string(else_type));
-            t = t2;
-        } else {
-            t = generate(t);
-        }
-        return t;
-    }
-
-    case When: {
-        auto when = Match(ast, When);
+        auto when = Match(ast, If);
         sss_type_t *subject_t;
         if (when->subject->tag == Declare) {
             subject_t = get_type(env, Match(when->subject, Declare)->value);

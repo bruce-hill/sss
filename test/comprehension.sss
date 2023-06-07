@@ -1,21 +1,18 @@
-x := [i*100 for i in 1..10]
-say "$x"
+>>> [i*100 for i in 1..10]
+=== [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
 
-z := [i*100 unless i mod 3 == 0 for i in 1..10]
-say "$z"
+>>> [i*100 for i in 1..10 unless i mod 3 == 0]
+=== [100, 200, 400, 500, 700, 800, 1000]
 
-w := [i*100 if i mod 2 == 0 for i in 1..10]
-say "$w"
+>>> [i*100 for i in 1..10 if i mod 2 == 0]
+=== [200, 400, 600, 800, 1000]
 
-p := [s if i mod 2 == 0 for i,s in ["a","b","c","d"]]
-say "$p"
+>>> [s for i,s in ["a","b","c","d"] if i mod 2 == 0]
+=== ["b", "d"]
 
-// t := {[i]=i*i for i in 1.. stop if i > 6}
-// say "$t"
-
-// t2 := {[v]=k for k,v in t}
-// say "$t2"
+>>> {i=>i for i in 1..5 if i != 3}
+=== {1=>1, 2=>2, 4=>4, 5=>5}
 
 nested := [[1,2,3], [4,5,6]]
-x := [i if i mod 2 == 0 for i in row for row in nested]
-fail unless "$x" == "[2, 4, 6]"
+>>> [i for i in row if i mod 2 == 0 for row in nested]
+=== [2, 4, 6]

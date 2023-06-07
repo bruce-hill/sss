@@ -193,8 +193,8 @@ def Whatever {|count:Int|text:String|vec:Vec|nothing|unknown|}
 vals := [Whatever.count(5), Whatever.text("xx"), Whatever.vec(Vec{1,2}), Whatever.nothing, Whatever.unknown]
 
 for val in vals
-    // Pattern matching using 'when':
-    when val is c:count
+    // Pattern matching using 'if ... is ...':
+    if val is c:count
         say "I got a count: $c"
     is nothing
         say "I got a nothing"
