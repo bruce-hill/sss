@@ -1970,17 +1970,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return ret;
     }
     case If: {
-        auto when = Match(ast, If);
-        sss_type_t *subject_t = when->subject->tag == Declare ? get_type(env, Match(when->subject, Declare)->value) : get_type(env, when->subject);
+        auto if_ = Match(ast, If);
+        sss_type_t *subject_t = if_->subject->tag == Declare ? get_type(env, Match(if_->subject, Declare)->value) : get_type(env, if_->subject);
 
-        gcc_rvalue_t *subject = compile_expr(env, block, when->subject);
+        if (subject_t->tag != BoolType && ith(if_->patterns, 0)->tag == Bool)
+            compiler_err(env, if_->subject, "This value's type is %s, but for it to work as a conditional, it should be a Bool",
+                         type_to_string(subject_t));
+
+        gcc_rvalue_t *subject = compile_expr(env, block, if_->subject);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, "_when_subject");
         gcc_assign(*block, loc, subject_var, subject);
-        if (when->subject->tag == Declare) {
+        if (if_->subject->tag == Declare) {
             env = fresh_scope(env);
-            hset(env->bindings, Match(Match(when->subject, Declare)->var, Var)->name,
+            hset(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
                  new(binding_t, .type=subject_t, .lval=subject_var, .rval=gcc_rval(subject_var)));
         }
         subject = gcc_rval(subject_var);
@@ -1992,14 +1996,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Check exhaustiveness:
         if (has_value) {
-            const char *missing = get_missing_pattern(env, subject_t, when->patterns);
+            const char *missing = get_missing_pattern(env, subject_t, if_->patterns);
             if (missing) compiler_err(env, ast, missing);
         }
 
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, result_t), "_when_value") : NULL;
-        for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
-            auto outcomes = perform_conditional_match(env, block, subject_t, subject, ith(when->patterns, i));
-            gcc_rvalue_t *result = compile_expr(outcomes.match_env, &outcomes.match_block, ith(when->blocks, i));
+        for (int64_t i = 0; i < LIST_LEN(if_->patterns); i++) {
+            auto outcomes = perform_conditional_match(env, block, subject_t, subject, ith(if_->patterns, i));
+            gcc_rvalue_t *result = compile_expr(outcomes.match_env, &outcomes.match_block, ith(if_->blocks, i));
             assert(*block == NULL);
             if (outcomes.match_block) {
                 if (result) {
@@ -2020,7 +2024,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // If there's a way out of this without aborting, nevermind.
             // *Technically* this should be typechecked as a generator type,
             // but the type checker doesn't check for exhaustiveness.
-            if (!get_missing_pattern(env, subject_t, when->patterns)) {
+            if (!get_missing_pattern(env, subject_t, if_->patterns)) {
                 gcc_jump(*block, loc, *block);
                 *block = NULL;
             }
