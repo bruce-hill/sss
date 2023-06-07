@@ -69,10 +69,10 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
                 env->ctx, NULL, GCC_COMPARISON_NE, val, gcc_null(env->ctx, sss_type_to_gcc(env, t)));
 
             gcc_jump_condition(*block, loc, is_nonnull, outcomes.match_block, outcomes.no_match_block);
-            *block = NULL;
         } else {
             gcc_jump(*block, loc, outcomes.match_block);
         }
+        *block = NULL;
         gcc_rvalue_t *data_val = gcc_rval(gcc_rvalue_dereference(val, loc));
         ast_t *pointed = Match(pattern, HeapAllocate)->value;
         auto submatch_outcomes = perform_conditional_match(env, &outcomes.match_block, Match(t, PointerType)->pointed, data_val, pointed);
