@@ -1954,8 +1954,8 @@ PARSER(parse_statement) {
         || (stmt=parse_assignment(ctx, pos))
     ))
         stmt = parse_extended_expr(ctx, pos);
-
-    for (bool progress = true; progress; ) {
+    
+    for (bool progress = (stmt != NULL); progress; ) {
         ast_t *new_stmt;
         progress = (false
             || (new_stmt=parse_suffix_for(ctx, stmt))
