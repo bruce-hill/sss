@@ -62,10 +62,6 @@ typedef enum {
 
 typedef struct ast_s ast_t;
 
-typedef struct {
-    ast_t *pattern, *body;
-} ast_case_t;
-
 struct ast_s {
     ast_tag_e tag;
     span_t span;
@@ -311,6 +307,5 @@ struct ast_s {
 };
 
 const char *ast_to_str(ast_t *ast);
-typedef void (*ast_visitor_t)(ast_t*, void*);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
