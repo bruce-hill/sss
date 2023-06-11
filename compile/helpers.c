@@ -664,7 +664,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         // If it's nil, print !Type:
         sss_type_t *pointed_type = Match(t, PointerType)->pointed;
         COLOR_LITERAL(&nil_block, "\x1b[0;34;1m");
-        WRITE_LITERAL(nil_block, heap_strf("!%s", type_to_string(pointed_type)));
+        WRITE_LITERAL(nil_block, heap_strf("!%s", type_to_string_concise(pointed_type)));
         COLOR_LITERAL(&nil_block, "\x1b[m");
         gcc_return_void(nil_block, NULL);
 
@@ -682,7 +682,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         if (pointed_type->tag == VoidType) {
             block = nonnil_block;
             COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, heap_strf("%sVoid<%%p>", sigil)), obj));
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "%sVoid<%p>"), gcc_str(env->ctx, sigil), obj));
             COLOR_LITERAL(&block, "\x1b[m");
             gcc_return_void(block, NULL);
             block = NULL;
@@ -732,9 +732,11 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
             // If we're in a recursive cycle, print @T#index and return without recursing further
             block = cycle_block;
-            const char* backref = heap_strf("%s%s#%%ld", sigil, type_to_string(pointed_type));
-            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, backref),
+            COLOR_LITERAL(&block, "\x1b[34;1m");
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, heap_strf("%s%%s#%%ld", sigil)),
+                                            gcc_str(env->ctx, type_to_string_concise(pointed_type)),
                                             gcc_rval(gcc_deref(gcc_rval(index_var), NULL))));
+            COLOR_LITERAL(&block, "\x1b[m");
             gcc_return_void(block, NULL);
 
             // If this is a nonrecursive situation

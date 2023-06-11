@@ -91,6 +91,7 @@ struct sss_type_s {
 #define INT_TYPE Type(IntType, .bits=64)
 #define NUM_TYPE Type(NumType, .bits=64)
 
+const char* type_to_string_concise(sss_type_t *t);
 const char* type_to_string(sss_type_t *t);
 bool type_eq(sss_type_t *a, sss_type_t *b);
 bool type_is_a(sss_type_t *t, sss_type_t *req);

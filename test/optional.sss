@@ -1,6 +1,6 @@
 should_nil := yes
 s := if should_nil then !String else @"Not nil"
-say "$s (Optional(String) $(if s is @_ then "wasn't" else "was") nil)"
+say "$s (Optional(String) $(if s is @x then "wasn't" else "was") nil)"
 say(*(s or @"Nah"))
 
 // fn := if should_nil then nil (String)->Void else ?(s:String)-> say(s)

@@ -237,9 +237,9 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
                 *no_dim_type = gcc_new_block(func, fresh("no_dim_type")),
                 *done_with_type = gcc_new_block(func, fresh("done_with_type"));
     gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim_type, no_dim_type);
-    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[0;2m: %s\x1b[m\n", type_to_string(t))), stderr_val)); 
+    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[0;2m: %s\x1b[m\n", type_to_string_concise(t))), stderr_val)); 
     gcc_jump(use_dim_type, loc, done_with_type);
-    gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string(t))), stderr_val)); 
+    gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string_concise(t))), stderr_val)); 
     gcc_jump(no_dim_type, loc, done_with_type);
     *block = done_with_type;
 }
@@ -956,7 +956,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
         size_t num_fields = gcc_field_count(gcc_struct);
-        assert(num_fields == (size_t)length(struct_type->field_names));
+        if (!(num_fields == (size_t)length(struct_type->field_names)))
+            compiler_err(env, ast, "Something went wrong with this struct!");
         gcc_field_t *unused_fields[num_fields];
         for (size_t i = 0, count = gcc_field_count(gcc_struct); i < count; i++)
             unused_fields[i] = gcc_get_field(gcc_struct, i);
@@ -2327,8 +2328,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
                     WrapAST(expr, Interp, .value=FakeAST(If, .subject=FakeAST(Var, "USE_COLOR"),
                                                          .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
-                                                         .blocks=LIST(ast_t*, StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string(t))),
-                                                                      StringAST(expr, heap_strf(" : %s", type_to_string(t)))))),
+                                                         .blocks=LIST(ast_t*, StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string_concise(t))),
+                                                                      StringAST(expr, heap_strf(" : %s", type_to_string_concise(t)))))),
                 )),
                 FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
             APPEND(statements, stmt);
