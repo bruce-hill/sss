@@ -531,7 +531,7 @@ sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
     sss_hashmap_t *ns = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
     if (!ns) {
         ns = new(sss_hashmap_t, .fallback=env->global_bindings);
-        copy_global_bindings(ns, env->bindings);
+        // copy_global_bindings(ns, env->bindings);
         hset(env->type_namespaces, type_to_string(t), ns);
         // Ensure DSLs get auto-populated with string-equivalent methods:
         if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType)
