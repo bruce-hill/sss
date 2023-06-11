@@ -326,7 +326,7 @@ def Header {|
 def _CURL{}
 
 def _write(data:@Char, size:Int, nmemb:Int, buf:@String)->Int
-    buf ++= (bitcast {data,(size * nmemb) as Int32,1i32} as String)
+    buf ++= (bitcast {data,(size * nmemb) as Int32,1i16,0i16} as String)
     return size*nmemb
 
 def Result {| Success(String) | Failure(ResultCode) |}
@@ -337,14 +337,14 @@ def _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
     defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
     for header in headers
-        when header is URL(url)
+        if header is URL(url)
             (extern curl_easy_setopt:(@_CURL,Int32,@CStringChar)->Void)(curl, header as Int32, url)
         is WRITEFUNCTION(fn)
             (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int,Int,?Void)->Int)->Void)(curl, header as Int32, fn)
         is WRITEDATA(data)
             (extern curl_easy_setopt:(@_CURL,Int32,?Void)->Void)(curl, header as Int32, data)
         is VERBOSE(val); HEADER(val)
-            (extern curl_easy_setopt:(@_CURL,Int32,Int)->Void)(curl, header as Int32, (1 if val else 0))
+            (extern curl_easy_setopt:(@_CURL,Int32,Int)->Void)(curl, header as Int32, (if val then 1 else 0))
         is HTTPHEADER(http_headers)
             list := !_CurlSList
             for h in http_headers
@@ -358,14 +358,14 @@ def _curl(headers:[Header])->ResultCode
 def get(url:String, headers=[:Header])->Result
     curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
     defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
-    buf := @""
+    buf := &""
     code := _curl(headers ++ [
         Header.URL(url),
         Header.WRITEFUNCTION(bitcast _write as (@Char,Int,Int,?Void)->Int),
         Header.WRITEDATA(bitcast buf as ?Void),
     ])
 
-    when code is OK
+    if code is OK
         return Result.Success(*buf)
     is _
         return Result.Failure(code)

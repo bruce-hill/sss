@@ -95,7 +95,7 @@ extend $Glob
         result := do_glob((bitcast g as String).c_string(), flags, !Void, &globbuf)
         globfree := extern globfree:(&glob_t)->Void
         defer globfree(&globbuf)
-        when result is SUCCESS
+        if result is SUCCESS
             c_ptrs := bitcast ({globbuf.gl_pathv or fail, globbuf.gl_pathc as Int32, 1i16, 0i16}) as [@CStringChar]
             paths := [String.from_pointer(cstr) for cstr in c_ptrs]
             return [for p in paths unless p.ends_with("/./") or p.ends_with("/../") then p]
@@ -105,7 +105,7 @@ extend $Glob
 def s:String as $Glob
     return bitcast ([
         for c in s
-            when c is `\;`{;`};`*;`?;`[;`]
+            if c is `\;`{;`};`*;`?;`[;`]
                 ++[`\, c]
             is plain
                 ++[plain]
