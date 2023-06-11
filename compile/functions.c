@@ -184,9 +184,10 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
     compile_statement(env, &block, body);
     if (block) {
-        if (fn_info->ret->tag != VoidType)
-            compiler_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
-                  type_to_string(fn_info->ret));
+        // if (fn_info->ret->tag != VoidType) {
+        //     compiler_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
+        //           type_to_string(fn_info->ret));
+        // }
         gcc_return_void(block, NULL);
     }
 }
