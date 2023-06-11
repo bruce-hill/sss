@@ -61,8 +61,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     }
     case HeapAllocate: {
         if (t->tag != PointerType)
-            compiler_err(env, pattern, "This is a pointer pattern, but you're attempting to match it against a non-pointer value with type %s",
-                         type_to_string(t));
+            compiler_err(env, pattern, "This is a pointer pattern, but you're attempting to match it against a non-pointer value with type %T", t);
 
         if (Match(t, PointerType)->is_optional) {
             gcc_rvalue_t *is_nonnull = gcc_comparison(
@@ -86,19 +85,16 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     case Struct: {
         auto pat_struct = Match(pattern, Struct);
         if (t->tag != StructType) {
-            compiler_err(env, pattern, "This is a struct pattern, but you're attempting to match it against a non-struct value with type %s",
-                         type_to_string(t));
+            compiler_err(env, pattern, "This is a struct pattern, but you're attempting to match it against a non-struct value with type %T", t);
         } else if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
             if (pat_t->tag != TypeType)
                 compiler_err(env, pat_struct->type, "This is not a valid struct type");
             pat_t = Match(pat_t, TypeType)->type;
             if (!type_eq(t, pat_t))
-                compiler_err(env, pattern, "This pattern is a %s, but you're attempting to match it against a value with type %s",
-                             type_to_string(pat_t), type_to_string(t));
+                compiler_err(env, pattern, "This pattern is a %T, but you're attempting to match it against a value with type %T", pat_t, t);
         } else if (Match(t, StructType)->name) {
-            compiler_err(env, pattern, "This pattern is a nameless tuple, but you're attempting to match it against a value with type %s",
-                         type_to_string(t));
+            compiler_err(env, pattern, "This pattern is a nameless tuple, but you're attempting to match it against a value with type %T", t);
         } else if (!streq(Match(t, StructType)->units, pat_struct->units)) {
             compiler_err(env, pattern, "The units of this pattern: <%s> don't match the units of the value being matched: <%s>",
                          Match(t, StructType)->units, pat_struct->units);
@@ -125,7 +121,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             if (hget(&field_pats, name, ast_t*))
                 compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
             else if (!hget(&field_types, name, sss_type_t*))
-                compiler_err(env, field_ast, "This is not a valid member of the struct %s", type_to_string(t));
+                compiler_err(env, field_ast, "This is not a valid member of the struct %T", t);
 
             ast_t *pat_member = Match(field_ast, StructField)->value;
             hset(&field_pats, name, pat_member);
@@ -216,8 +212,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         sss_type_t *pattern_t = get_type(env, pattern);
         gcc_rvalue_t *pattern_val = compile_expr(env, block, pattern);
         if (!promote(env, pattern_t, &pattern_val, t))
-            compiler_err(env, pattern, "This pattern has type %s, but you're attempting to match it against a value with type %s",
-                         type_to_string(pattern_t), type_to_string(t));
+            compiler_err(env, pattern, "This pattern has type %T, but you're attempting to match it against a value with type %T", pattern_t, t);
         gcc_rvalue_t *is_match = gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, compare_values(env, t, val, pattern_val),
                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
         gcc_jump_condition(*block, loc, is_match, outcomes.match_block, outcomes.no_match_block);

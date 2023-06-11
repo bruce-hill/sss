@@ -1,5 +1,6 @@
 #pragma once
 #include <libgccjit.h>
+#include <printf.h>
 #include <stdlib.h>
 
 #include "ast.h"
@@ -91,6 +92,8 @@ struct sss_type_s {
 #define INT_TYPE Type(IntType, .bits=64)
 #define NUM_TYPE Type(NumType, .bits=64)
 
+int printf_type(FILE *stream, const struct printf_info *info, const void *const args[]);
+int printf_type_size(const struct printf_info *info, size_t n, int argtypes[n], int size[n]);
 const char* type_to_string_concise(sss_type_t *t);
 const char* type_to_string(sss_type_t *t);
 bool type_eq(sss_type_t *a, sss_type_t *b);

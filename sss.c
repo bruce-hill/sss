@@ -3,6 +3,7 @@
 #include <gc.h>
 #include <gc/cord.h>
 #include <libgccjit.h>
+#include <printf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -321,6 +322,10 @@ int main(int argc, char *argv[])
         gcc_add_driver_opt(ctx, driver_flags[i]);
     gcc_jit_context_set_bool_option(ctx, GCC_JIT_BOOL_OPTION_DEBUGINFO, true);
     gcc_jit_context_set_bool_allow_unreachable_blocks(ctx, true);
+
+    // register_printf_modifier(L"p");
+    if (register_printf_specifier('T', printf_type, printf_type_size))
+        errx(1, "Couldn't set printf specifier");
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {

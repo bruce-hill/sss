@@ -146,6 +146,26 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
     }
 }
 
+int printf_type_size(const struct printf_info *info, size_t n, int argtypes[n], int sizes[n])
+{
+    if (n < 1) return -1;
+    (void)info;
+    argtypes[0] = PA_POINTER;
+    sizes[0] = sizeof(sss_type_t*);
+    return 1;
+}
+
+int printf_type(FILE *stream, const struct printf_info *info, const void *const args[])
+{
+    sss_type_t *t = *(sss_type_t**)args[0];
+    (void)info;
+    sss_hashmap_t expanded = {0};
+    CORD c = type_to_cord(t, &expanded);
+    if (CORD_len(c) > 30)
+        c = type_to_cord(t, NULL);
+    return CORD_put(c, stream);
+}
+
 const char* type_to_string_concise(sss_type_t *t) {
     return CORD_to_char_star(type_to_cord(t, NULL));
 }

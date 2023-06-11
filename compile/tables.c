@@ -49,8 +49,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!block) return NULL;
     if (!promote(env, get_type(env, key_ast), &key_val, needed_key_t))
-        compiler_err(env, key_ast, "This key has type %s, but to work in this table, it needs type %s",
-                    type_to_string(get_type(env, key_ast)), type_to_string(needed_key_t));
+        compiler_err(env, key_ast, "This key has type %T, but to work in this table, it needs type %T", get_type(env, key_ast), needed_key_t);
 
     gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, "_key");
     gcc_assign(*block, NULL, key_lval, key_val);
@@ -121,14 +120,12 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!*block) return;
     if (!promote(env, raw_key_t, &key_val, needed_key_t))
-        compiler_err(env, key_ast, "This key was expected to be a %s, but was actually %s",
-                    type_to_string(needed_key_t), type_to_string(raw_key_t));
+        compiler_err(env, key_ast, "This key was expected to be a %T, but was actually %T", needed_key_t, raw_key_t);
 
     gcc_rvalue_t *value_val = compile_expr(env, block, value_ast);
     if (!*block) return;
     if (!promote(env, raw_value_t, &value_val, needed_value_t))
-        compiler_err(env, value_ast, "This value was expected to be a %s, but was actually %s",
-                    type_to_string(needed_value_t), type_to_string(raw_value_t));
+        compiler_err(env, value_ast, "This value was expected to be a %T, but was actually %T", needed_value_t, raw_value_t);
 
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *key_lval = gcc_local(func, NULL, sss_type_to_gcc(env, needed_key_t), "_key"),
@@ -177,8 +174,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     sss_type_t *raw_key_t = get_type(env, key_ast);
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!promote(env, raw_key_t, &key_val, key_t))
-        compiler_err(env, key_ast, "This key is a %s, but this table needs a key of type %s",
-                    type_to_string(raw_key_t), type_to_string(key_t));
+        compiler_err(env, key_ast, "This key is a %T, but this table needs a key of type %T", raw_key_t, key_t);
     gcc_lvalue_t *key_lval = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "_key");
     gcc_assign(*block, loc, key_lval, key_val);
     if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
@@ -259,8 +255,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
             fallback_t = get_type(env, fallback);
         }
         if (!type_eq(Match(fallback_t, PointerType)->pointed, t))
-            compiler_err(env, fallback, "This fallback has type %s, which doesn't match the table's type: %s",
-                        type_to_string(fallback_t), type_to_string(t));
+            compiler_err(env, fallback, "This fallback has type %T, which doesn't match the table's type: %T", fallback_t, t);
 
         gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
         gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_FALLBACK_FIELD)),
@@ -271,8 +266,8 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
         sss_type_t *default_t = get_type(env, table->default_value);
         sss_type_t *value_t = Match(t, TableType)->value_type;
         if (!type_is_a(default_t, value_t))
-            compiler_err(env, table->default_value, "This default value has type %s, which doesn't match the table's value type: %s",
-                        type_to_string(default_t), type_to_string(value_t));
+            compiler_err(env, table->default_value, "This default value has type %T, which doesn't match the table's value type: %T",
+                        default_t, value_t);
 
         gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
         gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD)),

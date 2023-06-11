@@ -75,7 +75,7 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
     gcc_lvalue_t *member_var = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_member");
     gcc_rvalue_t *member_val = compile_expr(env, block, member);
     if (!promote(env, member_t, &member_val, Type(IntType, .bits=64)))
-        compiler_err(env, member, "The only thing that can be in a range is an Int, not %s", type_to_string(member_t));
+        compiler_err(env, member, "The only thing that can be in a range is an Int, not %T", member_t);
     gcc_assign(*block, loc, member_var, member_val);
     member_val = gcc_rval(member_var);
 

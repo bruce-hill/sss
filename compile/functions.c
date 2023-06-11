@@ -104,7 +104,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
         gcc_rvalue_t *max_val = compile_constant(env, max_cache_size);
         sss_type_t *max_t = get_type(env, max_cache_size);
         if (!promote(env, max_t, &max_val, Type(IntType, .bits=64)))
-            compiler_err(env, max_cache_size, "Cache maximum size must be an integer value, not %s", type_to_string(max_t));
+            compiler_err(env, max_cache_size, "Cache maximum size must be an integer value, not %T", max_t);
 
         gcc_block_t *needs_pop = gcc_new_block(func, fresh("needs_pop")),
                     *populate_cache = gcc_new_block(func, fresh("populate_cache"));
@@ -170,11 +170,11 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         for (int64_t i = 0; i < length(fn_info->arg_types); i++) {
             sss_type_t *arg_t = ith(fn_info->arg_types, i);
             if (has_stack_memory(arg_t))
-                compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %s)",
-                             ith(arg_names, i), type_to_string(arg_t));
+                compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %T)",
+                             ith(arg_names, i), arg_t);
             else if (!is_cacheable(arg_t))
-                compiler_err(env, def, "Functions can't be cached if they take a pointer to mutable heap memory, like the argument '%s' (type: %s)",
-                             ith(arg_names, i), type_to_string(arg_t));
+                compiler_err(env, def, "Functions can't be cached if they take a pointer to mutable heap memory, like the argument '%s' (type: %T)",
+                             ith(arg_names, i), arg_t);
         }
         const char *name = def->tag == FunctionDef ? fresh(heap_strf("%s__inner", Match(def, FunctionDef)->name)) : fresh("lambda__inner");
         func = add_cache(env, ast_loc(env, def), fn_t, func, name, arg_names, max_cache_size);
@@ -185,8 +185,8 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     compile_statement(env, &block, body);
     if (block) {
         // if (fn_info->ret->tag != VoidType) {
-        //     compiler_err(env, def, "You declared that this function returns a value of type %s, but the end of the function can be reached without returning a value",
-        //           type_to_string(fn_info->ret));
+        //     compiler_err(env, def, "You declared that this function returns a value of type %T, but the end of the function can be reached without returning a value",
+        //           fn_info->ret);
         // }
         gcc_return_void(block, NULL);
     }

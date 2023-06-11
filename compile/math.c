@@ -194,7 +194,7 @@ static gcc_rvalue_t *math_binop_rec(
     sss_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
-            compiler_err(env, ast, "I don't know how to do math operations between %s and %s", type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
         struct_t = lhs_t;
     } else if (lhs_t->tag == StructType) {
         struct_t = lhs_t;
@@ -210,8 +210,7 @@ static gcc_rvalue_t *math_binop_rec(
         auto members = Match(lhs_t, TaggedUnionType)->members;
         for (int64_t i = 0; i < length(members); i++) {
             if (ith(members, i).type)
-                compiler_err(env, ast, "%s tagged union values can't be combined because some tags have data attached to them.",
-                             type_to_string(lhs_t));
+                compiler_err(env, ast, "%T tagged union values can't be combined because some tags have data attached to them.", lhs_t);
         }
         gcc_rvalue_t *result_tag;
         if (op == GCC_BINOP_PLUS || op == GCC_BINOP_BITWISE_OR) {
@@ -243,8 +242,7 @@ static gcc_rvalue_t *math_binop_rec(
         }
     } else {
         if (!is_numeric(lhs_t) || !is_numeric(rhs_t))
-            compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
 
         sss_type_t *result_t;
         if (promote(env, with_units(lhs_t, NULL), &lhs, with_units(rhs_t, NULL)))
@@ -252,8 +250,7 @@ static gcc_rvalue_t *math_binop_rec(
         else if (promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
             result_t = lhs_t;
         else
-            compiler_err(env, ast, "I can't do math operations between %s and %s without losing precision",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I can't do math operations between %T and %T without losing precision", lhs_t, rhs_t);
 
         return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, result_t), lhs, rhs);
     }
@@ -345,8 +342,7 @@ void math_update_rec(
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
         compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
     else if (!streq(type_units(lhs_t), type_units(rhs_t)) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
-        compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %s and %s",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %T and %T", lhs_t, rhs_t);
 
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
@@ -432,8 +428,7 @@ void math_update_rec(
         *block = loop_end;
     } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
         if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
-            compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %s and %s",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %T and %T", lhs_t, rhs_t);
 
         auto struct_ = Match(lhs_t, StructType);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
@@ -458,8 +453,7 @@ void math_update_rec(
         }
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         if (!promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
-            compiler_err(env, ast, "I can't automatically convert from %s to %s without losing precision",
-                        type_to_string(rhs_t), type_to_string(lhs_t));
+            compiler_err(env, ast, "I can't automatically convert from %T to %T without losing precision", rhs_t, lhs_t);
         if ((op == GCC_BINOP_BITWISE_AND || op == GCC_BINOP_BITWISE_OR || op == GCC_BINOP_BITWISE_XOR) && lhs_t->tag == NumType)
             compiler_err(env, ast, "Bitwise operations cannot be performed in floating point numbers.");
         return gcc_update(*block, loc, lhs, op, rhs);
@@ -471,8 +465,7 @@ void math_update_rec(
         default: compiler_err(env, ast, "I don't know how to do math operations on boolean values.");
         }
     } else {
-        compiler_err(env, ast, "I don't know how to do math update operations between %s and %s",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I don't know how to do math update operations between %T and %T", lhs_t, rhs_t);
     }
 }
 

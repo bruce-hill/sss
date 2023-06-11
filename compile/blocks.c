@@ -29,11 +29,9 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
         while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
         if (!(t->tag == VoidType || t->tag == AbortType)) {
             if (was_generator)
-                compiler_err(env, ast, "This expression can produce a value of type %s but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".",
-                            type_to_string(t));
+                compiler_err(env, ast, "This expression can produce a value of type %T but the value is being ignored. If you want to intentionally ignore the value, assign the body of the block to a variable called \"_\".", t);
             else
-                compiler_err(env, ast, "This expression has a type of %s but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".",
-                            type_to_string(t));
+                compiler_err(env, ast, "This expression has a type of %T but the value is being ignored. If you want to intentionally ignore it, assign the value to a variable called \"_\".", t);
         }
         gcc_rvalue_t *val = compile_expr(env, block, ast);
         if (val && *block)

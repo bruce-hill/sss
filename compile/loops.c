@@ -134,8 +134,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             iter_t = Match(iter_t, PointerType)->pointed;
             gcc_iter_t = sss_type_to_gcc(env, iter_t);
         } else {
-            compiler_err(env, iter, "This value is a %s pointer. You must dereference the pointer with *%.*s to access the underlying value to iterate over it.",
-                         type_to_string(iter_t), (int)(iter->span.end - iter->span.start), iter->span.start);
+            compiler_err(env, iter, "This value is a %T pointer. You must dereference the pointer with *%.*s to access the underlying value to iterate over it.",
+                         iter_t, (int)(iter->span.end - iter->span.start), iter->span.start);
         }
     }
 
@@ -346,8 +346,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         if (for_->value && for_->value->tag == Dereference) {
             item_t = iter_var_t;
             if (!original_pointer)
-                compiler_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%s instead)",
-                            type_to_string(iter_t));
+                compiler_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%T instead)", iter_t);
         } else {
             item_t = iter_t;
         }
@@ -396,7 +395,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         break;
     }
-    default: compiler_err(env, iter, "Iteration isn't supported for %s", type_to_string(iter_t));
+    default: compiler_err(env, iter, "Iteration isn't supported for %T", iter_t);
     }
 
     env_t *loop_env = fresh_scope(env);

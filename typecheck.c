@@ -28,7 +28,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         else if (b->type->tag == TypeType)
             return Match(b->type, TypeType)->type;
         else
-            compiler_err(env, ast, "The only '%s' I know is a %s, not a type", Match(ast, Var)->name, type_to_string(b->type));
+            compiler_err(env, ast, "The only '%s' I know is a %T, not a type", Match(ast, Var)->name, b->type);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -164,11 +164,11 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
                 && type_eq(ith(struct_->field_types, i), Type(PointerType, .pointed=iter_t, .is_optional=true)))
                 return Type(PointerType, .pointed=iter_t, .is_optional=false);
         }
-        compiler_err(env, iter, "I don't know how to iterate over %s structs that don't have a .next member", type_to_string(iter_t));
+        compiler_err(env, iter, "I don't know how to iterate over %T structs that don't have a .next member", iter_t);
     }
     case GeneratorType: return Match(iter_t, GeneratorType)->generated;
     default:
-        compiler_err(env, iter, "I don't know how to iterate over %s values like this", type_to_string(iter_t));
+        compiler_err(env, iter, "I don't know how to iterate over %T values like this", iter_t);
         break;
     }
 }
@@ -210,8 +210,7 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
-        if (!t) compiler_err(env, ast, "I can't do math operations between %s and %s without losing precision.",
-                             type_to_string(lhs_t), type_to_string(rhs_t));
+        if (!t) compiler_err(env, ast, "I can't do math operations between %T and %T without losing precision.", lhs_t, rhs_t);
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
         if (streq(units, "%")) units = NULL;
@@ -224,8 +223,7 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
     } else if (rhs_t->tag == BoolType && (lhs_t->tag == StructType || lhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
         return lhs_t;
     } else {
-        compiler_err(env, ast, "I don't know how to do math operations between %s and %s",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
     }
 }
 
@@ -288,7 +286,7 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
                 bind_match_patterns(env, ith(struct_info->field_types, j), pat_member);
                 goto found_field_name;
             }
-            compiler_err(env, field_ast, "There is no field called '%s' on the struct %s", name, type_to_string(t));
+            compiler_err(env, field_ast, "There is no field called '%s' on the struct %T", name, t);
 
           found_field_name: continue;
         }
@@ -414,8 +412,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Dereference: {
         sss_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
         if (pointer_t->tag != PointerType)
-            compiler_err(env, ast, "You're attempting to dereference something that isn't a pointer (it's a %s)",
-                        type_to_string(pointer_t));
+            compiler_err(env, ast, "You're attempting to dereference a %T, which isn't a pointer", pointer_t);
         auto ptr = Match(pointer_t, PointerType);
         if (ptr->is_optional)
             compiler_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
@@ -579,7 +576,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             }
             binding_t *binding = get_array_method(env, fielded_t, access->field);
             if (!binding)
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
             return binding->type;
         }
         case TableType: {
@@ -603,7 +600,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             if (binding)
                 return binding->type;
             else
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %s", access->field, type_to_string(fielded_t));
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
         }
         }
     }
@@ -618,7 +615,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             case RangeType: return indexed_t;
             case IntType: case CharType: case CStringCharType:
                 return Match(indexed_t, ArrayType)->item_type;
-            default: compiler_err(env, indexing->index, "I only know how to index lists using integers, not %s", type_to_string(index_t));
+            default: compiler_err(env, indexing->index, "I only know how to index lists using integers, not %T", index_t);
             }
         }
         case TableType: {
@@ -631,7 +628,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]
         default: {
-            compiler_err(env, ast, "I don't know how to index %s values", type_to_string(indexed_t));
+            compiler_err(env, ast, "I don't know how to index %T values", indexed_t);
         }
         }
     }
@@ -642,7 +639,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto call = Match(ast, FunctionCall);
         sss_type_t *fn_type_t = get_type(env, call->fn);
         if (fn_type_t->tag != FunctionType) {
-            compiler_err(env, call->fn, "You're calling a value of type %s and not a function", type_to_string(fn_type_t));
+            compiler_err(env, call->fn, "You're calling a value of type %T and not a function", fn_type_t);
         }
         auto fn_type = Match(fn_type_t, FunctionType);
         return fn_type->ret;
@@ -704,8 +701,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             sss_type_t *else_t = get_type(env, do_->else_body);
             sss_type_t *t2 = type_or_type(t, else_t);
             if (!t2 || !streq(type_units(t), type_units(else_t)))
-                compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %s value (based on the preceding 'do'), but it actually has a %s value.",
-                            type_to_string(t), type_to_string(else_t));
+                compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %T value (based on the preceding 'do'), but it actually has a %T value.",
+                             t, else_t);
             t = t2;
         } else if (do_->label) {
             t = generate(t);
@@ -739,7 +736,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Negative: {
         sss_type_t *t = get_type(env, Match(ast, Negative)->value);
         if (!is_numeric(t))
-            compiler_err(env, ast, "I only know how to get negatives of numeric types, not %s", type_to_string(t));
+            compiler_err(env, ast, "I only know how to get negatives of numeric types, not %T", t);
         return t;
     }
     case And: {
@@ -763,8 +760,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
-        compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %s, but the right side is a %s.",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %T, but the right side is a %T",
+                     lhs_t, rhs_t);
     }
     case Or: {
         auto or_ = Match(ast, Or);
@@ -780,7 +777,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
             if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
-                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+                compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
             return t;
         }
 
@@ -796,8 +793,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
-        compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %s, but the right side is a %s.",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %T, but the right side is a %T",
+                     lhs_t, rhs_t);
     }
     case Xor: {
         auto xor = Match(ast, Xor);
@@ -811,14 +808,14 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
             if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
-                compiler_err(env, ast, "I can't have a type that is either %s or %s.", type_to_string(lhs_t), type_to_string(rhs_t));
+                compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
             return t;
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
 
-        compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %s, but the right side is a %s.",
-                    type_to_string(lhs_t), type_to_string(rhs_t));
+        compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %T, but the right side is a %T",
+                     lhs_t, rhs_t);
     }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
     case AndUpdate: case OrUpdate: case XorUpdate:
@@ -837,10 +834,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *lhs_t = get_type(env, concat->lhs),
                   *rhs_t = get_type(env, concat->rhs);
         if (!type_eq(lhs_t, rhs_t))
-            compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %s vs. %s",
-                         type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %T vs. %T",
+                         lhs_t, rhs_t);
         if (lhs_t->tag != ArrayType)
-            compiler_err(env, ast, "Only array/string value types support concatenation, not %s", type_to_string(lhs_t));
+            compiler_err(env, ast, "Only array/string value types support concatenation, not %T", lhs_t);
         return lhs_t;
     }
     case Less: case LessEqual: case Greater: case GreaterEqual: case In: case NotIn: {
@@ -854,8 +851,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
         if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
-            compiler_err(env, ast, "The two sides of this operation are not compatible: %s vs %s",
-                         type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "The two sides of this operation are not compatible: %T vs %T", lhs_t, rhs_t);
         return t;
     }
 
@@ -867,7 +863,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return t;
         else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
             return Type(BoolType);
-        compiler_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %s", type_to_string(t)); 
+        compiler_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %T", t); 
     }
 
     case Equal: case NotEqual: {
@@ -884,8 +880,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         else if (is_numeric(lhs_t) && is_numeric(rhs_t))
             return Type(BoolType);
         else
-            compiler_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between a %s and a %s",
-                        type_to_string(lhs_t), type_to_string(rhs_t));
+            compiler_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between %T and %T",
+                         lhs_t, rhs_t);
     }
 
     case Lambda: {
@@ -1076,14 +1072,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         hset(env->bindings, "y", new(binding_t, .type=item_type));
         sss_type_t *combo_t = get_type(env, reduction->combination);
         if (!can_promote(item_type, combo_t))
-            compiler_err(env, ast, "This reduction expression has type %s, but it's iterating over %s values, so I wouldn't know what to produce if there was only one value.",
-                         type_to_string(combo_t), type_to_string(item_type));
+            compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",
+                         combo_t, item_type);
 
         if (reduction->fallback) {
             sss_type_t *fallback_t = get_type(env, reduction->fallback);
             if (!can_promote(fallback_t, combo_t))
-                compiler_err(env, ast, "This reduction expression has type %s, but the fallback has type %s",
-                             type_to_string(combo_t), type_to_string(fallback_t));
+                compiler_err(env, ast, "This reduction expression has type %T, but the fallback has type %T", combo_t, fallback_t);
         }
         return combo_t;
     }

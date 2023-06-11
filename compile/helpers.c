@@ -46,8 +46,8 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             if (type_eq(*ftype, sss_t))
-                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
-                             type_to_string(sss_t), type_to_string(sss_t));
+                compiler_err(env, NULL, "The struct %T recursively contains itself, which would be infinitely large. If you want to reference other %T structs, use a pointer or an array.",
+                             sss_t, sss_t);
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > align) align = field_align;
         }
@@ -92,8 +92,8 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         auto struct_type = Match(sss_t, StructType);
         foreach (struct_type->field_types, ftype, _) {
             if (type_eq(*ftype, sss_t))
-                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
-                             type_to_string(sss_t), type_to_string(sss_t));
+                compiler_err(env, NULL, "The struct %T recursively contains itself, which would be infinitely large. If you want to reference other %T structs, use a pointer or an array.",
+                             sss_t, sss_t);
             ssize_t field_align = gcc_alignof(env, *ftype);
             if (field_align > 1 && size % field_align)
                 size += field_align - (size % field_align); // padding
@@ -123,7 +123,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     }
     case ModuleType: return 0;
     case VoidType: return 0;
-    default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %s", type_to_string(sss_t));
+    default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
     }
 }
 
@@ -148,8 +148,8 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
     auto fields = LIST(gcc_field_t*);
     foreach (tagged->members, member, _) {
         if (member->type && hget(&opaque_structs, type_to_string(member->type), gcc_type_t*))
-            compiler_err(env, NULL, "The tagged union '%s' recursively contains itself, which could be infinitely large. If you want to reference other %s values, use a pointer or an array.",
-                         type_to_string(t), type_to_string(t));
+            compiler_err(env, NULL, "The tagged union %T recursively contains itself, which could be infinitely large. If you want to reference other %T values, use a pointer or an array.",
+                         t, t);
         gcc_type_t *gcc_ft = member->type ? sss_type_to_gcc(env, member->type)
             : gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, member->name, 0, NULL)); // empty struct
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, member->name);
@@ -273,8 +273,8 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         for (int64_t i = 0; i < length(struct_t->field_types); i++) {
             sss_type_t *sss_ft = ith(struct_t->field_types, i);
             if (hget(&opaque_structs, type_to_string(sss_ft), gcc_type_t*))
-                compiler_err(env, NULL, "The struct '%s' recursively contains itself, which would be infinitely large. If you want to reference other %s structs, use a pointer or an array.",
-                             type_to_string(t), type_to_string(t));
+                compiler_err(env, NULL, "The struct %T recursively contains itself, which would be infinitely large. If you want to reference other %T structs, use a pointer or an array.",
+                             t, t);
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
             assert(gcc_ft);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(struct_t->field_names, i));
@@ -316,7 +316,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     default: {
       unknown_gcc_type:
-        compiler_err(env, NULL, "The following SSS type doesn't have a GCC type: %s", type_to_string(t));
+        compiler_err(env, NULL, "The following SSS type doesn't have a GCC type: %T", t);
     }
     }
 
@@ -381,7 +381,7 @@ void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         bool_val = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, bool_val, gcc_null(env->ctx, gcc_t));
     } else if (t->tag != BoolType) {
-        compiler_err(env, obj, "This value can't be used for a boolean value, since it's a %s\n", type_to_string(t));
+        compiler_err(env, obj, "This value can't be used for a boolean value, since it's a %T", t);
     }
     gcc_jump_condition(*block, NULL, bool_val, if_truthy, if_falsey);
     *block = NULL;
@@ -1023,7 +1023,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         break;
     }
     default:
-        compiler_err(env, NULL, "Hash functions aren't yet implemented for %s", type_to_string(t));
+        compiler_err(env, NULL, "Hash functions aren't yet implemented for %T", t);
     }
 
     gcc_return(block, NULL, gcc_rval(hashval));
@@ -1347,8 +1347,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                     return gcc_lvalue_access_field(fielded_lval, loc, field);
                 }
             }
-            compiler_err(env, ast, "The struct %s doesn't have a field called '%s'",
-                  type_to_string(fielded_t), access->field);
+            compiler_err(env, ast, "The struct %T doesn't have a field called '%s'", fielded_t, access->field);
         } else if (fielded_t->tag == ArrayType) { 
             // arr.x => [item.x for x in arr]
             if (!allow_slices)
@@ -1412,11 +1411,9 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 return gcc_lvalue_access_field(gcc_lvalue_access_field(fielded_lval, NULL, gcc_get_field(tagged_struct, 1)), loc,
                                                gcc_get_union_field(gcc_union_t, i));
             }
-            compiler_err(env, ast, "The field '%s' is not a valid tag on the tagged union type %s",
-                         access->field, type_to_string(fielded_t));
+            compiler_err(env, ast, "The field '%s' is not a valid tag on the tagged union type %T", access->field, fielded_t);
         } else {
-            compiler_err(env, ast, "This value is a %s, and I don't know how to assign to fields on it.",
-                  type_to_string(fielded_t));
+            compiler_err(env, ast, "This value is a %T, and I don't know how to assign to fields on it.", fielded_t);
         }
     }
     case Index: {
