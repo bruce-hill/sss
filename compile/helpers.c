@@ -414,6 +414,13 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
     binding_t *b = get_from_namespace(env, t, "__print");
     if (b) return b->func;
 
+    // Reuse same function for all Type types:
+    if (t->tag == TypeType && Match(t, TypeType)->type) {
+        gcc_func_t *func = get_print_func(env, Type(TypeType));
+        hset(get_namespace(env, t), "__print", get_from_namespace(env, Type(TypeType), "__print"));
+        return func;
+    }
+
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
 
     gcc_type_t *void_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));

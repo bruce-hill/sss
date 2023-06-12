@@ -29,8 +29,10 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
                 return num->units ? heap_strf("Num32<%s>", num->units) : "Num32";
         }
         case TypeType: {
+            sss_type_t *inner = Match(t, TypeType)->type;
+            if (!inner) return "Type(...)";
             CORD ret;
-            CORD_sprintf(&ret, "Type(%r)", type_to_cord(Match(t, TypeType)->type, expanded));
+            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded));
             return ret;
         }
         case RangeType: return "Range";
