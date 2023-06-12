@@ -859,6 +859,13 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     binding_t *b = get_from_namespace(env, t, "__hash");
     if (b) return b->func;
 
+    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType), .is_optional=true);
+    if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
+        gcc_func_t *func = get_hash_func(env, void_ptr_t);
+        hset(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));
+        return func;
+    }
+
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
 
@@ -1051,6 +1058,13 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare");
     if (b) return b->func;
+
+    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType), .is_optional=true);
+    if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
+        gcc_func_t *func = get_compare_func(env, void_ptr_t);
+        hset(get_namespace(env, t), "__compare", get_from_namespace(env, void_ptr_t, "__compare"));
+        return func;
+    }
 
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
@@ -1251,6 +1265,14 @@ gcc_func_t *get_indirect_compare_func(env_t *env, sss_type_t *t)
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare_indirect");
     if (b) return b->func;
+
+    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType), .is_optional=true);
+    if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
+        gcc_func_t *func = get_indirect_compare_func(env, void_ptr_t);
+        hset(get_namespace(env, t), "__compare_indirect",
+             get_from_namespace(env, void_ptr_t, "__compare_indirect"));
+        return func;
+    }
 
     gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
     gcc_type_t *int_t = gcc_type(env->ctx, INT);
