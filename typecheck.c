@@ -210,7 +210,7 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
-        if (!t) compiler_err(env, ast, "I can't do math operations between %T and %T without losing precision.", lhs_t, rhs_t);
+        if (!t) compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
         if (streq(units, "%")) units = NULL;

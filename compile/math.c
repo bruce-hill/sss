@@ -250,7 +250,7 @@ static gcc_rvalue_t *math_binop_rec(
         else if (promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
             result_t = lhs_t;
         else
-            compiler_err(env, ast, "I can't do math operations between %T and %T without losing precision", lhs_t, rhs_t);
+            compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
 
         return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, result_t), lhs, rhs);
     }
