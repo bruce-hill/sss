@@ -3,6 +3,7 @@ PREFIX=/usr/local
 VERSION=0.8.4
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
+MAKEFLAGS := --jobs=$(shell nproc) --output-sync=target
 CWARN=-Wall -Wextra -Wno-format
   # -Wpedantic -Wsign-conversion -Wtype-limits -Wunused-result -Wnull-dereference \
 	# -Waggregate-return -Walloc-zero -Walloca -Warith-conversion -Wcast-align -Wcast-align=strict \
