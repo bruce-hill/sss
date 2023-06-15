@@ -5,7 +5,7 @@ def _POpenFile{}
 extend $Sh
     def run(sh:$Sh)->{output:String,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
-        f := popen("$sh", "r") or return {output="", status=-1i32}
+        f := popen(bitcast sh as String, "r") or return {output="", status=-1i32}
         output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->String)(&f)
         pclose := (extern pclose:(?_POpenFile)->Int32)
         status := pclose(f)
@@ -28,6 +28,14 @@ extend $Sh
 def s:String as $Sh
     return bitcast "'$(s.replace("'",${'"'"'}))'" as $Sh
 
+def strs:[String] as $Sh
+    return bitcast [
+        for s in strs
+            ++$Sh"$s"
+        between
+            ++$Sh" "
+    ] as $Sh
+
 def strings:[String] as $Sh
     return bitcast [
         for s in strings
@@ -41,3 +49,11 @@ def i:Int64 as $Sh
 
 def n:Num as $Sh
     return bitcast "$n" as $Sh
+
+env := use env.sss
+if env.get("TEST") == "1"
+    >>> files := ["one two", "three; four", "doesn't break"]
+    >>> $Sh> ls -al @files
+    === $Sh"ls -al 'one two' 'three; four' 'doesn'\"'\"'t break'"
+    >>> $Sh(echo "hi").run()
+    === {output="hi\n", status=0_i32}
