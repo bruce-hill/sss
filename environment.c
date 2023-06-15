@@ -91,6 +91,7 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_int, "printf", PARAM(t_str, "format"));
     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
+    load_global_func(env, t_int, "strcmp", PARAM(t_str, "str1"), PARAM(t_str, "str2"));
     load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
     load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));

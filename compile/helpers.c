@@ -1594,7 +1594,6 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
                        gcc_callx(env->ctx, NULL, open_memstream_fn, gcc_lvalue_address(buf_var, NULL), gcc_lvalue_address(size_var, NULL)));
             gcc_rvalue_t *file = gcc_rval(file_var);
 
-            gcc_func_t *print_fn = get_print_func(env, t);
             // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
             sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
@@ -1607,6 +1606,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
                 gcc_lvalue_address(next_index, NULL));
 
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+            gcc_func_t *print_fn = get_print_func(env, t);
             gcc_rvalue_t *print_call = gcc_callx(
                 env->ctx, NULL, print_fn, rval, file,
                 gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star),

@@ -2222,16 +2222,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto test = Match(ast, DocTest);
         ast_t *expr = test->expr;
 
+        gcc_rvalue_t *use_color = get_binding(env, "USE_COLOR")->rval;
+        gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
+        gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
         if (!test->skip_source) {
-            // Print source code of the doctest:
-            const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-            const char* plain_src = heap_strf(">>> %.*s", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-            ast_t *warn_src = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, Var, .name="warn"),
-                                     .args=LIST(ast_t*, WrapAST(ast, If, .subject=FakeAST(Var, .name="USE_COLOR"),
-                                                                .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
-                                                                .blocks=LIST(ast_t*, StringAST(expr, color_src), StringAST(expr, plain_src))),
-                                                FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
-            compile_statement(env, block, warn_src);
+            const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+            const char* plain_src = heap_strf(">>> %.*s\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+            gcc_rvalue_t *source = ternary(block, use_color, gcc_type(env->ctx, STRING), gcc_str(env->ctx, color_src), gcc_str(env->ctx, plain_src));
+            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, source, stderr_val)); 
         }
 
         if (expr->tag == Return && Match(expr, Return)->value) {
@@ -2306,37 +2304,63 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return NULL;
         } else {
             // Print "= <expr>"
-            NEW_LIST(ast_t*, statements);
-            ast_t *stmt = WrapAST(expr, Declare, .var=WrapAST(expr, Var, .name="=expr"), .value=expr);
-            APPEND(statements, stmt);
-            stmt = WrapAST(expr, FunctionCall, .fn=WrapAST(expr, Var, .name="warn"), .args=LIST(ast_t*,
-                WrapAST(expr, StringJoin, .children=LIST(ast_t*, 
-                    WrapAST(expr, Interp, .value=FakeAST(If, .subject=FakeAST(Var, "USE_COLOR"),
-                                                        .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
-                                                        .blocks=LIST(ast_t*, StringAST(expr, "\x1b[0;2m= \x1b[m"), StringAST(expr, "= ")))),
-                    WrapAST(expr, Interp, .value=WrapAST(expr, Var, .name="=expr"), .colorize=true, .quote_string=true),
-                    WrapAST(expr, Interp, .value=FakeAST(If, .subject=FakeAST(Var, "USE_COLOR"),
-                                                         .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
-                                                         .blocks=LIST(ast_t*, StringAST(expr, heap_strf("\x1b[0;2m : %s\x1b[0m", type_to_string_concise(t))),
-                                                                      StringAST(expr, heap_strf(" : %s", type_to_string_concise(t)))))),
-                )),
-                FakeAST(KeywordArg, "colorize", FakeAST(Bool, .b=false))));
-            APPEND(statements, stmt);
+            gcc_rvalue_t *val = compile_expr(env, block, expr);
+            print_doctest_value(env, block, loc, "= ", t, val);
             if (test->output) {
-                // TODO: use insert_failure()
-                ast_t *message = WrapAST(
-                    ast, StringJoin, .children=LIST(
-                        ast_t*,
-                        WrapAST(ast, StringLiteral, .str=heap_strf("Test failed, expected: %s, but got: ", test->output)), 
-                        WrapAST(ast, Interp, .value=WrapAST(expr, Var, .name="=expr"))));
-                stmt = WrapAST(expr, If,
-                   .subject=WrapAST(expr, NotEqual, .lhs=WrapAST(expr, Interp, .quote_string=true, .value=WrapAST(expr, Var, .name="=expr")),
-                                                      .rhs=WrapAST(expr, StringLiteral, .str=test->output)),
-                   .patterns=LIST(ast_t*, FakeAST(Bool, .b=true), FakeAST(Bool, .b=false)),
-                   .blocks=LIST(ast_t*, WrapAST(expr, Fail, .message=message), FakeAST(Pass)));
-                APPEND(statements, stmt);
+                gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
+
+                // char *buf; size_t size;
+                // FILE *f = open_memstream(&buf, &size);
+                gcc_func_t *func = gcc_block_func(*block);
+                gcc_lvalue_t *buf_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "buf");
+                gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), "size");
+                gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), "file");
+                gcc_assign(*block, loc, file_var,
+                           gcc_callx(env->ctx, loc, open_memstream_fn, gcc_lvalue_address(buf_var, loc), gcc_lvalue_address(size_var, loc)));
+                gcc_rvalue_t *file = gcc_rval(file_var);
+
+                gcc_func_t *print_fn = get_print_func(env, t);
+                assert(print_fn);
+                
+                // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
+                sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+                gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
+                gcc_lvalue_t *cycle_checker = gcc_local(func, loc, hashmap_gcc_t, "_rec");
+                gcc_assign(*block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
+                gcc_lvalue_t *next_index = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_index");
+                gcc_assign(*block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+                gcc_assign(*block, loc, gcc_lvalue_access_field(
+                        cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
+                    gcc_lvalue_address(next_index, loc));
+
+                gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
+                gcc_rvalue_t *print_call = gcc_callx(
+                    env->ctx, loc, print_fn, val, file,
+                    gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), void_star), gcc_rvalue_bool(env->ctx, false));
+                gcc_eval(*block, loc, print_call);
+
+                gcc_func_t *fflush_fn = hget(env->global_funcs, "fflush", gcc_func_t*);
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
+
+                // fail unless strcmp(output, "expected") == 0
+                gcc_func_t *strcmp_fn = hget(env->global_funcs, "strcmp", gcc_func_t*);
+                gcc_block_t *done_block = gcc_new_block(func, fresh("test_done")),
+                            *fail_block = gcc_new_block(func, fresh("test_failed"));
+                gcc_jump_condition(*block, loc,
+                    gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ,
+                        gcc_callx(env->ctx, loc, strcmp_fn, gcc_rval(buf_var), gcc_str(env->ctx, test->output)),
+                        gcc_zero(env->ctx, gcc_type(env->ctx, INT))),
+                    done_block, fail_block);
+                insert_failure(env, &fail_block, &ast->span, "Test failed!\nExpected: %s \nBut got:  %#s ",
+                               test->output, Type(PointerType, Type(CStringCharType)), gcc_rval(buf_var));
+                *block = done_block;
+
+                // Cleanup
+                gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
+                gcc_func_t *free_fn = hget(env->global_funcs, "free", gcc_func_t*);
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
             }
-            compile_statement(env, block, WrapAST(expr, Block, .statements=statements));
             return NULL;
         }
     }
