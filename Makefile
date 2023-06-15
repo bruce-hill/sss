@@ -77,7 +77,7 @@ uninstall:
 	fi;
 
 test: all
-	@for f in test/*.sss; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./sss $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
+	@for f in test/*.sss stdlib/*.sss; do printf '\x1b[33;1;4m%s\x1b[m\n' "$$f" && ./sss $$f && printf '\x1b[32;1mPassed!\x1b[m\n\n' || exit 1; done
 	@printf '\x1b[42;30m All tests passed! \x1b[m\n\n'
 
 .PHONY: all clean install uninstall test
