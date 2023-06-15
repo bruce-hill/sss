@@ -2297,13 +2297,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             // Print "= <expr>"
             gcc_rvalue_t *val = compile_expr(env, block, expr);
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *val_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_expression");
+            gcc_assign(*block, loc, val_var, val);
+            val = gcc_rval(val_var);
             print_doctest_value(env, block, loc, "= ", t, val);
             if (test->output) {
                 gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
 
                 // char *buf; size_t size;
                 // FILE *f = open_memstream(&buf, &size);
-                gcc_func_t *func = gcc_block_func(*block);
                 gcc_lvalue_t *buf_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "buf");
                 gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), "size");
                 gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), "file");
