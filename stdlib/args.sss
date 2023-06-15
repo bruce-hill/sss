@@ -122,8 +122,7 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
 
 spec := Spec.new
 
-env := use env.sss
-if env.get("TEST") == "1"
+if IS_MAIN_PROGRAM
     >>> spec := Spec.new(["v|verbose","O=","o|output=","n|name="], ["first","second"])
     >>> spec.usage()
     >>> spec.parse(["a","-v","b","--verbose","c","--","-o"])

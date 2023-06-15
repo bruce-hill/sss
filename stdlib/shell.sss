@@ -50,8 +50,7 @@ def i:Int64 as $Sh
 def n:Num as $Sh
     return bitcast "$n" as $Sh
 
-env := use env.sss
-if env.get("TEST") == "1"
+if IS_MAIN_PROGRAM
     >>> files := ["one two", "three; four", "doesn't break"]
     >>> $Sh> ls -al @files
     === $Sh"ls -al 'one two' 'three; four' 'doesn'\"'\"'t break'"

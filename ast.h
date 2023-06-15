@@ -293,6 +293,7 @@ struct ast_s {
         struct {
             const char *path;
             sss_file_t *file;
+            bool main_program;
         } Use;
         struct {
             ast_t *value;

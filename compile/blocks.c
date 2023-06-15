@@ -55,6 +55,8 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
     if (!b) {
         env_t module_env = *env;
         module_env.global_bindings = namespace;
+        hset(module_env.global_bindings, "IS_MAIN_PROGRAM",
+             new(binding_t, .type=Type(BoolType), .rval=gcc_rvalue_bool(env->ctx, use->main_program), .visible_in_closures=true));
         module_env.bindings = namespace;
         gcc_func_t *load_func = gcc_new_func(
             env->ctx, NULL, GCC_FUNCTION_EXPORTED, sss_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
@@ -117,6 +119,7 @@ void populate_uses(env_t *env, ast_t *ast)
         for (uint32_t i = 1; i <= namespace->count; i++) {
             auto entry = hnth(namespace, i, const char*, binding_t*);
             if (entry->value->func) continue;
+            if (streq(entry->key, "IS_MAIN_PROGRAM")) continue;
             if (hget(env->bindings, entry->key, binding_t*))
                 compiler_err(env, ast, "This 'use' statement is importing '%s', which already exists in this namespace. "
                              "Please change the 'use' to declare a variable to hold the import namespace and avoid collisions.",

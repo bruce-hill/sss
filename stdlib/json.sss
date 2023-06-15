@@ -140,8 +140,7 @@ def b:Bool as $JSON
 def n:Num as $JSON
     return bitcast "$n" as $JSON
 
-env := use env.sss
-if env.get("TEST") == "1"
+if IS_MAIN_PROGRAM
     >>> JSON.obj({"x"=> JSON.bool(yes), "y"=> JSON.null, "z"=> JSON.list([JSON.num(1.2), JSON.num(3.4)])}).serialized()
     === "{\"x\": yes, \"y\": null, \"z\": [1.2, 3.4]}"
     >>> JSON.str(${"Quotes" and \\backslashes}).serialized()

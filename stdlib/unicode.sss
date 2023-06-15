@@ -188,8 +188,7 @@ extend String
                     c
         ])
 
-env := use env.sss
-if env.get("TEST") == "1"
+if IS_MAIN_PROGRAM
     >>> smile := "smile: 😀"
     >>> smile
     === "smile: 😀"

@@ -87,7 +87,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_eval(main_block, NULL, gcc_callx(ctx, NULL, srand48_func, gcc_callx(ctx, NULL, arc4_rng)));
 
     // Run the program:
-    gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename, .file=f));
+    gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename, .file=f, .main_program=true));
     gcc_eval(main_block, NULL, val);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
