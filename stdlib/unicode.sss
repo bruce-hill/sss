@@ -187,3 +187,59 @@ extend String
                     prev_alpha = no
                     c
         ])
+
+env := use env.sss
+if env.get("TEST") == "1"
+    >>> smile := "smile: 😀"
+    >>> smile
+    === "smile: 😀"
+    say "$smile"
+    >>> #smile
+    === 11
+    >>> smile.utf8_length()
+    === 8
+    >>> smile.utf8_width()
+    === 9
+    >>> codepoints := smile.codepoints()
+    >>> [c.n for c in codepoints]
+    === [115_i32, 109_i32, 105_i32, 108_i32, 101_i32, 58_i32, 32_i32, 128512_i32]
+    >>> String.from_codepoints(codepoints) == smile
+    === yes
+
+    >>> amelie := "Amélie"
+    >>> #amelie
+    === 7
+    >>> amelie.utf8_length()
+    === 6
+    >>> amelie.utf8_width()
+    === 6
+    >>> [c.n for c in amelie.codepoints()]
+    === [65_i32, 109_i32, 233_i32, 108_i32, 105_i32, 101_i32]
+    >>> amelie_alt := String.from_codepoints([CodePoint{n} for n in [0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32]])
+    >>> amelie == amelie_alt
+    === no
+    say "$:amelie $:amelie_alt"
+    >>> amelie.utf8_normalized() == amelie_alt
+    === yes
+    >>> amelie_alt.utf8_normalized() == amelie_alt
+    === yes
+    >>> amelie.lowercased() == "amélie"
+    === yes
+    >>> amelie.uppercased() == "AMÉLIE"
+    === yes
+    >>> amelie.lowercased().titlecased() == amelie
+    === yes
+
+    >>> smile.is_valid_utf8()
+    === yes
+    >>> "\xFF\xFF".is_valid_utf8()
+    === no
+
+    >>> c := "😀...".first_codepoint()
+    >>> c.is_emoji()
+    === yes
+
+    // Unicode identifiers:
+    >>> amélie := "xxx"
+    >>> amélie == amelie
+    === no
