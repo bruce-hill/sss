@@ -3,9 +3,9 @@
 time := use time.sss
 
 def FileInfo {
-    device, rdevice, inode, mode, links, user, group:Int
-    size,block_size:Int<bytes>
-    block_count:Int
+    device, rdevice, inode, mode, links, user, group:Int64
+    size,block_size:Int64<bytes>
+    block_count:Int64
     accessed, modified, moved:time.Timestamp
 }
 
@@ -28,7 +28,7 @@ def File{raw_c_file:?_CFile}
         file := f.raw_c_file or fail "File has already been closed"
         return (extern sss_fstat:(@_CFile)->FileInfo)(file)
 
-    read := extern sss_readfile:(f:@File,bytes=Int.max)->String
+    read := extern sss_readfile:(f:@File,bytes=Int64.max)->String
 
     def write(f:@File, text:String)->Result
         file := f.raw_c_file or fail "File has already been closed"
@@ -83,9 +83,9 @@ def spoof(text:String)->@File
 extend $Glob
     def expand(g:$Glob  )->[String]
         def glob_t{
-            gl_pathc:Int
+            gl_pathc:Int64
             gl_pathv:?@CStringChar
-            gl_offs:Int
+            gl_offs:Int64
             gl_flags:Int32
         }
         def GlobResult{|SUCCESS=0|NOSPACE=1|ABORTED=2|NOMATCH=3|}
@@ -98,7 +98,7 @@ extend $Glob
         if result is SUCCESS
             c_ptrs := bitcast ({globbuf.gl_pathv or fail, globbuf.gl_pathc as Int32, 1i16, 0i16}) as [@CStringChar]
             paths := [String.from_pointer(cstr) for cstr in c_ptrs]
-            return [for p in paths unless p.ends_with("/./") or p.ends_with("/../") then p]
+            return [for p in paths if not p.ends_with("/./") and not p.ends_with("/../") then p else skip]
         is _
             return [:String]
 

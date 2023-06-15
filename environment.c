@@ -350,9 +350,11 @@ static void define_int_types(env_t *env)
         hset(ns, "min", new(binding_t, .type=t, .rval=gcc_rvalue_from_long(env->ctx, gcc_t, type.min)));
         hset(ns, "max", new(binding_t, .type=t, .rval=gcc_rvalue_from_long(env->ctx, gcc_t, type.max)));
 
-        const char* name = type.is_signed ? "Int" : "UInt";
-        if (type.bits != 64) name = heap_strf("%s%d", name, type.bits);
-        hset(env->global_bindings, name, new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=t)));
+        const char* name = heap_strf("%s%d", type.is_signed ? "Int" : "UInt", type.bits);
+        binding_t *binding = new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=t));
+        hset(env->global_bindings, name, binding);
+        if (type.bits == 64)
+            hset(env->global_bindings, type.is_signed ? "Int" : "UInt", binding);
         load_method(env, ns, "sss_string_int_format", "format", str_t, ARG("i",t,0), ARG("digits",INT_TYPE,0));
         load_method(env, ns, "sss_string_hex", "hex", str_t, ARG("i",t,0),
                     ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),

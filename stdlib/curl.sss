@@ -35,24 +35,24 @@ def NetRC {| Ignored=0 | Optional=1 | Required=2 |}
 def Header {|
     WRITEDATA(?Void)=10001
     URL(@CStringChar)=10002
-    PORT(Int)=3
+    PORT(Int64)=3
     PROXY(@CStringChar)=10004
     USERPWD(@CStringChar)=10005
     PROXYUSERPWD(@CStringChar)=10006
     RANGE(@CStringChar)=10007
     READDATA(?Void)=10009
     ERRORBUFFER(@Char)=10010
-    WRITEFUNCTION((@Char,Int,Int,?Void)->Int)=20011
-    READFUNCTION((@Char,Int,Int,?Void)->Int)=20012
-    TIMEOUT(Int)=13
-    INFILESIZE(Int)=14
+    WRITEFUNCTION((@Char,Int64,Int64,?Void)->Int64)=20011
+    READFUNCTION((@Char,Int64,Int64,?Void)->Int64)=20012
+    TIMEOUT(Int64)=13
+    INFILESIZE(Int64)=14
     POSTFIELDS(@CStringChar)=10015
     REFERER(@CStringChar)=10016
     FTPPORT(@CStringChar)=10017
     USERAGENT(@CStringChar)=10018
-    LOW_SPEED_LIMIT(Int)=19
-    LOW_SPEED_TIME(Int)=20
-    RESUME_FROM(Int)=21
+    LOW_SPEED_LIMIT(Int64)=19
+    LOW_SPEED_TIME(Int64)=20
+    RESUME_FROM(Int64)=21
     COOKIE(@CStringChar)=10022
     HTTPHEADER([@CStringChar])=10023
     SSLCERT(@CStringChar)=10025
@@ -61,9 +61,9 @@ def Header {|
     QUOTE([@CStringChar])=10028
     HEADERDATA(?Void)=10029
     COOKIEFILE(@CStringChar)=10031
-    SSLVERSION(Int)=32
-    TIMECONDITION(Int)=33
-    TIMEVALUE(Int)=34
+    SSLVERSION(Int64)=32
+    TIMECONDITION(Int64)=33
+    TIMEVALUE(Int64)=34
     CUSTOMREQUEST(@CStringChar)=10036
     STDERR(@Void)=10037
     POSTQUOTE([@CStringChar])=10039
@@ -81,8 +81,8 @@ def Header {|
     TRANSFERTEXT(Bool)=53
     XFERINFODATA(?Void)=10057
     AUTOREFERER(Bool)=58
-    PROXYPORT(Int)=59
-    POSTFIELDSIZE(Int)=60
+    PROXYPORT(Int64)=59
+    POSTFIELDSIZE(Int64)=60
     HTTPPROXYTUNNEL(Bool)=61
     INTERFACE(@CStringChar)=10062
     KRBLEVEL(@CStringChar)=10063
@@ -169,7 +169,7 @@ def Header {|
     OPENSOCKETDATA=10164
     COPYPOSTFIELDS=10165
     PROXY_TRANSFER_MODE=166
-    SEEKFUNCTION((?Void,Int,Int32)->Int32)=20167
+    SEEKFUNCTION((?Void,Int64,Int32)->Int32)=20167
     SEEKDATA(?Void)=10168
     CRLFILE=10169
     ISSUERCERT=10170
@@ -325,7 +325,7 @@ def Header {|
 
 def _CURL{}
 
-def _write(data:@Char, size:Int, nmemb:Int, buf:@String)->Int
+def _write(data:@Char, size:Int64, nmemb:Int64, buf:@String)->Int64
     buf ++= (bitcast {data,(size * nmemb) as Int32,1i16,0i16} as String)
     return size*nmemb
 
@@ -340,11 +340,11 @@ def _curl(headers:[Header])->ResultCode
         if header is URL(url)
             (extern curl_easy_setopt:(@_CURL,Int32,@CStringChar)->Void)(curl, header as Int32, url)
         is WRITEFUNCTION(fn)
-            (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int,Int,?Void)->Int)->Void)(curl, header as Int32, fn)
+            (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int64,Int64,?Void)->Int64)->Void)(curl, header as Int32, fn)
         is WRITEDATA(data)
             (extern curl_easy_setopt:(@_CURL,Int32,?Void)->Void)(curl, header as Int32, data)
         is VERBOSE(val); HEADER(val)
-            (extern curl_easy_setopt:(@_CURL,Int32,Int)->Void)(curl, header as Int32, (if val then 1 else 0))
+            (extern curl_easy_setopt:(@_CURL,Int32,Int64)->Void)(curl, header as Int32, (if val then 1 else 0))
         is HTTPHEADER(http_headers)
             list := !_CurlSList
             for h in http_headers
@@ -361,7 +361,7 @@ def get(url:String, headers=[:Header])->Result
     buf := &""
     code := _curl(headers ++ [
         Header.URL(url),
-        Header.WRITEFUNCTION(bitcast _write as (@Char,Int,Int,?Void)->Int),
+        Header.WRITEFUNCTION(bitcast _write as (@Char,Int64,Int64,?Void)->Int64),
         Header.WRITEDATA(bitcast buf as ?Void),
     ])
 

@@ -19,12 +19,12 @@ say "$foo"
 
 >>> maybe_int := ?5
 >>> typeof maybe_int
-=== ?Int
+=== ?Int64
 >>> maybe_int!
 === @5
 >>> typeof maybe_int!
-=== @Int
+=== @Int64
 >>> typeof (maybe_int or fail)
-=== @Int
+=== @Int64
 >>> typeof (maybe_int or @6)
-=== @Int
+=== @Int64

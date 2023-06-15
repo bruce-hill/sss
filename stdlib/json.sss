@@ -7,9 +7,9 @@ def JSON{|obj({String=>JSON})|list([JSON])|str(String)|num(Num)|bool(Bool)|null|
                 between
                     c for c in ", "
                 , `}]
-        is list(list)
+        is list(l)
             return [`[,
-                for item in list
+                for item in l
                     c for c in item.serialized()
                 between
                     c for c in ", "
@@ -59,7 +59,7 @@ extend $JSON
             return JSON.invalid(*js)
 
         def match_null(js:&$JSON)->JSON
-            return (JSON.null if match(js, $JSON"null") else JSON.invalid(*js))
+            return (if match(js, $JSON"null") then JSON.null else JSON.invalid(*js))
 
         def match_obj(js:&$JSON)->JSON
             unless match(js, $JSON"{")
@@ -135,7 +135,7 @@ def s:String as $JSON
     return bitcast s.quoted() as $JSON
 
 def b:Bool as $JSON
-    return ($JSON"true" if b else $JSON"false")
+    return (if b then $JSON"true" else $JSON"false")
 
 def n:Num as $JSON
     return bitcast "$n" as $JSON

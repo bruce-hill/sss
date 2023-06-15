@@ -22,7 +22,7 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
             if needs_value then flag = flag[..(#flag-1)]
             arg_aliases := flag.split("| -=")
             skip if #arg_aliases < 1
-            longest := |arg_aliases, x if #x > #y else y|
+            longest := |(if #x > #y then x else y)| arg_aliases
             for alias in arg_aliases
                 flag_infos[alias] = {longest, needs_value}
         return Spec{*flag_infos, positional_args}
@@ -30,11 +30,11 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
     def usage(spec:Spec)->String
         usage := @""
         for i,entry in spec.flag_infos
-            usage ++= ("-" if #entry.key == 1 else "--")
+            usage ++= (if #entry.key == 1 then "-" else "--")
             usage ++= entry.key
             prev_canonical := entry.value.canonical
         between
-            usage ++= ("|" if entry.value.canonical == prev_canonical else " ")
+            usage ++= (if entry.value.canonical == prev_canonical then "|" else " ")
 
         for pos in spec.positional_args
             usage ++= " " ++ pos
@@ -60,7 +60,10 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
                 else
                     arg[3..]
 
-                info := spec.flag_infos[flag] if flag in spec.flag_infos else return ArgumentResult.InvalidArgument("--"++flag)
+                info := if flag in spec.flag_infos
+                    spec.flag_infos[flag]
+                else
+                    return ArgumentResult.InvalidArgument("--"++flag)
                 flag = info.canonical
 
                 value := if `= in arg
@@ -81,7 +84,10 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
                 char_index := 2
                 while char_index <= #arg
                     flag := arg[char_index..char_index]
-                    info := spec.flag_infos[flag] if flag in spec.flag_infos else return ArgumentResult.InvalidArgument("-"++flag)
+                    info := if flag in spec.flag_infos
+                        spec.flag_infos[flag]
+                    else
+                        return ArgumentResult.InvalidArgument("-"++flag)
                     flag = info.canonical
 
                     value := if char_index+1 <= #arg and arg[char_index+1] == `=
@@ -109,9 +115,8 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
                 positional.insert(arg)
 
         for name in spec.positional_args
-            if #positional > 0
-                flags[name] = positional.pop(1)
-            else stop
+            stop if #positional == 0
+            flags[name] = positional.pop(1)
 
         return ArgumentResult.Success({flags=*flags, positional=*positional})
 

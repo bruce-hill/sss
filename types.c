@@ -13,8 +13,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
         case IntType: {
             auto int_ = Match(t, IntType);
             CORD name = int_->is_unsigned ? "UInt" : "Int";
-            if (int_->bits != 64)
-                CORD_sprintf(&name, "%r%d", name, int_->bits);
+            CORD_sprintf(&name, "%r%d", name, int_->bits);
             if (int_->units)
                 CORD_sprintf(&name, "%r<%s>", name, int_->units);
             return name;
