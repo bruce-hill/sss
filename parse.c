@@ -1245,11 +1245,14 @@ PARSER(parse_while) {
     ast_t *condition = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
     match(&pos, "do"); // optional
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'while'"); 
-    whitespace(&pos);
+    const char *tmp = pos;
+    whitespace(&tmp);
     ast_t *between = NULL;
     const char *between_start = NULL;
-    if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "between"))
+    if (sss_get_indent(ctx->file, tmp) == starting_indent && match_word(&tmp, "between")) {
+        pos = tmp;
         between = expect_ast(ctx, between_start, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
+    }
     return NewAST(ctx->file, start, pos, While, .condition=condition, .body=body, .between=between);
 }
 
