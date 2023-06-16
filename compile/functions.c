@@ -194,7 +194,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    func_context_t *func_context = hget(env->ast_functions, def, func_context_t*);
+    func_context_t *func_context = hget(&env->global->ast_functions, def, func_context_t*);
     if (func_context) return func_context->func;
 
     auto t = Match(get_type(env, def), FunctionType);
@@ -212,7 +212,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         sss_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
     func_context = new(func_context_t, .func=func, .env=*env);
-    hset(env->ast_functions, def, func_context);
+    hset(&env->global->ast_functions, def, func_context);
     return func;
 }
 

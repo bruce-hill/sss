@@ -1563,12 +1563,12 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     va_list ap;
     va_start(ap, user_fmt);
 
-    gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
-    gcc_func_t *fflush_fn = hget(env->global_funcs, "fflush", gcc_func_t*);
-    gcc_func_t *free_fn = hget(env->global_funcs, "free", gcc_func_t*);
-    gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
-    gcc_func_t *alloc_fn = hget(env->global_funcs, "GC_malloc_atomic", gcc_func_t*);
-    gcc_func_t *memcpy_fn = hget(env->global_funcs, "memcpy", gcc_func_t*);
+    gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
+    gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
+    gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
+    gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
+    gcc_func_t *alloc_fn = hget(&env->global->funcs, "GC_malloc_atomic", gcc_func_t*);
+    gcc_func_t *memcpy_fn = hget(&env->global->funcs, "memcpy", gcc_func_t*);
 
     for (const char *p = user_fmt; *p; p++) {
         if (*p != '%') continue;

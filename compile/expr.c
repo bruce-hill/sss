@@ -152,7 +152,7 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
 
         if (ptr->pointed->tag == CharType) {
             // String length
-            gcc_func_t *len_func = hget(env->global_funcs, "strlen", gcc_func_t*);
+            gcc_func_t *len_func = hget(&env->global->funcs, "strlen", gcc_func_t*);
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
             return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
         } else {
@@ -220,7 +220,7 @@ static gcc_rvalue_t *make_cycle_checker(env_t *env, gcc_loc_t *loc, gcc_block_t 
 static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
 {
     gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
-    gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
+    gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *use_dim = gcc_new_block(func, fresh("use_dim")),
                 *no_dim = gcc_new_block(func, fresh("no_dim")),
@@ -724,11 +724,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return compile_expr(env, block, LIST_ITEM(chunks, 0));
         }
 
-        gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
-        gcc_func_t *free_fn = hget(env->global_funcs, "free", gcc_func_t*);
-        gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
-        gcc_func_t *fflush_fn = hget(env->global_funcs, "fflush", gcc_func_t*);
-        gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
+        gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
+        gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
+        gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
+        gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
+        gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
 
         // char *buf; size_t size;
         // FILE *f = open_memstream(&buf, &size);
@@ -824,13 +824,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, "_str_final");
         gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_rval(size_var), i32_t);
 
-        gcc_func_t *alloc_fn = hget(env->global_funcs, "GC_malloc_atomic", gcc_func_t*);
+        gcc_func_t *alloc_fn = hget(&env->global->funcs, "GC_malloc_atomic", gcc_func_t*);
         gcc_rvalue_t *size = gcc_rval(size_var);
         gcc_rvalue_t *str = gcc_callx(
             env->ctx, loc, alloc_fn,
             gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
                           size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE))));
-        gcc_func_t *memcpy_fn = hget(env->global_funcs, "memcpy", gcc_func_t*);
+        gcc_func_t *memcpy_fn = hget(&env->global->funcs, "memcpy", gcc_func_t*);
         str = gcc_callx(env->ctx, loc, memcpy_fn, str, gcc_rval(buf_var), size);
         str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i16_t)));
@@ -2216,7 +2216,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_rvalue_t *use_color = get_binding(env, "USE_COLOR")->rval;
         gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
-        gcc_func_t *fputs_fn = hget(env->global_funcs, "fputs", gcc_func_t*);
+        gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
         if (!test->skip_source) {
             const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
             const char* plain_src = heap_strf(">>> %.*s\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
@@ -2303,7 +2303,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             val = gcc_rval(val_var);
             print_doctest_value(env, block, loc, "= ", t, val);
             if (test->output) {
-                gcc_func_t *open_memstream_fn = hget(env->global_funcs, "open_memstream", gcc_func_t*);
+                gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
 
                 // char *buf; size_t size;
                 // FILE *f = open_memstream(&buf, &size);
@@ -2321,11 +2321,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *print_call = gcc_callx(env->ctx, loc, print_fn, val, file, cycle_checker, gcc_rvalue_bool(env->ctx, false));
                 gcc_eval(*block, loc, print_call);
 
-                gcc_func_t *fflush_fn = hget(env->global_funcs, "fflush", gcc_func_t*);
+                gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
                 gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
 
                 // fail unless strcmp(output, "expected") == 0
-                gcc_func_t *strcmp_fn = hget(env->global_funcs, "strcmp", gcc_func_t*);
+                gcc_func_t *strcmp_fn = hget(&env->global->funcs, "strcmp", gcc_func_t*);
                 gcc_block_t *done_block = gcc_new_block(func, fresh("test_done")),
                             *fail_block = gcc_new_block(func, fresh("test_failed"));
                 gcc_jump_condition(*block, loc,
@@ -2338,9 +2338,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 *block = done_block;
 
                 // Cleanup
-                gcc_func_t *fclose_fn = hget(env->global_funcs, "fclose", gcc_func_t*);
+                gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
                 gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
-                gcc_func_t *free_fn = hget(env->global_funcs, "free", gcc_func_t*);
+                gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
                 gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
             }
             return NULL;

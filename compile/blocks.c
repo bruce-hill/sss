@@ -43,15 +43,15 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
 {
     auto use = Match(ast, Use);
     sss_type_t *t = Type(ModuleType, .path=use->path);
-    sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
+    sss_hashmap_t *namespace = hget(&env->global->type_namespaces, type_to_string(t), sss_hashmap_t*);
     binding_t *b = NULL;
     if (namespace) {
         // Look up old value to avoid recompiling the same module if it's reimported:
         b = hget(namespace, "#load", binding_t*);
         if (b) return b->func;
     } else {
-        namespace = new(sss_hashmap_t, .fallback=env->global_bindings);
-        hset(env->type_namespaces, type_to_string(t), namespace);
+        namespace = new(sss_hashmap_t, .fallback=&env->global->bindings);
+        hset(&env->global->type_namespaces, type_to_string(t), namespace);
     }
 
     env_t module_env = *env;
@@ -115,7 +115,7 @@ void populate_uses(env_t *env, ast_t *ast)
         auto use = Match(ast, Use);
         (void)prepare_use(env, ast);
         sss_type_t *t = Type(ModuleType, .path=use->path);
-        sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
+        sss_hashmap_t *namespace = hget(&env->global->type_namespaces, type_to_string(t), sss_hashmap_t*);
         for (uint32_t i = 1; i <= namespace->count; i++) {
             auto entry = hnth(namespace, i, const char*, binding_t*);
             if (entry->value->func) continue;
@@ -145,7 +145,7 @@ void predeclare_def_types(env_t *env, ast_t *def)
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
-        hset(env->type_namespaces, name, struct_env->bindings);
+        hset(&env->global->type_namespaces, name, struct_env->bindings);
         foreach (struct_def->definitions, def, _)
             predeclare_def_types(struct_env, *def);
     } else if (def->tag == TaggedUnionDef) {
@@ -157,7 +157,7 @@ void predeclare_def_types(env_t *env, ast_t *def)
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
         env_t *tu_env = fresh_scope(env);
-        hset(env->type_namespaces, name, tu_env->bindings);
+        hset(&env->global->type_namespaces, name, tu_env->bindings);
         foreach (tu_def->definitions, def, _)
             predeclare_def_types(tu_env, *def);
     } else if (def->tag == UnitDef) {

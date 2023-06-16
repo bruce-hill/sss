@@ -41,17 +41,21 @@ typedef struct {
     bool visible_in_closures:1;
 } binding_t;
 
+typedef struct {
+    sss_hashmap_t bindings; // name -> binding_t*
+    sss_hashmap_t funcs; // name -> func
+    sss_hashmap_t type_namespaces; // sss_type_t* -> name -> binding_t*
+    sss_hashmap_t def_types; // ast_t* -> binding_t*
+    sss_hashmap_t ast_functions; // ast_t* -> func_context_t*
+} global_env_t;
+
 typedef struct env_s {
+    global_env_t *global;
     gcc_ctx_t *ctx;
     sss_file_t *file;
     jmp_buf *on_err;
-    sss_hashmap_t *global_bindings; // name -> binding_t*
     sss_hashmap_t *file_bindings; // name -> binding_t*
     sss_hashmap_t *bindings; // name -> binding_t
-    sss_hashmap_t *global_funcs; // name -> func
-    sss_hashmap_t *type_namespaces; // sss_type_t* -> name -> binding_t*
-    sss_hashmap_t *def_types; // ast_t* -> binding_t*
-    sss_hashmap_t *ast_functions; // ast_t* -> func_context_t*
     sss_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;

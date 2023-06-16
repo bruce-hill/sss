@@ -27,17 +27,17 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_string_t, "PROGRAM_NAME");
-    hset(env->global_bindings, "PROGRAM_NAME",
+    hset(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
+    hset(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, BOOL), "USE_COLOR");
-    hset(env->global_bindings, "USE_COLOR",
+    hset(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
 
     // Compile main(int argc, char *argv[]) function
@@ -57,7 +57,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         }, 0);
     gcc_assign(main_block, NULL, program_name, gcc_callx(ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
 
-    gcc_func_t *getenv_fn = hget(env->global_funcs, "getenv", gcc_func_t*);
+    gcc_func_t *getenv_fn = hget(&env->global->funcs, "getenv", gcc_func_t*);
     gcc_rvalue_t *use_color_env_flag = gcc_comparison(
         ctx, NULL, GCC_COMPARISON_EQ, gcc_callx(ctx, NULL, getenv_fn, gcc_str(ctx, "NO_COLOR")),
         gcc_null(ctx, gcc_type(ctx, STRING)));
@@ -92,8 +92,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
     // Actually compile the functions:
-    for (uint32_t i = 1; i <= env->ast_functions->count; i++) {
-        auto entry = hnth(env->ast_functions, i, ast_t*, func_context_t*);
+    for (uint32_t i = 1; i <= env->global->ast_functions.count; i++) {
+        auto entry = hnth(&env->global->ast_functions, i, ast_t*, func_context_t*);
         compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 

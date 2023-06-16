@@ -23,7 +23,7 @@
                  (gcc_param_t*[]){__VA_ARGS__}, 1)
 
 static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
-    hset(env->global_funcs, heap_str(name),
+    hset(&env->global->funcs, heap_str(name),
          gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
 }
 
@@ -97,8 +97,8 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
     load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
-    gcc_func_t *exit_fn = hget(env->global_funcs, "exit", gcc_func_t*);
-    hset(env->global_bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
+    gcc_func_t *exit_fn = hget(&env->global->funcs, "exit", gcc_func_t*);
+    hset(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
         FunctionType,
         .arg_names=LIST(const char*, "status"),
         .arg_types=LIST(sss_type_t*, Type(IntType, .bits=32)),
@@ -106,7 +106,7 @@ static void load_global_functions(env_t *env)
         .ret=Type(AbortType))));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
-    gcc_func_t *range_print = hget(env->global_funcs, "range_print", gcc_func_t*);
+    gcc_func_t *range_print = hget(&env->global->funcs, "range_print", gcc_func_t*);
     hset(get_namespace(env, Type(RangeType)), "__print",
          new(binding_t, .func=range_print, .sym_name="range_print"));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
@@ -164,7 +164,7 @@ sss_type_t *define_string_type(env_t *env, const char *dsl)
     const char *name = type_to_string(str_type);
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
-    hset(env->global_bindings, name, binding);
+    hset(&env->global->bindings, name, binding);
 
     sss_hashmap_t *ns = get_namespace(env, str_type);
     load_method(env, ns, "sss_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
@@ -200,7 +200,7 @@ static void define_num_types(env_t *env)
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num64_type));
-        hset(env->global_bindings, "Num", binding);
+        hset(&env->global->bindings, "Num", binding);
 
         sss_type_t *partial_t = Type(StructType, NULL, LIST(const char*, "value", "remainder"),
                                      LIST(sss_type_t*, num64_type, Type(ArrayType, .item_type=Type(CharType))));
@@ -217,7 +217,7 @@ static void define_num_types(env_t *env)
     {
         gcc_rvalue_t *rval = gcc_str(env->ctx, "Num32");
         binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=num32_type));
-        hset(env->global_bindings, "Num32", binding);
+        hset(&env->global->bindings, "Num32", binding);
     }
 
     struct { const char *c_name, *sss_name; } unary_methods[] = {
@@ -352,9 +352,9 @@ static void define_int_types(env_t *env)
 
         const char* name = heap_strf("%s%d", type.is_signed ? "Int" : "UInt", type.bits);
         binding_t *binding = new(binding_t, .rval=gcc_str(env->ctx, name), .type=Type(TypeType, .type=t));
-        hset(env->global_bindings, name, binding);
+        hset(&env->global->bindings, name, binding);
         if (type.bits == 64)
-            hset(env->global_bindings, type.is_signed ? "Int" : "UInt", binding);
+            hset(&env->global->bindings, type.is_signed ? "Int" : "UInt", binding);
         load_method(env, ns, "sss_string_int_format", "format", str_t, ARG("i",t,0), ARG("digits",INT_TYPE,0));
         load_method(env, ns, "sss_string_hex", "hex", str_t, ARG("i",t,0),
                     ARG("digits",INT_TYPE,FakeAST(Int, .i=1, .precision=64)),
@@ -368,21 +368,17 @@ static void define_int_types(env_t *env)
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool debug)
 {
+    global_env_t *global = new(global_env_t);
     env_t *env = new(env_t,
         .ctx = ctx,
+        .global=global,
         .on_err = on_err,
         .file = f,
-        .global_bindings = new(sss_hashmap_t),
-        .file_bindings = new(sss_hashmap_t),
+        .file_bindings = new(sss_hashmap_t, .fallback=&global->bindings),
         .bindings = new(sss_hashmap_t),
-        .type_namespaces = new(sss_hashmap_t),
-        .def_types = new(sss_hashmap_t),
-        .global_funcs = new(sss_hashmap_t),
-        .ast_functions = new(sss_hashmap_t),
         .tail_calls = tail_calls,
         .debug = debug,
     );
-    env->file_bindings->fallback = env->global_bindings;
     env->bindings->fallback = env->file_bindings;
 
     load_global_functions(env);
@@ -417,7 +413,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
-    hset(env->global_bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
+    hset(&env->global->bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
     sss_type_t *warn_type = Type(
         FunctionType,
         .arg_names=LIST(const char*, "str", "end", "colorize"),
@@ -430,9 +426,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         gcc_new_param(ctx, NULL, gcc_type(env->ctx, BOOL), "colorize"),
     };
     gcc_func_t *warn_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "warn", 3, gcc_warn_params, 0);
-    hset(env->global_bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
+    hset(&env->global->bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
     define_num_types(env);
-#define DEFTYPE(t) hset(env->global_bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
+#define DEFTYPE(t) hset(&env->global->bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
     DEFTYPE(Char); DEFTYPE(CStringChar);
@@ -509,7 +505,7 @@ binding_t *get_local_binding(env_t *env, const char *name)
 
 gcc_func_t *get_function(env_t *env, const char *name)
 {
-    return hget(env->global_funcs, name, gcc_func_t*);
+    return hget(&env->global->funcs, name, gcc_func_t*);
 }
 
 binding_t *get_ast_binding(env_t *env, ast_t *ast)
@@ -533,10 +529,10 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
 {
-    sss_hashmap_t *ns = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
+    sss_hashmap_t *ns = hget(&env->global->type_namespaces, type_to_string(t), sss_hashmap_t*);
     if (!ns) {
         ns = new(sss_hashmap_t, .fallback=env->file_bindings);
-        hset(env->type_namespaces, type_to_string(t), ns);
+        hset(&env->global->type_namespaces, type_to_string(t), ns);
         // Ensure DSLs get auto-populated with string-equivalent methods:
         if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType)
             (void)define_string_type(env, Match(t, ArrayType)->dsl);

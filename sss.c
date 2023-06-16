@@ -108,18 +108,18 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
     // Set up `PROGRAM_NAME`
     sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
-    hset(env->global_bindings, "PROGRAM_NAME",
+    hset(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=string_t));
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    hset(env->global_bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
+    hset(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
     gcc_jit_global_set_initializer_rvalue(use_color_var, gcc_rvalue_bool(ctx, use_color));
-    hset(env->global_bindings, "USE_COLOR",
+    hset(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color_var), .type=Type(BoolType), .visible_in_closures=true));
 
     // Read lines until we get a blank line
@@ -230,8 +230,8 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
         block = gcc_new_block(repl_func, fresh("repl_body"));
 
         sss_hashmap_t old_globals = {0};
-        for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
-            auto entry = hnth(env->global_bindings, i, const char*, binding_t*);
+        for (uint32_t i = 1; i <= env->global->bindings.count; i++) {
+            auto entry = hnth(&env->global->bindings, i, const char*, binding_t*);
             hset(&old_globals, entry->key, entry->value);
         }
 
@@ -258,8 +258,8 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
         fflush(stdout);
 
         // Copy out the global variables to GC memory
-        for (uint32_t i = 1; i <= env->global_bindings->count; i++) {
-            auto entry = hnth(env->global_bindings, i, const char*, binding_t*);
+        for (uint32_t i = 1; i <= env->global->bindings.count; i++) {
+            auto entry = hnth(&env->global->bindings, i, const char*, binding_t*);
             if (hget(&old_globals, entry->key, binding_t*))
                 continue;
 
