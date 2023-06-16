@@ -106,13 +106,13 @@ def CodePoint{n:Int32}
 
 // Opaque struct:
 def uninorm_t{}
-extend String
-    def is_valid_utf8(s:String)->Bool
+extend Str
+    def is_valid_utf8(s:Str)->Bool
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
         err := u8_check(s.c_string(), #s)
         return err == !CStringChar
 
-    def utf8_normalized(s:String)->String
+    def utf8_normalized(s:Str)->Str
         len := 0
         u8_normalize := (extern u8_normalize:(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
         buf := u8_normalize((extern &uninorm_nfd:uninorm_t), s.c_string(), #s, !CStringChar, &len) or fail "Couldn't normalize string: $s"
@@ -120,22 +120,22 @@ extend String
         gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
         memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
         data := memcpy(gc_alloc(len+1), buf, len+1)
-        return bitcast ({data=data, length=(len as Int32), stride=1i16, capacity=0i16}) as String
+        return bitcast ({data=data, length=(len as Int32), stride=1i16, capacity=0i16}) as Str
 
-    def compare_utf8(s1:String, s2:String)->Int32
+    def compare_utf8(s1:Str, s2:Str)->Int32
         u8_normcmp := extern u8_normcmp:(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
         ret := 0i32
         _ := u8_normcmp(s1.c_string(), #s1, s2.c_string(), #s2, (extern &uninorm_nfd:uninorm_t), &ret)
         return ret
 
-    def utf8_length(s:String)->Int64
+    def utf8_length(s:Str)->Int64
         return (extern u8_mbsnlen:(@CStringChar,Int64)->Int32)(s.c_string(), #s)
 
-    def utf8_width(s:String)->Int64
+    def utf8_width(s:Str)->Int64
         setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
         return (extern u8_width:(@CStringChar,Int64,@CStringChar)->Int32)(s.c_string(), #s, setlocale(0i32,!CStringChar))
 
-    def first_codepoint(s:String)->CodePoint
+    def first_codepoint(s:Str)->CodePoint
         len := (extern u8_mblen:(@CStringChar,Int64)->Int32)(s.c_string(), #s)
         ret := 0i32
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,&Int32,&Int64)->?Int32
@@ -143,14 +143,14 @@ extend String
         _ := u8_to_u32(s[1..len].c_string(), len, &ret, &first_len)
         return CodePoint{ret}
 
-    def codepoints(s:String)->[CodePoint]
+    def codepoints(s:Str)->[CodePoint]
         ret := [CodePoint{0i32} for _ in 1..s.utf8_length()]
         len := #ret
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
         _ := u8_to_u32(s.c_string(), #s, (bitcast ret as {data:@CodePoint,length:Int32,stride:Int16,capacity:Int16}).data, &len)
         return ret
 
-    def from_codepoints(codepoints:[CodePoint])->String
+    def from_codepoints(codepoints:[CodePoint])->Str
         u32_to_u8 := extern u32_to_u8:(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
         data_ptr := (bitcast codepoints as {data:?CodePoint,length:Int32,stride:Int16,capacity:Int16}).data or return ""
         len := @0
@@ -159,23 +159,23 @@ extend String
         gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
         memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
         data := memcpy(gc_alloc(*len + 1), buf, *len + 1)
-        return bitcast ({data=data, length=(*len as Int32), stride=1i16, capacity=0i16}) as String
+        return bitcast ({data=data, length=(*len as Int32), stride=1i16, capacity=0i16}) as Str
 
-    def uppercased(str:String)->String
+    def uppercased(str:Str)->Str
         toupper := extern uc_toupper:(CodePoint)->CodePoint
-        return String.from_codepoints([toupper(c) for c in str.codepoints()])
+        return Str.from_codepoints([toupper(c) for c in str.codepoints()])
 
-    def lowercased(str:String)->String
+    def lowercased(str:Str)->Str
         tolower := extern uc_tolower:(CodePoint)->CodePoint
-        return String.from_codepoints([tolower(c) for c in str.codepoints()])
+        return Str.from_codepoints([tolower(c) for c in str.codepoints()])
 
-    def titlecased(str:String)->String
+    def titlecased(str:Str)->Str
         points := str.codepoints()
         prev_alpha := no
         is_alphabetic := extern uc_is_property_alphabetic:(CodePoint)->Bool
         tolower := extern uc_tolower:(CodePoint)->CodePoint
         totitle := extern uc_totitle:(CodePoint)->CodePoint
-        return String.from_codepoints([
+        return Str.from_codepoints([
             for c in points
                 if prev_alpha
                     prev_alpha = is_alphabetic(c)
@@ -202,7 +202,7 @@ if IS_MAIN_PROGRAM
     >>> codepoints := smile.codepoints()
     >>> [c.n for c in codepoints]
     === [115_i32, 109_i32, 105_i32, 108_i32, 101_i32, 58_i32, 32_i32, 128512_i32]
-    >>> String.from_codepoints(codepoints) == smile
+    >>> Str.from_codepoints(codepoints) == smile
     === yes
 
     >>> amelie := "Amélie"
@@ -214,7 +214,7 @@ if IS_MAIN_PROGRAM
     === 6
     >>> [c.n for c in amelie.codepoints()]
     === [65_i32, 109_i32, 233_i32, 108_i32, 105_i32, 101_i32]
-    >>> amelie_alt := String.from_codepoints([CodePoint{n} for n in [0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32]])
+    >>> amelie_alt := Str.from_codepoints([CodePoint{n} for n in [0x41i32, 0x6di32, 0x65i32, 0x301i32, 0x6ci32, 0x69i32, 0x65i32]])
     >>> amelie == amelie_alt
     === no
     say "$:amelie $:amelie_alt"

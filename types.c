@@ -40,7 +40,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
             if (array->item_type->tag == CharType) {
                 if (array->dsl)
                     return CORD_cat("$", array->dsl);
-                return "String";
+                return "Str";
             }
             return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded), "]"));
         }

@@ -18,7 +18,7 @@ my_table := {123=>456, 789=>10, key=>value}
 Empty tables must specify their type:
 
 ```
-empty := {:String=>Num}
+empty := {:Str=>Num}
 ```
 
 Values can be retrieved with square bracket indexing:
@@ -77,7 +77,7 @@ Optionally, some special behaviors may be specified at the end of a table
 literal after a semicolon:
 
 ```
-counter := @{:String=>Int; default=0}
+counter := @{:Str=>Int; default=0}
 counter["x"] += 1
 
 other := {1=>2}

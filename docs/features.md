@@ -250,7 +250,7 @@ When dealing with arrays of structs, SSS supports easy (and constant-time)
 creation of slices that contain one member of a struct:
 
 ```
-def Enemy{id:Int, name:String}
+def Enemy{id:Int, name:Str}
 
 enemies := @[
   Enemy{123, "Evil Ed"},
@@ -495,10 +495,10 @@ programmer and "unsafe" strings from elsewhere in the program.
 In SSS, there is a much better solution for this problem: DSL strings.
 
 ```python
-def s:String as $SQL
+def s:Str as $SQL
     return bitcast ("'" ++ (str.replace("'", "''")) ++ "'") as $SQL
 
-symbol:String = get_requested_symbol()
+symbol := get_requested_symbol()
 query := $SQL"SELECT * FROM stocks WHERE symbol = $symbol"
 sql_execute(query)
 ```
@@ -520,7 +520,7 @@ Secondly, it will be a compile-time type error if the programmer attempts to
 pass an unsafe string to a function that expects an SQL query string:
 
 ```python
-s:String = get_unsafe_string()
+s := get_unsafe_string()
 sql_execute(s) // <-- type error
 ```
 
@@ -529,7 +529,7 @@ user-defined escaping function. Doing the safe thing (escaping values) becomes
 the easy and automatic thing to do.
 
 ```python
-malicious:String = "xxx'; drop table users; --"
+malicious := "xxx'; drop table users; --"
 query := $SQL"SELECT * FROM users WHERE name = $malicious"
 say "$query"
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
@@ -539,10 +539,10 @@ DSL strings also allow escaping values besides strings, which can be useful in
 cases like escaping lists of filenames for shell code:
 
 ```python
-def str:String as $Shell
+def str:Str as $Shell
     return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
-def strings:[String] as $Shell
+def strings:[Str] as $Shell
     ret := $Shell""
     for str in strings
         ret += $Shell"$str"
@@ -562,9 +562,9 @@ DSLs can also be used to guard against sensitive information being revealed
 accidentally.
 
 ```python
-def User {name:String, password_hash:String, credit_card:String}
+def User {name:Str, password_hash:Str, credit_card:Str}
 
-def check_credentials(users:{String=User}, username:String, password:Password)->Bool
+def check_credentials(users:{Str=User}, username:Str, password:Password)->Bool
     user := users[username] or return no
     if hash_password(password) == user.password_hash
         return yes
@@ -588,12 +588,12 @@ One way to avoid this problem is to use custom DSL strings for sensitive data,
 which defines a custom `tostring()` implementation that obscures any private data:
 
 ```python
-def s:String as $Sensitive
+def s:Str as $Sensitive
     return s:SensitiveString
-def sensitive:$Sensitive as String
+def sensitive:$Sensitive as Str
     return "******"
 
-def User {name:String, password_hash:Sensitive, credit_card:Sensitive}
+def User {name:Str, password_hash:Sensitive, credit_card:Sensitive}
 ```
 
 If `User` is defined in this way, the accidental log line will print a much

@@ -8,8 +8,8 @@ fail unless "$a,$b,$c" == "C,B,A"
 
 strings := ["A","B"]
 
-// eval_log := [:String]
-// def log(msg:String)->[String]
+// eval_log := [:Str]
+// def log(msg:Str)->[Str]
 //     eval_log.insert(msg)
 //     return strings
 
@@ -20,16 +20,16 @@ strings := ["A","B"]
 // fail unless "$strings" == "[B, A]"
 // fail unless "$eval_log" == "[lhs1, lhs2, rhs1, rhs2]"
 
-// eval_log := [:String]
+// eval_log := [:Str]
 // queue := ["a","b","c","d"]
 // i := 1
-// def fresh(msg:String)->String
+// def fresh(msg:Str)->Str
 //     eval_log.insert(msg)
 //     ret := queue[i]
 //     i += 1
 //     return ret
 
-// table := {:String=String}
+// table := {:Str=Str}
 // table[fresh("lhs1")], table[fresh("lhs2")] = fresh("rhs1"),fresh("rhs2")
 
 // say "$table"

@@ -32,7 +32,7 @@ is other then -1
 === 2
 
 def Vec{x,y:Num}
-def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int)|}
+def Foo{|int(Int)=5|num(Num)|str(Str)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int)|}
 
 >>> cases := [
     Foo.int(5), Foo.num(2.3),
@@ -63,7 +63,7 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
         is tuple(v)
             "tuple: $v"
         is str("xxx")
-            "String of 'x'"
+            "Str of 'x'"
         is ptr(@5)
             "Five ptr"
         is ptr(@x)
@@ -75,7 +75,7 @@ def Foo{|int(Int)=5|num(Num)|str(String)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int
         is other
             "Fallback: $other"
 ]
-=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "String of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
+=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "Str of 'x'", "Fallback: Foo.str(\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
 
 // Binding:
 if f := Foo.str("abc") is str

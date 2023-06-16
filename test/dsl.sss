@@ -10,7 +10,7 @@
 
 name := "Robert'; drop table students;--"
 
-def s:String as $SQL
+def s:Str as $SQL
     return bitcast "\x1b[0;35m'$(s.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as $SQL
 
 def i:Int as $SQL
@@ -20,16 +20,16 @@ def n:Num as $SQL
 
 age := 10
 s := $SQL"SELECT * FROM students WHERE name = $name AND age > $age"
-say (bitcast s as String)
+say (bitcast s as Str)
 
-def s:String as $Quoted
+def s:Str as $Quoted
     return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as $Quoted
 
 str := "one two"
 str2 := 'with "quotes" in it'
-say (bitcast $Quoted[my strings are $str and $(str2)!] as String)
+say (bitcast $Quoted[my strings are $str and $(str2)!] as Str)
 
-def s:String as $HTML
+def s:Str as $HTML
     s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
          .replace("<", "\x1b[34;1m&lt;\x1b[0;35m")
          .replace(">", "\x1b[34;1m&gt;\x1b[0;35m")
@@ -38,7 +38,7 @@ def s:String as $HTML
 
     return bitcast "\x1b[0;35m$s\x1b[m" as $HTML
 
-def strings:[String] as $HTML
+def strings:[Str] as $HTML
     return bitcast [
         ++"<ol>\n",
         for str in strings
@@ -49,7 +49,7 @@ def strings:[String] as $HTML
         ++"\n</ol>",
     ] as $HTML
 
-def table:{String=>String} as $HTML
+def table:{Str=>Str} as $HTML
     return bitcast [
         ++"<table>\n",
         for e in table
@@ -66,4 +66,4 @@ html := $HTML[
     $my_table
     </body>
 ]
-say (bitcast html as String)
+say (bitcast html as Str)

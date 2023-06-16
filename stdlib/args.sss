@@ -7,15 +7,15 @@
 //        exit 1i32
 
 def ArgumentResult{|
-    Success({flags:{String=>String},positional:[String]})
-    InvalidArgument(String)
-    MissingValue(String)
-    DuplicateValue(String)
+    Success({flags:{Str=>Str},positional:[Str]})
+    InvalidArgument(Str)
+    MissingValue(Str)
+    DuplicateValue(Str)
 |}
 
-def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_args:[String]}
-    def new(flags:[String], positional_args=[:String])->Spec
-        flag_infos := @{:String=>{canonical:String,needs_value:Bool}}
+def Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args:[Str]}
+    def new(flags:[Str], positional_args=[:Str])->Spec
+        flag_infos := @{:Str=>{canonical:Str,needs_value:Bool}}
         for flag in flags
             skip if #flag < 1
             needs_value := flag.ends_with("=")
@@ -27,7 +27,7 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
                 flag_infos[alias] = {longest, needs_value}
         return Spec{*flag_infos, positional_args}
 
-    def usage(spec:Spec)->String
+    def usage(spec:Spec)->Str
         usage := @""
         for i,entry in spec.flag_infos
             usage ++= (if #entry.key == 1 then "-" else "--")
@@ -40,9 +40,9 @@ def Spec{flag_infos:{String=>{canonical:String, needs_value:Bool}}, positional_a
             usage ++= " " ++ pos
         return (*usage).trimmed()
 
-    def parse(spec:Spec, args:[String], allow_duplicates=no)->ArgumentResult
-        positional := @[:String]
-        flags := @{:String=>String}
+    def parse(spec:Spec, args:[Str], allow_duplicates=no)->ArgumentResult
+        positional := @[:Str]
+        flags := @{:Str=>Str}
 
         args := @args
         while #args > 0

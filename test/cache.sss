@@ -20,7 +20,7 @@ def pow(base:Int, exponent:Int; cached)->Int
 >>> #calls == #{c=>yes for c in *calls}
 === yes
 
-def heap_for_string(str:String; cached)->@Void
+def heap_for_string(str:Str; cached)->@Void
     return @yes
 
 // Verify that arrays cache the same even when not pointing to the same memory:

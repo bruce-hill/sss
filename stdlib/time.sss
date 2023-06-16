@@ -1,7 +1,7 @@
 // A small library for representing timestamps and getting the current time
 
 def Timestamp{seconds, nanoseconds:Int64}
-    format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->String)
+    format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->Str)
 
 def now()->Timestamp
     t := @Timestamp{}

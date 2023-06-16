@@ -32,7 +32,7 @@ def Mat2D {rows,cols:Int, data:[Num]}
         ]
         return Mat2D{rows,cols,data}
 
-    def tostring(mat:Mat2D)->String
+    def tostring(mat:Mat2D)->Str
         s := "["
         for row_num in 1..mat.rows
             for x in mat.row(row_num)

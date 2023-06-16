@@ -1,4 +1,4 @@
-def fail_bool(msg:String)->Bool
+def fail_bool(msg:Str)->Bool
     fail "Test failed: $msg"
 
 if no or yes or fail_bool("or failed to short circuit")
@@ -21,20 +21,20 @@ else say "and pass"
 // say "and= pass"
 // fail "and= gave wrong result" if tmp
 
-def doop()->String
-    maybe_str := if yes then !String else @"ok"
+def doop()->Str
+    maybe_str := if yes then !Str else @"ok"
     x := maybe_str or return "Successfully short circuited with return"
     fail "Failed to short circuit"
 
 say doop()
 
 for i in 1..5
-    maybe_str := if yes then !String else @"ok"
+    maybe_str := if yes then !Str else @"ok"
     x := maybe_str or stop
     fail "Failed to short circuit"
 
 say "Successfully short circuited with stop"
 
-// opt := !String
+// opt := !Str
 // opt or= "optstring"
 // fail unless opt == "optstring"

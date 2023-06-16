@@ -179,7 +179,7 @@ a struct that holds different things in it:
 
 ```SSS
 def Character {
-    name:String
+    name:Str
     sprite:Sprite
     body:PhysicsBody
 }
@@ -226,7 +226,7 @@ and may cause uncaught bugs in the case of complicated overloading rules like
 Javascript's operator overloading (e.g. `1 + [] == "1"` is valid under
 Javascript's operator overloading rules, but would be a compiler error in SSS).
 
-Mixed type operator overloading (e.g. `String + Int`) also introduces the
+Mixed type operator overloading (e.g. `Str + Int`) also introduces the
 further complexity of how to resolve conflicting overloading rules and how to
 write rules in a way that avoids code duplication while also respecting
 left/right precedence.
@@ -324,8 +324,8 @@ In SSS, there are two little morsels of type inference: variable declaration
 (`x := 5`) and lambda return values (`fn := (x:Int)-> x+1`). Everything else in
 SSS is either annotated with a type (as in the case of function arguments and
 return types) or a literal value whose type is trivial to deduce (e.g. `5` is
-an `Int` and `["hi"]` is a `[String]`). A small amount of type inference
-prevents redundant noise in variable declarations like `String str = "hello"`
+an `Int` and `["hi"]` is a `[Str]`). A small amount of type inference
+prevents redundant noise in variable declarations like `Str str = "hello"`
 (of course it's a string, the value is `"hello"`). SSS strives to hit the
 happy medium between too much redundant noise and too much inference.
 
@@ -353,7 +353,7 @@ so callers must address any error values returned or explicitly discard them:
 
 ```SSS
 def IntParseResult {|Failure|Success:Int|}
-def parse_int(str:String, base=10)->IntParseResult
+def parse_int(str:Str, base=10)->IntParseResult
     return IntParseResult.Failure if #str == 0
     n := 0
     for i in 1..#str

@@ -3,17 +3,17 @@
 def _POpenFile{}
 
 extend $Sh
-    def run(sh:$Sh)->{output:String,status:Int32}
+    def run(sh:$Sh)->{output:Str,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
-        f := popen(bitcast sh as String, "r") or return {output="", status=-1i32}
-        output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->String)(&f)
+        f := popen(bitcast sh as Str, "r") or return {output="", status=-1i32}
+        output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->Str)(&f)
         pclose := (extern pclose:(?_POpenFile)->Int32)
         status := pclose(f)
         if status >= 0
             status = (status / 256i32) and 0xFFi32
         return {output=output, status=status}
 
-    def run_with(sh:$Sh , input:String)->Int32
+    def run_with(sh:$Sh , input:Str)->Int32
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "w") or return -1i32
         pclose := (extern pclose:(?_POpenFile)->Void)
@@ -25,10 +25,10 @@ extend $Sh
             status = (status / 256i32) and 0xFFi32
         return status
 
-def s:String as $Sh
+def s:Str as $Sh
     return bitcast "'$(s.replace("'",${'"'"'}))'" as $Sh
 
-def strs:[String] as $Sh
+def strs:[Str] as $Sh
     return bitcast [
         for s in strs
             ++$Sh"$s"
@@ -36,7 +36,7 @@ def strs:[String] as $Sh
             ++$Sh" "
     ] as $Sh
 
-def strings:[String] as $Sh
+def strings:[Str] as $Sh
     return bitcast [
         for s in strings
             c for c in $Sh"$s"

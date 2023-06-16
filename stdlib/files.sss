@@ -9,16 +9,16 @@ def FileInfo {
     accessed, modified, moved:time.Timestamp
 }
 
-def Result {| Failure(String) | Success |}
+def Result {| Failure(Str) | Success |}
 
 // Opaque struct representing C's FILE struct:
 def _CFile{}
 
 def File{raw_c_file:?_CFile}
-    def line(f:@File)->String
-        return (extern get_line:(@_CFile)->String)(f.raw_c_file or fail "File has already been closed")
+    def line(f:@File)->Str
+        return (extern get_line:(@_CFile)->Str)(f.raw_c_file or fail "File has already been closed")
 
-    def lines(f:@File)->[String]
+    def lines(f:@File)->[Str]
         return [f.line() while not f.ended()]
 
     def ended(f:@File)->Bool
@@ -28,15 +28,15 @@ def File{raw_c_file:?_CFile}
         file := f.raw_c_file or fail "File has already been closed"
         return (extern sss_fstat:(@_CFile)->FileInfo)(file)
 
-    read := extern sss_readfile:(f:@File,bytes=Int64.max)->String
+    read := extern sss_readfile:(f:@File,bytes=Int64.max)->Str
 
-    def write(f:@File, text:String)->Result
+    def write(f:@File, text:Str)->Result
         file := f.raw_c_file or fail "File has already been closed"
         fputc := (extern fputc:(Char,@_CFile)->Int32)
         for char in text
             wrote := fputc(char, file)
             if wrote != char as Int32
-                return Result.Failure((extern last_err:()->String)())
+                return Result.Failure((extern last_err:()->Str)())
         return Result.Success
 
     def flush(f:@File)
@@ -54,26 +54,26 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-def OpenResult {| Failure(String) | Success(@File) |}
+def OpenResult {| Failure(Str) | Success(@File) |}
 
-open := extern sss_fopen:(path:String,mode="r")->OpenResult
+open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
-def move(path:String, dest:String)->Result
+def move(path:Str, dest:Str)->Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
     if result == 0
         return Result.Success
     else
-        return Result.Failure((extern last_err:()->String)())
+        return Result.Failure((extern last_err:()->Str)())
 
-def remove(path:String)->Result
+def remove(path:Str)->Result
     result := (extern unlink:(path:@CStringChar)->Int32)(path)
     if result == 0
         return Result.Success
     else
-        return Result.Failure((extern last_err:()->String)())
+        return Result.Failure((extern last_err:()->Str)())
 
-def spoof(text:String)->@File
+def spoof(text:Str)->@File
     temporary := extern sss_tmpfile:()->@File
     f := temporary()
     _ := f.write(text)
@@ -81,7 +81,7 @@ def spoof(text:String)->@File
     return f
 
 extend $Glob
-    def expand(g:$Glob  )->[String]
+    def expand(g:$Glob  )->[Str]
         def glob_t{
             gl_pathc:Int64
             gl_pathv:?@CStringChar
@@ -92,17 +92,17 @@ extend $Glob
         do_glob := extern glob:(@CStringChar,Int32,?Void,&glob_t)->GlobResult
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
-        result := do_glob((bitcast g as String).c_string(), flags, !Void, &globbuf)
+        result := do_glob((bitcast g as Str).c_string(), flags, !Void, &globbuf)
         globfree := extern globfree:(&glob_t)->Void
         defer globfree(&globbuf)
         if result is SUCCESS
             c_ptrs := bitcast ({globbuf.gl_pathv or fail, globbuf.gl_pathc as Int32, 1i16, 0i16}) as [@CStringChar]
-            paths := [String.from_pointer(cstr) for cstr in c_ptrs]
+            paths := [Str.from_pointer(cstr) for cstr in c_ptrs]
             return [for p in paths if not p.ends_with("/./") and not p.ends_with("/../") then p else skip]
         is _
-            return [:String]
+            return [:Str]
 
-def s:String as $Glob
+def s:Str as $Glob
     return bitcast ([
         for c in s
             if c is `\;`{;`};`*;`?;`[;`]

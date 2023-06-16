@@ -175,7 +175,7 @@ v := Vec{3, 4} // Equivalent to Vec{x=3, y=4}
 >>> Vec.zero
 === Vec{x=0, y=0}
 
-// Built-in types like Num, Int, and String have a few pre-defined methods and
+// Built-in types like Num, Int, and Str have a few pre-defined methods and
 // static members:
 >>> Int.max
 === 9223372036854775807
@@ -187,7 +187,7 @@ v := Vec{3, 4} // Equivalent to Vec{x=3, y=4}
 === "ABC"
 
 // For tagged unions (AKA discriminated unions, sum types)
-def Whatever {|count:Int|text:String|vec:Vec|nothing|unknown|}
+def Whatever {|count:Int|text:Str|vec:Vec|nothing|unknown|}
 
 // Tagged values are instantiated like this:
 vals := [Whatever.count(5), Whatever.text("xx"), Whatever.vec(Vec{1,2}), Whatever.nothing, Whatever.unknown]
@@ -468,7 +468,7 @@ name := "Robert"
 // since there is no conversion defined.
 
 // Defining a conversion:
-def s:String as $SQL
+def s:Str as $SQL
     // SQL escaping uses single quotes around strings and double single quotes
     // to represent escaped single quotes inside a string.
     return bitcast [`', ++s.replace("'", "''"), `'] as $SQL

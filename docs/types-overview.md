@@ -28,7 +28,7 @@ with a few goals in mind:
 All expressions in SSS have a trivially-inferred type that follows some simple rules:
 
 - Literal values have the type that you would expect them to have. A string
-  literal has type `String`, a boolean literal has type `Bool`, etc.
+  literal has type `Str`, a boolean literal has type `Bool`, etc.
 - Integer literals default to `Int` and floating point literals default to `Num`.
 - Explicit casts can be used to specify lower precision values (e.g. `5:Int32`).
 - Local variables are always declared with an initial value. The variable's
@@ -173,7 +173,7 @@ in the case of an empty array, must be explicitly specified.
 ```sss
 ints := [1,2,3,4]
 strings := ["hi", "bye"]
-empty := [:String]
+empty := [:Str]
 ```
 
 Arrays define a few basic operations: iteration, indexing, and length querying:
