@@ -461,15 +461,6 @@ static void copy_global_bindings(sss_hashmap_t *dest, sss_hashmap_t *src)
     }
 }
 
-env_t *global_scope(env_t *env)
-{
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    fresh->bindings = new(sss_hashmap_t, .fallback=env->global_bindings);
-    copy_global_bindings(fresh->bindings, env->bindings);
-    return fresh;
-}
-
 env_t *file_scope(env_t *env)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));
