@@ -392,7 +392,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    run_repl(ctx, tail_calls, verbose);
+    if (isatty(STDIN_FILENO)) {
+        run_repl(ctx, tail_calls, verbose);
+    } else {
+        sss_file_t *f = sss_load_file("/dev/stdin");
+        if (run_program) {
+            return run_file(ctx, NULL, f, tail_calls, verbose, 1, argv);
+        } else {
+            return compile_to_file(ctx, f, tail_calls, verbose, 1, argv);
+        }
+    }
 
     gcc_jit_context_release(ctx);
 

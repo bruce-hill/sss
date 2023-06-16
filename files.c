@@ -16,7 +16,7 @@
 
 char *resolve_path(const char *path, const char *relative_to)
 {
-    if (!relative_to) relative_to = ".";
+    if (!relative_to || streq(relative_to, "/dev/stdin")) relative_to = ".";
     if (!path || strlen(path) == 0) return NULL;
 
     // Resolve the path to an absolute path, assuming it's relative to the file
@@ -86,7 +86,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
 
     free(file_buf);
     const char *relative_filename = filename;
-    if (filename && !streq(filename, "<repl>") && !streq(filename, "<argument>")) {
+    if (filename && !streq(filename, "<repl>") && !streq(filename, "<argument>") && !streq(filename, "/dev/stdin")) {
         filename = resolve_path(filename, ".");
         // Convert to relative path (if applicable)
         char buf[PATH_MAX];
