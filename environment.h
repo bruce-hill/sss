@@ -45,8 +45,9 @@ typedef struct env_s {
     gcc_ctx_t *ctx;
     sss_file_t *file;
     jmp_buf *on_err;
-    sss_hashmap_t *bindings; // name -> binding_t
     sss_hashmap_t *global_bindings; // name -> binding_t*
+    sss_hashmap_t *file_bindings; // name -> binding_t*
+    sss_hashmap_t *bindings; // name -> binding_t
     sss_hashmap_t *global_funcs; // name -> func
     sss_hashmap_t *type_namespaces; // sss_type_t* -> name -> binding_t*
     sss_hashmap_t *def_types; // ast_t* -> binding_t*
@@ -71,6 +72,7 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool debug);
 env_t *fresh_scope(env_t *env);
 env_t *global_scope(env_t *env);
+env_t *file_scope(env_t *env);
 sss_type_t *define_string_type(env_t *env, const char *dsl);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);

@@ -145,7 +145,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     auto fn_info = Match(fn_t, FunctionType);
 
     // Use a set of bindings that don't include any closures
-    env = global_scope(env);
+    env = file_scope(env);
     env->return_type = fn_info->ret;
 
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;

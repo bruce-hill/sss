@@ -1189,7 +1189,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             arg_vals[pos] = val;
         }
 
-        env_t default_arg_env = fn_t->env ? *(env_t*)fn_t->env : *global_scope(env);
+        env_t default_arg_env = fn_t->env ? *(env_t*)fn_t->env : *file_scope(env);
         default_arg_env.bindings = new(sss_hashmap_t, .fallback=default_arg_env.bindings);
         gcc_func_t *func = gcc_block_func(*block);
 

@@ -373,6 +373,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         .on_err = on_err,
         .file = f,
         .global_bindings = new(sss_hashmap_t),
+        .file_bindings = new(sss_hashmap_t),
         .bindings = new(sss_hashmap_t),
         .type_namespaces = new(sss_hashmap_t),
         .def_types = new(sss_hashmap_t),
@@ -381,7 +382,8 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         .tail_calls = tail_calls,
         .debug = debug,
     );
-    env->bindings->fallback = env->global_bindings;
+    env->file_bindings->fallback = env->global_bindings;
+    env->bindings->fallback = env->file_bindings;
 
     load_global_functions(env);
 
@@ -468,6 +470,15 @@ env_t *global_scope(env_t *env)
     return fresh;
 }
 
+env_t *file_scope(env_t *env)
+{
+    env_t *fresh = GC_MALLOC(sizeof(env_t));
+    *fresh = *env;
+    fresh->bindings = new(sss_hashmap_t, .fallback=env->file_bindings);
+    copy_global_bindings(fresh->bindings, env->bindings);
+    return fresh;
+}
+
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
@@ -533,8 +544,7 @@ sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
 {
     sss_hashmap_t *ns = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
     if (!ns) {
-        ns = new(sss_hashmap_t, .fallback=env->global_bindings);
-        // copy_global_bindings(ns, env->bindings);
+        ns = new(sss_hashmap_t, .fallback=env->file_bindings);
         hset(env->type_namespaces, type_to_string(t), ns);
         // Ensure DSLs get auto-populated with string-equivalent methods:
         if (t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType)

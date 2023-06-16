@@ -46,60 +46,60 @@ gcc_func_t *prepare_use(env_t *env, ast_t *ast)
     sss_hashmap_t *namespace = hget(env->type_namespaces, type_to_string(t), sss_hashmap_t*);
     binding_t *b = NULL;
     if (namespace) {
+        // Look up old value to avoid recompiling the same module if it's reimported:
         b = hget(namespace, "#load", binding_t*);
+        if (b) return b->func;
     } else {
         namespace = new(sss_hashmap_t, .fallback=env->global_bindings);
         hset(env->type_namespaces, type_to_string(t), namespace);
     }
-    // Look up old value to avoid recompiling the same module if it's reimported:
-    if (!b) {
-        env_t module_env = *env;
-        module_env.global_bindings = namespace;
-        hset(module_env.global_bindings, "IS_MAIN_PROGRAM",
-             new(binding_t, .type=Type(BoolType), .rval=gcc_rvalue_bool(env->ctx, use->main_program), .visible_in_closures=true));
-        module_env.bindings = namespace;
-        gcc_func_t *load_func = gcc_new_func(
-            env->ctx, NULL, GCC_FUNCTION_EXPORTED, sss_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
-        b = new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*), .ret=t), .func=load_func);
-        hset(namespace, "#load", b);
 
-        gcc_block_t *enter_load = gcc_new_block(load_func, fresh("enter_load")),
-                    *do_loading = gcc_new_block(load_func, fresh("do_loading")),
-                    *finished_loading = gcc_new_block(load_func, fresh("finished_loading"));
+    env_t module_env = *env;
+    module_env.file_bindings = namespace;
+    hset(module_env.file_bindings, "IS_MAIN_PROGRAM",
+         new(binding_t, .type=Type(BoolType), .rval=gcc_rvalue_bool(env->ctx, use->main_program), .visible_in_closures=true));
+    module_env.bindings = namespace;
+    gcc_func_t *load_func = gcc_new_func(
+        env->ctx, NULL, GCC_FUNCTION_EXPORTED, sss_type_to_gcc(env, t), fresh("load_module"), 0, NULL, 0);
+    b = new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*), .ret=t), .func=load_func);
+    hset(namespace, "#load", b);
 
-        // static is_loaded = false; if (is_loaded) return; is_loaded = true; load...
-        gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
-        gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
-        gcc_jump_condition(enter_load, NULL, gcc_rval(is_loaded), finished_loading, do_loading);
-        gcc_lvalue_t *module_val = gcc_local(load_func, NULL, sss_type_to_gcc(env, t), "_module");
-        gcc_return(finished_loading, NULL, gcc_rval(module_val));
+    gcc_block_t *enter_load = gcc_new_block(load_func, fresh("enter_load")),
+                *do_loading = gcc_new_block(load_func, fresh("do_loading")),
+                *finished_loading = gcc_new_block(load_func, fresh("finished_loading"));
 
-        gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
-        sss_file_t *file = use->file ? use->file : sss_load_file(use->path);
-        module_env.file = file;
-        if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
-        ast_t *module_ast = parse_file(file, env->on_err);
-        // Convert top-level declarations to global
-        if (module_ast->tag == Block) {
-            List(ast_t*) old_statements = Match(module_ast, Block)->statements;
-            NEW_LIST(ast_t*, statements);
-            for (int64_t i = 0; i < LIST_LEN(old_statements); i++) {
-                ast_t *stmt = ith(old_statements, i);
-                if (stmt->tag == Declare) {
-                    auto decl = Match(stmt, Declare);
-                    stmt = WrapAST(stmt, Declare, decl->var, decl->value, .is_global=true);
-                }
-                append(statements, stmt);
+    // static is_loaded = false; if (is_loaded) return; is_loaded = true; load...
+    gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
+    gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
+    gcc_jump_condition(enter_load, NULL, gcc_rval(is_loaded), finished_loading, do_loading);
+    gcc_lvalue_t *module_val = gcc_local(load_func, NULL, sss_type_to_gcc(env, t), "_module");
+    gcc_return(finished_loading, NULL, gcc_rval(module_val));
+
+    gcc_assign(do_loading, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
+    sss_file_t *file = use->file ? use->file : sss_load_file(use->path);
+    module_env.file = file;
+    if (!file) compiler_err(env, ast, "The file %s doesn't exist", use->path);
+    ast_t *module_ast = parse_file(file, env->on_err);
+    // Convert top-level declarations to global
+    if (module_ast->tag == Block) {
+        List(ast_t*) old_statements = Match(module_ast, Block)->statements;
+        NEW_LIST(ast_t*, statements);
+        for (int64_t i = 0; i < LIST_LEN(old_statements); i++) {
+            ast_t *stmt = ith(old_statements, i);
+            if (stmt->tag == Declare) {
+                auto decl = Match(stmt, Declare);
+                stmt = WrapAST(stmt, Declare, decl->var, decl->value, .is_global=true);
             }
-            module_ast = WrapAST(module_ast, Block, statements);
+            append(statements, stmt);
         }
-        gcc_rvalue_t *exported = compile_block_expr(&module_env, &do_loading, module_ast);
-        if (do_loading) {
-            if (exported) gcc_eval(do_loading, NULL, exported);
-            gcc_return(do_loading, NULL, gcc_rval(module_val));
-        }
-        env->derived_units = module_env.derived_units;
+        module_ast = WrapAST(module_ast, Block, statements);
     }
+    gcc_rvalue_t *exported = compile_block_expr(&module_env, &do_loading, module_ast);
+    if (do_loading) {
+        if (exported) gcc_eval(do_loading, NULL, exported);
+        gcc_return(do_loading, NULL, gcc_rval(module_val));
+    }
+    env->derived_units = module_env.derived_units;
     return b->func;
 }
 
@@ -290,7 +290,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         binding_t *b =  new(binding_t, .type=get_type(env, def),
                             .func=func, .rval=gcc_get_func_address(func, NULL),
                             .visible_in_closures=true);
-        hset(env->global_bindings, fndef->name, b);
+        hset(env->file_bindings, fndef->name, b);
     } else if (def->tag == StructDef || def->tag == TaggedUnionDef || def->tag == Extend) {
         List(ast_t*) members;
         if (def->tag == StructDef) {

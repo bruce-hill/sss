@@ -92,7 +92,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
                 APPEND(arg_defaults, ith(fn->arg_defaults, i));
             }
         }
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=global_scope(env));
+        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=file_scope(env));
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);
@@ -897,7 +897,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
 
         // Include only global bindings:
-        env_t *lambda_env = global_scope(env);
+        env_t *lambda_env = file_scope(env);
         for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
             hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
@@ -915,7 +915,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         // In order to allow default values to reference other arguments (e.g. `def foo(x:Foo, y=x)`)
         // we need to create scoped bindings for them here:
-        env_t *default_arg_env = global_scope(env);
+        env_t *default_arg_env = file_scope(env);
         default_arg_env->bindings = new(sss_hashmap_t, .fallback=default_arg_env->bindings);
         for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
             ast_t *arg_type_def = LIST_ITEM(def->arg_types, i);
