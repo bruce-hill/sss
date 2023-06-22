@@ -1798,11 +1798,12 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         }
 
         assert(op_tightness[tag]);
-        spaces(&pos);
-        ast_t *rhs = tag == Cast ? _parse_type(ctx, pos) : parse_term(ctx, pos);
+        const char *next = pos;
+        whitespace(&next);
+        ast_t *rhs = tag == Cast ? _parse_type(ctx, next) : parse_term(ctx, next);
         if (!rhs && tag == Range) {
             ast_t *prev = LIST_ITEM(terms, LIST_LEN(terms)-1);
-            terms[0][LIST_LEN(terms)-1] = NewAST(ctx->file, pos, pos, Range, .first=prev);
+            terms[0][LIST_LEN(terms)-1] = NewAST(ctx->file, next, next, Range, .first=prev);
             continue;
         }
         if (!rhs) break;
