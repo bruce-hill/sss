@@ -975,11 +975,9 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!match(&pos, "[")) return NULL;
     ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
                               "I expected to find an expression here to index with");
-    expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
-    const char *endpos = pos;
     spaces(&pos);
-    bool unchecked = match_word(&pos, "unchecked") != 0;
-    if (!unchecked) pos = endpos;
+    bool unchecked = match(&pos, ";") && (spaces(&pos), match_word(&pos, "unchecked") != 0);
+    expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
 }
 
