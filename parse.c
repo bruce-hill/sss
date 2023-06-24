@@ -1797,7 +1797,10 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
         assert(op_tightness[tag]);
         const char *next = pos;
-        whitespace(&next);
+        if (tag == Range)
+            spaces(&next);
+        else
+            whitespace(&next);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, next) : parse_term(ctx, next);
         if (!rhs && tag == Range) {
             ast_t *prev = LIST_ITEM(terms, LIST_LEN(terms)-1);
