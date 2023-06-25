@@ -564,7 +564,7 @@ accidentally.
 ```python
 def User {name:Str, password_hash:Str, credit_card:Str}
 
-def check_credentials(users:{Str=User}, username:Str, password:Password)->Bool
+def check_credentials(users:{Str=>User}, username:Str, password:Password)->Bool
     user := users[username] or return no
     if hash_password(password) == user.password_hash
         return yes
@@ -581,17 +581,19 @@ disk might end up containing all kinds of sensitive information like credit
 card numbers or password hashes:
 
 ```
-[log] Failed login attempt for User{name=Roland, password_hash=12345, credit_card=12345678}
+[log] Failed login attempt for User{name="Roland", password_hash="12345", credit_card="12345678"}
 ```
 
 One way to avoid this problem is to use custom DSL strings for sensitive data,
 which defines a custom `tostring()` implementation that obscures any private data:
 
 ```python
-def s:Str as $Sensitive
-    return s:SensitiveString
-def sensitive:$Sensitive as Str
-    return "******"
+def Sensitive::Str
+    def s:Str as Sensitive
+        return bitcast s as Sensitive
+
+    def sensitive:Sensitive as Str
+        return "******"
 
 def User {name:Str, password_hash:Sensitive, credit_card:Sensitive}
 ```

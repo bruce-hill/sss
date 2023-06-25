@@ -138,7 +138,6 @@ def QuadTree {|
         items:[QuadTreeItem]
     }
 |}
-extend QuadTree
     def insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
         ...
     def query(qt:QuadTree,xmin,xmax,ymin,ymax:Num)->[@Void]

@@ -204,6 +204,8 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         gcc_assign(*block, loc, arr_var, arr);
         mark_array_cow(env, block, gcc_lvalue_address(arr_var, loc));
     }
+    while (arr_t->tag == VariantType)
+        arr_t = Match(arr_t, VariantType)->variant_of;
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
     gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
     gcc_rvalue_t *arr = gcc_rval(arr_var);
@@ -553,12 +555,6 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
         gcc_return_void(*block, NULL);
 
         *block = is_not_empty;
-    }
-
-    if (array->dsl) {
-        COLOR_LITERAL(block, "\x1b[0;1m");
-        WRITE_LITERAL(*block, heap_strf("$%s", array->dsl));
-        COLOR_LITERAL(block, "\x1b[0;35m");
     }
 
     if (is_string) {

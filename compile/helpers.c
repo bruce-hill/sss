@@ -63,6 +63,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         }
         return align;
     }
+    case VariantType: return gcc_alignof(env, Match(sss_t, VariantType)->variant_of);
     case ModuleType: return 1;
     case VoidType: return 1;
     default:
@@ -121,6 +122,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         size += union_size;
         return size;
     }
+    case VariantType: return gcc_sizeof(env, Match(sss_t, VariantType)->variant_of);
     case ModuleType: return 0;
     case VoidType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
@@ -213,8 +215,6 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     case ArrayType: {
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
-        // GCC type is the same for DSL and non-DSLs:
-        if (Match(t, ArrayType)->dsl) return sss_type_to_gcc(env, Type(ArrayType, .item_type=item_type));
         gcc_field_t *fields[] = {
             [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
             [ARRAY_LENGTH_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
@@ -312,6 +312,10 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     case ModuleType: {
         gcc_t = gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, "Module", 0, NULL));
+        break;
+    }
+    case VariantType: {
+        gcc_t = sss_type_to_gcc(env, Match(t, VariantType)->variant_of);
         break;
     }
     default: {
@@ -451,6 +455,29 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
 #define WRITE_LITERAL(block, str) gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
 #define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
+
+    // sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
+    // if (!type_eq(t, string_t)) {
+    //     binding_t *convert_b = get_from_namespace(env, string_t, heap_strf("#convert-from:%s", type_to_string(t)));
+    //     if (convert_b) {
+    //         gcc_lvalue_t *str_var = gcc_local(func, NULL, sss_type_to_gcc(env, string_t), "_str");
+    //         gcc_assign(block, NULL, str_var, gcc_callx(env->ctx, NULL, convert_b->func, obj));
+
+    //         flatten_arrays(env, &block, string_t, gcc_lvalue_address(str_var, NULL));
+
+    //         COLOR_LITERAL(&block, "\x1b[34m");
+    //         gcc_func_t *fwrite_fn = get_function(env, "fwrite");
+    //         gcc_struct_t *str_struct = gcc_type_if_struct(sss_type_to_gcc(env, string_t));
+    //         gcc_rvalue_t *str_data = gcc_rvalue_access_field(gcc_rval(str_var), NULL, gcc_get_field(str_struct, ARRAY_DATA_FIELD));
+    //         gcc_rvalue_t *str_len = gcc_cast(
+    //             env->ctx, NULL, gcc_rvalue_access_field(gcc_rval(str_var), NULL, gcc_get_field(str_struct, ARRAY_LENGTH_FIELD)),
+    //             gcc_type(env->ctx, SIZE));
+    //         gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fwrite_fn, str_data, str_len, gcc_rvalue_size(env->ctx, 1), file));
+    //         COLOR_LITERAL(&block, "\x1b[m");
+    //         gcc_return_void(block, NULL);
+    //         return func;
+    //     }
+    // }
 
     switch (t->tag) {
     case BoolType: {
@@ -834,6 +861,20 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         gcc_return_void(block, NULL);
         break;
     }
+    case VariantType: {
+        auto variant = Match(t, VariantType);
+        COLOR_LITERAL(&block, "\x1b[36m");
+        WRITE_LITERAL(block, heap_strf("%s::", variant->name));
+        COLOR_LITERAL(&block, "\x1b[m");
+        gcc_func_t *print_fn = get_print_func(env, variant->variant_of);
+        assert(print_fn);
+        gcc_eval(block, NULL, gcc_callx(
+                env->ctx, NULL, print_fn, 
+                gcc_bitcast(env->ctx, NULL, obj, sss_type_to_gcc(env, variant->variant_of)),
+                file, rec, color));
+        gcc_return_void(block, NULL);
+        break;
+    }
     case TypeType: {
         COLOR_LITERAL(&block, "\x1b[36m");
         gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn,
@@ -861,6 +902,8 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
 {
     // Return a hash function for a given type.
+
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
 
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__hash");
@@ -1062,6 +1105,8 @@ gcc_rvalue_t *compare_values(env_t *env, sss_type_t *t, gcc_rvalue_t *a, gcc_rva
 // Get a comparison function: -1 means lhs < rhs; 0 means lhs == rhs; 1 means lhs > rhs
 gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
 {
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare");
     if (b) return b->func;
@@ -1269,6 +1314,8 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t)
 // This is just a shim around the real comparison function
 gcc_func_t *get_indirect_compare_func(env_t *env, sss_type_t *t)
 {
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+
     // Memoize:
     binding_t *b = get_from_namespace(env, t, "__compare_indirect");
     if (b) return b->func;

@@ -4,7 +4,7 @@
 #include "types.h"
 #include "util.h"
 
-static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
+static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_name) {
     switch (t->tag) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
@@ -31,25 +31,22 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
             sss_type_t *inner = Match(t, TypeType)->type;
             if (!inner) return "Type(...)";
             CORD ret;
-            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded));
+            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded, use_true_name));
             return ret;
         }
         case RangeType: return "Range";
         case ArrayType: {
             auto array = Match(t, ArrayType);
-            if (array->item_type->tag == CharType) {
-                if (array->dsl)
-                    return CORD_cat("$", array->dsl);
+            if (array->item_type->tag == CharType)
                 return "Str";
-            }
-            return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded), "]"));
+            return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded, use_true_name), "]"));
         }
         case TableType: {
             CORD c = "{";
             auto table = Match(t, TableType);
-            c = CORD_cat(c, type_to_cord(table->key_type, expanded));
+            c = CORD_cat(c, type_to_cord(table->key_type, expanded, use_true_name));
             c = CORD_cat(c, "=>");
-            c = CORD_cat(c, type_to_cord(table->value_type, expanded));
+            c = CORD_cat(c, type_to_cord(table->value_type, expanded, use_true_name));
             c = CORD_cat(c, "}");
             return c;
         }
@@ -58,26 +55,27 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
             auto fn = Match(t, FunctionType);
             for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ",");
-                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), expanded));
+                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), expanded, use_true_name));
             }
             c = CORD_cat(c, ")->");
-            c = CORD_cat(c, type_to_cord(fn->ret, expanded));
+            c = CORD_cat(c, type_to_cord(fn->ret, expanded, use_true_name));
             return c;
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            if (struct_->name && (!expanded || hget(expanded, struct_->name, char*))) {
+            const char *name = use_true_name ? struct_->true_name : struct_->name;
+            if (struct_->true_name && (!expanded || hget(expanded, struct_->true_name, char*))) {
                 if (!struct_->units)
-                    return struct_->name;
+                    return name;
                 CORD c;
-                CORD_sprintf(&c, "%s<%s>", struct_->name, struct_->units);
+                CORD_sprintf(&c, "%s<%s>", name, struct_->units);
                 return c;
             }
-            if (struct_->name && expanded)
-                hset(expanded, struct_->name, struct_->name);
+            if (struct_->true_name && expanded)
+                hset(expanded, struct_->true_name, struct_->true_name);
             CORD c = NULL;
-            if (struct_->name)
-                c = CORD_cat(c, struct_->name);
+            if (name)
+                c = CORD_cat(c, name);
             c = CORD_cat(c, "{");
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
@@ -88,7 +86,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
                 if (fname && !streq(fname, heap_strf("_%lu", i+1)))
                     c = CORD_cat(CORD_cat(c, fname), ":");
 
-                CORD fstr = type_to_cord(ft, expanded);
+                CORD fstr = type_to_cord(ft, expanded, use_true_name);
                 c = CORD_cat(c, fstr);
             }
             c = CORD_cat(c, "}");
@@ -99,25 +97,26 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
         case PointerType: {
             auto ptr = Match(t, PointerType);
             if (ptr->is_stack)
-                return CORD_cat("&", type_to_cord(ptr->pointed, expanded));
+                return CORD_cat("&", type_to_cord(ptr->pointed, expanded, use_true_name));
             else
-                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, expanded));
+                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, expanded, use_true_name));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
             CORD ret;
-            CORD_sprintf(&ret, "Generator(%r)", type_to_cord(gen->generated, expanded));
+            CORD_sprintf(&ret, "Generator(%r)", type_to_cord(gen->generated, expanded, use_true_name));
             return ret;
         }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            if (!expanded || hget(expanded, tagged->name, char*))
-                return tagged->name;
+            const char *name = use_true_name ? tagged->true_name : tagged->name;
+            if (!expanded || hget(expanded, tagged->true_name, char*))
+                return name;
 
-            if (tagged->name && expanded)
-                hset(expanded, tagged->name, tagged->name);
+            if (tagged->true_name && expanded)
+                hset(expanded, tagged->true_name, tagged->true_name);
 
-            CORD c = CORD_cat(tagged->name, "{|");
+            CORD c = CORD_cat(name, "{|");
 
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
@@ -129,7 +128,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
                     CORD_sprintf(&c, "%r%s=%ld", c, member.name, member.tag_value);
 
                 if (member.type)
-                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, expanded));
+                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, expanded, use_true_name));
             }
             c = CORD_cat(c, "|}");
             return c;
@@ -137,6 +136,17 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded) {
         case ModuleType: {
             CORD c;
             CORD_sprintf(&c, "Module(\"%s\")", Match(t, ModuleType)->path);
+            return c;
+        }
+        case VariantType: {
+            auto variant = Match(t, VariantType);
+            const char *name = use_true_name ? variant->true_name : variant->name;
+            if (!expanded || hget(expanded, name, char*))
+                return name;
+            if (expanded)
+                hset(expanded, variant->true_name, variant->true_name);
+            CORD c;
+            CORD_sprintf(&c, "%s::%r", name, type_to_cord(variant->variant_of, expanded, use_true_name));
             return c;
         }
         default: {
@@ -161,19 +171,24 @@ int printf_type(FILE *stream, const struct printf_info *info, const void *const 
     sss_type_t *t = *(sss_type_t**)args[0];
     (void)info;
     sss_hashmap_t expanded = {0};
-    CORD c = type_to_cord(t, &expanded);
+    CORD c = type_to_cord(t, &expanded, false);
     if (CORD_len(c) > 30)
-        c = type_to_cord(t, NULL);
+        c = type_to_cord(t, NULL, false);
     return CORD_put(c, stream);
 }
 
 const char* type_to_string_concise(sss_type_t *t) {
-    return CORD_to_char_star(type_to_cord(t, NULL));
+    return CORD_to_char_star(type_to_cord(t, NULL, false));
 }
 
 const char* type_to_string(sss_type_t *t) {
     sss_hashmap_t expanded = {0};
-    return CORD_to_char_star(type_to_cord(t, &expanded));
+    return CORD_to_char_star(type_to_cord(t, &expanded, true));
+}
+
+const char* type_to_typeof_string(sss_type_t *t) {
+    sss_hashmap_t expanded = {0};
+    return CORD_to_char_star(type_to_cord(t, &expanded, false));
 }
 
 bool type_eq(sss_type_t *a, sss_type_t *b)
@@ -220,7 +235,7 @@ sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
     if (b->tag == AbortType) return non_optional(a);
     if (a->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(Match(a, GeneratorType)->generated, b));
     if (b->tag == GeneratorType) return Type(GeneratorType, .generated=type_or_type(a, Match(b, GeneratorType)->generated));
-    if (is_numeric(a) && is_numeric(b)) {
+    if ((a->tag == IntType || a->tag == NumType) && (b->tag == IntType || b->tag == NumType)) {
         switch (compare_precision(a, b)) {
         case NUM_PRECISION_EQUAL: case NUM_PRECISION_MORE: return a;
         case NUM_PRECISION_LESS: return b;
@@ -244,6 +259,7 @@ const char* type_units(sss_type_t *t)
     case StructType: return Match(t, StructType)->units;
     case PointerType: return type_units(Match(t, PointerType)->pointed);
     case ArrayType: return type_units(Match(t, ArrayType)->item_type);
+    case VariantType: return type_units(Match(t, VariantType)->variant_of);
     default: return NULL;
     }
 }
@@ -255,7 +271,7 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
-        return Type(StructType, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
+        return Type(StructType, .true_name=s->true_name, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
@@ -263,7 +279,11 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
     }
     case ArrayType: {
         auto array = Match(t, ArrayType);
-        return Type(ArrayType, .dsl=array->dsl, .item_type=with_units(array->item_type, units));
+        return Type(ArrayType, .item_type=with_units(array->item_type, units));
+    }
+    case VariantType: {
+        auto variant = Match(t, VariantType);
+        return Type(VariantType, .true_name=variant->true_name, .name=variant->name, .variant_of=with_units(variant->variant_of, units));
     }
     default: return t;
     }
@@ -271,11 +291,13 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
 
 bool is_integral(sss_type_t *t)
 {
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
     return t->tag == IntType || t->tag == CharType || t->tag == CStringCharType;
 }
 
 bool is_numeric(sss_type_t *t)
 {
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
     return t->tag == IntType || t->tag == NumType;
 }
 
@@ -283,7 +305,7 @@ typedef enum {
     MAG_INAPPLICABLE = 0, MAG_ZERO, MAG1, MAG2, MAG3, MAG4, MAG5, MAG6, MAG7, MAG8, MAG9, MAG10, MAG11, MAG12,
 } magnitude_e;
 
-static inline magnitude_e type_min_magnitue(sss_type_t *t)
+static inline magnitude_e type_min_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
     case BoolType: case CharType: case CStringCharType: return MAG_ZERO;
@@ -298,11 +320,12 @@ static inline magnitude_e type_min_magnitue(sss_type_t *t)
         }
     }
     case NumType: return Match(t, NumType)->bits == 32 ? MAG5 : MAG6;
+    case VariantType: return type_min_magnitude(Match(t, VariantType)->variant_of);
     default: return MAG_INAPPLICABLE;
     }
 }
 
-static inline int type_max_magnitue(sss_type_t *t)
+static inline int type_max_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
     case BoolType: return MAG1;
@@ -317,18 +340,18 @@ static inline int type_max_magnitue(sss_type_t *t)
         default: return MAG_INAPPLICABLE;
         }
     }
-    case NumType:
-        return Match(t, NumType)->bits == 32 ? MAG11 : MAG12;
+    case NumType: return Match(t, NumType)->bits == 32 ? MAG11 : MAG12;
+    case VariantType: return type_max_magnitude(Match(t, VariantType)->variant_of);
     default: return MAG_INAPPLICABLE;
     }
 }
 
 precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b)
 {
-    magnitude_e a_min = type_min_magnitue(a),
-                b_min = type_min_magnitue(b),
-                a_max = type_max_magnitue(a),
-                b_max = type_max_magnitue(b);
+    magnitude_e a_min = type_min_magnitude(a),
+                b_min = type_min_magnitude(b),
+                a_max = type_max_magnitude(a),
+                b_max = type_max_magnitude(b);
 
     if (a_min == MAG_INAPPLICABLE || b_min == MAG_INAPPLICABLE || a_max == MAG_INAPPLICABLE || b_max == MAG_INAPPLICABLE)
         return NUM_PRECISION_INCOMPARABLE;

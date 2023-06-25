@@ -31,6 +31,7 @@ struct sss_type_s {
         StructType,
         TaggedUnionType,
         ModuleType,
+        VariantType,
     } tag;
 
     union {
@@ -50,7 +51,6 @@ struct sss_type_s {
         } TypeType;
         struct {} RangeType;
         struct {
-            const char* dsl;
             sss_type_t *item_type;
         } ArrayType;
         struct {
@@ -71,20 +71,24 @@ struct sss_type_s {
             sss_type_t *generated;
         } GeneratorType;
         struct {
-            const char* name;
+            const char *name, *true_name;
             List(const char*) field_names;
             List(sss_type_t*) field_types;
             List(ast_t*) field_defaults;
             const char* units;
         } StructType;
         struct {
-            const char* name;
+            const char* name, *true_name;
             List(sss_tagged_union_member_t) members;
             unsigned short int tag_bits;
         } TaggedUnionType;
         struct {
             const char *path;
         } ModuleType;
+        struct {
+            const char *name, *true_name;
+            sss_type_t *variant_of;
+        } VariantType;
     } __data;
 };
 
@@ -95,6 +99,7 @@ struct sss_type_s {
 int printf_type(FILE *stream, const struct printf_info *info, const void *const args[]);
 int printf_type_size(const struct printf_info *info, size_t n, int argtypes[n], int size[n]);
 const char* type_to_string_concise(sss_type_t *t);
+const char* type_to_typeof_string(sss_type_t *t);
 const char* type_to_string(sss_type_t *t);
 bool type_eq(sss_type_t *a, sss_type_t *b);
 bool type_is_a(sss_type_t *t, sss_type_t *req);

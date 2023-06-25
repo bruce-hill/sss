@@ -1,6 +1,6 @@
-def JSON{|Object({Str=>JSON})|List([JSON])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid($JSON)|}
-    def serialized(j:JSON)->Str
-        if j is Object(table)
+def Object{|Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)|}
+    def serialized(j:Object)->Str
+        if j is Map(table)
             return [`{,
                 for entry in table
                     c for c in "$(entry.key.quoted()): $(bitcast entry.value.serialized() as Str)"
@@ -23,70 +23,70 @@ def JSON{|Object({Str=>JSON})|List([JSON])|String(Str)|Number(Num)|Boolean(Bool)
         is Invalid(js)
             fail "invalid JSON: $js"
 
-extend $JSON
-    def deserialize(js:$JSON)->JSON
-        def match(js:&$JSON, pattern:$JSON; inline)->Bool
+def JSON::Str
+    def deserialize(js:JSON)->Object
+        def match(js:&JSON, pattern:JSON; inline)->Bool
             if (*js).starts_with(pattern)
                 *js = (*js)[(#pattern+1)..]
                 return yes
             else
                 return no
 
-        def match_chars(js:&$JSON, chars:$JSON; inline)->$JSON
+        def match_chars(js:&JSON, chars:JSON; inline)->JSON
             rest := (*js).trimmed(chars, trim_right=no)
             defer *js = rest
             matched := (*js)[..(#js - #rest)]
             return matched
 
-        def skip_spaces(js:&$JSON; inline)
-            *js = (*js).trimmed($JSON" \n\r\t", trim_right=no)
+        def skip_spaces(js:&JSON; inline)
+            *js = (*js).trimmed(JSON::" \n\r\t", trim_right=no)
 
-        def match_str(js:&$JSON)->JSON
-            unless match(js, $JSON("))
-                return JSON.Invalid(*js)
+        def match_str(js:&JSON)->Object
+            unless match(js, JSON::$("))
+                return Object.Invalid(*js)
             content := *js
             for i,c in *js
                 if c == `"
                     *js = js[(i+1)..]
-                    return JSON.String(bitcast content[..(i-1)] as Str)
-            return JSON.Invalid(*js)
+                    return Object.String(bitcast content[..(i-1)] as Str)
+            return Object.Invalid(*js)
 
-        def match_bool(js:&$JSON)->JSON
-            if match(js, $JSON"true")
-                return JSON.Boolean(yes)
-            if match(js, $JSON"false")
-                return JSON.Boolean(no)
-            return JSON.Invalid(*js)
+        def match_bool(js:&JSON)->Object
+            if match(js, JSON::"true")
+                return Object.Boolean(yes)
+            if match(js, JSON::"false")
+                return Object.Boolean(no)
+            return Object.Invalid(*js)
 
-        def match_null(js:&$JSON)->JSON
-            return (if match(js, $JSON"null") then JSON.Null else JSON.Invalid(*js))
+        def match_null(js:&JSON)->Object
+            return (if match(js, JSON::"null") then Object.Null else Object.Invalid(*js))
 
-        def match_obj(js:&$JSON)->JSON
-            unless match(js, $JSON"{")
-                return JSON.Invalid(*js)
+        def match_obj(js:&JSON)->Object
+            unless match(js, JSON::"{")
+                return Object.Invalid(*js)
 
             skip_spaces(js)
-            obj := &{:Str=>JSON}
+            obj := &{:Str=>Object}
             repeat
                 key := if match_str(js) is String(s) then s else stop
                 skip_spaces(js)
-                unless match(js, $JSON":")
-                    return JSON.Invalid(*js)
+                unless match(js, JSON::":")
+                    return Object.Invalid(*js)
                 skip_spaces(js)
                 value := match_json(js)
                 obj[key] = value
 
-            unless match(js, $JSON"}")
-                return JSON.Invalid(*js)
+            unless match(js, JSON::"}")
+                return Object.Invalid(*js)
 
-            return JSON.Object(*obj)
+            return Object.Map(*obj)
 
-        def match_list(js:&$JSON)->JSON
-            unless match(js, $JSON"[")
-                return JSON.Invalid(*js)
+        def match_list(js:&JSON)->Object
+            unless match(js, JSON::"[")
+                return Object.Invalid(*js)
 
             skip_spaces(js)
-            list := &[:JSON]
+            list := &[:Object]
             repeat
                 skip_spaces(js)
                 if item := match_json(js) is Invalid(_)
@@ -95,60 +95,57 @@ extend $JSON
                     list.insert(item)
                 
                 skip_spaces(js)
-                stop unless match(js, $JSON",")
+                stop unless match(js, JSON::",")
 
             skip_spaces(js)
-            unless match(js, $JSON"]")
-                return JSON.Invalid(*js)
+            unless match(js, JSON::"]")
+                return Object.Invalid(*js)
 
-            return JSON.List(*list)
+            return Object.List(*list)
 
-        def match_num(js:&$JSON)->JSON
+        def match_num(js:&JSON)->Object
             if Num.parse(bitcast *js as Str) is success(n)
                 *js = (*js)[(#js+1)..]
-                return JSON.Number(n)
+                return Object.Number(n)
             is partial_success({value=n, remainder=remaining})
-                *js = (bitcast remaining as $JSON)
-                return JSON.Number(n)
+                *js = (bitcast remaining as JSON)
+                return Object.Number(n)
             else
-                return JSON.Invalid(*js)
+                return Object.Invalid(*js)
 
-        def match_json(js:&$JSON)->JSON
+        def match_json(js:&JSON)->Object
             if m:=match_num(js) is Number(_) then return m
             if m:=match_str(js) is String(_) then return m
-            if m:=match_obj(js) is Object(_) then return m
+            if m:=match_obj(js) is Map(_) then return m
             if m:=match_bool(js) is Boolean(_) then return m
             if m:=match_list(js) is List(_) then return m
             if m:=match_null(js) is Null then return m
-            return JSON.Invalid(*js)
+            return Object.Invalid(*js)
 
         skip_spaces(&js)
         obj := match_json(&js)
         skip_spaces(&js)
         if #js > 0
-            return JSON.Invalid(js)
+            return Object.Invalid(js)
         return obj
 
+    def s:Str as JSON
+        return bitcast s.quoted() as JSON
 
-// $JSON DSL
-def s:Str as $JSON
-    return bitcast s.quoted() as $JSON
+    def b:Bool as JSON
+        return (if b then JSON::"true" else JSON::"false")
 
-def b:Bool as $JSON
-    return (if b then $JSON"true" else $JSON"false")
-
-def n:Num as $JSON
-    return bitcast "$n" as $JSON
+    def n:Num as JSON
+        return bitcast "$n" as JSON
 
 if IS_MAIN_PROGRAM
-    >>> JSON.Object({"x"=> JSON.Boolean(yes), "y"=> JSON.Null, "z"=> JSON.List([JSON.Number(1.2), JSON.Number(3.4)])}).serialized()
+    >>> Object.Map({"x"=> Object.Boolean(yes), "y"=> Object.Null, "z"=> Object.List([Object.Number(1.2), Object.Number(3.4)])}).serialized()
     === "{\"x\": yes, \"y\": null, \"z\": [1.2, 3.4]}"
-    >>> JSON.String(${"Quotes" and \\backslashes}).serialized()
+    >>> Object.String(${"Quotes" and \\backslashes}).serialized()
     === "\"\\"Quotes\\" and \\backslashes\""
-    >>> $JSON|{"x": true}|.deserialize()
-    === JSON.Object({"x"=>JSON.Boolean(yes)})
-    >>> $JSON|[1,2]|.deserialize()
-    === JSON.List([JSON.Number(1), JSON.Number(2)])
-    >>> x := JSON.Object({"x"=> JSON.String("hello")})
-    >>> x.Object["x"].String
-    === "hello"
+    >>> JSON::$|{"x": true}|.deserialize()
+    === Object.Map({"x"=>Object.Boolean(yes)})
+    >>> JSON::$|[1,2]|.deserialize()
+    === Object.List([Object.Number(1), Object.Number(2)])
+    >>> x := Object.Map({"x"=> Object.String("hello")})
+    >>> x.Map["x"].String

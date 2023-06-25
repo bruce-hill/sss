@@ -99,6 +99,9 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
 
+    while (iter_t->tag == VariantType)
+        iter_t = Match(iter_t, VariantType)->variant_of;
+
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *for_first = for_->first ? gcc_new_block(func, fresh("for_first")) : NULL,
                 *for_body = gcc_new_block(func, fresh("for_body")),

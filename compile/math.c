@@ -32,6 +32,12 @@ static gcc_rvalue_t *math_binop_rec(
             compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_binop_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
     }
+
+    if (lhs_t->tag == VariantType)
+        return math_binop_rec(env, block, ast, Match(lhs_t, VariantType)->variant_of, lhs, op, rhs_t, rhs);
+    else if (rhs_t->tag == VariantType)
+        return math_binop_rec(env, block, ast, lhs_t, lhs, op, Match(rhs_t, VariantType)->variant_of, rhs);
+
     gcc_func_t *func = gcc_block_func(*block);
 
     gcc_type_t *i32 = gcc_type(env->ctx, INT32);
@@ -338,6 +344,11 @@ void math_update_rec(
             compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
         return math_update_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
     }
+
+    if (lhs_t->tag == VariantType)
+        return math_update_rec(env, block, ast, Match(lhs_t, VariantType)->variant_of, lhs, op, rhs_t, rhs);
+    else if (rhs_t->tag == VariantType)
+        return math_update_rec(env, block, ast, lhs_t, lhs, op, Match(rhs_t, VariantType)->variant_of, rhs);
 
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
         compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");

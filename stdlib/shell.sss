@@ -2,8 +2,8 @@
 
 def _POpenFile{}
 
-extend $Sh
-    def run(sh:$Sh)->{output:Str,status:Int32}
+def Sh::Str
+    def run(sh:Sh)->{output:Str,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen(bitcast sh as Str, "r") or return {output="", status=-1i32}
         output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->Str)(&f)
@@ -13,7 +13,7 @@ extend $Sh
             status = (status / 256i32) and 0xFFi32
         return {output=output, status=status}
 
-    def run_with(sh:$Sh , input:Str)->Int32
+    def run_with(sh:Sh, input:Str)->Int32
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "w") or return -1i32
         pclose := (extern pclose:(?_POpenFile)->Void)
@@ -25,34 +25,34 @@ extend $Sh
             status = (status / 256i32) and 0xFFi32
         return status
 
-def s:Str as $Sh
-    return bitcast "'$(s.replace("'",${'"'"'}))'" as $Sh
+    def s:Str as Sh
+        return bitcast "'$(s.replace("'",${'"'"'}))'" as Sh
 
-def strs:[Str] as $Sh
-    return bitcast [
-        for s in strs
-            ++$Sh"$s"
-        between
-            ++$Sh" "
-    ] as $Sh
+    def strs:[Str] as Sh
+        return bitcast [
+            for s in strs
+                ++Sh::"$s"
+            between
+                ++" "
+        ] as Sh
 
-def strings:[Str] as $Sh
-    return bitcast [
-        for s in strings
-            c for c in $Sh"$s"
-        between
-            ` 
-    ] as $Sh
+    def strings:[Str] as Sh
+        return bitcast [
+            for s in strings
+                c for c in Sh::"$s"
+            between
+                ` 
+        ] as Sh
 
-def i:Int64 as $Sh
-    return bitcast "$i" as $Sh
+    def i:Int64 as Sh
+        return bitcast "$i" as Sh
 
-def n:Num as $Sh
-    return bitcast "$n" as $Sh
+    def n:Num as Sh
+        return bitcast "$n" as Sh
 
 if IS_MAIN_PROGRAM
     >>> files := ["one two", "three; four", "doesn't break"]
-    >>> $Sh> ls -al @files
-    === $Sh"ls -al 'one two' 'three; four' 'doesn'\"'\"'t break'"
-    >>> $Sh(echo "hi").run()
+    >>> Sh::$> ls -al @files
+    === Sh::"ls -al 'one two' 'three; four' 'doesn'\"'\"'t break'"
+    >>> Sh::$(echo "hi").run()
     === {output="hi\n", status=0_i32}

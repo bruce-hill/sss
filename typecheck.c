@@ -100,7 +100,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
-        sss_type_t *t = Type(StructType, .name=struct_->name, .field_names=member_names, .field_types=member_types);
+        sss_type_t *t = Type(StructType, .true_name=struct_->name ? heap_strf("%s:%s", ast->span.file->filename, struct_->name) : NULL,
+                             .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
             env = fresh_scope(env);
             hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
@@ -135,11 +136,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
-    }
-    case TypeDSL: {
-        auto dsl = Match(ast, TypeDSL);
-        return Type(ArrayType, .item_type=Type(CharType), .dsl=dsl->name);
+        return Type(TaggedUnionType, .true_name=tu->name ? heap_strf("%s:%s", ast->span.file->filename, tu->name) : NULL,
+                    .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeTypeAST: {
         auto t = Match(ast, TypeTypeAST);
@@ -152,7 +150,11 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
 {
     sss_type_t *iter_t = get_type(env, iter);
-    while (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
+    for (;;) {
+        if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
+        else if (iter_t->tag == VariantType) iter_t = Match(iter_t, VariantType)->variant_of;
+        else break;
+    }
     switch (iter_t->tag) {
     case ArrayType: return Match(iter_t, ArrayType)->item_type;
     case TableType: return table_entry_type(iter_t);
@@ -180,7 +182,6 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         lhs_t = Match(lhs_t, PointerType)->pointed;
     while (rhs_t->tag == PointerType)
         rhs_t = Match(rhs_t, PointerType)->pointed;
-
     const char* u1 = type_units(lhs_t), *u2 = type_units(rhs_t);
     u1 = unit_derive(u1, NULL, env->derived_units);
     u2 = unit_derive(u2, NULL, env->derived_units);
@@ -210,7 +211,21 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         return with_units(lhs_t, units);
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
-        if (!t) compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
+        if (lhs_t->tag == VariantType && rhs_t->tag == VariantType)
+            compiler_err(env, ast, "The two operands in this math operation have different types: %T vs %T", lhs_t, rhs_t);
+        else if (lhs_t->tag == VariantType && rhs_t->tag != VariantType && (tag == Multiply || tag == Divide)
+                 && (compare_precision(lhs_t, rhs_t) == NUM_PRECISION_EQUAL || compare_precision(lhs_t, rhs_t) == NUM_PRECISION_MORE))
+            t = lhs_t;
+        else if (rhs_t->tag == VariantType && lhs_t->tag != VariantType && tag == Multiply
+                 && (compare_precision(rhs_t, lhs_t) == NUM_PRECISION_EQUAL || compare_precision(rhs_t, lhs_t) == NUM_PRECISION_MORE))
+            t = rhs_t;
+
+        if (!t) {
+            if (lhs_t->tag == VariantType || rhs_t->tag == VariantType)
+                compiler_err(env, ast, "This math operation between %T and %T is not supported", lhs_t, rhs_t);
+            else
+                compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
+        }
         return with_units(t, units);
     } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
         if (streq(units, "%")) units = NULL;
@@ -422,7 +437,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(RangeType);
     }
     case StringJoin: {
-        return Type(ArrayType, .item_type=Type(CharType), .dsl=Match(ast, StringJoin)->dsl);
+        return Type(ArrayType, .item_type=Type(CharType));
     }
     case Interp: case StringLiteral: {
         return Type(ArrayType, .item_type=Type(CharType));
@@ -520,7 +535,14 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         else if (streq(access->field, "__print"))
             (void)get_print_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
-        sss_type_t *value_t = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->pointed : fielded_t;
+
+        sss_type_t *value_t = fielded_t;
+        for (;;) {
+            if (value_t->tag == PointerType) value_t = Match(value_t, PointerType)->pointed;
+            else if (value_t->tag == VariantType) value_t = Match(value_t, VariantType)->variant_of;
+            else break;
+        }
+
         switch (value_t->tag) {
         case StructType: {
             auto struct_t = Match(value_t, StructType);
@@ -625,6 +647,15 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             indexed_t = Match(indexed_t, PointerType)->pointed;
             goto try_again;
         }
+        case VariantType: {
+            if (Match(indexed_t, VariantType)->variant_of->tag == ArrayType) {
+                sss_type_t *index_t = get_type(env, indexing->index);
+                if (index_t->tag == RangeType)
+                    return indexed_t;
+            }
+            indexed_t = Match(indexed_t, VariantType)->variant_of;
+            goto try_again;
+        }
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]
         default: {
@@ -662,12 +693,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         // Handle 'use' imports
         foreach (block->statements, stmt, _) {
-
             populate_uses(env, *stmt);
         }
         // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
         foreach (block->statements, stmt, _) {
-            predeclare_def_types(env, *stmt);
+            predeclare_def_types(env, *stmt, false);
         }
         // Populate struct fields:
         foreach (block->statements, stmt, _) {
@@ -1093,7 +1123,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         return get_type(env, with->body);
     }
-    case Extend: return Type(VoidType);
+    case Variant: {
+        auto variant = Match(ast, Variant);
+        return parse_type_ast(env, variant->type);
+    }
+    case Extend: case VariantDef: return Type(VoidType);
     default: break;
     }
     compiler_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));

@@ -128,6 +128,9 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
         gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
         return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD)), gcc_type(env->ctx, INT64));
     }
+    case VariantType: {
+        return compile_len(env, block, Match(t, VariantType)->variant_of, obj);
+    }
     case PointerType: {
         auto ptr = Match(t, PointerType);
         if (ptr->is_optional) {
@@ -252,6 +255,7 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
+    sss_type_t *variant_t = NULL;
     switch (ast->tag) {
     case Var: {
         auto var = Match(ast, Var);
@@ -702,6 +706,24 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
     }
+    case Variant: {
+        auto variant = Match(ast, Variant);
+        variant_t = parse_type_ast(env, variant->type);
+        if (variant_t->tag != VariantType)
+            compiler_err(env, variant->type, "This is not a variant type, it's %T", variant_t);
+
+        sss_type_t *variant_of_t = Match(variant_t, VariantType)->variant_of;
+        if (variant_of_t->tag == ArrayType && variant->value->tag == StringJoin) {
+            ast = variant->value;
+        } else {
+            sss_type_t *val_t = get_type(env, variant->value);
+            if (!type_eq(variant_of_t, val_t))
+                compiler_err(env, variant->value, "The %s variant expects a value of type %T, but this value has type %T",
+                             Match(variant_t, VariantType)->name, variant_of_t, val_t);
+            return compile_expr(env, block, variant->value);
+        }
+    }
+    // Fall through
     case StringJoin: {
         auto string_join = Match(ast, StringJoin);
         auto chunks = string_join->children;
@@ -711,7 +733,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
-        sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType), .dsl=string_join->dsl);
+        sss_type_t *string_t = variant_t ? variant_t : Type(ArrayType, .item_type=Type(CharType));
         gcc_type_t *gcc_t = sss_type_to_gcc(env, string_t);
         gcc_type_t *i16_t = gcc_type(env->ctx, INT16);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
@@ -760,18 +782,33 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_eval(*block, chunk_loc, gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, buf), file));
                 fclose(f);
             }
+
             ast_t *interp_value = interp->value;
-            if (string_join->dsl) {
-                interp_value = NewAST(env->file, interp_value->span.start, interp_value->span.end, Cast,
-                                      .value=interp_value, .type=NewAST(env->file, interp_value->span.start, interp_value->span.start,
-                                                                        TypeDSL, .name=string_join->dsl));
-            }
             sss_type_t *t = get_type(env, interp_value);
 
-            if (!interp->quote_string && t->tag == ArrayType && Match(t, ArrayType)->item_type->tag == CharType && Match(t, ArrayType)->dsl == string_join->dsl) {
-                gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp_str");
-                gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
-                gcc_rvalue_t *obj = gcc_rval(interp_var);
+            if (variant_t && !type_eq(t, variant_t) && !get_from_namespace(env, variant_t, heap_strf("#convert-from:%s", type_to_string(t)))
+                && get_from_namespace(env, variant_t, heap_strf("#convert-from:%s", type_to_string(Type(ArrayType, .item_type=Type(CharType)))))) {
+                interp_value = WrapAST(interp_value, Interp, interp_value);
+                t = Type(ArrayType, .item_type=Type(CharType));
+            }
+
+            gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp_str");
+            gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
+            gcc_rvalue_t *obj = gcc_rval(interp_var);
+
+            if (!type_eq(t, string_t)) {
+                binding_t *convert_b = get_from_namespace(env, string_t, heap_strf("#convert-from:%s", type_to_string(t)));
+                if (convert_b) {
+                    gcc_lvalue_t *converted_var = gcc_local(func, loc, sss_type_to_gcc(env, string_t), "_converted");
+                    gcc_assign(*block, loc, converted_var, gcc_callx(env->ctx, loc, convert_b->func, obj));
+                    obj = gcc_rval(converted_var);
+                    t = string_t;
+                } else if (variant_t) {
+                    compiler_err(env, interp->value, "I don't know how to interpolate %T values in a %T string", t, variant_t);
+                }
+            }
+
+            if (!interp->quote_string && type_eq(t, string_t)) {
                 // i = 1
                 gcc_type_t *i32 = gcc_type(env->ctx, INT32);
                 gcc_lvalue_t *i = gcc_local(func, loc, i32, "_i");
@@ -808,14 +845,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 *block = done;
                 continue;
             }
-
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             
             gcc_rvalue_t *cycle_checker = make_cycle_checker(env, loc, *block);
             gcc_rvalue_t *print_call = gcc_callx(
-                env->ctx, chunk_loc, print_fn, 
-                compile_expr(env, block, interp_value), file, cycle_checker,
+                env->ctx, chunk_loc, print_fn, obj, file, cycle_checker,
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false));
             assert(print_call);
             gcc_eval(*block, chunk_loc, print_call);
@@ -871,7 +906,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                            .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
-    case StructDef: case Extend: case TaggedUnionDef: {
+    case StructDef: case TaggedUnionDef: case VariantDef: {
         sss_type_t *t;
         List(ast_t*) members;
         if (ast->tag == StructDef) {
@@ -886,10 +921,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             binding_t *b = get_binding(env, tu_def->name);
             if (!b) compiler_err(env, ast, "I couldn't find the type for the tagged union named '%s'", tu_def->name);
             t = Match(b->type, TypeType)->type;
+        } else if (ast->tag == VariantDef) {
+            auto def = Match(ast, VariantDef);
+            members = def->body ? Match(def->body, Block)->statements : LIST(ast_t*);
+            t = Type(VariantType, .true_name=heap_strf("%s:%s", ast->span.file->filename, def->name),
+                     .name=def->name, .variant_of=parse_type_ast(env, def->variant_of));
         } else {
-            auto extend = Match(ast, Extend);
-            members = Match(extend->body, Block)->statements;
-            t = parse_type_ast(env, extend->type);
+            errx(1, "Unreachable");
         }
         env = get_type_env(env, t);
         foreach (members, member, _) {
@@ -929,9 +967,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             t = get_type(env, ast);
         }
 
-        size_t num_values = length(struct_->members);
+        while (t->tag == VariantType)
+            t = Match(t, VariantType)->variant_of;
+
+        if (t->tag != StructType)
+            compiler_err(env, ast, "This is not a valid struct type");
 
         auto struct_type = Match(t, StructType);
+        size_t num_values = length(struct_->members);
         if (length(struct_type->field_names) == 0) {
             // GCC doesn't allow empty constructors for empty structs, but for
             // some reason, it's perfectly fine to just declare an empty struct
@@ -1093,8 +1136,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             switch (value_type->tag) {
             case ModuleType: goto non_method_fncall;
             case TypeType: {
-                if (access->fielded->tag != Var)
-                    compiler_err(env, call->fn, "I only know how to access type members by referencing the type directly like foo.baz()");
                 sss_type_t *fielded_type = Match(value_type, TypeType)->type;
                 binding_t *binding = get_from_namespace(env, fielded_type, access->field);
                 if (!binding)
@@ -1372,6 +1413,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             fielded_t = ptr->pointed;
             goto get_field;
         }
+        case VariantType: {
+            fielded_t = Match(fielded_t, VariantType)->variant_of;
+            goto get_field;
+        }
         case StructType: {
             gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
             gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
@@ -1529,8 +1574,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto indexing = Match(ast, Index);
 
         sss_type_t *t = get_type(env, indexing->indexed);
-        while (t->tag == PointerType)
-            t = Match(t, PointerType)->pointed;
+        for (;;) {
+            if (t->tag == PointerType)
+                t = Match(t, PointerType)->pointed;
+            else if (t->tag == VariantType)
+                t = Match(t, VariantType)->variant_of;
+            else break;
+        }
 
         if (t->tag == ArrayType) {
             return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
@@ -1606,7 +1656,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
         sss_type_t *t = get_type(env, value);
-        return gcc_str(env->ctx, type_to_string(t));
+        return gcc_str(env->ctx, type_to_typeof_string(t));
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;

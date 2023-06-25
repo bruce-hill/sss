@@ -45,7 +45,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes","xor","with","while","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
-    "or","not","no","mod1","mod","is","in","if","for","fail","extern","extend","else","do","del",
+    "or","not","no","mod1","mod","is","in","if","for","fail","extern","else","do","del",
     "defer","def","by","bitcast","between","as","and","_mix_","_min_","_max_",NULL,
 };
 
@@ -68,7 +68,7 @@ static ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
-static PARSER(parse_indented_block);
+static ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
@@ -76,9 +76,9 @@ static PARSER(parse_defer);
 static PARSER(parse_with);
 static PARSER(parse_do);
 static PARSER(parse_if);
-static PARSER(parse_extend);
 static PARSER(parse_expr);
 static PARSER(parse_extended_expr);
+static PARSER(parse_term_no_suffix);
 static PARSER(parse_term);
 static PARSER(parse_inline_block);
 static PARSER(_parse_type);
@@ -649,14 +649,6 @@ PARSER(parse_type_name) {
     return fielded ? fielded : ast;
 }
 
-PARSER(parse_dsl_type) {
-    const char *start = pos;
-    if (!match(&pos, "$")) return NULL;
-    const char* id = get_id(&pos);
-    if (!id) return NULL;
-    return NewAST(ctx->file, start, pos, TypeDSL, .name=id);
-}
-
 static const char* get_units(const char **pos) {
     // +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (_[`*,/_])
     size_t len = strcspn(*pos, ">");
@@ -672,7 +664,6 @@ PARSER(_parse_type) {
     bool success = (false
         || (type=parse_pointer_type(ctx, pos))
         || (type=parse_type_type(ctx, pos))
-        || (type=parse_dsl_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_struct_type(ctx, pos))
@@ -894,8 +885,11 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
     if (*pos == '.') return NULL;
+    whitespace(&pos);
+    bool dollar = match(&pos, "$");
     const char* field = get_id(&pos);
     if (!field) return NULL;
+    if (dollar) field = heap_strf("$%s", field);
     return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
@@ -979,6 +973,16 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     bool unchecked = match(&pos, ";") && (spaces(&pos), match_word(&pos, "unchecked") != 0);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
+}
+
+ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs) {
+    if (!lhs) return NULL;
+    const char *start = lhs->span.start;
+    const char *pos = lhs->span.end;
+    if (!match(&pos, "::")) return NULL;
+    ast_t *obj = expect_ast(ctx, start, &pos, parse_term_no_suffix,
+                            "I expected to find an expression here to create a variant of");
+    return NewAST(ctx->file, start, pos, Variant, .type=lhs, .value=obj);
 }
 
 ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast)
@@ -1142,15 +1146,6 @@ PARSER(parse_with) {
         cleanup = expect_ast(ctx, start, &pos, parse_statement, "I expected a cleanup expression for this 'with'");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'with'");
     return NewAST(ctx->file, start, pos, With, .var=var, .expr=expr, .cleanup=cleanup, .body=body);
-}
-
-PARSER(parse_extend) {
-    // extend <type> <indent> body
-    const char *start = pos;
-    if (!match_word(&pos, "extend")) return NULL;
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I expected a type to parse");
-    ast_t *body = expect_ast(ctx, start, &pos, parse_indented_block, "I expected a body for this 'extend'");
-    return NewAST(ctx->file, start, pos, Extend, .type=type, .body=body);
 }
 
 PARSER(parse_loop_var) {
@@ -1342,10 +1337,8 @@ PARSER(parse_string) {
     static const char interps[128] = {['>']='@', ['/']='@', ['\'']='\x1A', ['(']='\x1A'};
 
     const char *string_start = pos;
-    const char *dsl = NULL;
     char open, close;
     if (match(&pos, "$")) {
-        dsl = is_xid_continue_next(pos) ? get_id(&pos) : NULL;
         open = *pos;
         close = closing[(int)open] ? closing[(int)open] : open;
         ++pos;
@@ -1472,7 +1465,7 @@ PARSER(parse_string) {
         }
     }
   string_finished:;
-    return NewAST(ctx->file, string_start, pos, StringJoin, .children=chunks, .dsl=dsl);
+    return NewAST(ctx->file, string_start, pos, StringJoin, .children=chunks);
 }
 
 PARSER(parse_skip) {
@@ -1524,6 +1517,7 @@ PARSER(parse_lambda) {
         if (!name) break;
         APPEND(arg_names, name);
         spaces(&pos);
+        if (match(&pos, "::")) return NULL;
         if (!match(&pos, ":")) {
             // Only an error if we're definitely in a lambda
             if (LIST_LEN(arg_types) > 0)
@@ -1585,10 +1579,10 @@ PARSER(parse_bitcast) {
     return NewAST(ctx->file, start, pos, Bitcast, .value=expr, .type=t);
 }
 
-PARSER(parse_term) {
+PARSER(parse_term_no_suffix) {
     spaces(&pos);
     ast_t *term = NULL;
-    bool success = (
+    (void)(
         false
         || (term=parse_nil(ctx, pos))
         || (term=parse_ellipsis(ctx, pos))
@@ -1621,13 +1615,18 @@ PARSER(parse_term) {
         || (term=parse_not(ctx, pos))
         || (term=parse_extern(ctx, pos))
         );
+    return term;
+}
 
-    if (!success) return NULL;
+PARSER(parse_term) {
+    ast_t *term = parse_term_no_suffix(ctx, pos);
+    if (!term) return NULL;
 
     for (bool progress = true; progress; ) {
         ast_t *new_term;
         progress = (false
             || (new_term=parse_index_suffix(ctx, term))
+            || (new_term=parse_variant_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
             || (new_term=parse_bang_suffix(ctx, term))
             || (new_term=parse_fncall_suffix(ctx, term, true))
@@ -1987,7 +1986,6 @@ PARSER(parse_extended_expr) {
         || (expr=optional_ast(ctx, &pos, parse_do))
         || (expr=optional_ast(ctx, &pos, parse_defer))
         || (expr=optional_ast(ctx, &pos, parse_with))
-        || (expr=optional_ast(ctx, &pos, parse_extend))
         )
         return expr;
 
@@ -2033,10 +2031,6 @@ PARSER(parse_block) {
         }
     }
     return NewAST(ctx->file, start, pos, Block, .statements=statements);
-}
-
-PARSER(parse_indented_block) {
-    return indent(ctx, &pos) ? parse_block(ctx, pos) : NULL;
 }
 
 PARSER(parse_opt_indented_block) {
@@ -2121,6 +2115,7 @@ PARSER(parse_def) {
 
     bool is_inline = false;
     spaces(&pos);
+
     const char* name = get_id(&pos);
     if (!name) {
         if (isdigit(*pos)) goto derived_unit;
@@ -2260,6 +2255,10 @@ PARSER(parse_def) {
     } else if (match(&pos, "{")) { // Struct def Foo{...}
         --pos;
         return parse_struct_def(ctx, start, &pos, name);
+    } else if (match(&pos, "::")) { // Variant def Variant::T
+        ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
+        ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block); 
+        return NewAST(ctx->file, start, pos, VariantDef, .name=name, .variant_of=source_type, .body=body);
     } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
         ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
         expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");

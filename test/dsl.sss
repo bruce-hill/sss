@@ -1,69 +1,80 @@
 
->>> $JSON{{"inner":{"obj":[]}}}
-=== $JSON"{\"inner\":{\"obj\":[]}}"
+def JSON::Str
+    def j:JSON as Str
+        return bitcast j as Str
+    def str:Str as JSON
+        return bitcast str.quoted() as JSON
+
+>>> JSON::"true"
+>>> JSON::${{"inner":{"obj":[]}}}
+=== JSON::"{\"inner\":{\"obj\":[]}}"
 
 // Verify string methods work:
->>> $JSON|abc|.starts_with($JSON|a|)
+>>> (JSON::"abc").starts_with(JSON::"a")
 === yes
->>> $JSON|abc|.replace($JSON|b|, $JSON|X|)
-=== $JSON"aXc"
+>>> (JSON::$|abc|).replace(JSON::"b", JSON::"X")
+=== JSON::"aXc"
+
+def SQL::Str
+    def str:Str as SQL
+        return bitcast "\x1b[0;35m'$(str.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as SQL
+
+    def i:Int as SQL
+        return bitcast "\x1b[0;35m$i\x1b[m" as SQL
+
+    def n:Num as SQL
+        return bitcast "\x1b[0;35m$n\x1b[m" as SQL
 
 name := "Robert'; drop table students;--"
 
-def s:Str as $SQL
-    return bitcast "\x1b[0;35m'$(s.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as $SQL
-
-def i:Int as $SQL
-    return bitcast "\x1b[0;35m$i\x1b[m" as $SQL
-def n:Num as $SQL
-    return bitcast "\x1b[0;35m$n\x1b[m" as $SQL
-
 age := 10
-s := $SQL"SELECT * FROM students WHERE name = $name AND age > $age"
+s := SQL::"SELECT * FROM students WHERE name = $name AND age > $age"
 say (bitcast s as Str)
 
-def s:Str as $Quoted
-    return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as $Quoted
+def Quoted::Str
+    def s:Str as Quoted
+        return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as Quoted
 
 str := "one two"
 str2 := 'with "quotes" in it'
-say (bitcast $Quoted[my strings are $str and $(str2)!] as Str)
+say (bitcast Quoted::$[my strings are $str and $(str2)!] as Str)
 
-def s:Str as $HTML
-    s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
-         .replace("<", "\x1b[34;1m&lt;\x1b[0;35m")
-         .replace(">", "\x1b[34;1m&gt;\x1b[0;35m")
-         .replace('"', "\x1b[34;1m&quot;\x1b[0;35m")
-         .replace("'", "\x1b[34;1m&#39;\x1b[0;35m")
+def HTML::Str
+    def s:Str as HTML
+        s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
+             .replace("<", "\x1b[34;1m&lt;\x1b[0;35m")
+             .replace(">", "\x1b[34;1m&gt;\x1b[0;35m")
+             .replace('"', "\x1b[34;1m&quot;\x1b[0;35m")
+             .replace("'", "\x1b[34;1m&#39;\x1b[0;35m")
 
-    return bitcast "\x1b[0;35m$s\x1b[m" as $HTML
+        return bitcast "\x1b[0;35m$s\x1b[m" as HTML
 
-def strings:[Str] as $HTML
-    return bitcast [
-        ++"<ol>\n",
-        for str in strings
-            c for c in $HTML[<li>$str</li>]
-        between
-            "\n"[1]
-        ,
-        ++"\n</ol>",
-    ] as $HTML
+    def strings:[Str] as HTML
+        return bitcast [
+            ++"<ol>\n",
+            for str in strings
+                c for c in HTML::$[<li>$str</li>]
+            between
+                "\n"[1]
+            ,
+            ++"\n</ol>",
+        ] as HTML
 
-def table:{Str=>Str} as $HTML
-    return bitcast [
-        ++"<table>\n",
-        for e in table
-            c for c in $HTML[<tr><td>$e.key</td><td>$e.value</td></tr>\n]
-        ,
-        ++"</table>",
-    ] as $HTML
+    def table:{Str=>Str} as HTML
+        return bitcast [
+            ++"<table>\n",
+            for e in table
+                c for c in HTML::$[<tr><td>$e.key</td><td>$e.value</td></tr>\n]
+            ,
+            ++"</table>",
+        ] as HTML
 
 my_strings := ["item one", "I <3 escaping", "all done"]
 my_table := {"key1"=>"value1", "key2"=>"value2"}
-html := $HTML[
+html := HTML::"
     <body>
     $my_strings
     $my_table
     </body>
-]
+"
 say (bitcast html as Str)

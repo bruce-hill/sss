@@ -80,8 +80,8 @@ def spoof(text:Str)->@File
     f.rewind()
     return f
 
-extend $Glob
-    def expand(g:$Glob  )->[Str]
+def Glob::Str
+    def expand(g:Glob)->[Str]
         def glob_t{
             gl_pathc:Int64
             gl_pathv:?@CStringChar
@@ -102,11 +102,11 @@ extend $Glob
         is _
             return [:Str]
 
-def s:Str as $Glob
-    return bitcast ([
-        for c in s
-            if c is `\;`{;`};`*;`?;`[;`]
-                ++[`\, c]
-            is plain
-                ++[plain]
-    ]) as $Glob
+    def s:Str as Glob
+        return bitcast ([
+            for c in s
+                if c is `\;`{;`};`*;`?;`[;`]
+                    ++[`\, c]
+                is plain
+                    ++[plain]
+        ]) as Glob

@@ -42,12 +42,12 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer,
-    TypeMeasure, TypeDSL, TypeTypeAST,
+    TypeMeasure, TypeTypeAST,
     Cast, Bitcast,
     Struct, StructDef, StructField,
     TaggedUnionDef, TypeTaggedUnion, TaggedUnionField,
     Index, FieldAccess,
-    UnitDef, ConvertDef,
+    UnitDef, ConvertDef, VariantDef,
     Reduction,
     DocTest,
     Defer,
@@ -56,6 +56,7 @@ typedef enum {
     Use,
     Delete,
     LinkerDirective,
+    Variant,
 } ast_tag_e;
 
 #define NUM_AST_TAGS (LinkerDirective + 1)
@@ -98,7 +99,6 @@ struct ast_s {
             const char *str;
         } StringLiteral;
         struct {
-            const char *dsl;
             List(ast_t*) children;
         } StringJoin;
         struct {
@@ -222,9 +222,6 @@ struct ast_s {
             const char *units;
         } TypeMeasure;
         struct {
-            const char *name;
-        } TypeDSL;
-        struct {
             ast_t *type;
         } TypeTypeAST;
         struct {
@@ -274,6 +271,11 @@ struct ast_s {
             ast_t *source_type, *target_type, *body;
         } ConvertDef;
         struct {
+            const char *name;
+            ast_t *variant_of;
+            ast_t *body;
+        } VariantDef;
+        struct {
             ast_t *iter, *combination, *fallback;
         } Reduction;
         struct {
@@ -304,6 +306,9 @@ struct ast_s {
         struct {
             List(const char*) directives;
         } LinkerDirective;
+        struct {
+            ast_t *type, *value;
+        } Variant;
     } __data;
 };
 
