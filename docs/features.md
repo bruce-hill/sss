@@ -422,36 +422,55 @@ When converting a value to a string for an interpolation, SSS automatically
 generates the code to format the value, including all its fields and data,
 in a canonical format that is nearly identical to SSS code.
 
-## DSLs
+## DSLs and Type Variants
 
-SSS supports safe-by-design strings representing non-SSS code. An extremely
-common source of security vulnerabilities occurs when intermixing code (e.g.
-SQL code or HTML code) with user-controlled inputs. The result is code
-injection attacks. SSS addresses this problem by providing DSL strings (DSL =
-Domain Specific Language). DSL strings come with compile-time type safety to
-prevent accidentally mixing up different types of strings and automatic string
-escaping when performing string interpolations.
+SSS supports safe-by-design strings representing code such as HTML or SQL. An
+extremely common source of security vulnerabilities occurs when combining
+user-controlled inputs with runnable code (e.g. SQL code or HTML code). The
+result is code injection attacks. SSS addresses this problem by providing type
+variants for strings and other types. A type variant allows you to define a type
+that is structurally identical to an existing type (e.g. a String), but is not
+interchangeable and does not have the same string interpolation rules.
 
-### Easy Language Embedding
-
-SSS allows for writing strings that contain code using DSL strings, which
-self-document which domain-specific language the string uses, as well as
-providing multiple different string delimiters to make it easy to avoid
-[leaning toothpick
-syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome). DSL
-strings are prefixed by `$` and an identifier, followed by a pair of
-delimiters, like `$Foo"quotes"`, `$Foo[brackets]`, `$Foo/slashes/`,
-`$Foo;semicolons;`, `$Foo{braces}`, and so on. Additionally, `>` and `:` can be
-used to indicate the string continues till the end of the line. Different
-domain-specific languages have different values that need to be escaped, so
-it's important to have options for how to most conveniently represent whatever
-you need to.
+As an example, let's define a custom type representing SQL queries:
 
 ```
-pat := $Regex/[0-9]+|['"]+/
-json := $JSON!{"key"=[1,2,3]}!
-sss := $SSS`foo := $DSL[...]`
-shell := $Shell> ls $HOME
+def SQL::Str
+    // Define a function to automatically escape strings for SQL:
+    def str:Str as SQL
+        return bitcast "'$(str.replace("'", "''"))'" as SQL
+
+>>> SQL::"SELECT * FROM users"
+=== SQL::"SELECT * FROM users"
+
+>>> username := "Bob"
+>>> SQL::"SELECT * FROM users WHERE name = $username"
+=== SQL::"SELECT * FROM users WHERE name = 'Bob'"
+
+// Malicious input is automatically sanitized:
+>>> username = "'; drop table users; --"
+>>> SQL::"SELECT * FROM users WHERE name = $username"
+=== SQL::"SELECT * FROM users WHERE name = '''; drop table users'"
+```
+
+## Custom String Delimiters
+
+A convenience feature that SSS offers is custom string delimiters for cases
+where you want to write strings that include lots of quotation marks or
+backslashes. This helps make it easy to avoid [leaning toothpick
+syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome). Custom
+string delimiters are prefixed by `$`, followed by a character to use as a
+delimiter, like `$"quotes"`, `$[brackets]`, `$/slashes/`, `$;semicolons;`,
+`${braces}`, and so on. Additionally, `>` and `:` can be used to indicate the
+string continues till the end of the line. Different languages have different
+values that need to be escaped, so it's important to have options for how to
+most conveniently represent whatever you need to.
+
+```
+pat := Regex::$/[0-9]+|['"]+/
+json := JSON::$!{"key"=[1,2,3]}!
+sss := SSS::$`foo := $DSL[...]`
+shell := Shell::$> ls $HOME
 ```
 
 SSS's multi-line strings use indentation to delimit string boundaries, and
@@ -460,16 +479,18 @@ DSL strings can have the same format. Strings end where indented regions end
 avoid ambiguity:
 
 ```
-json := $JSON:
+json := JSON::"
     {
         "key"="value",
         "foo"=99
     }
+"
 
-html := $HTML:
+html := HTML::"
     <ul>
         <li>...</li>
     </ul>
+"
 ```
 
 ### Sanitizing Inputs
@@ -495,11 +516,12 @@ programmer and "unsafe" strings from elsewhere in the program.
 In SSS, there is a much better solution for this problem: DSL strings.
 
 ```python
-def s:Str as $SQL
-    return bitcast ("'" ++ (str.replace("'", "''")) ++ "'") as $SQL
+def SQL::Str
+    def s:Str as SQL
+        return bitcast ("'" ++ (str.replace("'", "''")) ++ "'") as SQL
 
 symbol := get_requested_symbol()
-query := $SQL"SELECT * FROM stocks WHERE symbol = $symbol"
+query := SQL::"SELECT * FROM stocks WHERE symbol = $symbol"
 sql_execute(query)
 ```
 
@@ -530,7 +552,7 @@ the easy and automatic thing to do.
 
 ```python
 malicious := "xxx'; drop table users; --"
-query := $SQL"SELECT * FROM users WHERE name = $malicious"
+query := SQL::"SELECT * FROM users WHERE name = $malicious"
 say "$query"
 // prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
 ```
@@ -539,19 +561,20 @@ DSL strings also allow escaping values besides strings, which can be useful in
 cases like escaping lists of filenames for shell code:
 
 ```python
-def str:Str as $Shell
-    return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
+def Shell::Str
+    def str:Str as Shell
+        return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
 
-def strings:[Str] as $Shell
-    ret := $Shell""
-    for str in strings
-        ret += $Shell"$str"
-    between ret += $Shell" "
-    return ret
+    def strings:[Str] as Shell
+        ret := Shell::""
+        for str in strings
+            ret += Shell::"str"
+        between ret += Shell::" "
+        return ret
 
 files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
 dest := "/tmp"
-cmd := $Shell> cp @files @dest
+cmd := Shell::$> cp @files @dest
 say "$cmd"
 // prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
 ```
