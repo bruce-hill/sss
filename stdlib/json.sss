@@ -65,9 +65,9 @@ def JSON::Str
             unless match(js, JSON::"{")
                 return Object.Invalid(*js)
 
-            skip_spaces(js)
             obj := &{:Str=>Object}
             repeat
+                skip_spaces(js)
                 key := if match_str(js) is String(s) then s else stop
                 skip_spaces(js)
                 unless match(js, JSON::":")
@@ -75,6 +75,8 @@ def JSON::Str
                 skip_spaces(js)
                 value := match_json(js)
                 obj[key] = value
+                skip_spaces(js)
+                stop unless match(js, JSON::",")
 
             unless match(js, JSON::"}")
                 return Object.Invalid(*js)
