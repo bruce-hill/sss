@@ -309,6 +309,8 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
     case And: op = GCC_BINOP_BITWISE_AND; break;
     case Or: op = GCC_BINOP_BITWISE_OR; break;
     case Xor: op = GCC_BINOP_BITWISE_XOR; break;
+    case LeftShift: op = GCC_BINOP_LSHIFT; break;
+    case RightShift: op = GCC_BINOP_RSHIFT; break;
     default: compiler_err(env, ast, "Unsupported math operation");
     }
 

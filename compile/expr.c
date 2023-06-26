@@ -1896,7 +1896,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case OrUpdate: case AndUpdate: case XorUpdate: {
         return math_update(env, block, ast);
     }
-    case Add: case Subtract: case Divide: case Multiply: {
+    case Add: case Subtract: case Divide: case Multiply: case LeftShift: case RightShift: {
         return math_binop(env, block, ast);
     }
     case Concatenate: {

@@ -30,15 +30,15 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 
 static int op_tightness[NUM_AST_TAGS+1] = {
     [Power]=1,
-    [Multiply]=2, [Divide]=2,
+    [Multiply]=2, [Divide]=2, [Modulus]=2, [Modulus1]=2,
     [Add]=3, [Subtract]=3, [Concatenate]=3,
-    [Modulus]=4, [Modulus1]=4,
+    [LeftShift]=4, [RightShift]=4,
     [Min]=5, [Max]=5, [Mix]=5,
     [Range]=6,
     [RANGE_STEP]=7,
     [Cast]=7,
     [Greater]=8, [GreaterEqual]=8, [Less]=8, [LessEqual]=8,
-    [In]=9, [NotIn]=10,
+    [In]=9, [NotIn]=9,
     [Equal]=10, [NotEqual]=10,
     [And]=11, [Or]=11, [Xor]=11,
 };
@@ -1736,8 +1736,8 @@ ast_tag_e match_binary_operator(const char **pos)
     case '*': *pos += 1; return Multiply;
     case '/': *pos += 1; return Divide;
     case '^': *pos += 1; return Power;
-    case '<': *pos += 1; return match(pos, "=") ? LessEqual : Less;
-    case '>': *pos += 1; return match(pos, "=") ? GreaterEqual : Greater;
+    case '<': *pos += 1; return match(pos, "=") ? LessEqual : (match(pos, "<") ? LeftShift : Less);
+    case '>': *pos += 1; return match(pos, "=") ? GreaterEqual : (match(pos, ">") ? RightShift : Greater);
     default: {
         if (match(pos, "!=")) return NotEqual;
         else if (match(pos, "==") && **pos != '=') return Equal;
