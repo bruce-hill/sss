@@ -188,6 +188,10 @@ static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
     load_method(env, ns, "sss_string_split", "split", Type(ArrayType, .item_type=str_type),
                 ARG("str",str_type,0),
                 ARG("separators", str_type, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))));
+    load_method(env, ns, "sss_string_find", "find", Type(TaggedUnionType, .name="FindResult", .filename="FindResult", .members=LIST(sss_tagged_union_member_t,
+                {"failure", 0, NULL}, {"success", 1, Type(IntType, .bits=32)}), .tag_bits=8),
+                ARG("str",str_type,0),
+                ARG("pattern", str_type, 0));
 
     return str_type;
 }

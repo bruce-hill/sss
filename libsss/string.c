@@ -187,10 +187,10 @@ string_t from_c_string(const char *str)
     return (string_t){.data=buf, .length=len, .stride=1};
 }
 
-int32_t sss_string_find(string_t str, string_t pat)
+find_result_t sss_string_find(string_t str, string_t pat)
 {
-    if (str.length < pat.length) return 0;
-    if (pat.length == 0) return 1;
+    if (str.length < pat.length) return (find_result_t){.success=0};
+    if (pat.length == 0) return (find_result_t){.success=1, .index=1};
 
     // For short strings, do naive approach:
     // if (str.length*pat.length < UCHAR_MAX) {
@@ -199,10 +199,10 @@ int32_t sss_string_find(string_t str, string_t pat)
             if (str.data[s*str.stride] != pat.data[p*pat.stride])
                 goto not_a_match;
         }
-        return s+1;
+        return (find_result_t){.success=1, .index=s+1};
       not_a_match:;
     }
-    return 0;
+    return (find_result_t){.success=0};
     // }
 
     // // Boyer-Moore algorithm:
