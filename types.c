@@ -4,7 +4,7 @@
 #include "types.h"
 #include "util.h"
 
-static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_name) {
+static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_filename) {
     switch (t->tag) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
@@ -31,7 +31,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
             sss_type_t *inner = Match(t, TypeType)->type;
             if (!inner) return "Type(...)";
             CORD ret;
-            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded, use_true_name));
+            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded, use_filename));
             return ret;
         }
         case RangeType: return "Range";
@@ -39,14 +39,14 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
             auto array = Match(t, ArrayType);
             if (array->item_type->tag == CharType)
                 return "Str";
-            return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded, use_true_name), "]"));
+            return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded, use_filename), "]"));
         }
         case TableType: {
             CORD c = "{";
             auto table = Match(t, TableType);
-            c = CORD_cat(c, type_to_cord(table->key_type, expanded, use_true_name));
+            c = CORD_cat(c, type_to_cord(table->key_type, expanded, use_filename));
             c = CORD_cat(c, "=>");
-            c = CORD_cat(c, type_to_cord(table->value_type, expanded, use_true_name));
+            c = CORD_cat(c, type_to_cord(table->value_type, expanded, use_filename));
             c = CORD_cat(c, "}");
             return c;
         }
@@ -55,24 +55,24 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
             auto fn = Match(t, FunctionType);
             for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ",");
-                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), expanded, use_true_name));
+                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), expanded, use_filename));
             }
             c = CORD_cat(c, ")->");
-            c = CORD_cat(c, type_to_cord(fn->ret, expanded, use_true_name));
+            c = CORD_cat(c, type_to_cord(fn->ret, expanded, use_filename));
             return c;
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            const char *name = use_true_name ? struct_->true_name : struct_->name;
-            if (struct_->true_name && (!expanded || hget(expanded, struct_->true_name, char*))) {
+            const char *name = (use_filename && struct_->name) ? heap_strf("%s:%s", struct_->filename, struct_->name) : struct_->name;
+            if (name && (!expanded || hget(expanded, name, char*))) {
                 if (!struct_->units)
                     return name;
                 CORD c;
                 CORD_sprintf(&c, "%s<%s>", name, struct_->units);
                 return c;
             }
-            if (struct_->true_name && expanded)
-                hset(expanded, struct_->true_name, struct_->true_name);
+            if (name && expanded)
+                hset(expanded, name, name);
             CORD c = NULL;
             if (name)
                 c = CORD_cat(c, name);
@@ -86,7 +86,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
                 if (fname && !streq(fname, heap_strf("_%lu", i+1)))
                     c = CORD_cat(CORD_cat(c, fname), ":");
 
-                CORD fstr = type_to_cord(ft, expanded, use_true_name);
+                CORD fstr = type_to_cord(ft, expanded, use_filename);
                 c = CORD_cat(c, fstr);
             }
             c = CORD_cat(c, "}");
@@ -97,24 +97,24 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
         case PointerType: {
             auto ptr = Match(t, PointerType);
             if (ptr->is_stack)
-                return CORD_cat("&", type_to_cord(ptr->pointed, expanded, use_true_name));
+                return CORD_cat("&", type_to_cord(ptr->pointed, expanded, use_filename));
             else
-                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, expanded, use_true_name));
+                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, expanded, use_filename));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
             CORD ret;
-            CORD_sprintf(&ret, "Generator(%r)", type_to_cord(gen->generated, expanded, use_true_name));
+            CORD_sprintf(&ret, "Generator(%r)", type_to_cord(gen->generated, expanded, use_filename));
             return ret;
         }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            const char *name = use_true_name ? tagged->true_name : tagged->name;
-            if (!expanded || hget(expanded, tagged->true_name, char*))
+            const char *name = (use_filename && tagged->name) ? heap_strf("%s:%s", tagged->filename, tagged->name) : tagged->name;
+            if (!expanded || hget(expanded, name, char*))
                 return name;
 
-            if (tagged->true_name && expanded)
-                hset(expanded, tagged->true_name, tagged->true_name);
+            if (name && expanded)
+                hset(expanded, name, name);
 
             CORD c = CORD_cat(name, "{|");
 
@@ -128,7 +128,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
                     CORD_sprintf(&c, "%r%s=%ld", c, member.name, member.tag_value);
 
                 if (member.type)
-                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, expanded, use_true_name));
+                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, expanded, use_filename));
             }
             c = CORD_cat(c, "|}");
             return c;
@@ -140,13 +140,13 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_true_n
         }
         case VariantType: {
             auto variant = Match(t, VariantType);
-            const char *name = use_true_name ? variant->true_name : variant->name;
+            const char *name = use_filename ? heap_strf("%s:%s", variant->filename, variant->name) : variant->name;
             if (!expanded || hget(expanded, name, char*))
                 return name;
             if (expanded)
-                hset(expanded, variant->true_name, variant->true_name);
+                hset(expanded, name, name);
             CORD c;
-            CORD_sprintf(&c, "%s::%r", name, type_to_cord(variant->variant_of, expanded, use_true_name));
+            CORD_sprintf(&c, "%s::%r", name, type_to_cord(variant->variant_of, expanded, use_filename));
             return c;
         }
         default: {
@@ -271,7 +271,7 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
-        return Type(StructType, .true_name=s->true_name, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
+        return Type(StructType, .filename=s->filename, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
@@ -283,7 +283,7 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
     }
     case VariantType: {
         auto variant = Match(t, VariantType);
-        return Type(VariantType, .true_name=variant->true_name, .name=variant->name, .variant_of=with_units(variant->variant_of, units));
+        return Type(VariantType, .filename=variant->filename, .name=variant->name, .variant_of=with_units(variant->variant_of, units));
     }
     default: return t;
     }

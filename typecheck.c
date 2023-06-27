@@ -100,7 +100,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
-        sss_type_t *t = Type(StructType, .true_name=struct_->name ? heap_strf("%s:%s", ast->span.file->filename, struct_->name) : NULL,
+        sss_type_t *t = Type(StructType, .filename=ast->span.file->filename,
                              .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
             env = fresh_scope(env);
@@ -136,7 +136,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .true_name=tu->name ? heap_strf("%s:%s", ast->span.file->filename, tu->name) : NULL,
+        return Type(TaggedUnionType, .filename=ast->span.file->filename,
                     .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeTypeAST: {

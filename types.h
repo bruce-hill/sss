@@ -71,14 +71,14 @@ struct sss_type_s {
             sss_type_t *generated;
         } GeneratorType;
         struct {
-            const char *name, *true_name;
+            const char *name, *filename;
             List(const char*) field_names;
             List(sss_type_t*) field_types;
             List(ast_t*) field_defaults;
             const char* units;
         } StructType;
         struct {
-            const char* name, *true_name;
+            const char* name, *filename;
             List(sss_tagged_union_member_t) members;
             unsigned short int tag_bits;
         } TaggedUnionType;
@@ -86,7 +86,7 @@ struct sss_type_s {
             const char *path;
         } ModuleType;
         struct {
-            const char *name, *true_name;
+            const char *name, *filename;
             sss_type_t *variant_of;
         } VariantType;
     } __data;
