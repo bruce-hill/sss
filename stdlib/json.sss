@@ -1,7 +1,4 @@
 def Object{|Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)|}
-    def str:Str as Object
-        return (bitcast str as JSON) as Object
-
     def j:Object as JSON
         if j is Map(table)
             return JSON::[`{,
