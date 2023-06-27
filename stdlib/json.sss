@@ -1,30 +1,36 @@
 def Object{|Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)|}
-    def serialized(j:Object)->Str
+    def str:Str as Object
+        return (bitcast str as JSON) as Object
+
+    def j:Object as JSON
         if j is Map(table)
-            return [`{,
+            return JSON::[`{,
                 for entry in table
-                    c for c in "$(entry.key.quoted()): $(bitcast entry.value.serialized() as Str)"
+                    c for c in JSON::"$(Object.String(entry.key)): $(entry.value)"
                 between
                     c for c in ", "
                 , `}]
         is List(list)
-            return [`[,
+            return JSON::[`[,
                 for item in list
-                    c for c in item.serialized()
+                    c for c in item as JSON
                 between
                     c for c in ", "
                 , `]]
         is String(s)
-            return s.quoted()
+            return bitcast s.quoted() as JSON
         is Number(x); Boolean(x)
-            return "$x"
+            return JSON::"$x"
         is Null
-            return "null"
+            return JSON::"null"
         is Invalid(js)
             fail "invalid JSON: $js"
 
 def JSON::Str
-    def deserialize(js:JSON)->Object
+    def js:JSON as Str
+        return bitcast js as Str
+
+    def js:JSON as Object
         def match(js:&JSON, pattern:JSON; inline)->Bool
             if (*js).starts_with(pattern)
                 *js = (*js)[(#pattern+1)..]
@@ -141,13 +147,13 @@ def JSON::Str
         return bitcast "$n" as JSON
 
 if IS_MAIN_PROGRAM
-    >>> Object.Map({"x"=> Object.Boolean(yes), "y"=> Object.Null, "z"=> Object.List([Object.Number(1.2), Object.Number(3.4)])}).serialized()
-    === "{\"x\": yes, \"y\": null, \"z\": [1.2, 3.4]}"
-    >>> Object.String(${"Quotes" and \\backslashes}).serialized()
-    === "\"\\"Quotes\\" and \\backslashes\""
-    >>> JSON::$|{"x": true}|.deserialize()
+    >>> Object.Map({"x"=> Object.Boolean(yes), "y"=> Object.Null, "z"=> Object.List([Object.Number(1.2), Object.Number(3.4)])}) as JSON
+    === JSON::"{\"x\": true, \"y\": null, \"z\": [1.2, 3.4]}"
+    >>> Object.String(${"Quotes" and \\backslashes}) as JSON
+    === JSON::"\"\\"Quotes\\" and \\backslashes\""
+    >>> JSON::$|{"x": true}| as Object
     === Object.Map({"x"=>Object.Boolean(yes)})
-    >>> JSON::$|[1,2]|.deserialize()
+    >>> JSON::$|[1,2]| as Object
     === Object.List([Object.Number(1), Object.Number(2)])
     >>> x := Object.Map({"x"=> Object.String("hello")})
     >>> x.Map["x"].String
