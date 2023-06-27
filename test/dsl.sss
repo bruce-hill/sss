@@ -10,10 +10,20 @@ def JSON::Str
 === JSON::"{\"inner\":{\"obj\":[]}}"
 
 // Verify string methods work:
->>> (JSON::"abc").starts_with(JSON::"a")
+>>> JSON::"abc".starts_with(JSON::"a")
 === yes
->>> (JSON::$|abc|).replace(JSON::"b", JSON::"X")
+>>> JSON::$|abc|.replace(JSON::"b", JSON::"X")
 === JSON::"aXc"
+>>> JSON::"true"[1]
+=== t
+>>> JSON::"tr" ++ JSON::"ue"
+=== JSON::"true"
+>>> JSON::"trueXXX"[1..4]
+=== JSON::"true"
+>>> ptr := &JSON::"[true"
+>>> ptr.insert(`])
+>>> ptr
+=== &JSON::"[true]"
 
 def SQL::Str
     def str:Str as SQL

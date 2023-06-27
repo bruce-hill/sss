@@ -870,7 +870,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (!type_eq(lhs_t, rhs_t))
             compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %T vs. %T",
                          lhs_t, rhs_t);
-        if (lhs_t->tag != ArrayType)
+        sss_type_t *base_t = lhs_t;
+        while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
+        if (base_t->tag != ArrayType)
             compiler_err(env, ast, "Only array/string value types support concatenation, not %T", lhs_t);
         return lhs_t;
     }

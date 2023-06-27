@@ -1145,7 +1145,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default: {
-                binding_t *binding = (value_type->tag == ArrayType) ?
+                sss_type_t *base_t = value_type;
+                while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
+                binding_t *binding = (base_t->tag == ArrayType) ?
                     get_array_method(env, value_type, access->field)
                     : get_from_namespace(env, self_t, access->field);
                 if (!binding)

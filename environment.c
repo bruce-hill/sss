@@ -189,9 +189,9 @@ static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
                 ARG("str",str_type,0),
                 ARG("separators", str_type, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))));
     load_method(env, ns, "sss_string_find", "find", Type(TaggedUnionType, .name="FindResult", .filename="FindResult", .members=LIST(sss_tagged_union_member_t,
-                {"failure", 0, NULL}, {"success", 1, Type(IntType, .bits=32)}), .tag_bits=8),
+                {"Failure", 0, NULL}, {"Success", 1, Type(IntType, .bits=32)}), .tag_bits=8),
                 ARG("str",str_type,0),
-                ARG("pattern", str_type, 0));
+                ARG("pattern",str_type,0));
 
     return str_type;
 }
@@ -537,11 +537,14 @@ sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
         ns = new(sss_hashmap_t, .fallback=env->file_bindings);
         hset(&env->global->type_namespaces, type_to_string(t), ns);
 
-        if (type_eq(t, Type(ArrayType, .item_type=Type(CharType))))
-            (void)define_string_type(env, t);
-        // Ensure DSLs get auto-populated with string-equivalent methods:
-        if (t->tag == VariantType && Match(t, VariantType)->variant_of->tag == ArrayType
-            && Match(Match(t, VariantType)->variant_of, ArrayType)->item_type->tag == CharType)
+        sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+        sss_type_t *base_t = t;
+        for (;;) {
+            // if (base_t->tag == PointerType) base_t = Match(base_t, PointerType)->pointed;
+            if (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
+            else break;
+        }
+        if (type_eq(base_t, str_t))
             (void)define_string_type(env, t);
     }
     return ns;

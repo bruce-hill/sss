@@ -21,9 +21,19 @@ typedef struct {
     bool dynamic_size;
 } array_insert_info_t;
 
+static inline sss_type_t *get_item_type(sss_type_t *t) {
+    for (;;) {
+        if (t->tag == PointerType) t = Match(t, PointerType)->pointed; 
+        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of; 
+        else break;
+    }
+    return t->tag == ArrayType ? Match(t, ArrayType)->item_type : NULL;
+}
+
 static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_insert_info_t *info)
 {
-    if (Match(info->array_type, ArrayType)->item_type->tag == VoidType)
+    sss_type_t *item_type = get_item_type(info->array_type);
+    if (item_type->tag == VoidType)
         compiler_err(env, item, "Void values can't be put inside an array");
 
     sss_type_t *t = get_type(env, item); // item type
@@ -31,8 +41,6 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
         (void)compile_expr(env, block, item);
         return;
     }
-
-    sss_type_t *item_type = Match(info->array_type, ArrayType)->item_type;
 
     // This comes first, because the item may short-circuit
     gcc_rvalue_t *item_val = compile_expr(env, block, item);
@@ -87,7 +95,7 @@ gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_
     }
 
     sss_type_t *item_type = get_type(env, member);
-    if (!type_is_a(item_type, Match(t, ArrayType)->item_type))
+    if (!type_is_a(item_type, get_item_type(t)))
         compiler_err(env, member, "This value has type %T, but you're checking an array of type %T for membership", item_type, t);
 
     gcc_loc_t *loc = ast_loc(env, member);
@@ -173,7 +181,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_func_t *cow_fn = get_function(env, "array_cow");
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
                                      gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, Match(arr_t, ArrayType)->item_type)),
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, get_item_type(arr_t))),
                                      gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t))));
     gcc_jump(*block, NULL, done);
     *block = done;
@@ -234,7 +242,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
             offset = gcc_rval(offset_var);
 
-            gcc_type_t *gcc_item_t = sss_type_to_gcc(env, Match(arr_t, ArrayType)->item_type);
+            gcc_type_t *gcc_item_t = sss_type_to_gcc(env, get_item_type(arr_t));
             gcc_rvalue_t *items = pointer_offset(env, gcc_get_ptr_type(gcc_item_t), old_items,
                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, offset, gcc_cast(env->ctx, loc, old_stride, i32_t)));
 
@@ -285,7 +293,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             env->ctx, loc, slice_fn,
             gcc_bitcast(env->ctx, loc, arr, str_gcc_t),
             index_val,
-            gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, Match(arr_t, ArrayType)->item_type))),
+            gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, get_item_type(arr_t)))),
         array_gcc_t));
     // Set COW field:
     gcc_assign(*block, loc, gcc_lvalue_access_field(slice_var, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
@@ -304,17 +312,17 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         return array_field_slice(env, block, WrapAST(ast, Dereference, ast), field_name, access);
     }
 
-    if (array_t->tag != ArrayType)
+    sss_type_t *item_t = get_item_type(array_t);
+    if (!item_t)
         return NULL;
 
-    auto array = Match(array_t, ArrayType);
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
     gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
 
-    gcc_type_t *item_gcc_t = sss_type_to_gcc(env, array->item_type);
+    gcc_type_t *item_gcc_t = sss_type_to_gcc(env, item_t);
     gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
 
-    auto struct_type = Match(array->item_type, StructType);
+    auto struct_type = Match(item_t, StructType);
     for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
         if (!streq(ith(struct_type->field_names, i), field_name))  continue;
 
@@ -431,7 +439,8 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         arr_t = ptr->pointed;
     }
 
-    if (arr_t->tag != ArrayType)
+    sss_type_t *item_t = get_item_type(arr_t);
+    if (!item_t)
         compiler_err(env, arr_ast, "Only arrays may be indexed, but this value is a %T", arr_t);
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -448,7 +457,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
     index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
 
-    gcc_type_t *gcc_item_t = sss_type_to_gcc(env, Match(arr_t, ArrayType)->item_type);
+    gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
     if (unchecked)
         return gcc_rvalue_dereference(pointer_offset(env, gcc_get_ptr_type(gcc_item_t), items, index0), loc);
     else
@@ -466,7 +475,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
     gcc_lvalue_t *array_var = gcc_local(func, loc, gcc_t, "_array");
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
 
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     if (item_t->tag == VoidType)
         compiler_err(env, ast, "Arrays can't be defined with a Void item type");
 
@@ -530,8 +539,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 #define WRITE_LITERAL(b, str) gcc_eval(b, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
 #define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
 
-    auto array = Match(t, ArrayType);
-    sss_type_t *item_type = array->item_type;
+    sss_type_t *item_type = get_item_type(t);
     bool is_string = (item_type->tag == CharType);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
@@ -674,7 +682,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 static void define_array_insert(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
@@ -704,7 +712,7 @@ static void define_array_insert(env_t *env, sss_type_t *t)
 static void define_array_insert_all(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("other")),
@@ -733,7 +741,7 @@ static void define_array_insert_all(env_t *env, sss_type_t *t)
 static void define_array_remove(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT64), fresh("index")),
@@ -762,7 +770,7 @@ static void define_array_remove(env_t *env, sss_type_t *t)
 static void define_array_pop(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, INT64), fresh("index")),
@@ -799,7 +807,7 @@ static void define_array_pop(env_t *env, sss_type_t *t)
 static void define_array_shuffle(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
     };
@@ -822,7 +830,7 @@ static void define_array_shuffle(env_t *env, sss_type_t *t)
 static void define_array_sort(env_t *env, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = get_item_type(t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("array")),
     };
@@ -850,8 +858,6 @@ static void define_array_sort(env_t *env, sss_type_t *t)
 static void define_array_join(env_t *env, sss_type_t *glue_t)
 {
     sss_type_t *array_t = Type(ArrayType, .item_type=glue_t);
-    sss_type_t *item_t = Match(glue_t, ArrayType)->item_type;
-
     gcc_type_t *glue_gcc_t = sss_type_to_gcc(env, glue_t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, glue_gcc_t, fresh("glue")),
@@ -863,8 +869,8 @@ static void define_array_join(env_t *env, sss_type_t *glue_t)
     gcc_rvalue_t *retval = gcc_callx(env->ctx, NULL, c_join_func,
                                      AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[1]), NULL)),
                                      AS_VOID_PTR(gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL)),
-                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_t)),
-                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)));
+                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, glue_t)),
+                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(glue_t)));
     gcc_return(block, NULL, gcc_bitcast(env->ctx, NULL, retval, glue_gcc_t));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "glue"),
@@ -877,10 +883,11 @@ static void define_array_join(env_t *env, sss_type_t *glue_t)
 
 binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name)
 {
-    while (t->tag == PointerType) t = Match(t, PointerType)->pointed;
+    while (t->tag == PointerType)
+        t = Match(t, PointerType)->pointed;
 
     binding_t *b = get_from_namespace(env, t, method_name);
-    if (b || t->tag != ArrayType) return b;
+    if (b || !get_item_type(t)) return b;
 
     if (streq(method_name, "insert"))
         define_array_insert(env, t);
@@ -904,13 +911,13 @@ binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name)
 
 void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array_ptr)
 {
-    if (t->tag != ArrayType) return;
+    sss_type_t *item_type = get_item_type(t);
+    if (!item_type) return;
     // If necessary, flatten first:
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, ARRAY_STRIDE_FIELD)));
-    sss_type_t *item_type = Match(t, ArrayType)->item_type;
     gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),
                 *already_flat = gcc_new_block(func, fresh("already_flat"));
     gcc_jump_condition(*block, NULL,
