@@ -379,7 +379,7 @@ PARSER(parse_parens) {
 const char* match_units(const char **out) {
     const char *pos = *out;
     if (!match(&pos, "<")) return NULL;
-    pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789- ");
+    pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789-_ ");
     if (!match(&pos, ">")) return NULL;
     const char* buf = heap_strn(*out + 1, (size_t)(pos-1-(*out+1)));
     const char* ret = unit_string(buf);
