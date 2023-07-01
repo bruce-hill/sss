@@ -432,7 +432,42 @@ variants for strings and other types. A type variant allows you to define a type
 that is structurally identical to an existing type (e.g. a String), but is not
 interchangeable and does not have the same string interpolation rules.
 
-As an example, let's define a custom type representing SQL queries:
+As an example, let's look at SQL injection. In most mainstream programming
+languages, the type system is incapable of differentiating between a string
+that is meant to represent part of an SQL query and any other string. Because
+this can lead to problems, most SQL interfaces have a method for interpolating
+values safely, but this isn't enforced either at compile time or at runtime.
+For example, in Rust with the rusqlite library, the following code compiles
+without errors, but has a critical security vulnerability:
+
+```rust
+// Bad! Do not use string interpolation to build a query!
+let query = format!("SELECT * FROM users WHERE username = '{}' AND password_hash = '{}'",
+    username, password_hash);
+let mut stmt = conn.prepare(query.as_str())?;
+let mut rows = stmt.query([])?;
+while let Some(row) = rows.next()? {
+    // Let user log in...
+}
+```
+
+If the user supplies the username `admin' --`, then the query is constructed as
+`SELECT * FROM users WHERE username = 'admin' --' AND password_hash = '...'`.
+Since the `--` marks a comment in SQL, it bypasses the password validation and
+allows the malicious user to log in as admin or any other account. Since Rust
+does not differentiate between user-supplied strings and programmer-authored
+SQL queries, it can't automatically sanitize inputs or detect that the
+programmer has written insecure code. The line `let query = format!("SELECT …",
+username, password_hash)` appears to the language to be no different from any
+other string interpolation, and the line `conn.prepare(query.as_str())` appears
+to the language to be correct from a type safety perspective. Now, there *is* a
+correct way to safely interpolate values, but it's something the programmer has
+to know about and remember to do, with no help from the language.
+
+SSS solves this problem by allowing the user to define distinct types of
+strings and how values should be automatically escaped when converting to/from
+those types. This is effectively an idiot-proof way to prevent code injection
+bugs.
 
 ```
 def SQL::Str
@@ -440,18 +475,25 @@ def SQL::Str
     def str:Str as SQL
         return bitcast "'$(str.replace("'", "''"))'" as SQL
 
->>> SQL::"SELECT * FROM users"
-=== SQL::"SELECT * FROM users"
-
 >>> username := "Bob"
->>> SQL::"SELECT * FROM users WHERE name = $username"
-=== SQL::"SELECT * FROM users WHERE name = 'Bob'"
+>>> password_hash := "12345"
+>>> SQL::"SELECT * FROM users WHERE name = $username AND password_hash = $password_hash"
+=== SQL::"SELECT * FROM users WHERE name = 'Bob' AND password_hash = '12345'"
 
 // Malicious input is automatically sanitized:
->>> username = "'; drop table users; --"
->>> SQL::"SELECT * FROM users WHERE name = $username"
-=== SQL::"SELECT * FROM users WHERE name = '''; drop table users'"
+>>> username := "admin' --"
+>>> SQL::"SELECT * FROM users WHERE name = $username AND password_hash = $password_hash"
+=== SQL::"SELECT * FROM users WHERE name = 'admin'' --' AND password_hash = '12345'"
 ```
+
+Notice that the username is automatically surrounded by single quotes and has
+the single quote inside replaced with two single quotes, which is how to escape
+a single quote in SQL. The standard language mechanism for string interpolation
+is smart enough to understand when strings need to be sanitized or escaped.
+
+If a value is used for interpolation in a custom string variant when there is
+no explicitly defined conversion method, the compiler will produce an error and
+fail to compile the code.
 
 ## Custom String Delimiters
 
@@ -493,102 +535,20 @@ html := HTML::"
 "
 ```
 
-### Sanitizing Inputs
-
-As an example, let's consider SQL injection. A common security vulnerability in
-web application occurs when a programmer naively attempts to compose an SQL query
-out of hand-written SQL components and user-supplied strings. For example, using
-the Python sqlite library:
-
-```python
-# Never do this -- insecure!
-symbol = get_requested_symbol()
-sql.execute("SELECT * FROM stocks WHERE symbol = '%s'" % symbol)
-```
-
-The problem here is that if `symbol` is supplied by an attacker, or just not
-properly escaped by the programmer, [bad things can
-occur.](https://xkcd.com/327/) To make matters worse, in this Python library,
-there is no way to tell that anything has gone wrong until it's too late,
-because there is no differentiation between "safe" SQL strings authored by the
-programmer and "unsafe" strings from elsewhere in the program.
-
-In SSS, there is a much better solution for this problem: DSL strings.
-
-```python
-def SQL::Str
-    def s:Str as SQL
-        return bitcast ("'" ++ (str.replace("'", "''")) ++ "'") as SQL
-
-symbol := get_requested_symbol()
-query := SQL::"SELECT * FROM stocks WHERE symbol = $symbol"
-sql_execute(query)
-```
-
-DSL strings offer three important benefits: firstly, DSL strings are an easy way
-to write code within code. The `$Name` prefix clearly documents what type of string you're dealing
-with, and there is support for multiple different delimiters, whichever is most
-convenient for your domain. Nobody wants to sort through code with [leaning
-toothpick syndrome](https://en.wikipedia.org/wiki/Leaning_toothpick_syndrome),
-so instead, DSL strings are delimited by matching square brackets with _no
-escape characters_ other than `$` for interpolation. Alternatively, other
-delimiters are available for use, including `/slashes/`, `|pipes|`,
-`;semicolons;`, `,commas,`, `'single quotes'`, `"double quotes"`, `` `backticks` ``,
-or `{curly braces}`. Different domain-specific languages have different values
-that need to be escaped, so it's important to have options for how to most
-conveniently represent whatever you need to.
-
-Secondly, it will be a compile-time type error if the programmer attempts to
-pass an unsafe string to a function that expects an SQL query string:
-
-```python
-s := get_unsafe_string()
-sql_execute(s) // <-- type error
-```
-
-And finally, DSL string interpolation *automatically* escapes values, using a
-user-defined escaping function. Doing the safe thing (escaping values) becomes
-the easy and automatic thing to do.
-
-```python
-malicious := "xxx'; drop table users; --"
-query := SQL::"SELECT * FROM users WHERE name = $malicious"
-say "$query"
-// prints: SELECT * FROM users WHERE name = 'xxx''; drop table users; --'
-```
-
-DSL strings also allow escaping values besides strings, which can be useful in
-cases like escaping lists of filenames for shell code:
-
-```python
-def Shell::Str
-    def str:Str as Shell
-        return ("'" + (str | replace("'", "'\"'\"'")) + "'"):Shell
-
-    def strings:[Str] as Shell
-        ret := Shell::""
-        for str in strings
-            ret += Shell::"str"
-        between ret += Shell::" "
-        return ret
-
-files := ["file.txt", "`rm -f $HOME`", "isn't safe"]
-dest := "/tmp"
-cmd := Shell::$> cp @files @dest
-say "$cmd"
-// prints: cp 'file.txt' '`rm -f $HOME`' 'isn'"'"'t safe' /tmp
-```
-
 ### Preventing Data Leaks
 
-DSLs can also be used to guard against sensitive information being revealed
-accidentally.
+String variants can also be used to guard against sensitive information being
+revealed accidentally. One common cause of security incidents is accidental
+logging of sensitive information. For example:
 
 ```python
 def User {name:Str, password_hash:Str, credit_card:Str}
 
 def check_credentials(users:{Str=>User}, username:Str, password:Password)->Bool
-    user := users[username] or return no
+    if username not in users
+        return no
+
+    user := users[username]
     if hash_password(password) == user.password_hash
         return yes
     else
@@ -607,18 +567,25 @@ card numbers or password hashes:
 [log] Failed login attempt for User{name="Roland", password_hash="12345", credit_card="12345678"}
 ```
 
-One way to avoid this problem is to use custom DSL strings for sensitive data,
-which defines a custom `tostring()` implementation that obscures any private data:
+One way to avoid this problem is to use custom string variants for sensitive data,
+which defines a custom `as Str` implementation that obscures any private data:
 
 ```python
 def Sensitive::Str
-    def s:Str as Sensitive
-        return bitcast s as Sensitive
-
     def sensitive:Sensitive as Str
         return "******"
 
 def User {name:Str, password_hash:Sensitive, credit_card:Sensitive}
+```
+
+A user can be created using string variants like so:
+
+```
+user := User{
+    name="Roland",
+    password_hash=Sensitive::"12345",
+    credit_card=Sensitive::"12345678",
+}
 ```
 
 If `User` is defined in this way, the accidental log line will print a much
@@ -630,7 +597,11 @@ more benign log message:
 
 Even if the programmer prints `log("User: $username hash:
 $(user.password_hash)")` directly, the resulting string will have safely
-redacted values.
+redacted values. This is not an ironclad protection against data leaks, since
+it is still possible to bitcast a sensitive value to a `Str` or create a string
+using the characters inside it, however it does make it take extra work to do
+something unsafe instead of making it easy to accidentally leak sensitive
+information.
 
 ## Security
 

@@ -51,7 +51,8 @@ SSS.](docs/features.md) These include:
 - Comprehensions for arrays and tables
 - Well-defined reference and value semantics and mutability rules
 - Language-level support for correct and automatic function memoization
-- Type-safe DSL strings with automatic prevention of code injection
+- Type-safe strings representing different languages with automatic prevention
+  of code injection
 - Destructuring pattern matching with exhaustiveness checking
 - Beautiful and helpful compiler and runtime error messages with emphasis on
   user-friendliness
