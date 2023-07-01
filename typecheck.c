@@ -430,6 +430,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Dereference: {
         sss_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
+        while (pointer_t->tag == VariantType)
+            pointer_t = Match(pointer_t, VariantType)->variant_of;
+
         if (pointer_t->tag != PointerType)
             compiler_err(env, ast, "You're attempting to dereference a %T, which isn't a pointer", pointer_t);
         auto ptr = Match(pointer_t, PointerType);
