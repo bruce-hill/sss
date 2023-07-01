@@ -15,9 +15,8 @@ datatypes:
 
 ```SSS
 // This is not real code, it won't work:
-struct BinaryTree<T> {
+def BinaryTree<T> {
     value:T
-    depth:Int16
     left,right:?BinaryTree<T>
 }
 
@@ -30,8 +29,8 @@ def contains(tree:BinaryTree<T>, obj:T)->Bool
     else
         return no
 
-mytree := BinaryTree<Int32>{123,0}
-fail unless contains(mytree, 123)
+mytree := BinaryTree<Int32>{123}
+fail unless mytree.contains(123)
 
 ```
 
@@ -42,25 +41,24 @@ is quite a bit more complicated. This goes against the core SSS value of
 memory offset for `left` and `right` may be quite different. Consider these
 possibilities:
 
-T        | Offset of `value` | Offset of `depth` | Offset of `left` | Offset of `right`
----------+-------------------+-------------------+------------------+-------------------------------
-`Int8`   | 0                 | 1                 | 8                | 16
-`Int16`  | 0                 | 2                 | 8                | 16
-`Int32`  | 0                 | 4                 | 8                | 16
-`Int64`  | 0                 | 8                 | 16               | 24
+T        | Offset of `value` | Offset of `left` | Offset of `right`
+---------+-------------------+------------------+--------------------------
+`Int`    | 0                 | 8                | 16 
+`Str`    | 0                 | 16               | 24
 
-Since the memory layout depends on what `T` is, it's not possible to generate
-a single binary version of `contains()`, we need to generate multiple versions
-for every possible `T` data size.
+Since the memory layout depends on what `T` is, it's not possible to generate a
+single compiled version of `contains()`, we need to generate multiple versions
+for every possible `T` data size that's used in the program.
 
-Well, you might think, that's not so bad, there are only 4 possible data sizes,
-so surely that's doable. However, you'd be overlooking something particularly
-nasty about this code: the comparisons. The instructions generated for a
-comparison are different for different datatypes. Floating point numbers need
-floating point comparisons, strings need string comparisons, and so on. That
-means not only does a separate version of the function need to be made for each
-data *size*, but actually for each data *type*. For a function with multiple
-polymorphic parameters, things can get quite complex.
+Well, you might think, that's not so bad, there are only so many possible data
+sizes that a program might use, so surely that's doable. However, you'd be
+overlooking something particularly nasty about this code: the comparisons. The
+instructions generated for a comparison are different for different datatypes.
+Floating point numbers need floating point comparisons, strings need string
+comparisons, and so on. That means not only does a separate version of the
+function need to be made for each data *size*, but actually for each data
+*type*. For a function with multiple polymorphic parameters, things can get
+quite complex.
 
 If you think this problem can be solved by only generating the compiled
 functions for types you actually *call*, then you're about to run head-first
@@ -92,7 +90,7 @@ How can we resolve this issue? Are we doomed to never have reusable code for
 general-purpose datastructures or functions? The answer is that polymorphism is
 actually not particularly necessary to have in a fully featured and expressive
 language. There are a number of alternative techniques that solve the same
-problems that polymorphism solves, but avoids the compilation and complexity
+problems that polymorphism solves, but avoid the compilation and complexity
 problems of polymorphism. In this regard, I take a lot of inspiration from C,
 which has never had polymorphism, but has plenty of alternative ways to solve
 things.
@@ -107,24 +105,24 @@ and a `contains()` function, you could instead just use a table:
 
 ```SSS
 mydata := {123=>yes}
-fail unless mydata[123] == yes
+fail unless 123 in mydata
 ```
 
 For the vast majority of cases, a solid list implementation and a solid hash
 map implementation will be able to store your data and retrieve it quickly.
 
-How does SSS resolve the issues with memory offsets? It's simple: the
-compiler inlines list accesses and uses a hash table implementation that pads
-values to 64 bits. In other words, the compiler cheats and does polymorphism
-under the hood, but only for two specific datastructures.
+How does SSS resolve the issues with memory offsets? It's simple: the compiler
+inlines list accesses and automatically passes memory offset information to the
+hash map implementation. In other words, the compiler cheats and does
+polymorphism under the hood, but only for two specific datastructures.
 
 ### Alternative 2: Pointers
 
 Lists, hash maps, and structs might cover the vast majority of use cases, but
 there are still some general purpose datastructures that fill other niches.
 Let's consider quadtrees (or octtrees) as a case study. Quadtrees are meant for
-spatial querying, which is not something that hash maps are good at doing. What
-would a reusable quadtree implementation look like without polymorphism?
+efficient spatial querying. What would a reusable quadtree implementation look
+like without polymorphism?
 
 ```SSS
 def QuadTreeItem {
@@ -147,8 +145,8 @@ my_items := [@Foo{...}, @Foo{...}, @Foo{...}]
 my_qt := QuadTree.new()
 for item in my_qt
     my_qt.insert(
-        item.x-item.radius, item.x+item.radius,
-        item.y-item.radius, item.y+item.radius,
+        item.x-item.width, item.x+item.width,
+        item.y-item.height, item.y+item.height,
         item,
     )
 
@@ -160,6 +158,32 @@ for ptr in qt.query(0.0, 100.0, 0.0, 200.0)
 This is a simple solution because the data layout of the `QuadTree` and the
 generated binary code for each of its methods do not depend in any way on what
 the type of the contained items is.
+
+### Alternative 3: Unique IDs
+
+Another solution is to design the API to use opaque ID numbers instead of
+passing in objects directly. For example, instead of storing a `@Void` pointer
+to an object, instead store its `.id` field. That way, the quadtree
+implementation can focus on the things it cares about (spatial hashing) without
+worrying about the data layout of the objects in the quadtree. The API user is
+in charge of translating IDs into object and vice-versa, using a hash map or
+database or whatever they feel is appropriate.
+
+### Alternative 4: Composition
+
+Another common use of polymorphism is for having shared functionality between
+objects. These objects might share some amount of common structure (certain
+fields in common), which naturally leads to shared functionality. For example,
+if two different objects both had a `last_modified` timestamp, you might want a
+helper function to know if the object was recently modified. In some languages,
+you could write a polymorphic method called `was_recently_modified(obj:T)` that
+lets you know if any object with a `last_modified` field was recently modified.
+The alternative to writing a polymorphic method would be to structure the code
+to put common functionality into the commonly shared data (in this case, the
+timestamp). So instead of `was_recently_modified(obj)`, the code would become
+`obj.last_modified.is_recent()`. This lets you structure the code without code
+duplication, but it also lets you write every method with specific types and
+memory layouts in mind.
 
 
 ## Non-feature 2: Inheritance and OOP
