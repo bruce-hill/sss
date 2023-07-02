@@ -270,8 +270,7 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
             for (uint32_t i = 1; i <= bindings->count; i++) {
                 auto entry = hnth(bindings, i, const char*, binding_t*);
                 binding_t *b = entry->value;
-                if (b->type->tag == FunctionType || !b->sym_name
-                    || hget(env->bindings, entry->key, binding_t*) == b)
+                if (!b->sym_name || hget(env->bindings, entry->key, binding_t*) == b)
                     continue;
 
                 // Update the binding so it points to the global memory:
