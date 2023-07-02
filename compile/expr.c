@@ -205,21 +205,6 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
-static gcc_rvalue_t *make_cycle_checker(env_t *env, gcc_loc_t *loc, gcc_block_t *block)
-{
-    sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
-    gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
-    gcc_func_t *func = gcc_block_func(block);
-    gcc_lvalue_t *cycle_checker = gcc_local(func, loc, hashmap_gcc_t, "_rec");
-    gcc_assign(block, loc, cycle_checker, gcc_struct_constructor(env->ctx, loc, hashmap_gcc_t, 0, NULL, NULL));
-    gcc_lvalue_t *next_index = gcc_local(func, loc, gcc_type(env->ctx, INT64), "_index");
-    gcc_assign(block, loc, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
-    gcc_assign(block, loc, gcc_lvalue_access_field(
-            cycle_checker, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
-        gcc_lvalue_address(next_index, loc));
-    return gcc_cast(env->ctx, loc, gcc_lvalue_address(cycle_checker, loc), gcc_type(env->ctx, VOID_PTR));
-}
-
 static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
 {
     gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
@@ -238,8 +223,8 @@ static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc,
 
     *block = done_with_dim;
     gcc_func_t *print_fn = get_print_func(env, t);
-    gcc_rvalue_t *cycle_checker = make_cycle_checker(env, loc, *block);
-    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stderr_val, cycle_checker, get_binding(env, "USE_COLOR")->rval));
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stderr_val, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                                    get_binding(env, "USE_COLOR")->rval));
 
     gcc_block_t *use_dim_type = gcc_new_block(func, fresh("use_dim_type")),
                 *no_dim_type = gcc_new_block(func, fresh("no_dim_type")),
@@ -848,9 +833,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *print_fn = get_print_func(env, t);
             assert(print_fn);
             
-            gcc_rvalue_t *cycle_checker = make_cycle_checker(env, loc, *block);
             gcc_rvalue_t *print_call = gcc_callx(
-                env->ctx, chunk_loc, print_fn, obj, file, cycle_checker,
+                env->ctx, chunk_loc, print_fn, obj, file, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false));
             assert(print_call);
             gcc_eval(*block, chunk_loc, print_call);
@@ -2369,8 +2353,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_func_t *print_fn = get_print_func(env, t);
                 assert(print_fn);
                 
-                gcc_rvalue_t *cycle_checker = make_cycle_checker(env, loc, *block);
-                gcc_rvalue_t *print_call = gcc_callx(env->ctx, loc, print_fn, val, file, cycle_checker, gcc_rvalue_bool(env->ctx, false));
+                gcc_rvalue_t *print_call = gcc_callx(env->ctx, loc, print_fn, val, file, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                                                     gcc_rvalue_bool(env->ctx, false));
                 gcc_eval(*block, loc, print_call);
 
                 gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);

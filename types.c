@@ -517,6 +517,59 @@ bool can_leave_uninitialized(sss_type_t *t)
     }
 }
 
+static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
+{
+    switch (t->tag) {
+        case ArrayType: return _can_have_cycles(Match(t, ArrayType)->item_type, seen);
+        case TableType: {
+            auto table = Match(t, TableType);
+            return _can_have_cycles(table->key_type, seen) || _can_have_cycles(table->value_type, seen);
+        }
+        case StructType: {
+            auto struct_ = Match(t, StructType);
+            const char *name = struct_->name ? heap_strf("%s:%s", struct_->filename, struct_->name) : NULL;
+            if (name && hget(seen, name, sss_type_t*))
+                return true;
+
+            if (name)
+                hset(seen, name, t);
+
+            for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
+                sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
+                if (_can_have_cycles(ft, seen))
+                    return true;
+            }
+            return false;
+        }
+        case PointerType: return _can_have_cycles(Match(t, PointerType)->pointed, seen);
+        case GeneratorType: return _can_have_cycles(Match(t, GeneratorType)->generated, seen);
+        case TaggedUnionType: {
+            auto tagged = Match(t, TaggedUnionType);
+            const char *name = tagged->name ? heap_strf("%s:%s", tagged->filename, tagged->name) : NULL;
+            if (name && hget(seen, name, sss_type_t*))
+                return true;
+
+            if (name)
+                hset(seen, name, t);
+
+            for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
+                auto member = LIST_ITEM(tagged->members, i);
+                if (member.type && _can_have_cycles(member.type, seen))
+                    return true;
+            }
+            return false;
+        }
+        case VariantType: return _can_have_cycles(Match(t, VariantType)->variant_of, seen);
+        default: return false;
+    }
+}
+
+bool can_have_cycles(sss_type_t *t)
+{
+    sss_hashmap_t seen = {0};
+    return _can_have_cycles(t, &seen);
+}
+
 sss_type_t *table_entry_type(sss_type_t *table_t)
 {
     static sss_hashmap_t cache = {0};

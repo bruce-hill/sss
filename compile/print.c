@@ -330,15 +330,15 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             gcc_func_t *fputs_fn = get_function(env, "fputs");
             gcc_eval(nonnil_block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, obj, file));
             gcc_return_void(nonnil_block, NULL);
-            return func;
+            break;
         }
 
         gcc_func_t *fprintf_fn = get_function(env, "fprintf");
 
         const char *sigil = Match(t, PointerType)->is_stack ? "&" : "@";
 
+        block = nonnil_block;
         if (pointed_type->tag == VoidType) {
-            block = nonnil_block;
             COLOR_LITERAL(&block, "\x1b[0;34;1m");
             gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "%sVoid<%p>"), gcc_str(env->ctx, sigil), obj));
             COLOR_LITERAL(&block, "\x1b[m");
@@ -347,31 +347,56 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             break;
         }
 
-        { // If it's non-nil, check for cycles:
+        if (can_have_cycles(t)) {
+            // If it's non-nil and the type can have cycles, check for cycles:
             // Summary of the approach:
+            //     if (!cycle_checker) cycle_checker = &hashmap{...};
             //     index = *hashmap_set(cycle_checker, &obj, NULL)
             //     if (index == *cycle_checker->default_value) (i.e. uninitialized, i.e. this is the first time we've seen this)
             //         ++cycle_checker->default_value;
             //         ...proceed...
             //     else
             //         print("@#%d", index)
+
+            gcc_block_t *needs_cycle_checker = gcc_new_block(func, fresh("needs_cycle_checker")),
+                        *has_cycle_checker = gcc_new_block(func, fresh("has_cycle_checker"));
+
+            gcc_jump_condition(block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, rec,
+                                                           gcc_null(env->ctx, void_ptr_t)),
+                               needs_cycle_checker, has_cycle_checker);
+
+            // If the cycle checker is null, stack allocate one here and initialize it:
+            block = needs_cycle_checker;
+            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
+            gcc_func_t *func = gcc_block_func(block);
+            gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
+            gcc_assign(block, NULL, cycle_checker, gcc_struct_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL, NULL));
+            gcc_lvalue_t *next_index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_index");
+            gcc_assign(block, NULL, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
+            gcc_assign(block, NULL, gcc_lvalue_access_field(
+                    cycle_checker, NULL, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
+                gcc_lvalue_address(next_index, NULL));
+            gcc_assign(block, NULL, gcc_param_as_lvalue(params[2]),
+                       gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), gcc_type(env->ctx, VOID_PTR)));
+            gcc_jump(block, NULL, has_cycle_checker);
+            block = has_cycle_checker;
+
             gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
             gcc_func_t *hash_set_func = get_function(env, "sss_hashmap_set");
             gcc_func_t *hash_func = get_function(env, "hash_64bits");
             gcc_func_t *cmp_func = get_function(env, "compare_64bits");
 
             // val = sss_hashmap_set(rec, &obj, NULL)
-            block = nonnil_block;
             gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
             gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
             sss_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
             gcc_rvalue_t *index_ptr = gcc_callx(
                 env->ctx, NULL, hash_set_func, rec,
-                gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_star),
-                gcc_cast(env->ctx, NULL, gcc_get_func_address(cmp_func, NULL), void_star),
+                gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_ptr_t),
+                gcc_cast(env->ctx, NULL, gcc_get_func_address(cmp_func, NULL), void_ptr_t),
                 gcc_rvalue_size(env->ctx, sizeof(struct{void* key; int64_t value;})), 
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_star),
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(gcc_param_as_lvalue(params[0]), NULL), void_ptr_t),
                 gcc_rvalue_size(env->ctx, offsetof(struct{void* key; int64_t value;}, value)), 
                 gcc_null(env->ctx, gcc_get_ptr_type(gcc_type(env->ctx, INT64))));
             gcc_lvalue_t *index_var = gcc_local(func, NULL, gcc_get_ptr_type(i64), "_index");
