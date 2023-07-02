@@ -597,7 +597,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Block: {
         // Create scope:
-        return compile_block_expr(fresh_scope(env), block, ast);
+        if (!Match(ast, Block)->keep_scope)
+            env = fresh_scope(env);
+        return compile_block_expr(env, block, ast);
     }
     case FunctionDef: {
         auto fn = Match(ast, FunctionDef);

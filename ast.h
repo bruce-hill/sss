@@ -163,6 +163,8 @@ struct ast_s {
         } KeywordArg;
         struct {
             List(ast_t*) statements;
+            // Whether to keep using the existing scope instead of creating a new one:
+            bool keep_scope;
         } Block;
         struct {
             const char *label;

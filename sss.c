@@ -122,6 +122,12 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
     hset(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color_var), .type=Type(BoolType), .visible_in_closures=true));
 
+    // Keep track of which functions have already been compiled:
+    sss_hashmap_t compiled_functions = {0};
+
+    // Keep these alive and clean them up at the end so we can continue accessing their memory:
+    NEW_LIST(gcc_jit_result*, results);
+
     // Read lines until we get a blank line
     for (;;) {
       next_line:
@@ -132,7 +138,7 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
         gcc_jit_result *result = NULL;
 #define CLEANUP() do { \
         if (block) gcc_return_void(block, NULL); \
-        if (result) gcc_jit_result_release(result); \
+        if (result) append(results, result); \
         fclose(buf_file); \
         free(buf); } while (0) \
 
@@ -220,7 +226,7 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
             stmt = WrapAST(stmt, DocTest, .expr=stmt, .skip_source=true);
             APPEND(stmts, stmt);
         }
-        ast = WrapAST(ast, Block, .statements=stmts);
+        ast = WrapAST(ast, Block, .statements=stmts, .keep_scope=true);
 
         if (verbose)
             fprintf(stderr, "Result: %s\n", ast_to_str(ast));
@@ -229,17 +235,19 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
         block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        sss_hashmap_t old_globals = {0};
-        for (uint32_t i = 1; i <= env->global->bindings.count; i++) {
-            auto entry = hnth(&env->global->bindings, i, const char*, binding_t*);
-            hset(&old_globals, entry->key, entry->value);
-        }
-
         env_t *fresh_env = fresh_scope(env);
         compile_statement(fresh_env, &block, ast);
         if (block) {
             gcc_return_void(block, NULL);
             block = NULL;
+        }
+
+        for (uint32_t i = 1; i <= fresh_env->global->ast_functions.count; i++) {
+            auto entry = hnth(&fresh_env->global->ast_functions, i, ast_t*, func_context_t*);
+            if (hget(&compiled_functions, entry->value->func, void*))
+                continue;
+            compile_function(&entry->value->env, entry->value->func, entry->key);
+            hset(&compiled_functions, entry->value->func, entry->value->func);
         }
 
         result = gcc_compile(ctx);
@@ -257,32 +265,36 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
             fputs("\x1b[m", stdout);
         fflush(stdout);
 
-        // Copy out the global variables to GC memory
-        for (uint32_t i = 1; i <= env->global->bindings.count; i++) {
-            auto entry = hnth(&env->global->bindings, i, const char*, binding_t*);
-            if (hget(&old_globals, entry->key, binding_t*))
-                continue;
+        // Copy out the variables to GC memory
+        for (sss_hashmap_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
+            for (uint32_t i = 1; i <= bindings->count; i++) {
+                auto entry = hnth(bindings, i, const char*, binding_t*);
+                binding_t *b = entry->value;
+                if (b->type->tag == FunctionType || !b->sym_name
+                    || hget(env->bindings, entry->key, binding_t*) == b)
+                    continue;
 
-            binding_t *b = entry->value;
-            if (b->type->tag == FunctionType)
-                continue;
-
-            void *global = gcc_jit_result_get_global(result, entry->value->sym_name);
-            assert(global);
-            gcc_type_t *gcc_t = sss_type_to_gcc(env, b->type);
-            char *copy = GC_MALLOC(gcc_sizeof(env, b->type));
-            memcpy(copy, (char*)global, gcc_sizeof(env, b->type));
-            gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(env->ctx, gcc_get_ptr_type(gcc_t), copy);
-            b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
-            b->rval = gcc_rval(b->lval);
-            hset(&old_globals, entry->key, entry->value);
+                // Update the binding so it points to the global memory:
+                void *global = gcc_jit_result_get_global(result, b->sym_name);
+                assert(global);
+                gcc_type_t *gcc_t = sss_type_to_gcc(fresh_env, b->type);
+                gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(fresh_env->ctx, gcc_get_ptr_type(gcc_t), global);
+                b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
+                b->rval = gcc_rval(b->lval);
+                hset(env->bindings, entry->key, b);
+            }
         }
 
         CLEANUP();
 #undef CLEANUP
     }
+
     fputs("\n", stdout);
     fflush(stdout);
+
+    foreach (results, result, _) {
+        if (*result) gcc_jit_result_release(*result);
+    }
     return 0;
 }
 
