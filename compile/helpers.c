@@ -288,7 +288,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
         const char *t_str = type_to_string(t);
-        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name);
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name ? tagged->name : "TaggedUnion");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, type_to_string(t), gcc_t);
         hset(&opaque_structs, t_str, gcc_t);

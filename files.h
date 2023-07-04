@@ -33,5 +33,7 @@ __attribute__((pure, nonnull))
 size_t sss_get_indent(sss_file_t *f, const char *p);
 __attribute__((pure, nonnull))
 const char *sss_get_line(sss_file_t *f, size_t line_number);
+__attribute__((pure, nonnull))
+const char *sss_get_file_pos(sss_file_t *f, const char *p);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

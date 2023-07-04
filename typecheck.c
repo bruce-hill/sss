@@ -100,7 +100,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
-        sss_type_t *t = Type(StructType, .filename=ast->span.file->filename,
+        sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
                              .name=struct_->name, .field_names=member_names, .field_types=member_types);
         if (struct_->name) {
             env = fresh_scope(env);
@@ -126,8 +126,9 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto tu = Match(ast, TypeTaggedUnion);
         NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
-            sss_type_t *member_t = parse_type_ast(env, ith(tu->tag_types, i));
-            if (has_stack_memory(member_t))
+            ast_t *member_type_ast = ith(tu->tag_types, i);
+            sss_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            if (member_t && has_stack_memory(member_t))
                 compiler_err(env, ith(tu->tag_types, i), "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
             sss_tagged_union_member_t member = {
                 .name=ith(tu->tag_names, i),
@@ -136,7 +137,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .filename=ast->span.file->filename,
+        return Type(TaggedUnionType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
                     .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeTypeAST: {
@@ -586,7 +587,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             if (binding)
                 return binding->type;
             else
-                compiler_err(env, ast, "I can't find anything called %s on this type", access->field);
+                compiler_err(env, ast, "I can't find anything called %s on the type %T", access->field, Match(type_binding->type, TypeType)->type);
         }
         case ArrayType: {
             auto array = Match(value_t, ArrayType);

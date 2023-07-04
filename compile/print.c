@@ -213,8 +213,8 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
         auto tagged = Match(t, TaggedUnionType);
         COLOR_LITERAL(&block, "\x1b[0;1;36m");
-        WRITE_LITERAL(block, tagged->name);
-        WRITE_LITERAL(block, ".");
+        if (tagged->name)
+            WRITE_LITERAL(block, heap_strf("%s.", tagged->name));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
         gcc_lvalue_t *tag_var = gcc_local(func, NULL, tag_gcc_t, "_tag");

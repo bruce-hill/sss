@@ -138,7 +138,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         const char* name = struct_def->name;
         // This is a placeholder type, whose fields will be populated later.
         // This is necessary because of recursive/corecursive structs.
-        sss_type_t *t = Type(StructType, .filename=def->span.file->filename,
+        sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                              .name=name, .field_names=LIST(const char*),
                             .field_types=LIST(sss_type_t*), .field_defaults=LIST(ast_t*));
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
@@ -155,7 +155,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* name = tu_def->name;
-        sss_type_t *t = Type(TaggedUnionType, .filename=def->span.file->filename,
+        sss_type_t *t = Type(TaggedUnionType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                              .name=name, .members=LIST(sss_tagged_union_member_t), .tag_bits=tu_def->tag_bits);
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         if (hget(env->bindings, name, binding_t*))
@@ -180,7 +180,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         sss_type_t *t = parse_type_ast(env, variant_def->variant_of);
         if (hget(env->bindings, variant_def->name, binding_t*))
             compiler_err(env, def, "A value with this name is already defined");
-        sss_type_t *variant_t = Type(VariantType, .filename=def->span.file->filename,
+        sss_type_t *variant_t = Type(VariantType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                                      .name=variant_def->name, .variant_of=t);
         const char *variant_str = type_to_string(variant_t);
         hset(env->bindings, variant_def->name, new(binding_t, .type=Type(TypeType, .type=variant_t),
@@ -329,10 +329,10 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         auto variant_def = Match(def, VariantDef);
         sss_type_t *variant_of = parse_type_ast(env, variant_def->variant_of);
         sss_type_t *variant_t = variant_of->tag == StructType ?
-            Type(StructType, .filename=def->span.file->filename,
+            Type(StructType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                  .name=variant_def->name, .field_names=Match(variant_of, StructType)->field_names,
                  .field_types=Match(variant_of, StructType)->field_types, .units=Match(variant_of, StructType)->units)
-            : Type(VariantType, .filename=def->span.file->filename,
+            : Type(VariantType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                    .name=variant_def->name, .variant_of=variant_of);
         env = get_type_env(env, variant_t);
         members = variant_def->body ? Match(variant_def->body, Block)->statements : LIST(ast_t*);

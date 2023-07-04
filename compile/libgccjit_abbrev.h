@@ -165,7 +165,7 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_rvalue_from_double gcc_jit_context_new_rvalue_from_double
 #define gcc_rvalue_from_ptr gcc_jit_context_new_rvalue_from_ptr
 #define gcc_null gcc_jit_context_null
-#define gcc_str gcc_jit_context_new_string_literal
+#define gcc_str(ctx, str) (assert(str), gcc_jit_context_new_string_literal(ctx, str))
 typedef enum gcc_jit_unary_op gcc_unary_op_e;
 #define GCC_UNOP_MINUS GCC_JIT_UNARY_OP_MINUS
 #define GCC_UNOP_BITWISE_NEGATE GCC_JIT_UNARY_OP_BITWISE_NEGATE

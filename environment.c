@@ -537,14 +537,13 @@ sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
         ns = new(sss_hashmap_t, .fallback=env->file_bindings);
         hset(&env->global->type_namespaces, type_to_string(t), ns);
 
-        sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
         sss_type_t *base_t = t;
         for (;;) {
             // if (base_t->tag == PointerType) base_t = Match(base_t, PointerType)->pointed;
             if (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
             else break;
         }
-        if (type_eq(base_t, str_t))
+        if (type_eq(base_t, Type(ArrayType, .item_type=Type(CharType))))
             (void)define_string_type(env, t);
     }
     return ns;

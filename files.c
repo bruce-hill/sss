@@ -164,4 +164,12 @@ const char *sss_get_line(sss_file_t *f, size_t line_number)
     return f->text + f->lines[0][line_number - 1].offset;
 }
 
+//
+// Return a value like /foo:line:col
+//
+const char *sss_get_file_pos(sss_file_t *f, const char *p)
+{
+    return heap_strf("%s:%ld:%ld", f->filename, sss_get_line_number(f, p), sss_get_line_column(f, p));
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

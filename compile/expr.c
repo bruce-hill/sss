@@ -910,7 +910,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (ast->tag == VariantDef) {
             auto def = Match(ast, VariantDef);
             members = def->body ? Match(def->body, Block)->statements : LIST(ast_t*);
-            t = Type(VariantType, .filename=ast->span.file->filename,
+            t = Type(VariantType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
                      .name=def->name, .variant_of=parse_type_ast(env, def->variant_of));
         } else {
             errx(1, "Unreachable");

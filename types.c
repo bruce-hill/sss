@@ -110,13 +110,13 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, bool use_filena
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
             const char *name = (use_filename && tagged->name) ? heap_strf("%s:%s", tagged->filename, tagged->name) : tagged->name;
-            if (!expanded || hget(expanded, name, char*))
+            if (!expanded || (name && hget(expanded, name, char*)))
                 return name;
 
             if (name && expanded)
                 hset(expanded, name, name);
 
-            CORD c = CORD_cat(name, "{|");
+            CORD c = name ? CORD_cat(name, "{|") : "{|";
 
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)

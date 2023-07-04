@@ -516,56 +516,6 @@ static unsigned short int get_tag_bits(List(int64_t) tag_values)
     return bits;
 }
 
-PARSER(parse_tagged_union_type) {
-    const char *start = pos;
-    const char* name = get_id(&pos);
-    spaces(&pos);
-    if (!match(&pos, "{|")) return NULL;
-    NEW_LIST(const char*, tag_names);
-    NEW_LIST(int64_t, tag_values);
-    NEW_LIST(ast_t*, tag_types);
-    int64_t next_value = 0;
-    for (;;) {
-        whitespace(&pos);
-        const char *tag_start = pos;
-        const char* tag_name = get_id(&pos);
-        if (!tag_name) break;
-        spaces(&pos);
-
-        spaces(&pos);
-        ast_t *type = NULL;
-        if (match(&pos, "(")) {
-            whitespace(&pos);
-            type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
-            whitespace(&pos);
-            expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
-        }
-
-        whitespace(&pos);
-        if (match(&pos, "=")) {
-            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
-            next_value = Match(val, Int)->i;
-            whitespace(&pos);
-        }
-        match(&pos, "|");
-
-        // Check for duplicate values:
-        for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
-            if (LIST_ITEM(tag_values, i) == next_value)
-                parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
-        }
-
-        APPEND(tag_names, tag_name);
-        APPEND(tag_values, next_value);
-        APPEND(tag_types, type);
-
-        ++next_value;
-    }
-    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
-    return NewAST(ctx->file, start, pos, TypeTaggedUnion, .name=name, .tag_bits=get_tag_bits(tag_values),
-                  .tag_names=tag_names, .tag_values=tag_values, .tag_types=tag_types);
-}
-
 PARSER(parse_func_type) {
     const char *start = pos;
     if (!match(&pos, "(")) return NULL;
@@ -667,7 +617,6 @@ PARSER(_parse_type) {
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_struct_type(ctx, pos))
-        || (type=parse_tagged_union_type(ctx, pos))
         || (type=parse_type_name(ctx, pos))
         || (type=parse_func_type(ctx, pos))
     );
