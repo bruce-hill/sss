@@ -59,6 +59,17 @@ def OpenResult {| Failure(Str) | Success(@File) |}
 open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
+def TempDirResult {| Failure(Str) | Success(Str) |}
+
+def temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
+    path := [c for c in template]
+    mkdtemp := extern mkdtemp:(@CStringChar)->?CStringChar
+    if mkdtemp((bitcast path as {data:@CStringChar,len:Int32,stride:Int16,free:Int16}).data) is !CStringChar
+        last_err := extern last_err:()->Str
+        return TempDirResult.Failure(last_err())
+
+    return TempDirResult.Success(path)
+
 def move(path:Str, dest:Str)->Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
     if result == 0
@@ -68,6 +79,13 @@ def move(path:Str, dest:Str)->Result
 
 def remove(path:Str)->Result
     result := (extern unlink:(path:@CStringChar)->Int32)(path)
+    if result == 0
+        return Result.Success
+    else
+        return Result.Failure((extern last_err:()->Str)())
+
+def remove_dir(path:Str)->Result
+    result := (extern rmdir:(path:@CStringChar)->Int32)(path)
     if result == 0
         return Result.Success
     else
