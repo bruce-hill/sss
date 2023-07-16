@@ -529,19 +529,32 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Var: {
-        return get_binding(env, Match(ast, Var)->name);
+        binding_t *b = get_binding(env, Match(ast, Var)->name);
+        if (b) return b;
+        const char *suggestion = spellcheck(env->bindings, Match(ast, Var)->name);
+        if (suggestion)
+            compiler_err(env, ast, "I can't figure out what this type refers to. Did you mean '%s'?", suggestion);
+        else
+            compiler_err(env, ast, "I can't figure out what this type refers to.");
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         binding_t *b = get_ast_binding(env, access->fielded);
-        if (!b) return NULL;
-        if (b->type->tag == TypeType)
-            return get_from_namespace(env, Match(b->type, TypeType)->type, access->field);
+        sss_type_t *t = b->type->tag == TypeType ? Match(b->type, TypeType)->type : b->type;
+        sss_hashmap_t *ns = get_namespace(env, t);
+        b = get_from_namespace(env, t, access->field);
+        if (b) return b;
+
+        const char *suggestion = spellcheck(ns, access->field);
+        if (suggestion)
+            compiler_err(env, ast, "There isn't a member on %T called '%s', did you mean '%s'?",
+                         t, access->field, suggestion);
         else
-            return get_from_namespace(env, b->type, access->field);
+            compiler_err(env, ast, "There isn't a member on %T called '%s'", t, access->field);
     }
     default: compiler_err(env, ast, "I can't figure out at compile-time what this refers to");
     }
+
 }
 
 sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t)
@@ -588,6 +601,48 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value)
 {
     hset(get_namespace(env, t), heap_str(name), value);
+}
+
+#define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
+
+static int word_distance(const char *s1, const char *s2) {
+    // Levenshtein distance
+    unsigned int s1len, s2len, x, y, lastdiag, olddiag;
+    s1len = strlen(s1);
+    s2len = strlen(s2);
+    unsigned int column[s1len + 1];
+    for (y = 1; y <= s1len; y++)
+        column[y] = y;
+    for (x = 1; x <= s2len; x++) {
+        column[0] = x;
+        for (y = 1, lastdiag = x - 1; y <= s1len; y++) {
+            olddiag = column[y];
+            column[y] = MIN3(column[y] + 1, column[y-1] + 1, lastdiag + (s1[y-1] == s2[x-1] ? 0 : 1));
+            lastdiag = olddiag;
+        }
+    }
+    return column[s1len];
+}
+
+const char *spellcheck(sss_hashmap_t *ns, const char *word)
+{
+    assert(!hget(ns, word, binding_t*));
+    const char *closest = NULL;
+    int closest_dist = 0;
+    for (; ns; ns = ns->fallback) {
+        for (uint32_t i = 1; i <= ns->count; i++) {
+            auto entry = hnth(ns, i , const char*, binding_t*);
+            int dist = word_distance(word, entry->key);
+            if (closest == NULL || dist < closest_dist) {
+                closest = entry->key;
+                closest_dist = dist;
+            }
+        }
+    }
+
+    if (closest_dist <= (int)ceil((double)strlen(word) * 0.25))
+        return closest;
+    return NULL;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

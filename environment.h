@@ -85,5 +85,6 @@ env_t *get_type_env(env_t *env, sss_type_t *t);
 sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t);
 binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name);
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value);
+const char *spellcheck(sss_hashmap_t *ns, const char *word);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -453,8 +453,14 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Var: {
         const char* name = Match(ast, Var)->name;
         binding_t *binding = get_binding(env, name);
-        if (!binding)
+        if (!binding) {
+            const char *suggestion = spellcheck(env->bindings, name);
+            if (suggestion)
+                compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
+            else
+                compiler_err(env, ast, "I don't know what this variable is referring to."); 
             compiler_err(env, ast, "I don't know what \"%s\" refers to", name);
+        }
         return binding->type;
     }
     case Len: {
@@ -1019,8 +1025,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return t;
         }
         binding_t *b = get_ast_binding(env, struct_->type);
-        if (!b)
-            compiler_err(env, struct_->type, "I can't figure out this type");
 
         sss_type_t *t = NULL;
         if (struct_->type && struct_->type->tag == FieldAccess) {

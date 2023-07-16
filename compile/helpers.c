@@ -424,7 +424,11 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 compiler_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
             return binding->lval;
         } else {
-            compiler_err(env, ast, "I don't know what this variable is referring to."); 
+            const char *suggestion = spellcheck(env->bindings, Match(ast, Var)->name);
+            if (suggestion)
+                compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
+            else
+                compiler_err(env, ast, "I don't know what this variable is referring to."); 
         }
     }
     case Dereference: {
