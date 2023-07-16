@@ -29,6 +29,9 @@
 >>> |(if x.abs() < y.abs() then x else y)| nums
 === 2
 
+>>> |_min_.abs()| nums
+=== 2
+
 >>> |+| nums else 100
 === 3
 
@@ -37,3 +40,10 @@
 
 >>> |x++" "++y| ["one","two","three"] else ""
 === "one two three"
+
+def Vec{x,y:Num}
+>>> vecs := [Vec{1,2}, Vec{1,3}, Vec{2,1}, Vec{3,1}]
+>>> |_max_| vecs
+>>> Vec{x=3, y=1}
+>>> |_max_.y| vecs
+>>> Vec{x=1, y=3}
