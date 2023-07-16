@@ -45,3 +45,12 @@ def Flags {| None=0 | A=1 | B=2 | C=4 | D=8 |}
 === Flags.C+D
 >>> (Flags.A+Flags.B) xor Flags.B
 === Flags.A
+
+// Test for accessing type scopes:
+def doop(b:Baz)->Baz
+    return Nil
+>>> doop(Text("hi"))
+=== Baz.Nil
+def HasBaz{x:Int, b:Baz}
+>>> HasBaz{Integer(3), x=9}
+=== HasBaz{x=9, b=Baz.Integer(3)}
