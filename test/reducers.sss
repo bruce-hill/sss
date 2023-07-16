@@ -1,5 +1,6 @@
-// Reducers take the form |iterable, reduction, initial|
-// If initial is omitted, the reduction will fail on empty collections
+// Reducers take the form: |reduction| iteralbe else fallback
+// `reduction` can be either an expression using `x` and `y` or an infix operator
+// If `else fallback` is omitted, the fallback will default to runtime failure
 
 >>> nums := [2,-3,4]
 
