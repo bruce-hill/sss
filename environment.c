@@ -369,7 +369,7 @@ static void define_int_types(env_t *env)
     }
 }
 
-env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool debug)
+env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls)
 {
     global_env_t *global = new(global_env_t);
     env_t *env = new(env_t,
@@ -380,7 +380,6 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         .file_bindings = new(sss_hashmap_t, .fallback=&global->bindings),
         .bindings = new(sss_hashmap_t),
         .tail_calls = tail_calls,
-        .debug = debug,
     );
     env->bindings->fallback = env->file_bindings;
 

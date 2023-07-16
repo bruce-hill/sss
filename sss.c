@@ -30,7 +30,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool tail_calls, bool v
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, NULL, f, ast, tail_calls, true, &result);
+    main_func_t run = compile_file(ctx, NULL, f, ast, tail_calls, &result);
     if (!run)
         errx(1, "run func is NULL");
 
@@ -74,7 +74,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_cal
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t main_fn = compile_file(ctx, on_err, f, ast, tail_calls, true, &result);
+    main_func_t main_fn = compile_file(ctx, on_err, f, ast, tail_calls, &result);
     if (!main_fn) errx(1, "run func is NULL");
 
     if (verbose)
@@ -90,7 +90,7 @@ int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
     const char *prompt = !use_color ? ">>> " : "\x1b[33;1m>>>\x1b[m ";
     const char *continue_prompt = !use_color ? "... " : "\x1b[33;1m...\x1b[m ";
     jmp_buf on_err;
-    env_t *env = new_environment(ctx, &on_err, NULL, tail_calls, verbose);
+    env_t *env = new_environment(ctx, &on_err, NULL, tail_calls);
 
     // Seed the RNG used for Num.random()
     srand48(arc4random());
