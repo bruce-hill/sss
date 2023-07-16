@@ -620,6 +620,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto ret = Match(ast, Return);
         assert(env->return_type);
 
+        env = scope_with_type(env, env->return_type);
+
         if (!ret->value) {
             if (env->return_type->tag != VoidType)
                 compiler_err(env, ast, "I was expecting this `return` to have a value of type %T because of the function's type signature, but no value is being returned here.",
@@ -978,119 +980,118 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         size_t num_fields = gcc_field_count(gcc_struct);
         if (!(num_fields == (size_t)length(struct_type->field_names)))
             compiler_err(env, ast, "Something went wrong with this struct!");
-        gcc_field_t *unused_fields[num_fields];
-        for (size_t i = 0, count = gcc_field_count(gcc_struct); i < count; i++)
-            unused_fields[i] = gcc_get_field(gcc_struct, i);
 
-        struct {
-            size_t field_num;
-            ast_t *ast;
-            gcc_rvalue_t *value;
-            gcc_field_t *field;
-        } entries[num_fields];
-
-        for (size_t i = 0; i < num_values; i++) {
-            auto member = Match(ith(struct_->members, i), StructField);
-            entries[i].ast = member->value;
-            entries[i].value = compile_expr(env, block, member->value);
-        }
+        sss_hashmap_t field_asts = {0}; // Map of field name -> AST
 
         // Put in named fields first:
-        for (size_t value_index = 0; value_index < num_values; value_index++) {
-            ast_t *member_ast = ith(struct_->members, value_index);
+        for (int64_t i = 0; i < (int64_t)num_values; i++) {
+            ast_t *member_ast = ith(struct_->members, i);
             auto member = Match(member_ast, StructField);
-            if (!member->name) continue;
-            for (size_t field_index = 0; field_index < num_fields; field_index++) {
-                if (!streq(ith(struct_type->field_names, field_index), member->name))
-                    continue;
-
-                gcc_field_t *field = unused_fields[field_index];
-                if (!field)
-                    compiler_err(env, member_ast, "You already provided a value for this field earlier in this struct.");
-
-                // Found the field:
-                entries[value_index].field = field;
-                entries[value_index].field_num = field_index;
-                unused_fields[field_index] = NULL;
-                goto found_name;
+            if (member->name) {
+                hset(&field_asts, member->name, member->value);
             }
-
-            compiler_err(env, member_ast, "There is no struct field with this name");
-
-          found_name: continue;
         }
 
-        // Now put in unnamed fields:
-        for (size_t value_index = 0; value_index < num_values; value_index++) {
-            ast_t *member_ast = ith(struct_->members, value_index);
+        // Next populate positional fields:
+        int64_t first_unused = 0;
+        for (int64_t i = 0; i < (int64_t)num_values; i++) {
+            ast_t *member_ast = ith(struct_->members, i);
             auto member = Match(member_ast, StructField);
             if (member->name) continue;
-            for (size_t field_index = 0; field_index < num_fields; field_index++) {
-                if (!unused_fields[field_index])
+
+            while (first_unused < (int64_t)num_fields) {
+                const char *field_name = ith(struct_type->field_names, first_unused);
+                ++first_unused;
+                if (hget(&field_asts, field_name, ast_t*))
                     continue;
 
-                // Found the field:
-                entries[value_index].field = unused_fields[field_index];
-                entries[value_index].field_num = field_index;
-                unused_fields[field_index] = NULL;
-                goto found_index;
+                hset(&field_asts, field_name, member->value);
+                goto next_field;
             }
+            compiler_err(env, member_ast, "This is one field too many for this %T struct", t);
 
-            // Unreachable, this should be handled earlier
-            compiler_err(env, member_ast, "This field is beyond the number of fields in this struct.");
-
-          found_index: continue;
+          next_field: continue;
         }
 
-        // Populate default struct field values (or nil for optional types)
-        for (size_t field_index = 0; num_values < num_fields && field_index < num_fields; field_index++) {
-            sss_type_t *ft = ith(struct_type->field_types, field_index);
-            ast_t *def = struct_type->field_defaults ? ith(struct_type->field_defaults, field_index) : NULL;
+        // Finally, populate default/uninitialized fields:
+        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
+            const char *field_name = ith(struct_type->field_names, i);
+            if (hget(&field_asts, field_name, ast_t*))
+                continue;
+
+            ast_t *def = struct_type->field_defaults ? ith(struct_type->field_defaults, i) : NULL;
             if (def != NULL) {
-                entries[num_values].field = unused_fields[field_index];
-                entries[num_values].field_num = field_index;
-                entries[num_values].ast = def;
-                gcc_rvalue_t *def_val = compile_expr(env, block, def);
-                if (!promote(env, get_type(env, def), &def_val, ft))
-                    compiler_err(env, def, "I couldn't make this default value work as a %T", ft);
-                entries[num_values].value = def_val;
-                unused_fields[field_index] = NULL;
-                ++num_values;
+                hset(&field_asts, field_name, def);
                 continue;
             }
 
-            if (!can_leave_uninitialized(ft) && unused_fields[field_index]) {
+            sss_type_t *ft = ith(struct_type->field_types, i);
+            if (!can_leave_uninitialized(ft)) {
                 compiler_err(env, ast, "%T structs are supposed to have a non-optional field '%s' (%T), but you didn't provide a value for it.",
-                      t, ith(struct_type->field_names, field_index), ft);
+                      t, field_name, ft);
             }
         }
 
-        // GCC is dumb and requires sorting the fields:
-        qsort_r(entries, num_values, sizeof(entries[0]), (int(*)(const void*,const void*,void*))(void*)memcmp, (void*)sizeof(size_t));
-        gcc_field_t *populated_fields[num_values];
-        gcc_rvalue_t *rvalues[num_values];
-        for (size_t i = 0; i < num_values; i++) {
-            // Check type:
-            sss_type_t *expected = ith(struct_type->field_types, entries[i].field_num);
-            if (demote_int_literals(&entries[i].ast, expected))
-                entries[i].value = compile_expr(env, block, entries[i].ast);
-            sss_type_t *actual = get_type(env, entries[i].ast);
-            rvalues[i] = entries[i].value;
-            if (!promote(env, actual, &rvalues[i], expected)) {
-                compiler_err(env, entries[i].ast, "I was expecting a value of type %T for the %T.%s field, but this value is a %T.", 
-                      expected, t, ith(struct_type->field_names, entries[i].field_num), actual);
+        // Compile the rvals in order:
+        gcc_rvalue_t *field_rvals[num_fields] = {};
+        foreach (struct_->members, member, _) {
+            ast_t *field_ast = Match((*member), StructField)->value;
+            for (int64_t i = 0; i < (int64_t)num_fields; i++) {
+                const char *name = ith(struct_type->field_names, i);
+                if (hget(&field_asts, name, ast_t*) == field_ast) {
+                    sss_type_t *ft = ith(struct_type->field_types, i);
+                    env_t *field_env = scope_with_type(env, ft);
+                    demote_int_literals(&field_ast, ft);
+                    gcc_rvalue_t *rval = compile_expr(field_env, block, field_ast);
+                    if (!promote(field_env, get_type(field_env, field_ast), &rval, ft))
+                        compiler_err(field_env, field_ast, "I was expecting a value of type %T for the %T.%s field, but this value is a %T.", 
+                                     ft, t, name, get_type(field_env, field_ast));
+                    field_rvals[i] = rval;
+                    break;
+                }
             }
-
-            if (unit_scaling != 1.0 && is_numeric(expected)) {
-                gcc_type_t *expected_gcc_t = sss_type_to_gcc(env, expected);
-                rvalues[i] = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, expected_gcc_t,
-                                           rvalues[i], gcc_rvalue_from_double(env->ctx, expected_gcc_t, unit_scaling));
-            }
-
-            populated_fields[i] = entries[i].field;
         }
 
-        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_values, populated_fields, rvalues);
+        // Compile the remaining default values:
+        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
+            const char *name = ith(struct_type->field_names, i);
+            if (field_rvals[i]) continue;
+            ast_t *def = hget(&field_asts, name, ast_t*);
+            sss_type_t *ft = ith(struct_type->field_types, i);
+            if (def == NULL) {
+                if (!can_leave_uninitialized(ft))
+                    compiler_err(env, ast, "%T structs are supposed to have a non-optional field '%s' (%T), but you didn't provide a value for it.",
+                          t, name, ft);
+            } else {
+                env_t *field_env = scope_with_type(env, ft);
+                demote_int_literals(&def, ft);
+                gcc_rvalue_t *rval = compile_expr(field_env, block, def);
+                if (!promote(field_env, get_type(field_env, def), &rval, ft))
+                    compiler_err(field_env, def, "I couldn't make this default value work as a %T", ft);
+                field_rvals[i] = rval;
+            }
+        }
+
+        // Filter for only the populated fields (those not uninitialized):
+        gcc_field_t *fields[num_fields] = {};
+        gcc_rvalue_t *populated_rvals[num_fields] = {};
+        int64_t num_populated = 0;
+        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
+            gcc_rvalue_t *rval = field_rvals[i];
+            if (rval) {
+                fields[num_populated] = gcc_get_field(gcc_struct, i);
+                sss_type_t *ft = ith(struct_type->field_types, i);
+                if (unit_scaling != 1.0 && is_floating_point(ft)) {
+                    gcc_type_t *f_gcc_t = sss_type_to_gcc(env, ft);
+                    rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, f_gcc_t,
+                                         rval, gcc_rvalue_from_double(env->ctx, f_gcc_t, unit_scaling));
+                }
+                populated_rvals[num_populated] = rval;
+                ++num_populated;
+            }
+        }
+
+        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_populated, fields, populated_rvals);
         assert(rval);
         return rval;
     }
@@ -1188,10 +1189,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             sss_type_t *expected = ith(fn_t->arg_types, arg_index);
             ast_t *arg_val = kwarg->arg;
             demote_int_literals(&arg_val, expected);
-            gcc_rvalue_t *val = compile_expr(env, block, arg_val);
-            sss_type_t *actual = get_type(env, arg_val);
-            if (!promote(env, actual, &val, expected))
-                compiler_err(env, *arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
+            env_t *arg_env = scope_with_type(env, expected);
+            gcc_rvalue_t *val = compile_expr(arg_env, block, arg_val);
+            sss_type_t *actual = get_type(arg_env, arg_val);
+            if (!promote(arg_env, actual, &val, expected))
+                compiler_err(arg_env, *arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
             arg_vals[arg_index] = val;
         }
 
@@ -1211,10 +1213,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             sss_type_t *expected = ith(fn_t->arg_types, pos);
             demote_int_literals(&arg, expected);
-            gcc_rvalue_t *val = compile_expr(env, block, arg);
-            sss_type_t *actual = get_type(env, arg);
-            if (!promote(env, actual, &val, expected))
-                compiler_err(env, arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
+            env_t *arg_env = scope_with_type(env, expected);
+            gcc_rvalue_t *val = compile_expr(arg_env, block, arg);
+            sss_type_t *actual = get_type(arg_env, arg);
+            if (!promote(arg_env, actual, &val, expected))
+                compiler_err(arg_env, arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
             arg_vals[pos] = val;
         }
 

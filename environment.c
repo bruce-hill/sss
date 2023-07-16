@@ -449,6 +449,20 @@ env_t *fresh_scope(env_t *env)
     return fresh;
 }
 
+env_t *scope_with_type(env_t *env, sss_type_t *t)
+{
+    env_t *fresh = GC_MALLOC(sizeof(env_t));
+    *fresh = *env;
+    fresh->bindings = new(sss_hashmap_t, .fallback=env->bindings);
+    sss_hashmap_t *ns = get_namespace(env, t);
+    for (uint32_t i = 1; i <= ns->count; i++) {
+        auto entry = hnth(ns, i, const char*, binding_t*);
+        if (!hget(fresh->bindings, entry->key, binding_t*))
+            hset(fresh->bindings, entry->key, entry->value);
+    }
+    return fresh;
+}
+
 static void copy_global_bindings(sss_hashmap_t *dest, sss_hashmap_t *src)
 {
     for (; src; src = src->fallback) {

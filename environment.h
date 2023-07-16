@@ -76,6 +76,7 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool debug);
 env_t *fresh_scope(env_t *env);
 env_t *file_scope(env_t *env);
+env_t *scope_with_type(env_t *env, sss_type_t *t);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);

@@ -106,6 +106,7 @@ bool type_is_a(sss_type_t *t, sss_type_t *req);
 sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b);
 sss_type_t *value_type(sss_type_t *a);
 bool is_integral(sss_type_t *t);
+bool is_floating_point(sss_type_t *t);
 bool is_numeric(sss_type_t *t);
 typedef enum {NUM_PRECISION_EQUAL, NUM_PRECISION_LESS, NUM_PRECISION_MORE, NUM_PRECISION_INCOMPARABLE} precision_cmp_e;
 precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b);

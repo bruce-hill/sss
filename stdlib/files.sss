@@ -36,8 +36,8 @@ def File{raw_c_file:?_CFile}
         for char in text
             wrote := fputc(char, file)
             if wrote != char as Int32
-                return Result.Failure((extern last_err:()->Str)())
-        return Result.Success
+                return Failure((extern last_err:()->Str)())
+        return Success
 
     def flush(f:@File)
         (extern fflush:(@_CFile)->Void)(f.raw_c_file or return)
@@ -56,6 +56,7 @@ stderr := @File{extern stderr:@_CFile}
 
 def OpenResult {| Failure(Str) | Success(@File) |}
 
+def FileMode {| Read=0 | Write=1 | ReadWrite=2 |}
 open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
@@ -66,30 +67,30 @@ def temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     mkdtemp := extern mkdtemp:(@CStringChar)->?CStringChar
     if mkdtemp((bitcast path as {data:@CStringChar,len:Int32,stride:Int16,free:Int16}).data) is !CStringChar
         last_err := extern last_err:()->Str
-        return TempDirResult.Failure(last_err())
+        return Failure(last_err())
 
-    return TempDirResult.Success(path)
+    return Success(path)
 
 def move(path:Str, dest:Str)->Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
     if result == 0
-        return Result.Success
+        return Success
     else
-        return Result.Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:()->Str)())
 
 def remove(path:Str)->Result
     result := (extern unlink:(path:@CStringChar)->Int32)(path)
     if result == 0
-        return Result.Success
+        return Success
     else
-        return Result.Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:()->Str)())
 
 def remove_dir(path:Str)->Result
     result := (extern rmdir:(path:@CStringChar)->Int32)(path)
     if result == 0
-        return Result.Success
+        return Success
     else
-        return Result.Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:()->Str)())
 
 def spoof(text:Str)->@File
     temporary := extern sss_tmpfile:()->@File

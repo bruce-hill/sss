@@ -295,6 +295,12 @@ bool is_integral(sss_type_t *t)
     return t->tag == IntType || t->tag == CharType || t->tag == CStringCharType;
 }
 
+bool is_floating_point(sss_type_t *t)
+{
+    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+    return t->tag == NumType;
+}
+
 bool is_numeric(sss_type_t *t)
 {
     while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
