@@ -1,17 +1,17 @@
 
-def selfrec(i:Int)
+func selfrec(i:Int)
     return unless i > 0
     say "Selfrec $i"
     selfrec(i-1)
 
 selfrec(4)
 
-def ping(i:Int)
+func ping(i:Int)
     return unless i > 0
     say "Ping $i"
     pong(i-1)
 
-def pong(i:Int)
+func pong(i:Int)
     return unless i > 0
     say "Pong $i"
     ping(i-1)
@@ -19,12 +19,12 @@ def pong(i:Int)
 ping(5)
 
 
-def foo(x:Int)->Int
+func foo(x:Int)->Int
     if x == 5
         return baz(x)
     return x - 1
 
-def baz(x:Int)->Int
+func baz(x:Int)->Int
     if x == 99
         return foo(x)
     return x + 1

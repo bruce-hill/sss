@@ -1,9 +1,9 @@
 // Defines a DSL for shell commands and a way to run them safely
 
-def _POpenFile{}
+struct _POpenFile{}
 
-def Sh::Str
-    def run(sh:Sh)->{output:Str,status:Int32}
+alias Sh::Str
+    func run(sh:Sh)->{output:Str,status:Int32}
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen(bitcast sh as Str, "r") or return {output="", status=-1i32}
         output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->Str)(&f)
@@ -13,7 +13,7 @@ def Sh::Str
             status = (status / 256i32) and 0xFFi32
         return {output=output, status=status}
 
-    def run_with(sh:Sh, input:Str)->Int32
+    func run_with(sh:Sh, input:Str)->Int32
         popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
         f := popen("$sh", "w") or return -1i32
         pclose := (extern pclose:(?_POpenFile)->Void)
@@ -25,10 +25,10 @@ def Sh::Str
             status = (status / 256i32) and 0xFFi32
         return status
 
-    def s:Str as Sh
+    convert s:Str as Sh
         return bitcast "'$(s.replace("'",${'"'"'}))'" as Sh
 
-    def strs:[Str] as Sh
+    convert strs:[Str] as Sh
         return bitcast [
             for s in strs
                 ++Sh::"$s"
@@ -36,7 +36,7 @@ def Sh::Str
                 ++" "
         ] as Sh
 
-    def strings:[Str] as Sh
+    convert strings:[Str] as Sh
         return bitcast [
             for s in strings
                 c for c in Sh::"$s"
@@ -44,10 +44,10 @@ def Sh::Str
                 ` 
         ] as Sh
 
-    def i:Int64 as Sh
+    convert i:Int64 as Sh
         return bitcast "$i" as Sh
 
-    def n:Num as Sh
+    convert n:Num as Sh
         return bitcast "$n" as Sh
 
 if IS_MAIN_PROGRAM

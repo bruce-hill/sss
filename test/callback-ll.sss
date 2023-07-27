@@ -1,16 +1,16 @@
-def CallbackList {fn:(Num)->Void, next:?CallbackList}
+struct CallbackList {fn:(Num)->Void, next:?CallbackList}
 
-def NumberValue {_value:Num, _callbacks:?CallbackList}
-    def set(self:@NumberValue, value:Num)
+struct NumberValue {_value:Num, _callbacks:?CallbackList}
+    func set(self:@NumberValue, value:Num)
         self._value = value
         for cb in self._callbacks
             fn := cb.fn
             fn(value)
 
-    def get(self:@NumberValue)->Num
+    func get(self:@NumberValue)->Num
         return self._value
 
-    def on_changed(self:@NumberValue, callback:((Num)->Void))->((Num)->Void)
+    func on_changed(self:@NumberValue, callback:((Num)->Void))->((Num)->Void)
         self._callbacks = @CallbackList{callback, next=self._callbacks}
         return callback
 

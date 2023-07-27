@@ -68,7 +68,7 @@ ergonomics.
 Structs in SSS are similar to C: a packed blob of data with named fields of different types:
 
 ```sss
-def Vec2 {
+struct Vec2 {
     x, y: Num
 }
 my_vec := Vec2{1.5, 2.3}
@@ -79,7 +79,7 @@ fail unless my_vec == equivalent
 Structs are referenced by name when using them in type annotations:
 
 ```sss
-def foo(v:Vec2)->Num
+func foo(v:Vec2)->Num
    return v.x + v.y
 ```
 
@@ -121,7 +121,7 @@ v := ?Vec2{1, 2} // The variable v may or may not point to a value
 if random() mod 2 == 0
     v = !Vec2
 
-def say_x(v:@Vec2)
+func say_x(v:@Vec2)
     say "$(v.x)"
 
 say_x(v) // Compiler error: `v` is type `?Vec2`, not `@Vec2`

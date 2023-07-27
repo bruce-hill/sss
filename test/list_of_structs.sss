@@ -1,25 +1,25 @@
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
 >>> vecs := [Vec{1,2}, Vec{3,4}, Vec{5,6}]
 >>> vecs.x
 === [1, 3, 5]
 >>> vecs.y
 === [2, 4, 6]
 
-def Boop{b:Bool,x:Int}
+struct Boop{b:Bool,x:Int}
 >>> boops := [Boop{yes,123}, Boop{no,456}, Boop{yes,789}]
 >>> boops.b
 === [yes, no, yes]
 >>> boops.x
 === [123, 456, 789]
 
-def Doop{x:Int,b:Bool}
+struct Doop{x:Int,b:Bool}
 >>> doops := [Doop{123, yes}, Doop{456, no}, Doop{789, yes}]
 >>> doops.b
 === [yes, no, yes]
 >>> doops.x
 === [123, 456, 789]
 
-def Nested{boop:Boop, doop:Doop}
+struct Nested{boop:Boop, doop:Doop}
 >>> nested := [Nested{Boop{yes,123},Doop{456,yes}}, Nested{Boop{no,789},Doop{101112,no}}]
 >>> nested.boop.x
 === [123, 789]

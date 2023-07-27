@@ -6,15 +6,14 @@
 //        say "Usage: $PROGRAM_NAME $(spec.usage())"
 //        exit 1i32
 
-def ArgumentResult{|
+enum ArgumentResult :=
     Success({flags:{Str=>Str},positional:[Str]})
-    InvalidArgument(Str)
-    MissingValue(Str)
-    DuplicateValue(Str)
-|}
+    | InvalidArgument(Str)
+    | MissingValue(Str)
+    | DuplicateValue(Str)
 
-def Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args:[Str]}
-    def new(flags:[Str], positional_args=[:Str])->Spec
+struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args:[Str]}
+    func new(flags:[Str], positional_args=[:Str])->Spec
         flag_infos := @{:Str=>{canonical:Str,needs_value:Bool}}
         for flag in flags
             skip if #flag < 1
@@ -23,11 +22,11 @@ def Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args:[S
             arg_aliases := flag.split("| -=")
             skip if #arg_aliases < 1
             longest := |(if #x > #y then x else y)| arg_aliases
-            for alias in arg_aliases
-                flag_infos[alias] = {longest, needs_value}
+            for arg_alias in arg_aliases
+                flag_infos[arg_alias] = {longest, needs_value}
         return Spec{*flag_infos, positional_args}
 
-    def usage(spec:Spec)->Str
+    func usage(spec:Spec)->Str
         usage := @""
         for i,entry in spec.flag_infos
             usage ++= (if #entry.key == 1 then "-" else "--")
@@ -40,7 +39,7 @@ def Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args:[S
             usage ++= " " ++ pos
         return (*usage).trimmed()
 
-    def parse(spec:Spec, args:[Str], allow_duplicates=no)->ArgumentResult
+    func parse(spec:Spec, args:[Str], allow_duplicates=no)->ArgumentResult
         positional := @[:Str]
         flags := @{:Str=>Str}
 

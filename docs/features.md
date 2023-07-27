@@ -69,7 +69,7 @@ key. This makes it possible for the language itself to provide automatic
 memoization of functions if desired:
 
 ```
-def fibonacci(n:Int; cached)->Int
+func fibonacci(n:Int; cached)->Int
     if n <= 1
         return 1
     return
@@ -80,8 +80,8 @@ The example above uses `; cached` to signal to the compiler that the function
 return values should be cached in a table. This is functionally equivalent to:
 
 ```
-global fibonacci_cache := @{{Int}=>Int}
-def fibonacci(n:Int; cached)->Int
+fibonacci_cache := @{{Int}=>Int}
+func fibonacci(n:Int)->Int
     key := {n}
     if key not in fibonacci_cache
         if n <= 1
@@ -224,7 +224,7 @@ operations are pairwise and do not require operator overloading.
 For example, adding two 2D vectors:
 
 ```SSS
-def Vec2{x,y:Num}
+struct Vec2{x,y:Num}
 
 v1 := Vec2{2, 3}
 v2 := Vec2{10, 20}
@@ -250,7 +250,7 @@ When dealing with arrays of structs, SSS supports easy (and constant-time)
 creation of slices that contain one member of a struct:
 
 ```
-def Enemy{id:Int, name:Str}
+struct Enemy{id:Int, name:Str}
 
 enemies := @[
   Enemy{123, "Evil Ed"},
@@ -273,9 +273,9 @@ SSS supports typed units of measure with typechecking and automatic
 conversions between units.
 
 ```python
-def 1<km> := 1_000<m>
-def 100<cm> := 1<m>
-def 10<mm> := 1<cm>
+unit 1<km> := 1_000<m>
+unit 100<cm> := 1<m>
+unit 10<mm> := 1<cm>
 
 >>> 1<m> + 1<cm>
 === 1.01<m>
@@ -283,16 +283,16 @@ def 10<mm> := 1<cm>
 >>> 10.0 * 2.5<m>
 === 25.0<m>
 
-def 1<min> := 60<s>
-def 1<hr> := 60<min>
+unit 1<min> := 60<s>
+unit 1<hr> := 60<min>
 
 // 1<km> + 1<hr> // Type error!
 // 12 + 1<hr> // Type error!
 
-def 1<inch> := 2.54<cm>
-def 1<ft> := 12<inch>
-def 1<yd> := 3<ft>
-def 1<mi> := 5_280<ft>
+unit 1<inch> := 2.54<cm>
+unit 1<ft> := 12<inch>
+unit 1<yd> := 3<ft>
+unit 1<mi> := 5_280<ft>
 
 >>> 10<mi> / 2<hr>
 === 2.2352<m/s>
@@ -309,7 +309,7 @@ calculations.
 Units of measure can also be applied to structs, such as vectors:
 
 ```python
-def Vec2{x,y:Num}
+struct Vec2{x,y:Num}
 
 pos := Vec2{0,0}<m>
 vel := Vec2{5,3}<m/s>
@@ -326,9 +326,9 @@ existed. `@Foo` is used for values that are guaranteed to exist, and `?Foo`
 for values that may or may not exist.
 
 ```python
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
 
-def needs_value(v:@Vec)
+func needs_value(v:@Vec)
     say "v is guaranteed to be a non-null pointer"
     say "so accessing fields is safe:"
     say "$(v.x)"
@@ -403,7 +403,7 @@ for vec in maybe_vecs
     === @Vec
     needs_value(vec or skip)
 
-def get_x(v:?Vec)->Num
+func get_x(v:?Vec)->Num
     v_nonnull := v or return 0
     return v_nonnull.x
 ```
@@ -470,9 +470,9 @@ those types. This is effectively an idiot-proof way to prevent code injection
 bugs.
 
 ```
-def SQL::Str
+distinct SQL::Str
     // Define a function to automatically escape strings for SQL:
-    def str:Str as SQL
+    convert str:Str as SQL
         return bitcast "'$(str.replace("'", "''"))'" as SQL
 
 >>> username := "Bob"
@@ -542,9 +542,9 @@ revealed accidentally. One common cause of security incidents is accidental
 logging of sensitive information. For example:
 
 ```python
-def User {name:Str, password_hash:Str, credit_card:Str}
+struct User {name:Str, password_hash:Str, credit_card:Str}
 
-def check_credentials(users:{Str=>User}, username:Str, password:Password)->Bool
+func check_credentials(users:{Str=>User}, username:Str, password:Password)->Bool
     if username not in users
         return no
 
@@ -571,11 +571,11 @@ One way to avoid this problem is to use custom string variants for sensitive dat
 which defines a custom `as Str` implementation that obscures any private data:
 
 ```python
-def Sensitive::Str
-    def sensitive:Sensitive as Str
+distinct Sensitive::Str
+    convert sensitive:Sensitive as Str
         return "******"
 
-def User {name:Str, password_hash:Sensitive, credit_card:Sensitive}
+struct User {name:Str, password_hash:Sensitive, credit_card:Sensitive}
 ```
 
 A user can be created using string variants like so:

@@ -1,10 +1,10 @@
 
-def MyFile{name:Str}
-    def open(name:Str)->MyFile
+struct MyFile{name:Str}
+    func open(name:Str)->MyFile
         say "Opening file '$name'"
         return MyFile{name}
 
-    def close(f:MyFile)
+    func close(f:MyFile)
         say "Closing file $f"
 
 with MyFile.open("first")

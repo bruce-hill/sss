@@ -1,5 +1,5 @@
 
-def doop(xs:[Str])
+func doop(xs:[Str])
     for i, x in xs
         say "$i) Loop: $x"
         prev := x
@@ -17,7 +17,7 @@ def doop(xs:[Str])
 xs := ["one","two","three"]
 doop(xs)
 
-def IntStack {
+struct IntStack {
     i:Int
     next:?IntStack
 }

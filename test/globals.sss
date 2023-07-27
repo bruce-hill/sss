@@ -1,11 +1,11 @@
 
-def sum100()->Int
+func sum100()->Int
     sum := 0
     for i in 1..100
         sum += i
     return sum
 
-def Global{}
+struct Global{}
     // Constant value
     val := 123
     // Calling a function
@@ -13,7 +13,7 @@ def Global{}
 
 >>> Global
 
-// def doop()
+// func doop()
 //     >>> Global.val
 //     === 123
 //     >>> Global.sum100

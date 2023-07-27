@@ -2,8 +2,8 @@
 
 !link -lunistring
 
-def CodePoint{n:Int32}
-    def from_char(c:Char)->CodePoint
+struct CodePoint{n:Int32}
+    func from_char(c:Char)->CodePoint
         return CodePoint{c as Int32}
 
     toupper := extern uc_toupper:(CodePoint)->CodePoint
@@ -105,26 +105,26 @@ def CodePoint{n:Int32}
     is_regional_indicator := extern uc_is_property_regional_indicator:(CodePoint)->Bool
 
 // Opaque struct:
-def uninorm_t{}
-def UTF8::Str
-    def str:Str as UTF8
+struct uninorm_t{}
+alias UTF8::Str
+    convert str:Str as UTF8
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
         err := u8_check(str.c_string(), #str)
         fail "Invalid UTF8!" unless err == !CStringChar
         return bitcast str as UTF8
 
-    def utf8:UTF8 as Str
+    convert utf8:UTF8 as Str
         return bitcast utf8 as Str
 
-    def c_string(u:UTF8)->@CStringChar
+    func c_string(u:UTF8)->@CStringChar
         return (bitcast u as Str).c_string()
 
-    def is_valid_utf8(u:UTF8)->Bool
+    func is_valid_utf8(u:UTF8)->Bool
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
         err := u8_check(u.c_string(), #u)
         return err == !CStringChar
 
-    def normalized(u:UTF8)->UTF8
+    func normalized(u:UTF8)->UTF8
         len := 0
         u8_normalize := (extern u8_normalize:(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
         buf := u8_normalize((extern &uninorm_nfd:uninorm_t), u.c_string(), #u, !CStringChar, &len) or fail "Couldn't normalize string: $u"
@@ -134,20 +134,20 @@ def UTF8::Str
         data := memcpy(gc_alloc(len+1), buf, len+1)
         return bitcast ({data=data, length=(len as Int32), stride=1i16, capacity=0i16}) as UTF8
 
-    def compare_utf8(s1:UTF8, s2:UTF8)->Int32
+    func compare_utf8(s1:UTF8, s2:UTF8)->Int32
         u8_normcmp := extern u8_normcmp:(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
         ret := 0i32
         _ := u8_normcmp(s1.c_string(), #s1, s2.c_string(), #s2, (extern &uninorm_nfd:uninorm_t), &ret)
         return ret
 
-    def length(u:UTF8)->Int64
+    func length(u:UTF8)->Int64
         return (extern u8_mbsnlen:(@CStringChar,Int64)->Int32)(u.c_string(), #u)
 
-    def width(u:UTF8)->Int64
+    func width(u:UTF8)->Int64
         setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
         return (extern u8_width:(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), #u, setlocale(0i32,!CStringChar))
 
-    def first_codepoint(u:UTF8)->CodePoint
+    func first_codepoint(u:UTF8)->CodePoint
         len := (extern u8_mblen:(@CStringChar,Int64)->Int32)(u.c_string(), #u)
         ret := 0i32
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,&Int32,&Int64)->?Int32
@@ -155,14 +155,14 @@ def UTF8::Str
         _ := u8_to_u32(u[1..len].c_string(), len, &ret, &first_len)
         return CodePoint{ret}
 
-    def codepoints(u:UTF8)->[CodePoint]
+    func codepoints(u:UTF8)->[CodePoint]
         ret := [CodePoint{0i32} for _ in 1..u.length()]
         len := #ret
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
         _ := u8_to_u32(u.c_string(), #u, (bitcast ret as {data:@CodePoint,length:Int32,stride:Int16,capacity:Int16}).data, &len)
         return ret
 
-    def from_codepoints(codepoints:[CodePoint])->UTF8
+    func from_codepoints(codepoints:[CodePoint])->UTF8
         u32_to_u8 := extern u32_to_u8:(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
         data_ptr := (bitcast codepoints as {data:?CodePoint,length:Int32,stride:Int16,capacity:Int16}).data or return UTF8::""
         len := @0
@@ -173,15 +173,15 @@ def UTF8::Str
         data := memcpy(gc_alloc(*len + 1), buf, *len + 1)
         return bitcast ({data=data, length=(*len as Int32), stride=1i16, capacity=0i16}) as UTF8
 
-    def uppercased(str:UTF8)->UTF8
+    func uppercased(str:UTF8)->UTF8
         toupper := extern uc_toupper:(CodePoint)->CodePoint
         return UTF8.from_codepoints([toupper(c) for c in str.codepoints()])
 
-    def lowercased(str:UTF8)->UTF8
+    func lowercased(str:UTF8)->UTF8
         tolower := extern uc_tolower:(CodePoint)->CodePoint
         return UTF8.from_codepoints([tolower(c) for c in str.codepoints()])
 
-    def titlecased(str:UTF8)->UTF8
+    func titlecased(str:UTF8)->UTF8
         points := str.codepoints()
         prev_alpha := no
         is_alphabetic := extern uc_is_property_alphabetic:(CodePoint)->Bool

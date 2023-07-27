@@ -31,8 +31,8 @@ is "two" then 2
 is other then -1
 === 2
 
-def Vec{x,y:Num}
-def Foo{|int(Int)=5|num(Num)|str(Str)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int)|}
+struct Vec{x,y:Num}
+enum Foo := int(Int)=5|num(Num)|str(Str)|vec(Vec)|tuple({Num,Num})|null|ptr(?Int)
 
 >>> cases := [
     Foo.int(5), Foo.num(2.3),

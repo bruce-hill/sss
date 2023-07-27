@@ -1,7 +1,7 @@
-def Foo { b:?Baz }
-def Baz { f:?Foo }
+struct Foo { b:?Baz }
+struct Baz { f:?Foo }
 
 >>> @Foo{b=@Baz{}}
 
-def Tagged {| t(@Tagged) | nope |}
+enum Tagged := t(@Tagged) | nope
 >>> Tagged.t(@Tagged.nope)

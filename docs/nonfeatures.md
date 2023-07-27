@@ -15,12 +15,12 @@ datatypes:
 
 ```SSS
 // This is not real code, it won't work:
-def BinaryTree<T> {
+struct BinaryTree<T> {
     value:T
     left,right:?BinaryTree<T>
 }
 
-def contains(tree:BinaryTree<T>, obj:T)->Bool
+func contains(tree:BinaryTree<T>, obj:T)->Bool
     return yes if tree.value == obj
     if (left := tree.left) and obj < tree.value
         return contains(left)
@@ -125,20 +125,20 @@ efficient spatial querying. What would a reusable quadtree implementation look
 like without polymorphism?
 
 ```SSS
-def QuadTreeItem {
+struct QuadTreeItem {
     value:@Void
     xmin,xmax,ymin,ymax:Num
 }
-def QuadTree {|
-    subtrees:[QuadTree]
-    bucket:{
+enum QuadTree :=
+    subtrees([QuadTree])
+    | bucket({
         xmin,xmax,ymin,ymax:Num
         items:[QuadTreeItem]
-    }
-|}
-    def insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
+    })
+
+    func insert(qt:QuadTree,xmin,xmax,ymin,ymax:Num,value:@Void)
         ...
-    def query(qt:QuadTree,xmin,xmax,ymin,ymax:Num)->[@Void]
+    func query(qt:QuadTree,xmin,xmax,ymin,ymax:Num)->[@Void]
         ...
 
 my_items := [@Foo{...}, @Foo{...}, @Foo{...}]
@@ -201,15 +201,15 @@ invoking super methods on each other, just save yourself a headache and create
 a struct that holds different things in it:
 
 ```SSS
-def Character {
+struct Character {
     name:Str
     sprite:Sprite
     body:PhysicsBody
 }
-    def update(char:Character, dt:Num)
+    func update(char:Character, dt:Num)
         char.body.update(dt)
 
-    def draw(char:Character)
+    func draw(char:Character)
         char.sprite.draw_at(char.body.pos)
 ```
 
@@ -300,7 +300,7 @@ programmer's reasoning and makes it nearly impossible to have a coherent system
 of value semantics.
 
 Private members also encourage people to use getter/setter anti-patterns like
-`def get_x(f:Foo)->Num return f.private_x`. This sort of pattern is bad for
+`func get_x(f:Foo)->Num return f.private_x`. This sort of pattern is bad for
 _Speed_: it introduces function call overhead for member access, as well as
 potentially slow accessor methods. It also tends to produce a lot of
 boilerplate code. A much saner alternative is to indicate that certain struct
@@ -375,8 +375,8 @@ errors explicitly. Ignoring return values is also treated as a compiler error,
 so callers must address any error values returned or explicitly discard them:
 
 ```SSS
-def IntParseResult {|Failure|Success:Int|}
-def parse_int(str:Str, base=10)->IntParseResult
+enum IntParseResult := Failure | Success(Int)
+func parse_int(str:Str, base=10)->IntParseResult
     return IntParseResult.Failure if #str == 0
     n := 0
     for i in 1..#str

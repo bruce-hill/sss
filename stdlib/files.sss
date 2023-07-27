@@ -2,35 +2,35 @@
 
 time := use time.sss
 
-def FileInfo {
+struct FileInfo{
     device, rdevice, inode, mode, links, user, group:Int64
     size,block_size:Int64<bytes>
     block_count:Int64
     accessed, modified, moved:time.Timestamp
 }
 
-def Result {| Failure(Str) | Success |}
+enum Result := Failure(Str) | Success
 
 // Opaque struct representing C's FILE struct:
-def _CFile{}
+struct _CFile{}
 
-def File{raw_c_file:?_CFile}
-    def line(f:@File)->Str
+struct File{raw_c_file:?_CFile}
+    func line(f:@File)->Str
         return (extern get_line:(@_CFile)->Str)(f.raw_c_file or fail "File has already been closed")
 
-    def lines(f:@File)->[Str]
+    func lines(f:@File)->[Str]
         return [f.line() while not f.ended()]
 
-    def ended(f:@File)->Bool
+    func ended(f:@File)->Bool
         return (extern feof:(@_CFile)->Int32)(f.raw_c_file or fail "File has already been closed") == 1
 
-    def info(f:@File)->FileInfo
+    func info(f:@File)->FileInfo
         file := f.raw_c_file or fail "File has already been closed"
         return (extern sss_fstat:(@_CFile)->FileInfo)(file)
 
     read := extern sss_readfile:(f:@File,bytes=Int64.max)->Str
 
-    def write(f:@File, text:Str)->Result
+    func write(f:@File, text:Str)->Result
         file := f.raw_c_file or fail "File has already been closed"
         fputc := (extern fputc:(Char,@_CFile)->Int32)
         for char in text
@@ -39,13 +39,13 @@ def File{raw_c_file:?_CFile}
                 return Failure((extern last_err:()->Str)())
         return Success
 
-    def flush(f:@File)
+    func flush(f:@File)
         (extern fflush:(@_CFile)->Void)(f.raw_c_file or return)
 
-    def rewind(f:@File)
+    func rewind(f:@File)
         (extern rewind:(@_CFile)->Void)(f.raw_c_file or return)
 
-    def close(f:@File)
+    func close(f:@File)
         file := f.raw_c_file or return
         (extern fclose:(@_CFile)->Void)(file)
         f.raw_c_file = !_CFile
@@ -54,15 +54,15 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-def OpenResult {| Failure(Str) | Success(@File) |}
+enum OpenResult := Failure(Str) | Success(@File)
 
-def FileMode {| Read=0 | Write=1 | ReadWrite=2 |}
+enum FileMode := Read=0 | Write=1 | ReadWrite=2
 open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
-def TempDirResult {| Failure(Str) | Success(Str) |}
+enum TempDirResult := Failure(Str) | Success(Str)
 
-def temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
+func temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     path := [c for c in template]
     mkdtemp := extern mkdtemp:(@CStringChar)->?CStringChar
     if mkdtemp((bitcast path as {data:@CStringChar,len:Int32,stride:Int16,free:Int16}).data) is !CStringChar
@@ -71,43 +71,43 @@ def temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
 
     return Success(path)
 
-def move(path:Str, dest:Str)->Result
+func move(path:Str, dest:Str)->Result
     result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
     if result == 0
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
-def remove(path:Str)->Result
+func remove(path:Str)->Result
     result := (extern unlink:(path:@CStringChar)->Int32)(path)
     if result == 0
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
-def remove_dir(path:Str)->Result
+func remove_dir(path:Str)->Result
     result := (extern rmdir:(path:@CStringChar)->Int32)(path)
     if result == 0
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
-def spoof(text:Str)->@File
+func spoof(text:Str)->@File
     temporary := extern sss_tmpfile:()->@File
     f := temporary()
     _ := f.write(text)
     f.rewind()
     return f
 
-def Glob::Str
-    def expand(g:Glob)->[Str]
-        def glob_t{
+alias Glob::Str
+    func expand(g:Glob)->[Str]
+        struct glob_t{
             gl_pathc:Int64
             gl_pathv:?@CStringChar
             gl_offs:Int64
             gl_flags:Int32
         }
-        def GlobResult{|SUCCESS=0|NOSPACE=1|ABORTED=2|NOMATCH=3|}
+        enum GlobResult := SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3
         do_glob := extern glob:(@CStringChar,Int32,?Void,&glob_t)->GlobResult
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
@@ -121,7 +121,7 @@ def Glob::Str
         is _
             return [:Str]
 
-    def s:Str as Glob
+    convert s:Str as Glob
         return bitcast ([
             for c in s
                 if c is `\;`{;`};`*;`?;`[;`]

@@ -7,7 +7,7 @@ say(*(s or @"Nah"))
 // maybe_log := fn or (s:Str)-> say("...")
 // maybe_log("Hello")
 
-def maybe_str(s:Str,nil_it:Bool)->?Str
+func maybe_str(s:Str,nil_it:Bool)->?Str
     if nil_it
         return !Str
     else

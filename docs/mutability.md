@@ -44,7 +44,7 @@ primitive values should apply here. Two structs are equal when their members
 are equal.
 
 ```
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
 
 v := Vec{1, 2}
 copy := v
@@ -201,7 +201,7 @@ of that memory region are. This is known as referential equality (as opposed to
 structural equality).
 
 ```
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
 
 v1 := @Vec{1, 2}
 >>> v1
@@ -302,7 +302,7 @@ mutable_arr[2] = -666
 
 
 // The same properties hold for arrays of structs:
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
 vecs := @[Vec{1,2}, Vec{3,4}]
 
 // This sets the copy-on-write flag

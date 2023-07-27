@@ -1,5 +1,5 @@
-def Object{|Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)|}
-    def j:Object as JSON
+enum Object := Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)
+    convert j:Object as JSON
         if j is Map(table)
             return JSON::[`{,
                 for entry in table
@@ -23,28 +23,28 @@ def Object{|Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bo
         is Invalid(js)
             fail "invalid JSON: $js"
 
-def JSON::Str
-    def js:JSON as Str
+alias JSON::Str
+    convert js:JSON as Str
         return bitcast js as Str
 
-    def js:JSON as Object
-        def match(js:&JSON, pattern:JSON; inline)->Bool
+    convert js:JSON as Object
+        func match(js:&JSON, pattern:JSON; inline)->Bool
             if (*js).starts_with(pattern)
                 *js = (*js)[(#pattern+1)..]
                 return yes
             else
                 return no
 
-        def match_chars(js:&JSON, chars:JSON; inline)->JSON
+        func match_chars(js:&JSON, chars:JSON; inline)->JSON
             rest := (*js).trimmed(chars, trim_right=no)
             defer *js = rest
             matched := (*js)[..(#js - #rest)]
             return matched
 
-        def skip_spaces(js:&JSON; inline)
+        func skip_spaces(js:&JSON; inline)
             *js = (*js).trimmed(JSON::" \n\r\t", trim_right=no)
 
-        def match_str(js:&JSON)->Object
+        func match_str(js:&JSON)->Object
             unless match(js, JSON::$("))
                 return Object.Invalid(*js)
             content := *js
@@ -54,17 +54,17 @@ def JSON::Str
                     return Object.String(bitcast content[..(i-1)] as Str)
             return Object.Invalid(*js)
 
-        def match_bool(js:&JSON)->Object
+        func match_bool(js:&JSON)->Object
             if match(js, JSON::"true")
                 return Object.Boolean(yes)
             if match(js, JSON::"false")
                 return Object.Boolean(no)
             return Object.Invalid(*js)
 
-        def match_null(js:&JSON)->Object
+        func match_null(js:&JSON)->Object
             return (if match(js, JSON::"null") then Object.Null else Object.Invalid(*js))
 
-        def match_obj(js:&JSON)->Object
+        func match_obj(js:&JSON)->Object
             unless match(js, JSON::"{")
                 return Object.Invalid(*js)
 
@@ -86,7 +86,7 @@ def JSON::Str
 
             return Object.Map(*obj)
 
-        def match_list(js:&JSON)->Object
+        func match_list(js:&JSON)->Object
             unless match(js, JSON::"[")
                 return Object.Invalid(*js)
 
@@ -108,7 +108,7 @@ def JSON::Str
 
             return Object.List(*list)
 
-        def match_num(js:&JSON)->Object
+        func match_num(js:&JSON)->Object
             if Num.parse(bitcast *js as Str) is success(n)
                 *js = (*js)[(#js+1)..]
                 return Object.Number(n)
@@ -118,7 +118,7 @@ def JSON::Str
             else
                 return Object.Invalid(*js)
 
-        def match_json(js:&JSON)->Object
+        func match_json(js:&JSON)->Object
             if m:=match_num(js) is Number(_) then return m
             if m:=match_str(js) is String(_) then return m
             if m:=match_obj(js) is Map(_) then return m
@@ -134,13 +134,13 @@ def JSON::Str
             return Object.Invalid(js)
         return obj
 
-    def s:Str as JSON
+    convert s:Str as JSON
         return bitcast s.quoted() as JSON
 
-    def b:Bool as JSON
+    convert b:Bool as JSON
         return (if b then JSON::"true" else JSON::"false")
 
-    def n:Num as JSON
+    convert n:Num as JSON
         return bitcast "$n" as JSON
 
 if IS_MAIN_PROGRAM

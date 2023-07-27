@@ -4,7 +4,7 @@
 if #ARGS > 0
     say "ARGS[1] ($(ARGS[1])) == 'one'? $(ARGS[1] == "one")"
 
-def foo(ARGS:Int)
+func foo(ARGS:Int)
     fail "Args is: $ARGS" unless ARGS == 5
     say "Shadowing ARGS works"
 

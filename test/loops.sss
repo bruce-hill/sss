@@ -16,7 +16,7 @@ say ""
 
 say "$i" for i in 100..102
 
-def retry()->Bool
+func retry()->Bool
     r := UInt32.random(max=4u32)
     say "rng = $r"
     return r != 0u32

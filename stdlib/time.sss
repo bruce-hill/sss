@@ -1,9 +1,9 @@
 // A small library for representing timestamps and getting the current time
 
-def Timestamp{seconds, nanoseconds:Int64}
+struct Timestamp{seconds, nanoseconds:Int64}
     format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->Str)
 
-def now()->Timestamp
+func now()->Timestamp
     t := @Timestamp{}
     (extern timespec_get:(@Timestamp,Int32)->Void)(t, 1i32)
     return *t

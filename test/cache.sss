@@ -1,7 +1,7 @@
 
 // Log the non-cached calls to this function:
 calls := @[:{Int,Int}]
-def pow(base:Int, exponent:Int; cached)->Int
+func pow(base:Int, exponent:Int; cached)->Int
     calls.insert({base, exponent})
     fail if exponent < 0
     if exponent == 0
@@ -20,7 +20,7 @@ def pow(base:Int, exponent:Int; cached)->Int
 >>> #calls == #{c=>yes for c in *calls}
 === yes
 
-def heap_for_string(str:Str; cached)->@Void
+func heap_for_string(str:Str; cached)->@Void
     return @yes
 
 // Verify that arrays cache the same even when not pointing to the same memory:
@@ -29,7 +29,7 @@ def heap_for_string(str:Str; cached)->@Void
 >>> heap_for_string("abc") == heap_for_string("xyz")
 === no
 
-def heap_for_table(table:{Int=>Int}; cached)->@Void
+func heap_for_table(table:{Int=>Int}; cached)->@Void
     return @yes
 
 // Verify that tables cache the same even when not pointing to the same memory:
@@ -38,7 +38,7 @@ def heap_for_table(table:{Int=>Int}; cached)->@Void
 >>> heap_for_table({1=>2, 2=>3}) == heap_for_table({99=>100})
 === no
 
-def heap_for_int(i:Int; cache_size=1)->@Void
+func heap_for_int(i:Int; cache_size=1)->@Void
     return @yes
 
 >>> t := @{heap_for_int(i)=>yes for i in [3,3,3,3,3,3]}

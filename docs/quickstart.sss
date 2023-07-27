@@ -106,7 +106,7 @@ if should_fail
     fail "This is a failure"
 
 // Function definitions need explicit type annotations:
-def subtract(x:Int, y:Int)->Int
+func subtract(x:Int, y:Int)->Int
     return x - y
 
 >>> subtract(100, 2)
@@ -160,9 +160,9 @@ f := 2.3
 === Num
 
 // Custom structs can be defined like this:
-def Vec{x,y:Num}
+struct Vec{x,y:Num}
     // Methods go indented after the struct definition:
-    def len2(v:Vec)->Num
+    func len2(v:Vec)->Num
         return v.x*v.x + v.y*v.y
 
     // Static members can also be defined:
@@ -187,7 +187,7 @@ v := Vec{3, 4} // Equivalent to Vec{x=3, y=4}
 === "ABC"
 
 // For tagged unions (AKA discriminated unions, sum types)
-def Whatever {|count:Int|text:Str|vec:Vec|nothing|unknown|}
+enum Whatever := count:Int | text:Str | vec:Vec | nothing | unknown
 
 // Tagged values are instantiated like this:
 vals := [Whatever.count(5), Whatever.text("xx"), Whatever.vec(Vec{1,2}), Whatever.nothing, Whatever.unknown]
@@ -313,7 +313,7 @@ for entry in *mutable
 // sometimes you want to represent values that may or may not exist (such as
 // the "next" pointer in a linked list). In these cases, you can use an
 // optional pointer with "?" or a null value with "!":
-def IntList{value:Int, next:?IntList}
+struct IntList{value:Int, next:?IntList}
 
 my_list := ?IntList{1, next=?IntList{2, next=!IntList}}
 
@@ -385,7 +385,7 @@ files := use stdlib/files.sss
 // SSS allows math operations to be performed on structs and arrays that
 // contain only structs/arrays/numeric values. As an example, consider this
 // struct representing a 3D vector:
-def Vec3{x,y,z:Num}
+struct Vec3{x,y,z:Num}
 
 v1 := Vec3{1,2,3}
 // Math operations between vectors are performed component-wise:
@@ -439,7 +439,7 @@ foo := 8.5<frog/horse>
 
 // If you want, you can define derived units, which allows SSS to
 // automatically calculate unit conversions.
-def 1.0<mi> := 1.60934<km>
+unit 1.0<mi> := 1.60934<km>
 
 >>> 1.0<mi> + 1.0<km>
 === 2.60934<km>
@@ -468,7 +468,7 @@ name := "Robert"
 // since there is no conversion defined.
 
 // Defining a conversion:
-def s:Str as $SQL
+convert s:Str as $SQL
     // SQL escaping uses single quotes around strings and double single quotes
     // to represent escaped single quotes inside a string.
     return bitcast [`', ++s.replace("'", "''"), `'] as $SQL

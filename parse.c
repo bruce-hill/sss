@@ -44,9 +44,11 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes","xor","with","while","use","unless","typeof","then","stop","skip","sizeof","return","repeat","of",
-    "or","not","no","mod1","mod","is","in","if","for","fail","extern","else","do","del",
-    "defer","def","by","bitcast","between","as","and","_mix_","_min_","_max_",NULL,
+    "yes", "xor", "with", "while", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
+    "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "is", "in", "if", "func",
+    "for", "fail", "extern", "enum", "else", "do", "del", "defer", "convert", "by", "bitcast", "between", "as",
+    "and", "alias", "_mix_", "_min_", "_max_",
+    NULL,
 };
 
 static inline size_t some_of(const char **pos, const char *allow);
@@ -86,7 +88,13 @@ static PARSER(parse_statement);
 static PARSER(parse_block);
 static PARSER(parse_opt_indented_block);
 static PARSER(parse_var);
+static PARSER(parse_struct_def);
+static PARSER(parse_func_def);
+static PARSER(parse_enum_def);
+static PARSER(parse_alias_def);
+static PARSER(parse_unit_def);
 static PARSER(parse_def);
+static PARSER(parse_convert_def);
 static PARSER(parse_extern);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
@@ -1892,6 +1900,17 @@ PARSER(parse_deletion) {
     return NewAST(ctx->file, start, pos, Delete, .value=val);
 }
 
+PARSER(parse_def) {
+    ast_t *stmt = NULL;
+    (void)((stmt=parse_func_def(ctx, pos))
+        || (stmt=parse_struct_def(ctx, pos))
+        || (stmt=parse_enum_def(ctx, pos))
+        || (stmt=parse_alias_def(ctx, pos))
+        || (stmt=parse_unit_def(ctx, pos))
+        || (stmt=parse_convert_def(ctx, pos)));
+    return stmt;
+}
+
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
@@ -2013,237 +2032,282 @@ static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, si
     return definitions;
 }
 
-static ast_t *parse_struct_def(parse_ctx_t *ctx, const char *start, const char **pos, const char* name) {
-    if (!match(pos, "{")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, *pos);
+PARSER(parse_struct_def) {
+    // Struct def: def Foo{...}
+    const char *start = pos;
+    if (!match_word(&pos, "struct")) return NULL;
+
+    const char *name = get_id(&pos);
+    if (!name) return NULL;
+
+    spaces(&pos);
+
+    if (!match(&pos, "{")) return NULL;
+    size_t starting_indent = sss_get_indent(ctx->file, pos);
     NEW_LIST(const char*, field_names);
     NEW_LIST(ast_t*, field_types);
     NEW_LIST(ast_t*, field_defaults);
     for (;;) {
-        const char *batch_start = *pos;
+        const char *batch_start = pos;
         int64_t first = LIST_LEN(field_names);
         ast_t *default_val = NULL;
         ast_t *type = NULL;
         for (;;) {
-            whitespace(pos);
-            const char* name = get_id(pos);
+            whitespace(&pos);
+            const char* name = get_id(&pos);
             if (!name) break;
             APPEND(field_names, name);
-            whitespace(pos);
-            if (match(pos, "=")) {
-                default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");
+            whitespace(&pos);
+            if (match(&pos, "=")) {
+                default_val = expect_ast(ctx, pos-1, &pos, parse_term, "I expected a value after this '='");
                 break;
-            } else if (match(pos, ":")) {
-                type = expect_ast(ctx, *pos-1, pos, _parse_type, "I expected a type here");
+            } else if (match(&pos, ":")) {
+                type = expect_ast(ctx, pos-1, &pos, _parse_type, "I expected a type here");
                 break;
             }
-            if (!match(pos, ",")) break;
+            if (!match(&pos, ",")) break;
         }
         if (LIST_LEN(field_names) == first) break;
-        whitespace(pos);
+        whitespace(&pos);
         if (!default_val && !type)
-            parser_err(ctx, batch_start, *pos, "I expected a ':' and type, or '=' and a default value after this field(s)");
+            parser_err(ctx, batch_start, pos, "I expected a ':' and type, or '=' and a default value after this field(s)");
 
         for (int64_t i = first; i < LIST_LEN(field_names); i++) {
             APPEND(field_defaults, default_val);
             APPEND(field_types, type);
         }
-        match(pos, ",");
+        match(&pos, ",");
     }
-    whitespace(pos);
-    expect_closing(ctx, pos, "}", "I wasn't able to parse the rest of this struct");
+    whitespace(&pos);
+    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
 
-    List(ast_t*) definitions = parse_def_definitions(ctx, pos, starting_indent);
-    return NewAST(ctx->file, start, *pos, StructDef, .name=name, .field_names=field_names, .field_types=field_types,
+    List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
+    return NewAST(ctx->file, start, pos, StructDef, .name=name, .field_names=field_names, .field_types=field_types,
                   .field_defaults=field_defaults, .definitions=definitions);
 }
 
-PARSER(parse_def) {
+PARSER(parse_enum_def) {
+    // tagged union: enum Foo(a|b(Int)=5|...)
     const char *start = pos;
-    if (!match_word(&pos, "def")) return NULL;
+    if (!match_word(&pos, "enum")) return NULL;
 
-    bool is_inline = false;
+    const char *name = get_id(&pos);
+    if (!name) return NULL;
+
     spaces(&pos);
+
+    if (!match(&pos, ":=")) return NULL;
+
+    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    NEW_LIST(const char*, tag_names);
+    NEW_LIST(int64_t, tag_values);
+    NEW_LIST(ast_t*, tag_types);
+    int64_t next_value = 0;
+    whitespace(&pos);
+    unsigned short int tag_bits = 0;
+    for (;;) {
+        const char *tag_start = pos;
+        const char* tag_name = get_id(&pos);
+        if (!tag_name) break;
+
+        spaces(&pos);
+        ast_t *type = NULL;
+        if (match(&pos, "(")) {
+            whitespace(&pos);
+            type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
+            whitespace(&pos);
+            expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
+        }
+
+        spaces(&pos);
+        if (match(&pos, "=")) {
+            ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
+            next_value = Match(val, Int)->i;
+        }
+
+        // Check for duplicate values:
+        for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
+            if (LIST_ITEM(tag_values, i) == next_value)
+                parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
+        }
+
+        APPEND(tag_names, tag_name);
+        APPEND(tag_values, next_value);
+        APPEND(tag_types, type);
+
+        const char *next_pos = pos;
+        whitespace(&next_pos);
+        if (match(&next_pos, ";")) {
+            whitespace(&next_pos);
+            if (match_word(&next_pos, "bits") && (spaces(&next_pos), match(&next_pos, "="))) {
+                whitespace(&next_pos);
+                char *after = NULL;
+                const char *bits_start = next_pos;
+                tag_bits = strtol(next_pos, &after, 10);
+                if (tag_bits != 64 && tag_bits != 32 && tag_bits != 16 && tag_bits != 8)
+                    parser_err(ctx, bits_start, after, "I only support 64, 32, 16, or 8 bits");
+                if (tag_bits < get_tag_bits(tag_values))
+                    parser_err(ctx, bits_start, after, "This isn't enough bits to hold the largest tag value");
+                next_pos = after;
+                whitespace(&next_pos);
+                match(&next_pos, "|");
+                pos = next_pos;
+                break;
+            }
+        } else if (match(&next_pos, "|")) {
+            whitespace(&next_pos);
+        } else if (sss_get_indent(ctx->file, next_pos) <= starting_indent) {
+            break;
+        } else {
+            spaces(&next_pos);
+        }
+        pos = next_pos;
+        ++next_value;
+    }
+    if (tag_bits == 0)
+        tag_bits = get_tag_bits(tag_values);
+    List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
+    return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
+                  .tag_bits=tag_bits, .tag_types=tag_types, .definitions=definitions);
+}
+
+PARSER(parse_func_def) {
+    const char *start = pos;
+    if (!match_word(&pos, "func")) return NULL;
 
     const char* name = get_id(&pos);
-    if (!name) {
-        if (isdigit(*pos)) goto derived_unit;
-        parser_err(ctx, start, pos, "I expected to see a name after this 'def'");
-    }
+    if (!name) return NULL;
+
     spaces(&pos);
 
-    if (match(&pos, "(")) { // Function def foo(...)
-        NEW_LIST(const char*, arg_names);
-        NEW_LIST(ast_t*, arg_types);
-        NEW_LIST(ast_t*, arg_defaults);
-        for (;;) {
-            whitespace(&pos);
-            const char *arg_start = pos;
-            const char* arg_name = get_id(&pos);
-            if (!arg_name) break;
-            APPEND(arg_names, arg_name);
-            spaces(&pos);
-            if (match(&pos, ":")) {
-                ast_t *type = expect_ast(ctx, arg_start, &pos, _parse_type,
-                                         "I expected a type for this argument");
-                APPEND(arg_types, type);
-                APPEND(arg_defaults, NULL);
-            } else if (match(&pos, "=")) {
-                ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
-                                            "I expected a default value for this argument");
-                APPEND(arg_defaults, def_val);
-                APPEND(arg_types, NULL);
-            } else {
-                parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
-            }
-            spaces(&pos);
-            if (!match(&pos, ",")) break;
-        }
+    if (!match(&pos, "(")) return NULL;
 
+    NEW_LIST(const char*, arg_names);
+    NEW_LIST(ast_t*, arg_types);
+    NEW_LIST(ast_t*, arg_defaults);
+    for (;;) {
         whitespace(&pos);
-        ast_t *cache = NULL;
-        for (; whitespace(&pos), (match(&pos, ";") || match(&pos, ",")); ) {
-            const char *flag_start = pos;
-            if (match_word(&pos, "inline")) {
-                is_inline = true;
-            } else if (match_word(&pos, "cached")) {
-                if (!cache) cache = NewAST(ctx->file, pos, pos, Int, .i=INT64_MAX, .precision=64);
-            } else if (match_word(&pos, "cache_size")) {
-                if (whitespace(&pos), !match(&pos, "="))
-                    parser_err(ctx, flag_start, pos, "I expected a value for 'cache_size'");
-                whitespace(&pos);
-                cache = expect_ast(ctx, start, &pos, parse_expr, "I expected a maximum size for the cache");
-            }
-        }
-        expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function definition");
-
-        ast_t *ret_type = NULL;
+        const char *arg_start = pos;
+        const char* arg_name = get_id(&pos);
+        if (!arg_name) break;
+        APPEND(arg_names, arg_name);
         spaces(&pos);
-        if (match(&pos, "->") || match(&pos, ":"))
-            ret_type = optional_ast(ctx, &pos, _parse_type);
-
-        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
-                                 "This function needs a body block");
-        return NewAST(ctx->file, start, pos, FunctionDef,
-                      .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                      .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache,
-                      .is_inline=is_inline);
-    } else if (match(&pos, "{|")) { // tagged union: def Foo|a|b(Int)=5|...|
-        size_t starting_indent = sss_get_indent(ctx->file, pos);
-        NEW_LIST(const char*, tag_names);
-        NEW_LIST(int64_t, tag_values);
-        NEW_LIST(ast_t*, tag_types);
-        int64_t next_value = 0;
-        whitespace(&pos);
-        unsigned short int tag_bits = 0;
-        for (;;) {
-            const char *tag_start = pos;
-            const char* tag_name = get_id(&pos);
-            if (!tag_name) break;
-
-            spaces(&pos);
-            ast_t *type = NULL;
-            if (match(&pos, "(")) {
-                whitespace(&pos);
-                type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
-                whitespace(&pos);
-                expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
-            }
-
-            spaces(&pos);
-            if (match(&pos, "=")) {
-                ast_t *val = expect_ast(ctx, tag_start, &pos, parse_int, "I expected an integer literal after this '='");
-                next_value = Match(val, Int)->i;
-            }
-
-            // Check for duplicate values:
-            for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
-                if (LIST_ITEM(tag_values, i) == next_value)
-                    parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
-            }
-
-            APPEND(tag_names, tag_name);
-            APPEND(tag_values, next_value);
-            APPEND(tag_types, type);
-
-            const char *next_pos = pos;
-            whitespace(&next_pos);
-            if (match(&next_pos, ";")) {
-                whitespace(&next_pos);
-                if (match_word(&next_pos, "bits") && (spaces(&next_pos), match(&next_pos, "="))) {
-                    whitespace(&next_pos);
-                    char *after = NULL;
-                    const char *bits_start = next_pos;
-                    tag_bits = strtol(next_pos, &after, 10);
-                    if (tag_bits != 64 && tag_bits != 32 && tag_bits != 16 && tag_bits != 8)
-                        parser_err(ctx, bits_start, after, "I only support 64, 32, 16, or 8 bits");
-                    if (tag_bits < get_tag_bits(tag_values))
-                        parser_err(ctx, bits_start, after, "This isn't enough bits to hold the largest tag value");
-                    next_pos = after;
-                    whitespace(&next_pos);
-                    match(&next_pos, "|");
-                    pos = next_pos;
-                    break;
-                }
-            } else if (match(&next_pos, "|")) {
-                whitespace(&next_pos);
-            } else if (sss_get_indent(ctx->file, next_pos) <= starting_indent) {
-                break;
-            } else {
-                spaces(&next_pos);
-            }
-            pos = next_pos;
-            ++next_value;
+        if (match(&pos, ":")) {
+            ast_t *type = expect_ast(ctx, arg_start, &pos, _parse_type,
+                                     "I expected a type for this argument");
+            APPEND(arg_types, type);
+            APPEND(arg_defaults, NULL);
+        } else if (match(&pos, "=")) {
+            ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
+                                        "I expected a default value for this argument");
+            APPEND(arg_defaults, def_val);
+            APPEND(arg_types, NULL);
+        } else {
+            parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
         }
-        if (tag_bits == 0)
-            tag_bits = get_tag_bits(tag_values);
-        expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tagged union");
-        List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
-        return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
-                      .tag_bits=tag_bits, .tag_types=tag_types, .definitions=definitions);
-    } else if (match(&pos, "{")) { // Struct def Foo{...}
-        --pos;
-        return parse_struct_def(ctx, start, &pos, name);
-    } else if (match(&pos, "::")) { // Variant def Variant::T
-        ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
-        ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block); 
-        return NewAST(ctx->file, start, pos, VariantDef, .name=name, .variant_of=source_type, .body=body);
-    } else if (match(&pos, ":")) { // Conversion def x:T1 => T2 ...
-        ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
-        expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");
-        ast_t *target_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion target type here");
-        ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
-        return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
-    } else if (isdigit(*pos)) { // derived unit def
-      derived_unit:;
-        ast_t *derived;
-        if (!(derived=optional_ast(ctx, &pos, parse_num))
-            && !(derived=optional_ast(ctx, &pos, parse_int)))
-            parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-        if (derived->tag == Int)
-            derived = NewAST(ctx->file, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
-
-        if (derived->tag != Num || Match(derived, Num)->units == NULL)
-            parser_err(ctx, derived->span.start, derived->span.end, "Derived units must have units");
-
         spaces(&pos);
-        if (!match(&pos, ":="))
-            parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-        ast_t *base;
-        if (!(base=optional_ast(ctx, &pos, parse_num))
-            && !(base=optional_ast(ctx, &pos, parse_int)))
-            parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-        if (base->tag == Int)
-            base = NewAST(ctx->file, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
-
-        if (base->tag != Num || Match(base, Num)->units == NULL)
-            parser_err(ctx, base->span.start, base->span.end, "Derived units must have units");
-        return NewAST(ctx->file, start, pos, UnitDef, .derived=derived, .base=base);
+        if (!match(&pos, ",")) break;
     }
-    return NULL;
+
+    whitespace(&pos);
+    bool is_inline = false;
+    ast_t *cache_ast = NULL;
+    for (; whitespace(&pos), (match(&pos, ";") || match(&pos, ",")); ) {
+        const char *flag_start = pos;
+        if (match_word(&pos, "inline")) {
+            is_inline = true;
+        } else if (match_word(&pos, "cached")) {
+            if (!cache_ast) cache_ast = NewAST(ctx->file, pos, pos, Int, .i=INT64_MAX, .precision=64);
+        } else if (match_word(&pos, "cache_size")) {
+            if (whitespace(&pos), !match(&pos, "="))
+                parser_err(ctx, flag_start, pos, "I expected a value for 'cache_size'");
+            whitespace(&pos);
+            cache_ast = expect_ast(ctx, start, &pos, parse_expr, "I expected a maximum size for the cache");
+        }
+    }
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function definition");
+
+    ast_t *ret_type = NULL;
+    spaces(&pos);
+    if (match(&pos, "->") || match(&pos, ":"))
+        ret_type = optional_ast(ctx, &pos, _parse_type);
+
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
+                             "This function needs a body block");
+    return NewAST(ctx->file, start, pos, FunctionDef,
+                  .name=name, .arg_names=arg_names, .arg_types=arg_types,
+                  .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache_ast,
+                  .is_inline=is_inline);
+}
+
+PARSER(parse_alias_def) {
+    // alias Variant::T
+    const char *start = pos;
+    if (!match_word(&pos, "alias")) return NULL;
+
+    const char* name = get_id(&pos);
+    if (!name) return NULL;
+
+    spaces(&pos);
+    if (!match(&pos, "::")) return NULL;
+    ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
+    ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block); 
+    return NewAST(ctx->file, start, pos, VariantDef, .name=name, .variant_of=source_type, .body=body);
+}
+
+PARSER(parse_convert_def) {
+    // convert x:Foo as Baz
+    const char *start = pos;
+    if (!match_word(&pos, "convert")) return NULL;
+
+    const char* name = get_id(&pos);
+    if (!name) return NULL;
+
+    spaces(&pos);
+    if (!match(&pos, ":")) return NULL;
+
+    ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
+    expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");
+    ast_t *target_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion target type here");
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
+    return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
+}
+
+PARSER(parse_unit_def) {
+    // unit 1<mi> := 1.6<km>
+    const char *start = pos;
+    if (!match_word(&pos, "unit")) return NULL;
+
+    spaces(&pos);
+
+    if (!isdigit(*pos)) return NULL;
+
+    ast_t *derived;
+    if (!(derived=optional_ast(ctx, &pos, parse_num))
+        && !(derived=optional_ast(ctx, &pos, parse_int)))
+        parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+    if (derived->tag == Int)
+        derived = NewAST(ctx->file, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
+
+    if (derived->tag != Num || Match(derived, Num)->units == NULL)
+        parser_err(ctx, derived->span.start, derived->span.end, "Derived units must have units");
+
+    spaces(&pos);
+    if (!match(&pos, ":="))
+        parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+    ast_t *base;
+    if (!(base=optional_ast(ctx, &pos, parse_num))
+        && !(base=optional_ast(ctx, &pos, parse_int)))
+        parser_err(ctx, start, pos, "Invalid derived unit definition");
+
+    if (base->tag == Int)
+        base = NewAST(ctx->file, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
+
+    if (base->tag != Num || Match(base, Num)->units == NULL)
+        parser_err(ctx, base->span.start, base->span.end, "Derived units must have units");
+    return NewAST(ctx->file, start, pos, UnitDef, .derived=derived, .base=base);
 }
 
 PARSER(parse_extern) {

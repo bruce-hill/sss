@@ -1,8 +1,8 @@
 
-def JSON::Str
-    def j:JSON as Str
+alias JSON::Str
+    convert j:JSON as Str
         return bitcast j as Str
-    def str:Str as JSON
+    convert str:Str as JSON
         return bitcast str.quoted() as JSON
 
 >>> JSON::"true"
@@ -25,14 +25,14 @@ def JSON::Str
 >>> ptr
 === &JSON::"[true]"
 
-def SQL::Str
-    def str:Str as SQL
+alias SQL::Str
+    convert str:Str as SQL
         return bitcast "\x1b[0;35m'$(str.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as SQL
 
-    def i:Int as SQL
+    convert i:Int as SQL
         return bitcast "\x1b[0;35m$i\x1b[m" as SQL
 
-    def n:Num as SQL
+    convert n:Num as SQL
         return bitcast "\x1b[0;35m$n\x1b[m" as SQL
 
 name := "Robert'; drop table students;--"
@@ -41,16 +41,16 @@ age := 10
 s := SQL::"SELECT * FROM students WHERE name = $name AND age > $age"
 say (bitcast s as Str)
 
-def Quoted::Str
-    def s:Str as Quoted
+alias Quoted::Str
+    convert s:Str as Quoted
         return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as Quoted
 
 str := "one two"
 str2 := 'with "quotes" in it'
 say (bitcast Quoted::$[my strings are $str and $(str2)!] as Str)
 
-def HTML::Str
-    def s:Str as HTML
+alias HTML::Str
+    convert s:Str as HTML
         s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
              .replace("<", "\x1b[34;1m&lt;\x1b[0;35m")
              .replace(">", "\x1b[34;1m&gt;\x1b[0;35m")
@@ -59,7 +59,7 @@ def HTML::Str
 
         return bitcast "\x1b[0;35m$s\x1b[m" as HTML
 
-    def strings:[Str] as HTML
+    convert strings:[Str] as HTML
         return bitcast [
             ++"<ol>\n",
             for str in strings
@@ -70,7 +70,7 @@ def HTML::Str
             ++"\n</ol>",
         ] as HTML
 
-    def table:{Str=>Str} as HTML
+    convert table:{Str=>Str} as HTML
         return bitcast [
             ++"<table>\n",
             for e in table
