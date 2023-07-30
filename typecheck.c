@@ -711,7 +711,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
         foreach (block->statements, stmt, _) {
-            predeclare_def_types(env, *stmt, false);
+            predeclare_def_types(env, *stmt);
         }
         // Populate struct fields:
         foreach (block->statements, stmt, _) {

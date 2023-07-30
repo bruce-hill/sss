@@ -94,7 +94,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name);
 // ============================== blocks.c ==============================
 gcc_func_t *prepare_use(env_t *env, ast_t *ast);
 void populate_uses(env_t *env, ast_t *ast);
-void predeclare_def_types(env_t *env, ast_t *def, bool lazy);
+void predeclare_def_types(env_t *env, ast_t *def);
 void predeclare_def_funcs(env_t *env, ast_t *def);
 void populate_def_members(env_t *env, ast_t *def);
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
