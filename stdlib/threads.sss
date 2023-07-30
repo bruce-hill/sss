@@ -1,0 +1,31 @@
+!link -lpthread
+
+alias Thread::Int
+    enum CreateResult := Success=0 | InsufficientResources=11 | InvalidSettings=22
+    func create(fn:(?Void)->?Void, arg:?Void)->Thread
+        thread := Thread::0
+        pthread_create := extern pthread_create:(&Thread, ?Void, (?Void)->?Void, ?Void)->CreateResult
+        if status := pthread_create(&thread, !Void, fn, arg) is Success
+            return thread
+        else
+            fail "Failed to create thread: $status"
+
+    enum JoinResult := Success(?Void) | NoPermissions=1 | Deadlock=35 | Invalid=22 | NotFound=3
+    func join(t:Thread, _=!Void)->?Void
+        pthread_join := extern pthread_join:(Thread, &?Void)->JoinResult
+        ret := !Void
+        if status := pthread_join(t, &ret) is Success
+            return ret
+        else
+            fail "Failed to join thread: $status"
+
+
+if IS_MAIN_PROGRAM
+    func test(v:?Void)->?Void
+        i := *(bitcast (v or fail) as @Int)
+        say "($i)"
+        return @(10*i)
+
+    >>> threads := [Thread.create(test, @i) for i in 1..10]
+    >>> [*(bitcast t.join() as @Int) for t in threads]
+    === [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
