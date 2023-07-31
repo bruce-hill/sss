@@ -23,6 +23,8 @@ alias Thread::Int
         pthread_cancel := extern GC_pthread_cancel:(Thread)->Int32
         if pthread_cancel(t) != 0i32
             fail "Failed to cancel thread"
+
+    self := extern pthread_self:()->Thread
         
 
 create := Thread.create
