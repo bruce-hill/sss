@@ -643,9 +643,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "I was expecting this `return` to have value of type %T because of the function's type signature, but this value has type %T",
                   env->return_type, value_t);
 
+        // TODO: figure out when it's safe to re-enable Tail Call Optimization
+        // It's not safe if, e.g. we're passing a stack reference like `return foo(&myval)`
+
         // Tail call optimization under the right conditions:
-        if (ret->value->tag == FunctionCall && env->tail_calls && !env->deferred && type_eq(value_t, env->return_type))
-            gcc_rvalue_require_tail_call(val, 1);
+        // if (ret->value->tag == FunctionCall && env->tail_calls && !env->deferred && type_eq(value_t, env->return_type)) {
+        //     gcc_rvalue_require_tail_call(val, 1);
+        // }
 
         // Evaluate return expression before returning void or defers (if any):
         if (env->return_type->tag == VoidType && val) {
