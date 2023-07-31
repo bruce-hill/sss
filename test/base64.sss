@@ -4,10 +4,10 @@
 === ""
 
 >>> "SGVsbG8gd29ybGQ=".b64_decode()
-=== Base64Decode.success("Hello world")
+=== Base64Decode.Success("Hello world")
 >>> "SGVsbG8gd29ybGQ==".b64_decode()
-=== Base64Decode.failure
+=== Base64Decode.Failure
 >>> "".b64_decode()
-=== Base64Decode.success("")
+=== Base64Decode.Success("")
 >>> "!!!!".b64_decode()
-=== Base64Decode.failure
+=== Base64Decode.Failure

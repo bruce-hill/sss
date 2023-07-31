@@ -109,10 +109,10 @@ alias JSON::Str
             return Object.List(*list)
 
         func match_num(js:&JSON)->Object
-            if Num.parse(bitcast *js as Str) is success(n)
+            if Num.parse(bitcast *js as Str) is Success(n)
                 *js = (*js)[(#js+1)..]
                 return Object.Number(n)
-            is partial_success({value=n, remainder=remaining})
+            is PartialSuccess({value=n, remainder=remaining})
                 *js = (bitcast remaining as JSON)
                 return Object.Number(n)
             else
