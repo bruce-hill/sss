@@ -67,6 +67,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
     gcc_type_t *arg_tuple_gcc_t = sss_type_to_gcc(env, arg_tuple_t);
     sss_type_t *cache_t = Type(TableType, .key_type=arg_tuple_t, .value_type=fn_info->ret);
     gcc_lvalue_t *cache = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, sss_type_to_gcc(env, cache_t), fresh("cache"));
+    gcc_jit_lvalue_set_tls_model(cache, GCC_JIT_TLS_MODEL_INITIAL_EXEC);
 
     gcc_lvalue_t *arg_tuple = gcc_local(func, loc, arg_tuple_gcc_t, "_cache_key");
     gcc_assign(block, loc, arg_tuple, gcc_struct_constructor(env->ctx, loc, arg_tuple_gcc_t, 0, NULL, NULL));
