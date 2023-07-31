@@ -364,9 +364,15 @@ int main(int argc, char *argv[])
             verbose = true;
             continue;
         } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
-            int opt = atoi(argv[i]+2);
-            tail_calls = opt >= 2;
-            gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
+            if (streq(argv[i]+2, "fast")) {
+                tail_calls = true;
+                gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, 3);
+                gcc_jit_context_add_command_line_option(ctx, argv[i]);
+            } else {
+                int opt = atoi(argv[i]+2);
+                tail_calls = opt >= 2;
+                gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
+            }
             continue;
         } else if (strncmp(argv[i], "-G", 2) == 0) { // GCC Flag
             if (streq(argv[i]+2, "Ofast") || streq(argv[i]+2, "O2") || streq(argv[i]+2,"O3"))
