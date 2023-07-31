@@ -255,8 +255,11 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case FunctionType: {
         NEW_LIST(gcc_type_t*, arg_types);
         auto fn = Match(t, FunctionType);
-        foreach (fn->arg_types, arg_t, _)
+        foreach (fn->arg_types, arg_t, _) {
+            if ((*arg_t)->tag == VoidType)
+                compiler_err(env, NULL, "Function has a Void argument type: %T", t);
             append(arg_types, sss_type_to_gcc(env, *arg_t));
+        }
         gcc_type_t *ret_type = sss_type_to_gcc(env, fn->ret);
         gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
         break;
