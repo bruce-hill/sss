@@ -1,0 +1,40 @@
+!link -llfds
+
+struct Entry{_1,_2,_3,value:?Void}
+enum DequeueResult := Empty | Value(?Void)
+
+struct Queue{}
+    func new()->@Queue
+        alloc := extern GC_malloc:(UInt)->@Queue
+        q := alloc(768u64)
+        dummy := @Entry{}
+        init := extern lfds711_queue_umm_init_valid_on_current_logical_core:(@Queue, @Entry, ?Void)->Void
+        init(q, dummy, !Void)
+        register_finalizer := extern GC_register_finalizer:(@Queue,(@Queue,?Void)->Void,?Void,?Void,?Void)->Void
+        cleanup := extern lfds711_queue_umm_cleanup:(@Queue,?Void)->Void
+        register_finalizer(q, cleanup, !Void, !Void, !Void)
+        return q
+    
+    func enqueue(q:@Queue, value:?Void)
+        enc := extern lfds711_queue_umm_enqueue:(@Queue,@Entry)->Void
+        enc(q, @Entry{value=value})
+
+    func dequeue(q:@Queue)->DequeueResult
+        deq := extern lfds711_queue_umm_dequeue:(@Queue,&?Entry)->Bool
+        entry := !Entry
+        if deq(q, &entry)
+            if entry is @real_entry
+                return Value(real_entry.value)
+            else
+                return Empty
+        else
+            return Empty
+
+new := Queue.new
+
+if IS_MAIN_PROGRAM
+    >>> q := Queue.new()
+    say "Initialized!"
+    for i in 10..15 do q.enqueue(@i)
+    say "All queued up"
+    >>> [repeat if q.dequeue() is Value(v) then (bitcast v as @Int) else stop]

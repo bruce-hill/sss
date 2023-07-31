@@ -1,0 +1,107 @@
+use ./stdlib/queue.sss
+use ./stdlib/threads.sss
+
+usleep := extern usleep:(Int)->Void
+
+enum PoolResult := Result({id:Int, value:?Void}) | Empty
+
+struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Void}, next_request_id=0}
+    func new(workers=10)->Pool
+        input := Queue.new()
+        output := Queue.new()
+        return Pool{input, output, @[Pool.spawn(input, output) for i in 1..workers]}
+
+    func spawn(input:@Queue, output:@Queue)->Thread
+        func main_loop(v:?Void)->?Void
+            ctx := bitcast v as @{input:@Queue, output:@Queue}
+            repeat
+                maybe_cancel := extern pthread_testcancel:()->Void
+                maybe_cancel()
+                if ctx.input.dequeue() is Value(request)
+                    request := bitcast request as @{id:Int, fn:(?Void)->?Void, arg:?Void}
+                    result := request.fn(request.arg)
+                    ctx.output.enqueue(@{request.id, result})
+                else
+                    usleep(10)
+            return !Void
+
+        return Thread.create(main_loop, @{input, output})
+
+    func get_next_request_id(p:&Pool; inline)->Int
+        id := p.next_request_id
+        p.next_request_id += 1
+        return id
+
+    func run(p:&Pool, fn:(?Void)->?Void, arg=!Void)->?Void
+        id := p.give(fn, arg)
+        repeat
+            if p.output.dequeue() is Value(result)
+                result := bitcast result as @{id:Int, value:?Void}
+                if result.id == id
+                    return result.value
+                else
+                    (&p.completed)[result.id] = result.value
+                    if id in p.completed
+                        completed := p.completed[id]
+                        del (&p.completed)[id]
+                        return completed
+                    else
+                        skip
+            usleep(10)
+        fail
+
+    func give(p:&Pool, fn:(?Void)->?Void, arg=!Void)->Int
+        id := p.get_next_request_id()
+        p.input.enqueue(@{id, fn, arg})
+        return id
+
+    func take(p:&Pool)->PoolResult
+        if p.output.dequeue() is Value(result)
+            result := (bitcast result as @{id:Int, value:?Void})
+            return Result({id=result.id, value=result.value})
+        else if #p.completed > 0
+            id := p.completed.keys[1]
+            result := p.completed[id]
+            del (&p.completed)[id]
+            return Result({id=id, value=result})
+        else
+            return Empty
+
+    func cleanup(p:&Pool)
+        for w in *p.workers
+            w.cancel()
+            _ := w.join()
+        
+if IS_MAIN_PROGRAM
+    func do_work(v:?Void)->?Void
+        i := *(bitcast (v or fail) as @Int)
+        usleep(Int.random(100))
+        ret := "Worker $(Thread.self()) got $i"
+        return @ret
+
+    pool := &Pool.new(2)
+    defer pool.cleanup()
+
+    say "Initialized pool"
+
+    inputs := 10..20
+    for i in inputs do _ := pool.give(do_work, @i)
+
+    say "Gave out work"
+
+    outputs := @[:@Str]
+    while #outputs < #inputs
+        if #outputs == 3
+            >>> bitcast pool.run(do_work, @123) as @Str
+
+        if pool.take() is Result({id=id, value=s})
+            say "Result: $(bitcast s as @Str)"
+            outputs.insert(bitcast s as @Str)
+        else
+            usleep(100)
+            skip
+
+    say "Finished"
+    >>> *outputs
+
+    >>> bitcast pool.run(do_work, @55) as @Str
