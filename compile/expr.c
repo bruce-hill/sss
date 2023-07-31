@@ -1718,13 +1718,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, value);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_rvalue_t *val = compile_expr(env, block, value);
-        if (t->tag == BoolType)
+        if (t->tag == BoolType) {
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
-        else if (is_integral(t))
+        } else if (is_integral(t)) {
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
-        else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
+        } else if (t->tag == PointerType && Match(t, PointerType)->is_optional) {
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
-        else if (t->tag == TaggedUnionType) {
+        } else if (t->tag == TaggedUnionType) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
@@ -1740,8 +1740,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                      gcc_rvalue_access_field(val, loc, tag_field),
                                                      gcc_rvalue_from_long(env->ctx, tag_gcc_t, all_tags));
             return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
-        } else
+        } else {
             compiler_err(env, ast, "The 'not' operator isn't supported for values with type %T", t);
+        }
     }
     case Equal: case NotEqual:
     case Less: case LessEqual: case Greater: case GreaterEqual: {
@@ -2004,7 +2005,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *subject = compile_expr(env, block, if_->subject);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, subject_t);
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, "_when_subject");
+        gcc_lvalue_t *subject_var = gcc_local(func, loc, gcc_t, "_matching");
         gcc_assign(*block, loc, subject_var, subject);
         if (if_->subject->tag == Declare) {
             env = fresh_scope(env);
@@ -2013,7 +2014,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         subject = gcc_rval(subject_var);
 
-        gcc_block_t *done = gcc_new_block(func, fresh("finished"));
+        gcc_block_t *done = gcc_new_block(func, fresh("endif"));
 
         sss_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
@@ -2045,13 +2046,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = done;
         // Ensure the (unreachable) done block is terminated when every branch aborts:
         if (*block && result_t->tag == AbortType) {
-            // If there's a way out of this without aborting, nevermind.
-            // *Technically* this should be typechecked as a generator type,
-            // but the type checker doesn't check for exhaustiveness.
-            if (!get_missing_pattern(env, subject_t, if_->patterns)) {
-                gcc_jump(*block, loc, *block);
-                *block = NULL;
-            }
+            gcc_jump(*block, loc, *block);
+            *block = NULL;
         }
 
         return has_value ? gcc_rval(when_value) : NULL;

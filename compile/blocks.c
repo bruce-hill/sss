@@ -131,7 +131,7 @@ void populate_uses(env_t *env, ast_t *ast)
     }
 }
 
-void predeclare_def_types(env_t *env, ast_t *def)
+void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
 {
     if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
@@ -146,12 +146,15 @@ void predeclare_def_types(env_t *env, ast_t *def)
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
         env_t *struct_env = fresh_scope(env);
-        struct_env->bindings = get_namespace(env, t);
+        if (!hget(&env->global->type_namespaces, name, sss_hashmap_t*))
+            hset(&env->global->type_namespaces, name, struct_env->bindings);
+        else if (!lazy)
+            compiler_err(env, def, "The struct '%s' is already defined", name);
         foreach (struct_def->definitions, def, _)
-            predeclare_def_types(struct_env, *def);
+            predeclare_def_types(struct_env, *def, lazy);
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
-        const char *name = tu_def->name;
+        const char* name = tu_def->name;
         sss_type_t *t = Type(TaggedUnionType, .filename=sss_get_file_pos(def->span.file, def->span.start),
                              .name=name, .members=LIST(sss_tagged_union_member_t), .tag_bits=tu_def->tag_bits);
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
@@ -159,9 +162,12 @@ void predeclare_def_types(env_t *env, ast_t *def)
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
         hset(env->bindings, name, b);
         env_t *tu_env = fresh_scope(env);
-        tu_env->bindings = get_namespace(env, t);
-        foreach (tu_def->definitions, inner, _)
-            predeclare_def_types(tu_env, *inner);
+        if (!hget(&env->global->type_namespaces, name, sss_hashmap_t*))
+            hset(&env->global->type_namespaces, name, tu_env->bindings);
+        else if (!lazy)
+            compiler_err(env, def, "The tagged union '%s' is already defined", name);
+        foreach (tu_def->definitions, def, _)
+            predeclare_def_types(tu_env, *def, lazy);
     } else if (def->tag == UnitDef) {
         auto unit_def = Match(def, UnitDef);
         env->derived_units = new(derived_units_t, 
@@ -180,11 +186,12 @@ void predeclare_def_types(env_t *env, ast_t *def)
         hset(env->bindings, variant_def->name, new(binding_t, .type=Type(TypeType, .type=variant_t),
                                                    .rval=gcc_str(env->ctx, variant_str), .visible_in_closures=true));
         env_t *var_env = fresh_scope(env);
-        var_env->bindings = get_namespace(env, variant_t);
-        foreach (Match(variant_def->body, Block)->statements, inner, _)
-            predeclare_def_types(var_env, *inner);
+        if (!hget(&env->global->type_namespaces, variant_def->name, sss_hashmap_t*))
+            hset(&env->global->type_namespaces, variant_def->name, var_env->bindings);
+        else if (!lazy)
+            compiler_err(env, def, "The tagged union '%s' is already defined", variant_def->name);
     } else if (def->tag == DocTest) {
-        predeclare_def_types(env, Match(def, DocTest)->expr);
+        predeclare_def_types(env, Match(def, DocTest)->expr, lazy);
     }
 }
 
@@ -219,14 +226,13 @@ void populate_def_members(env_t *env, ast_t *def)
             APPEND(struct_type->field_defaults, default_val);
         }
         binding->rval = gcc_str(env->ctx, type_to_string(t));
-        foreach (struct_def->definitions, inner, _)
-            populate_def_members(&inner_env, *inner);
+        foreach (struct_def->definitions, def, _)
+            populate_def_members(&inner_env, *def);
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         const char* tu_name = tu_def->name;
         binding_t *binding = get_binding(env, tu_name);
-        if (!(binding && binding->type->tag == TypeType))
-            compiler_err(env, def, "I couldn't find the definition for %s in (bindings=%p)", tu_name, env->bindings);
+        assert(binding && binding->type->tag == TypeType);
         sss_type_t *t = Match(binding->type, TypeType)->type;
         auto members = Match(t, TaggedUnionType)->members;
         sss_hashmap_t used_names = {0};
@@ -292,8 +298,8 @@ void populate_def_members(env_t *env, ast_t *def)
 
         env_t inner_env = *env;
         inner_env.bindings = type_ns;
-        foreach (tu_def->definitions, inner, _)
-            populate_def_members(&inner_env, *inner);
+        foreach (tu_def->definitions, def, _)
+            populate_def_members(&inner_env, *def);
     } else if (def->tag == DocTest) {
         return populate_def_members(env, Match(def, DocTest)->expr);
     }
@@ -312,13 +318,11 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
     } else if (def->tag == StructDef) {
         auto struct_def = Match(def, StructDef);
         binding_t *b = get_binding(env, struct_def->name);
-        assert(b);
         env = get_type_env(env, Match(b->type, TypeType)->type);
         members = struct_def->definitions;
     } else if (def->tag == TaggedUnionDef) {
         auto tu_def = Match(def, TaggedUnionDef);
         binding_t *b = get_binding(env, tu_def->name);
-        assert(b);
         env = get_type_env(env, Match(b->type, TypeType)->type);
         members = tu_def->definitions;
     } else if (def->tag == VariantDef) {
@@ -379,7 +383,7 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     }
     // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
     foreach (statements, stmt, _) {
-        predeclare_def_types(env, *stmt);
+        predeclare_def_types(env, *stmt, true);
     }
     // Populate struct fields:
     foreach (statements, stmt, _) {

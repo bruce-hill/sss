@@ -711,7 +711,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
         foreach (block->statements, stmt, _) {
-            predeclare_def_types(env, *stmt);
+            predeclare_def_types(env, *stmt, false);
         }
         // Populate struct fields:
         foreach (block->statements, stmt, _) {
@@ -1043,28 +1043,30 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
 
     case If: {
-        auto when = Match(ast, If);
+        auto if_ = Match(ast, If);
         sss_type_t *subject_t;
-        if (when->subject->tag == Declare) {
-            subject_t = get_type(env, Match(when->subject, Declare)->value);
+        if (if_->subject->tag == Declare) {
+            subject_t = get_type(env, Match(if_->subject, Declare)->value);
             env = fresh_scope(env);
-            hset(env->bindings, Match(Match(when->subject, Declare)->var, Var)->name,
+            hset(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
                  new(binding_t, .type=subject_t));
         } else {
-            subject_t = get_type(env, when->subject);
+            subject_t = get_type(env, if_->subject);
         }
         sss_type_t *t = NULL;
-        for (int64_t i = 0; i < LIST_LEN(when->patterns); i++) {
+        for (int64_t i = 0; i < LIST_LEN(if_->patterns); i++) {
             env_t *case_env = fresh_scope(env);
-            bind_match_patterns(case_env, subject_t, ith(when->patterns, i));
-            sss_type_t *case_t = get_type(case_env, ith(when->blocks, i));
+            bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
+            sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2 || (t && !streq(type_units(t), type_units(case_t))))
-                compiler_err(env, ith(when->blocks, i),
+                compiler_err(env, ith(if_->blocks, i),
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(case_t));
             t = t2;
         }
+        if (get_missing_pattern(env, subject_t, if_->patterns) && t->tag != GeneratorType)
+            t = Type(GeneratorType, .generated=t);
         return t;
     }
 
@@ -1159,5 +1161,160 @@ bool is_discardable(env_t *env, ast_t *ast)
     while (t->tag == GeneratorType) t = Match(t, GeneratorType)->generated;
     return (t->tag == VoidType || t->tag == AbortType);
 }
+
+const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns)
+{
+    // Wildcard pattern:
+    if (t->tag != TaggedUnionType) {
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == Var && (streq(Match(*pat, Var)->name, "*") || !get_binding(env, Match(*pat, Var)->name)))
+                return NULL;
+        }
+    }
+
+    if (t->tag == TaggedUnionType) {
+        sss_hashmap_t member_handlers = {0};
+        auto members = Match(t, TaggedUnionType)->members;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = ith(members, i);
+            NEW_LIST(ast_t*, list);
+            hset(&member_handlers, member.name, list);
+        }
+
+        // Wildcard pattern (but not counting tagged union field names)
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Var) continue;
+            const char *name = Match(*pat, Var)->name;
+            if (!get_binding(env, name) && !hget(&member_handlers, name, List(ast_t*)))
+                return NULL;
+        }
+
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == FunctionCall) {
+                ast_t *fn = Match((*pat), FunctionCall)->fn;
+                if (fn->tag == Var) {
+                    const char *name = Match(fn, Var)->name;
+                    List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                    if (handlers) {
+                        auto args = Match(*pat, FunctionCall)->args;
+                        if (LIST_LEN(args) != 1)
+                            compiler_err(env, *pat, "This constructor expected exactly one argument");
+                        append(handlers, ith(args, 0));
+                    }
+                }
+            } else if ((*pat)->tag == Var) {
+                const char *name = Match(*pat, Var)->name;
+                List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                if (handlers)
+                    append(handlers, *pat);
+            }
+        }
+
+        const char *unhandled = NULL;
+        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+            auto member = ith(members, i);
+            List(ast_t*) handlers = hget(&member_handlers, member.name, List(ast_t*));
+            if (LIST_LEN(handlers) == 0) {
+                if (unhandled)
+                    unhandled = heap_strf("%s, nor is %s.%s",
+                                          unhandled, type_to_string(t), member.name);
+                else
+                    unhandled = heap_strf("The tagged union member %s.%s is not handled",
+                                          type_to_string(t), member.name);
+            } else if (member.type) {
+                const char *missing = get_missing_pattern(env, member.type, handlers);
+                if (!missing) continue;
+                if (unhandled)
+                    unhandled = heap_strf("%s, also for %s.%s(...): %s",
+                                          unhandled, type_to_string(t), member.name, missing);
+                else
+                    unhandled = heap_strf("Among the patterns for %s.%s(...): %s",
+                                          type_to_string(t), member.name, missing);
+            }
+        }
+        return unhandled;
+    } else if (t->tag == PointerType) {
+        auto ptr = Match(t, PointerType);
+        if (ptr->is_optional) {
+            bool handled_null = false;
+            foreach (patterns, pat, _) {
+                if ((*pat)->tag == Nil
+                    || ((*pat)->tag == Var && !get_binding(env, Match(*pat, Var)->name))) {
+                    handled_null = true;
+                    break;
+                }
+            }
+            if (!handled_null) return "The null value is not handled";
+        }
+
+        NEW_LIST(ast_t*, value_handlers);
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag == HeapAllocate)
+                append(value_handlers, Match(*pat, HeapAllocate)->value);
+            else if ((*pat)->tag == StackReference)
+                append(value_handlers, Match(*pat, StackReference)->value);
+        }
+        return get_missing_pattern(env, ptr->pointed, value_handlers);
+    } else if (t->tag == BoolType) {
+        bool cases_handled[2] = {false, false};
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Bool) continue;
+            cases_handled[(int)Match(*pat, Bool)->b] = true;
+        }
+        if (!cases_handled[0])
+            return "'no' is not handled";
+        else if (!cases_handled[1])
+            return "'yes' is not handled";
+        else
+            return NULL;
+    } else if (is_numeric(t)) {
+        return "some numbers are not handled";
+    } else if (t->tag == CharType) {
+        return "some numbers are not handled";
+    } else if (t->tag == StructType) {
+        auto field_names = Match(t, StructType)->field_names;
+        auto field_type_list = Match(t, StructType)->field_types;
+        sss_hashmap_t field_types = {0};
+        for (int64_t i = 0; i < length(field_names); i++) {
+            auto name = ith(field_names, i);
+            auto type = ith(field_type_list, i);
+            hset(&field_types, name, type);
+        }
+
+        foreach (patterns, pat, _) {
+            if ((*pat)->tag != Struct) continue;
+            auto struct_ = Match(*pat, Struct);
+            sss_hashmap_t named_members = {0};
+            foreach (struct_->members, member, _) {
+                auto memb = Match(*member, StructField);
+                if (!memb->name) continue;
+                hset(&named_members, memb->name, memb->value);
+            }
+            foreach (struct_->members, member, _) {
+                auto memb = Match(*member, StructField);
+                if (memb->name) continue;
+                for (int64_t i = 0; i < length(field_names); i++) {
+                    const char *name = ith(field_names, i);
+                    if (!hget(&named_members, name, ast_t*)) {
+                        hset(&named_members, name, memb->value);
+                        break;
+                    }
+                }
+            }
+
+            const char *missing = NULL;
+            for (int64_t i = 1; i <= named_members.count; i++) {
+                auto entry = hnth(&named_members, i, const char*, ast_t*);
+                sss_type_t *type = hget(&field_types, entry->key, sss_type_t*);
+                missing = get_missing_pattern(env, type, LIST(ast_t*, entry->value));
+                if (missing) break;
+            }
+            if (!missing) return NULL;
+        }
+    }
+    return heap_strf("I can't prove that every %s case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'",
+                     type_to_string(t));
+}
+
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
