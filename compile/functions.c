@@ -185,10 +185,12 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     auto body = def->tag == FunctionDef ? Match(def, FunctionDef)->body : FakeAST(Return, .value=Match(def, Lambda)->body);
     compile_statement(env, &block, body);
     if (block) {
-        // if (fn_info->ret->tag != VoidType) {
-        //     compiler_err(env, def, "You declared that this function returns a value of type %T, but the end of the function can be reached without returning a value",
-        //           fn_info->ret);
-        // }
+        if (fn_info->ret->tag != VoidType) {
+            compiler_err(env, def,
+                         "This function should return a %T, but I think you can reach the end without returning a value."
+                         "\nSuggestion: if the end of the function is unreachable, put a `fail` statement there so the compiler knows it doesn't have to return a value at the end.",
+                         fn_info->ret);
+        }
         gcc_return_void(block, NULL);
     }
 }
