@@ -1,32 +1,49 @@
 !link -llfds
 
-struct Entry{_1,_2,_3,value:?Void}
+alias Entry::@Void
+    func new(value=!Void)->Entry
+        alloc := extern GC_malloc:(UInt)->Entry
+        e := alloc(24u64)
+        e.set_value(value)
+        return e
+
+    func get_value(e:Entry)->?Void
+        return *(bitcast ((bitcast e as UInt)+16u64) as @?Void)
+
+    func set_value(e:Entry, value:?Void)
+        *(bitcast ((bitcast e as UInt)+16u64) as @?Void) = value
+
 enum DequeueResult := Empty | Value(?Void)
 
-struct Queue{}
-    func new()->@Queue
-        alloc := extern GC_malloc:(UInt)->@Queue
+alias Queue::@Void
+    func new()->Queue
+        alloc := extern GC_malloc:(UInt)->Queue
         q := alloc(768u64)
-        dummy := @Entry{}
-        init := extern lfds711_queue_umm_init_valid_on_current_logical_core:(@Queue, @Entry, ?Void)->Void
+        dummy := Entry.new()
+        init := extern lfds711_queue_umm_init_valid_on_current_logical_core:(Queue, Entry, ?Void)->Void
         init(q, dummy, !Void)
-        register_finalizer := extern GC_register_finalizer:(@Queue,(@Queue,?Void)->Void,?Void,?Void,?Void)->Void
-        cleanup := extern lfds711_queue_umm_cleanup:(@Queue,?Void)->Void
+        register_finalizer := extern GC_register_finalizer:(Queue,(Queue,?Void)->Void,?Void,?Void,?Void)->Void
+        cleanup := extern lfds711_queue_umm_cleanup:(Queue,?Void)->Void
         register_finalizer(q, cleanup, !Void, !Void, !Void)
         return q
     
-    func enqueue(q:@Queue, value:?Void)
-        enc := extern lfds711_queue_umm_enqueue:(@Queue,@Entry)->Void
-        enc(q, @Entry{value=value})
+    func enqueue(q:Queue, value:?Void)
+        enc := extern lfds711_queue_umm_enqueue:(Queue,Entry)->Void
+        enc(q, Entry.new(value))
 
-    func dequeue(q:@Queue)->DequeueResult
-        deq := extern lfds711_queue_umm_dequeue:(@Queue,&?Entry)->Bool
-        entry := !Entry
+    func dequeue(q:Queue)->?Void
+        repeat if q.try_dequeue() is Value(v)
+            return v
+        else
+            usleep := extern usleep:(Int)->Void
+            usleep(10)
+        fail
+
+    func try_dequeue(q:Queue)->DequeueResult
+        deq := extern lfds711_queue_umm_dequeue:(Queue,&Entry)->Bool
+        entry := Entry.new()
         if deq(q, &entry)
-            if entry is @real_entry
-                return Value(real_entry.value)
-            else
-                return Empty
+            return Value(entry.get_value())
         else
             return Empty
 
@@ -37,4 +54,4 @@ if IS_MAIN_PROGRAM
     say "Initialized!"
     for i in 10..15 do q.enqueue(@i)
     say "All queued up"
-    >>> [repeat if q.dequeue() is Value(v) then (bitcast v as @Int) else stop]
+    >>> [repeat if q.try_dequeue() is Value(v) then (bitcast v as @Int) else stop]
