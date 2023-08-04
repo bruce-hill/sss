@@ -1103,14 +1103,34 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto call = Match(ast, FunctionCall);
         gcc_rvalue_t *fn_ptr = NULL;
         gcc_func_t *fn = NULL;
-        sss_type_t *fn_bl_t = get_type(env, call->fn);
-        if (fn_bl_t->tag != FunctionType)
-            compiler_err(env, call->fn, "This is not a callable function (it's a %T)", fn_bl_t);
-        auto fn_t = Match(fn_bl_t, FunctionType);
+        sss_type_t *fn_sss_t = NULL;
+        gcc_rvalue_t *self_val = NULL;
 
-        int64_t num_args = length(fn_t->arg_types);
-        gcc_rvalue_t **arg_vals = GC_MALLOC(sizeof(gcc_rvalue_t*)*num_args);
-        // method calls:
+        if (call->extern_return_type) {
+            sss_type_t *ret_t = parse_type_ast(env, call->extern_return_type);
+            gcc_type_t *gcc_ret_t = sss_type_to_gcc(env, ret_t);
+            NEW_LIST(const char*, arg_names);
+            NEW_LIST(sss_type_t*, arg_types);
+            NEW_LIST(gcc_param_t*, params);
+            foreach (call->args, arg, _) {
+                ast_t *val = ((*arg)->tag == KeywordArg) ? Match(*arg, KeywordArg)->arg : *arg;
+                sss_type_t *arg_t = get_type(env, val);
+                gcc_type_t *arg_gcc_t = sss_type_to_gcc(env, arg_t);
+                const char* arg_name = ((*arg)->tag == KeywordArg) ? Match(*arg, KeywordArg)->name : fresh("arg");
+                APPEND(arg_names, arg_name);
+                APPEND(arg_types, arg_t);
+                APPEND(params, gcc_new_param(env->ctx, loc, arg_gcc_t, arg_name));
+            }
+            gcc_func_t *func = gcc_new_func(
+                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, Match(call->fn, Var)->name, length(params), params[0], 0);
+            fn_ptr = gcc_get_func_address(func, loc);
+            fn_sss_t = Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret_t, .env=env);
+            goto got_function;
+        }
+
+        fn_sss_t = get_type(env, call->fn);
+        if (fn_sss_t->tag != FunctionType)
+            compiler_err(env, call->fn, "This is not a callable function (it's a %T)", fn_sss_t);
         if (call->fn->tag == FieldAccess) { // method call (foo.method())
             auto access = Match(call->fn, FieldAccess);
             ast_t *self = access->fielded;
@@ -1152,12 +1172,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compiler_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %T.%s()",
                           value_type, access->field);
 
-                gcc_rvalue_t *self_val = compile_expr(env, block, self);
+                self_val = compile_expr(env, block, self);
                 sss_type_t *expected_self = ith(fn_info->arg_types, 0);
                 if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self))
                     compiler_err(env, ast, "The method %T.%s(...) is being called on a %T, but it wants a %T.",
                           self_t, access->field, self_t, expected_self);
-                arg_vals[0] = self_val;
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -1168,7 +1187,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             fn_ptr = compile_expr(env, block, call->fn);
             fn = NULL;
         }
+      got_function:;
 
+        auto fn_t = Match(fn_sss_t, FunctionType);
+        int64_t num_args = length(fn_t->arg_types);
+        gcc_rvalue_t **arg_vals = GC_MALLOC(sizeof(gcc_rvalue_t*)*num_args);
+        if (self_val)
+            arg_vals[0] = self_val;
         const int64_t MASK = -1; // mask is because the hashmap api returns 0 for missing keys
         sss_hashmap_t arg_positions = {0};
         if (fn_t->arg_names) {

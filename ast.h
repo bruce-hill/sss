@@ -156,6 +156,7 @@ struct ast_s {
         struct {
             ast_t *fn;
             List(ast_t*) args;
+            ast_t *extern_return_type;
         } FunctionCall;
         struct {
             const char *name;

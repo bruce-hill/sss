@@ -682,6 +682,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case FunctionCall: {
         auto call = Match(ast, FunctionCall);
+        if (call->extern_return_type)
+            return parse_type_ast(env, call->extern_return_type);
         sss_type_t *fn_type_t = get_type(env, call->fn);
         if (fn_type_t->tag != FunctionType) {
             compiler_err(env, call->fn, "You're calling a value of type %T and not a function", fn_type_t);
