@@ -332,30 +332,30 @@ enum Result := Success(Str) | Failure(ResultCode)
 struct _CurlSList{}
 
 func _curl(headers:[Header])->ResultCode
-    curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
-    defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
+    curl := (extern curl_easy_init():?_CURL) or fail "Couldn't initialize CURL!"
+    defer extern curl_easy_cleanup(curl)
     for header in headers
         if header is URL(url)
-            (extern curl_easy_setopt:(@_CURL,Int32,@CStringChar)->Void)(curl, header as Int32, url)
+            extern curl_easy_setopt(curl, header as Int32, url)
         is WRITEFUNCTION(fn)
-            (extern curl_easy_setopt:(@_CURL,Int32,(@Char,Int64,Int64,?Void)->Int64)->Void)(curl, header as Int32, fn)
+            extern curl_easy_setopt(curl, header as Int32, fn)
         is WRITEDATA(data)
-            (extern curl_easy_setopt:(@_CURL,Int32,?Void)->Void)(curl, header as Int32, data)
+            extern curl_easy_setopt(curl, header as Int32, data)
         is VERBOSE(val); HEADER(val)
-            (extern curl_easy_setopt:(@_CURL,Int32,Int64)->Void)(curl, header as Int32, (if val then 1 else 0))
+            extern curl_easy_setopt(curl, header as Int32, (if val then 1 else 0))
         is HTTPHEADER(http_headers)
             list := !_CurlSList
             for h in http_headers
-                list = (extern curl_slist_append:(?_CurlSList,@CStringChar)->?_CurlSList)(list, h)
-            (extern curl_easy_setopt:(@_CURL,Int32,?_CurlSList)->Void)(curl, header as Int32, list)
+                list = extern curl_slist_append(list, h):?_CurlSList
+            extern curl_easy_setopt(curl, header as Int32, list)
         is _
             fail "This header is not yet supported: $header"
 
-    return (extern curl_easy_perform:(@_CURL)->ResultCode)(curl)
+    return extern curl_easy_perform(curl):ResultCode
 
 func get(url:Str, headers=[:Header])->Result
-    curl := (extern curl_easy_init:()->?_CURL)() or fail "Couldn't initialize CURL!"
-    defer (extern curl_easy_cleanup:(@_CURL)->Void)(curl)
+    curl := (extern curl_easy_init():?_CURL) or fail "Couldn't initialize CURL!"
+    defer extern curl_easy_cleanup(curl)
     buf := &""
     code := _curl(headers ++ [
         Header.URL(url),

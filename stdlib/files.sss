@@ -11,43 +11,42 @@ struct FileInfo{
 
 enum Result := Failure(Str) | Success
 
-// Opaque struct representing C's FILE struct:
-struct _CFile{}
+// Opaque value:
+alias _CFile::Void
 
 struct File{raw_c_file:?_CFile}
     func line(f:@File)->Str
-        return (extern get_line:(@_CFile)->Str)(f.raw_c_file or fail "File has already been closed")
+        return extern get_line(f.raw_c_file or fail "File has already been closed"):Str
 
     func lines(f:@File)->[Str]
         return [f.line() while not f.ended()]
 
     func ended(f:@File)->Bool
-        return (extern feof:(@_CFile)->Int32)(f.raw_c_file or fail "File has already been closed") == 1
+        return extern feof(f.raw_c_file or fail "File has already been closed"):Int32 == 1
 
     func info(f:@File)->FileInfo
         file := f.raw_c_file or fail "File has already been closed"
-        return (extern sss_fstat:(@_CFile)->FileInfo)(file)
+        return extern sss_fstat(file):FileInfo
 
     read := extern sss_readfile:(f:@File,bytes=Int64.max)->Str
 
     func write(f:@File, text:Str)->Result
         file := f.raw_c_file or fail "File has already been closed"
-        fputc := (extern fputc:(Char,@_CFile)->Int32)
         for char in text
-            wrote := fputc(char, file)
+            wrote := extern fputc(char, file):Int32
             if wrote != char as Int32
-                return Failure((extern last_err:()->Str)())
+                return Failure(extern last_err():Str)
         return Success
 
     func flush(f:@File)
-        (extern fflush:(@_CFile)->Void)(f.raw_c_file or return)
+        extern fflush(f.raw_c_file or return)
 
     func rewind(f:@File)
-        (extern rewind:(@_CFile)->Void)(f.raw_c_file or return)
+        extern rewind(f.raw_c_file or return)
 
     func close(f:@File)
         file := f.raw_c_file or return
-        (extern fclose:(@_CFile)->Void)(file)
+        extern fclose(file)
         f.raw_c_file = !_CFile
 
 stdin := @File{extern stdin:@_CFile}
@@ -64,37 +63,32 @@ enum TempDirResult := Failure(Str) | Success(Str)
 
 func temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     path := [c for c in template]
-    mkdtemp := extern mkdtemp:(@CStringChar)->?CStringChar
-    if mkdtemp((bitcast path as {data:@CStringChar,len:Int32,stride:Int16,free:Int16}).data) is !CStringChar
-        last_err := extern last_err:()->Str
-        return Failure(last_err())
+    c_str := path.c_string()
+    if extern mkdtemp(c_str):?CStringChar is !CStringChar
+        return Failure(extern last_err():Str)
 
-    return Success(path)
+    return Success(c_str.as_string())
 
 func move(path:Str, dest:Str)->Result
-    result := (extern rename:(path:@CStringChar,dest:@CStringChar)->Int32)(path, dest)
-    if result == 0
+    if extern rename(path.c_string(), dest):CError is SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
 func remove(path:Str)->Result
-    result := (extern unlink:(path:@CStringChar)->Int32)(path)
-    if result == 0
+    if extern unlink(path.c_string()):CError is SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
 func remove_dir(path:Str)->Result
-    result := (extern rmdir:(path:@CStringChar)->Int32)(path)
-    if result == 0
+    if extern rmdir(path.c_string()):CError is SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
 func spoof(text:Str)->@File
-    temporary := extern sss_tmpfile:()->@File
-    f := temporary()
+    f := extern sss_tmpfile():@File
     _ := f.write(text)
     f.rewind()
     return f
@@ -108,17 +102,18 @@ alias Glob::Str
             gl_flags:Int32
         }
         enum GlobResult := SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3
-        do_glob := extern glob:(@CStringChar,Int32,?Void,&glob_t)->GlobResult
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
-        result := do_glob((bitcast g as Str).c_string(), flags, !Void, &globbuf)
-        globfree := extern globfree:(&glob_t)->Void
-        defer globfree(&globbuf)
+        result := extern glob((bitcast g as Str).c_string(), flags, !Void, &globbuf):GlobResult
+        defer extern globfree(&globbuf)
         if result is SUCCESS
-            c_ptrs := bitcast ({globbuf.gl_pathv or fail, globbuf.gl_pathc as Int32, 1i16, 0i16}) as [@CStringChar]
-            paths := [Str.from_pointer(cstr) for cstr in c_ptrs]
+            mem_addr := bitcast (globbuf.gl_pathv or return [:Str]) as Int
+            paths := [
+                for i in 1..globbuf.gl_pathc
+                    (*(bitcast (mem_addr + (i-1)*8) as @@CStringChar)).as_string()
+            ]
             return [for p in paths if not p.ends_with("/./") and not p.ends_with("/../") then p else skip]
-        is _
+        else
             return [:Str]
 
     convert s:Str as Glob
@@ -129,3 +124,8 @@ alias Glob::Str
                 is plain
                     ++[plain]
         ]) as Glob
+
+if IS_MAIN_PROGRAM
+    >>> Glob::"*.c".expand()
+    >>> filename := "*"
+    >>> Glob::"$filename".expand()
