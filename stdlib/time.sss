@@ -3,7 +3,13 @@
 struct Timestamp{seconds, nanoseconds:Int64}
     format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->Str)
 
-func now()->Timestamp
-    t := @Timestamp{}
-    (extern timespec_get:(@Timestamp,Int32)->Void)(t, 1i32)
-    return *t
+    func now()->Timestamp
+        t := Timestamp{}
+        extern timespec_get(&t, 1i32)
+        return t
+
+now := Timestamp.now
+
+if IS_MAIN_PROGRAM
+    >>> now()
+    >>> Timestamp.now().format()

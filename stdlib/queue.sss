@@ -2,8 +2,7 @@
 
 alias Entry::@Void
     func new(value=!Void)->Entry
-        alloc := extern GC_malloc:(UInt)->Entry
-        e := alloc(24u64)
+        e := extern GC_malloc(24u64):Entry
         e.set_value(value)
         return e
 
@@ -17,32 +16,26 @@ enum DequeueResult := Empty | Value(?Void)
 
 alias Queue::@Void
     func new()->Queue
-        alloc := extern GC_malloc:(UInt)->Queue
-        q := alloc(768u64)
+        q := extern GC_malloc(768u64):Queue
         dummy := Entry.new()
-        init := extern lfds711_queue_umm_init_valid_on_current_logical_core:(Queue, Entry, ?Void)->Void
-        init(q, dummy, !Void)
-        register_finalizer := extern GC_register_finalizer:(Queue,(Queue,?Void)->Void,?Void,?Void,?Void)->Void
+        extern lfds711_queue_umm_init_valid_on_current_logical_core(q, dummy, !Void)
         cleanup := extern lfds711_queue_umm_cleanup:(Queue,?Void)->Void
-        register_finalizer(q, cleanup, !Void, !Void, !Void)
+        extern GC_register_finalizer(q, cleanup, !Void, !Void, !Void)
         return q
     
     func enqueue(q:Queue, value:?Void)
-        enc := extern lfds711_queue_umm_enqueue:(Queue,Entry)->Void
-        enc(q, Entry.new(value))
+        extern lfds711_queue_umm_enqueue(q, Entry.new(value))
 
     func dequeue(q:Queue)->?Void
         repeat if q.try_dequeue() is Value(v)
             return v
         else
-            usleep := extern usleep:(Int)->Void
-            usleep(10)
+            extern usleep(10u64)
         fail
 
     func try_dequeue(q:Queue)->DequeueResult
-        deq := extern lfds711_queue_umm_dequeue:(Queue,&Entry)->Bool
         entry := Entry.new()
-        if deq(q, &entry)
+        if extern lfds711_queue_umm_dequeue(q, &entry):Bool
             return Value(entry.get_value())
         else
             return Empty

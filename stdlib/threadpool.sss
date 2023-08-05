@@ -1,8 +1,6 @@
 use ./stdlib/mutex_queue.sss
 use ./stdlib/threads.sss
 
-usleep := extern usleep:(Int)->Void
-
 enum PoolResult := Result({id:Int, value:?Void}) | Empty
 
 struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Void}, next_request_id=0}
@@ -15,8 +13,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Void}, nex
         func main_loop(v:?Void)->?Void
             ctx := bitcast v as @{input:@Queue, output:@Queue}
 
-            set_cancel_type := extern pthread_setcanceltype:(Int32,?Int32)->Int32
-            fail unless set_cancel_type(0i32, !Int32) == 0i32
+            fail unless extern pthread_setcanceltype(0i32, !Int32):CError == CError.SUCCESS
             repeat
                 request := bitcast ctx.input.dequeue() as @{id:Int, fn:(?Void)->?Void, arg:?Void}
                 result := request.fn(request.arg)
@@ -69,7 +66,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Void}, nex
 if IS_MAIN_PROGRAM
     func do_work(v:?Void)->?Void
         i := *(bitcast (v or fail) as @Int)
-        usleep(Int.random(10))
+        extern usleep(UInt64.random(10))
         ret := "Worker $(Thread.self()) got $i"
         return @ret
 
@@ -95,7 +92,7 @@ if IS_MAIN_PROGRAM
             say "Result: $(bitcast s as @Str)"
             outputs.insert(bitcast s as @Str)
         else
-            usleep(10)
+            extern usleep(10u64)
 
     say "Finished"
     >>> *outputs

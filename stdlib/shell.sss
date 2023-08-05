@@ -1,26 +1,21 @@
 // Defines a DSL for shell commands and a way to run them safely
 
-struct _POpenFile{}
+// Opaque value:
+alias _POpenFile::Void
 
 alias Sh::Str
     func run(sh:Sh)->{output:Str,status:Int32}
-        popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
-        f := popen(bitcast sh as Str, "r") or return {output="", status=-1i32}
-        output := (extern sss_readfile:(f:&@_POpenFile,bytes=Int64.max)->Str)(&f)
-        pclose := (extern pclose:(?_POpenFile)->Int32)
-        status := pclose(f)
+        f := extern popen((bitcast sh as Str).c_string(), &`r):?_POpenFile or return {output="", status=-1i32}
+        output := extern sss_readfile(&f, Int64.max):Str
+        status := extern pclose(f):Int32
         if status >= 0
             status = (status / 256i32) and 0xFFi32
         return {output=output, status=status}
 
     func run_with(sh:Sh, input:Str)->Int32
-        popen := (extern popen:(command:@CStringChar, type:@CStringChar)->?_POpenFile)
-        f := popen("$sh", "w") or return -1i32
-        pclose := (extern pclose:(?_POpenFile)->Void)
-        fwrite := (extern fwrite:(text:@CStringChar,element_size=1,len:Int64,f:@_POpenFile,bytes=Int64.max)->Void)
-        fwrite(input,1,#input,f)
-        pclose := (extern pclose:(?_POpenFile)->Int32)
-        status := pclose(f)
+        f := extern popen("$sh".c_string(), &`w):?_POpenFile or return -1i32
+        extern fwrite(input.c_string(), 1u64, #input as UInt64, f)
+        status := extern pclose(f):Int32
         if status >= 0
             status = (status / 256i32) and 0xFFi32
         return status

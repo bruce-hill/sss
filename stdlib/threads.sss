@@ -5,23 +5,20 @@ enum JoinResult := Success(?Void) | NoPermissions=1 | Deadlock=35 | Invalid=22 |
 alias Thread::Int
     func create(fn:(?Void)->?Void, arg:?Void)->Thread
         thread := Thread::0
-        pthread_create := extern GC_pthread_create:(&Thread, ?Void, (?Void)->?Void, ?Void)->CreateResult
-        if status := pthread_create(&thread, !Void, fn, arg) is Success
+        if status := extern GC_pthread_create(&thread, !Void, fn, arg):CreateResult is Success
             return thread
         else
             fail "Failed to create thread: $status"
 
     func join(t:Thread, _=!Void)->?Void
-        pthread_join := extern GC_pthread_join:(Thread, &?Void)->JoinResult
         ret := !Void
-        if status := pthread_join(t, &ret) is Success
+        if status := extern GC_pthread_join(t, &ret):JoinResult is Success
             return ret
         else
             fail "Failed to join thread: $status"
 
     func cancel(t:Thread)
-        pthread_cancel := extern GC_pthread_cancel:(Thread)->Int32
-        if pthread_cancel(t) != 0i32
+        if extern GC_pthread_cancel(t):CError != CError.SUCCESS
             fail "Failed to cancel thread"
 
     self := extern pthread_self:()->Thread
