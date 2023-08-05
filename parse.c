@@ -2116,6 +2116,8 @@ PARSER(parse_enum_def) {
     NEW_LIST(ast_t*, tag_types);
     int64_t next_value = 0;
     whitespace(&pos);
+    if (match(&pos, "|"))
+        whitespace(&pos);
     unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
