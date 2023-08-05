@@ -78,7 +78,7 @@ struct sss_type_s {
             const char* units;
         } StructType;
         struct {
-            const char* name, *filename;
+            const char *name, *filename;
             List(sss_tagged_union_member_t) members;
             unsigned short int tag_bits;
         } TaggedUnionType;

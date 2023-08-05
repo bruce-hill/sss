@@ -195,6 +195,50 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
     }
 }
 
+void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
+{
+    auto members = Match(t, TaggedUnionType)->members;
+    sss_hashmap_t *ns = get_namespace(env, t);
+    gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
+    gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+    gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+    gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+    gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
+    gcc_type_t *union_gcc_t = get_union_type(env, t);
+    for (int64_t i = 0; i < length(members); i++) {
+        auto member = ith(members, i);
+        // Constructor:
+        if (member.type) {
+            gcc_param_t *params[] = {
+                gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, member.type), fresh(member.name)),
+            };
+            gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_ALWAYS_INLINE, sss_type_to_gcc(env, t),
+                                            fresh(member.name), 1, params, 0);
+            gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
+            assert(gcc_get_union_field(union_gcc_t, i));
+            gcc_return(func_body, NULL, gcc_struct_constructor(
+                    env->ctx, NULL, gcc_tagged_t, 2, (gcc_field_t*[]){
+                        tag_field,
+                        union_field,
+                    }, (gcc_rvalue_t*[]){
+                        gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
+                        gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), gcc_param_as_rvalue(params[0])),
+                    }));
+            hset(ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*, member.type),
+                                                                 .arg_names=LIST(const char*, member.name),
+                                                                 .ret=t),
+                                           .visible_in_closures=true,
+                                           .func=func, .rval=gcc_get_func_address(func, NULL)));
+        } else {
+            gcc_rvalue_t *val = gcc_struct_constructor(
+                env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
+                    gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
+                });
+            hset(ns, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
+        }
+    }
+}
+
 void populate_def_members(env_t *env, ast_t *def)
 {
     if (def->tag == StructDef) {
@@ -233,6 +277,7 @@ void populate_def_members(env_t *env, ast_t *def)
         const char* tu_name = tu_def->name;
         binding_t *binding = get_binding(env, tu_name);
         assert(binding && binding->type->tag == TypeType);
+        binding->rval = gcc_str(env->ctx, tu_name);
         sss_type_t *t = Match(binding->type, TypeType)->type;
         auto members = Match(t, TaggedUnionType)->members;
         sss_hashmap_t used_names = {0};
@@ -255,46 +300,7 @@ void populate_def_members(env_t *env, ast_t *def)
 
         sss_hashmap_t *type_ns = get_namespace(env, t);
         type_ns->fallback = env->bindings;
-
-        gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
-        gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
-        gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
-        gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
-        gcc_type_t *union_gcc_t = get_union_type(env, t);
-        for (int64_t i = 0; i < length(members); i++) {
-            auto member = ith(members, i);
-            // Constructor:
-            if (member.type) {
-                gcc_param_t *params[] = {
-                    gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, member.type), fresh(member.name)),
-                };
-                gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_ALWAYS_INLINE, sss_type_to_gcc(env, t),
-                                                fresh(member.name), 1, params, 0);
-                gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
-                assert(gcc_get_union_field(union_gcc_t, i));
-                gcc_return(func_body, NULL, gcc_struct_constructor(
-                        env->ctx, NULL, gcc_tagged_t, 2, (gcc_field_t*[]){
-                            tag_field,
-                            union_field,
-                        }, (gcc_rvalue_t*[]){
-                            gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
-                            gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), gcc_param_as_rvalue(params[0])),
-                        }));
-                hset(type_ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*, member.type),
-                                                                     .arg_names=LIST(const char*, member.name),
-                                                                     .ret=t),
-                                               .visible_in_closures=true,
-                                               .func=func, .rval=gcc_get_func_address(func, NULL)));
-            } else {
-                gcc_rvalue_t *val = gcc_struct_constructor(
-                    env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
-                        gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
-                    });
-                hset(type_ns, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
-            }
-        }
-        binding->rval = gcc_str(env->ctx, tu_name);
+        populate_tagged_union_constructors(env, t);
 
         env_t inner_env = *env;
         inner_env.bindings = type_ns;

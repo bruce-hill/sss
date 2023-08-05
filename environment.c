@@ -54,6 +54,15 @@ static inline void _load_method(
     hset(ns, heap_str(method_name), new(binding_t, .type=fn_type, .func=func));
 }
 
+sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, List(sss_tagged_union_member_t) members)
+{
+    sss_type_t *t = Type(TaggedUnionType, .filename="<builtin>", .name=name, .tag_bits=tag_bits, .members=members);
+    gcc_rvalue_t *rval = gcc_str(env->ctx, name);
+    hset(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));
+    populate_tagged_union_constructors(env, t);
+    return t;
+}
+
 #define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
                  sizeof((sss_arg_t[]){__VA_ARGS__})/sizeof(sss_arg_t),\
                  (sss_arg_t[]){__VA_ARGS__})
@@ -188,8 +197,10 @@ static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
     load_method(env, ns, "sss_string_split", "split", Type(ArrayType, .item_type=str_type),
                 ARG("str",str_type,0),
                 ARG("separators", str_type, FakeAST(StringJoin, .children=LIST(ast_t*,FakeAST(StringLiteral, .str=" \t\r\n")))));
-    load_method(env, ns, "sss_string_find", "find", Type(TaggedUnionType, .name="FindResult", .filename="FindResult", .members=LIST(sss_tagged_union_member_t,
-                {"Failure", 0, NULL}, {"Success", 1, Type(IntType, .bits=32)}), .tag_bits=8),
+
+    load_method(env, ns, "sss_string_find", "find",
+                define_tagged_union(env, 8, "FindResult", LIST(sss_tagged_union_member_t,
+                    {"Failure", 0, NULL}, {"Success", 1, Type(IntType, .bits=32)})),
                 ARG("str",str_type,0),
                 ARG("pattern",str_type,0));
 
@@ -207,7 +218,7 @@ static void define_num_types(env_t *env)
 
         sss_type_t *partial_t = Type(StructType, .field_names=LIST(const char*, "value", "remainder"),
                                      .field_types=LIST(sss_type_t*, num64_type, Type(ArrayType, .item_type=Type(CharType))));
-        sss_type_t *parse_t = Type(TaggedUnionType, .filename="ParseNum", .name="ParseNum", .tag_bits=8, .members=LIST(
+        sss_type_t *parse_t = define_tagged_union(env, 8, "ParseNum", LIST(
                 sss_tagged_union_member_t,
                 {"Failure", 0, num64_type}, {"InvalidRange", 1, num64_type}, {"PartialSuccess", 2, partial_t}, {"Success", 3, num64_type}));
         load_method(env, ns64, "sss_string_to_num", "parse", parse_t,
@@ -333,7 +344,7 @@ static void define_int_types(env_t *env)
         if (type.is_signed && type.bits == 64) {
             sss_type_t *partial_t = Type(StructType, .field_names=LIST(const char*, "value", "remainder"),
                                          .field_types=LIST(sss_type_t*, t, Type(ArrayType, .item_type=Type(CharType))));
-            sss_type_t *parse_t = Type(TaggedUnionType, .filename="ParseInt", .name="ParseInt", .tag_bits=8, .members=LIST(
+            sss_type_t *parse_t = define_tagged_union(env, 8, "ParseInt", LIST(
                     sss_tagged_union_member_t,
                     {"Failure", 0, t}, {"InvalidRange", 1, t}, {"PartialSuccess", 2, partial_t}, {"Success", 3, t}, {"InvalidBase", 4, t}));
             load_method(env, ns, "sss_string_to_int", "parse", parse_t,
@@ -389,9 +400,33 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     sss_hashmap_t *str_ns = get_namespace(env, str_t);
 
     load_method(env, str_ns, "base64_encode", "b64_encode", str_t, ARG("str",str_t,0));
-    sss_type_t *result_t = Type(TaggedUnionType, .filename="Base64Decode", .name="Base64Decode", .tag_bits=8, .members=LIST(
+    sss_type_t *result_t = define_tagged_union(env, 8, "Base64Decode", LIST(
             sss_tagged_union_member_t, {"Failure", 0, NULL}, {"Success", 1, str_t}));
     load_method(env, str_ns, "base64_decode", "b64_decode", result_t, ARG("b64",str_t,0));
+
+    { // Define a type representing error codes from C
+        NEW_LIST(sss_tagged_union_member_t, error_members);
+        sss_tagged_union_member_t item = {.name="SUCCESS", .tag_value=0};
+        APPEND_STRUCT(error_members, item);
+        item.name = "FAILURE";
+        item.tag_value = -1;
+        APPEND_STRUCT(error_members, item);
+        // These values are sadly platform-dependent, so they can't be hard-coded.
+        for (int64_t i = 1; i < 256; i++) {
+            item.name = strerrorname_np((int)i);
+            item.tag_value = i;
+            if (item.name)
+                APPEND_STRUCT(error_members, item);
+        }
+        sss_type_t *c_err = define_tagged_union(env, 32, "CError", error_members);
+        hset(&env->global->bindings, "CError", new(binding_t, .rval=gcc_str(ctx, "CError"), .type=Type(TypeType, .type=c_err)));
+
+        gcc_type_t *errno_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, c_err));
+        gcc_func_t *errno_loc_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, errno_ptr_gcc_t, "__errno_location", 0, NULL, 0);
+        gcc_rvalue_t *errno_ptr = gcc_callx(env->ctx, NULL, errno_loc_func);
+        gcc_lvalue_t *errno_lval = gcc_rvalue_dereference(errno_ptr, NULL);
+        hset(&env->global->bindings, "errno", new(binding_t, .rval=gcc_rval(errno_lval), .lval=errno_lval, .type=c_err));
+    }
 
     sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
     load_method(env, str_ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_t,0));
