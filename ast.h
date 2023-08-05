@@ -64,6 +64,12 @@ typedef enum {
 
 typedef struct ast_s ast_t;
 
+typedef struct {
+    List(const char*) names;
+    List(ast_t*) types;
+    List(ast_t*) defaults;
+} args_t;
+
 struct ast_s {
     ast_tag_e tag;
     span_t span;
@@ -140,17 +146,14 @@ struct ast_s {
         } TableEntry;
         struct {
             const char *name;
-            List(const char*) arg_names;
-            List(ast_t*) arg_types;
-            List(ast_t*) arg_defaults;
+            args_t args;
             ast_t *ret_type;
             ast_t *body;
             ast_t *cache;
             bool is_inline;
         } FunctionDef;
         struct {
-            List(const char*) arg_names;
-            List(ast_t*) arg_types;
+            args_t args;
             ast_t *body;
         } Lambda;
         struct {
@@ -208,13 +211,10 @@ struct ast_s {
         } TypeTable;
         struct {
             const char *name;
-            List(const char*) member_names;
-            List(ast_t*) member_types;
+            args_t members;
         } TypeStruct;
         struct {
-            List(const char*) arg_names;
-            List(ast_t*) arg_defaults;
-            List(ast_t*) arg_types;
+            args_t args;
             ast_t *ret_type;
         } TypeFunction;
         struct {

@@ -81,15 +81,15 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         NEW_LIST(const char*, arg_names);
         NEW_LIST(ast_t*, arg_defaults);
         NEW_LIST(sss_type_t*, arg_types);
-        for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
-            APPEND(arg_names, ith(fn->arg_names, i));
-            if (ith(fn->arg_types, i)) {
-                APPEND(arg_types, parse_type_ast(env, ith(fn->arg_types, i)));
+        for (int64_t i = 0; i < LIST_LEN(fn->args.types); i++) {
+            APPEND(arg_names, ith(fn->args.names, i));
+            if (ith(fn->args.types, i)) {
+                APPEND(arg_types, parse_type_ast(env, ith(fn->args.types, i)));
                 APPEND(arg_defaults, NULL);
             } else {
-                sss_type_t *arg_t = get_type(env, ith(fn->arg_defaults, i));
+                sss_type_t *arg_t = get_type(env, ith(fn->args.defaults, i));
                 APPEND(arg_types, arg_t);
-                APPEND(arg_defaults, ith(fn->arg_defaults, i));
+                APPEND(arg_defaults, ith(fn->args.defaults, i));
             }
         }
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=file_scope(env));
@@ -106,12 +106,12 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             env = fresh_scope(env);
             hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
         }
-        for (int64_t i = 0, len = length(struct_->member_types); i < len; i++) {
-            const char* member_name = ith(struct_->member_names, i);
+        for (int64_t i = 0, len = length(struct_->members.types); i < len; i++) {
+            const char* member_name = ith(struct_->members.names, i);
             APPEND(member_names, member_name);
-            sss_type_t *member_t = parse_type_ast(env, ith(struct_->member_types, i));
+            sss_type_t *member_t = parse_type_ast(env, ith(struct_->members.types, i));
             if (has_stack_memory(member_t))
-                compiler_err(env, ith(struct_->member_types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
+                compiler_err(env, ith(struct_->members.types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
             APPEND(member_types, member_t);
         }
         sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
@@ -936,17 +936,17 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto lambda = Match(ast, Lambda);
         NEW_LIST(const char*, arg_names);
         NEW_LIST(sss_type_t*, arg_types);
-        for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
-            ast_t *arg_def = LIST_ITEM(lambda->arg_types, i);
+        for (int64_t i = 0; i < LIST_LEN(lambda->args.types); i++) {
+            ast_t *arg_def = LIST_ITEM(lambda->args.types, i);
             sss_type_t *t = parse_type_ast(env, arg_def);
-            const char* arg_name = LIST_ITEM(lambda->arg_names, i);
+            const char* arg_name = LIST_ITEM(lambda->args.names, i);
             APPEND(arg_names, arg_name);
             APPEND(arg_types, t);
         }
 
         // Include only global bindings:
         env_t *lambda_env = file_scope(env);
-        for (int64_t i = 0; i < LIST_LEN(lambda->arg_types); i++) {
+        for (int64_t i = 0; i < LIST_LEN(lambda->args.types); i++) {
             hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
         }
         sss_type_t *ret = get_type(lambda_env, lambda->body);
@@ -965,16 +965,16 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         // we need to create scoped bindings for them here:
         env_t *default_arg_env = file_scope(env);
         default_arg_env->bindings = new(sss_hashmap_t, .fallback=default_arg_env->bindings);
-        for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
-            ast_t *arg_type_def = LIST_ITEM(def->arg_types, i);
+        for (int64_t i = 0; i < LIST_LEN(def->args.types); i++) {
+            ast_t *arg_type_def = LIST_ITEM(def->args.types, i);
             if (!arg_type_def) continue;
             sss_type_t *arg_type = parse_type_ast(env, arg_type_def);
-            hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
+            hset(default_arg_env->bindings, LIST_ITEM(def->args.names, i), new(binding_t, .type=arg_type));
         }
         
-        for (int64_t i = 0; i < LIST_LEN(def->arg_types); i++) {
-            ast_t *arg_def = LIST_ITEM(def->arg_types, i);
-            const char* arg_name = LIST_ITEM(def->arg_names, i);
+        for (int64_t i = 0; i < LIST_LEN(def->args.types); i++) {
+            ast_t *arg_def = LIST_ITEM(def->args.types, i);
+            const char* arg_name = LIST_ITEM(def->args.names, i);
             APPEND(arg_names, arg_name);
             if (arg_def) {
                 sss_type_t *arg_type = parse_type_ast(env, arg_def);
@@ -982,11 +982,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 ast_t *default_val = NULL;
                 APPEND(arg_defaults, default_val);
             } else {
-                ast_t *default_val = LIST_ITEM(def->arg_defaults, i);
+                ast_t *default_val = LIST_ITEM(def->args.defaults, i);
                 sss_type_t *arg_type = get_type(default_arg_env, default_val);
                 APPEND(arg_types, arg_type);
                 APPEND(arg_defaults, default_val);
-                hset(default_arg_env->bindings, LIST_ITEM(def->arg_names, i), new(binding_t, .type=arg_type));
+                hset(default_arg_env->bindings, LIST_ITEM(def->args.names, i), new(binding_t, .type=arg_type));
             }
         }
 

@@ -149,15 +149,14 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     env = file_scope(env);
     env->return_type = fn_info->ret;
 
-    auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
-    auto arg_types = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_types : Match(def, Lambda)->arg_types;
+    args_t args = def->tag == FunctionDef ? Match(def, FunctionDef)->args : Match(def, Lambda)->args;
 
     // Populate bindings for the arguments:
-    for (int64_t i = 0; i < length(arg_names); i++) {
-        const char* argname = ith(arg_names, i);
+    for (int64_t i = 0; i < length(args.names); i++) {
+        const char* argname = ith(args.names, i);
         sss_type_t *argtype = ith(fn_info->arg_types, i);
         if (argtype->tag == VoidType)
-            compiler_err(env, ith(arg_types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
+            compiler_err(env, ith(args.types, i), "'Void' can't be used as the type of an argument because there is no value that could be passed as a Void argument.");
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
@@ -172,13 +171,13 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
             sss_type_t *arg_t = ith(fn_info->arg_types, i);
             if (has_stack_memory(arg_t))
                 compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %T)",
-                             ith(arg_names, i), arg_t);
+                             ith(args.names, i), arg_t);
             else if (!is_cacheable(arg_t))
                 compiler_err(env, def, "Functions can't be cached if they take a pointer to mutable heap memory, like the argument '%s' (type: %T)",
-                             ith(arg_names, i), arg_t);
+                             ith(args.names, i), arg_t);
         }
         const char *name = def->tag == FunctionDef ? fresh(heap_strf("%s__inner", Match(def, FunctionDef)->name)) : fresh("lambda__inner");
-        func = add_cache(env, ast_loc(env, def), fn_t, func, name, arg_names, max_cache_size);
+        func = add_cache(env, ast_loc(env, def), fn_t, func, name, args.names, max_cache_size);
     }
 
     gcc_block_t *block = gcc_new_block(func, fresh("func"));
@@ -202,7 +201,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 
     auto t = Match(get_type(env, def), FunctionType);
     NEW_LIST(gcc_param_t*, params);
-    auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->arg_names : Match(def, Lambda)->arg_names;
+    auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->args.names : Match(def, Lambda)->args.names;
     for (int64_t i = 0; i < length(arg_names); i++) {
         const char* argname = ith(arg_names, i);
         sss_type_t *argtype = ith(t->arg_types, i);

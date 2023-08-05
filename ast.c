@@ -69,6 +69,7 @@ const char *label_str(const char *name, const char *str) {
 const char *label_int(const char *name, int64_t i) { return heap_strf("%s=\x1b[35m%ld\x1b[m", name, i); }
 const char *label_double(const char *name, double d) { return heap_strf("%s=\x1b[35m%g\x1b[m", name, d); }
 const char *label_bool(const char *name, bool b) { return heap_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
+const char *label_args(const char *name, args_t args) { (void)args; return heap_strf("%s=...args...", name); }
 
 const char *_ast_to_str(const char *name, ast_t *ast)
 {
@@ -88,6 +89,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           double: label_double, \
                           bool: label_bool, \
                           unsigned char: label_bool, \
+                          args_t: label_args, \
                           List(const char *): str_list_to_str)(#field, data->field)
 #define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs("\x1b[1m" #t "(\x1b[m", mem); \
     fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
@@ -124,8 +126,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Array, F(type), F(items))
         T(Table, F(key_type), F(value_type), F(entries))
         T(TableEntry, F(key), F(value))
-        T(FunctionDef, F(name), F(arg_names), F(arg_types), F(arg_defaults), F(ret_type), F(body), F(cache), F(is_inline))
-        T(Lambda, F(arg_names), F(arg_types), F(body))
+        T(FunctionDef, F(name), F(args), F(ret_type), F(body), F(cache), F(is_inline))
+        T(Lambda, F(args), F(body))
         T(FunctionCall, F(fn), F(args))
         T(KeywordArg, F(name), F(arg))
         T(Block, F(statements), F(keep_scope))
@@ -142,8 +144,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Extern, F(name), F(type), F(address))
         T(TypeArray, F(item_type))
         T(TypeTable, F(key_type), F(value_type))
-        T(TypeStruct, F(name), F(member_names), F(member_types))
-        T(TypeFunction, F(arg_names), F(arg_types), F(ret_type))
+        T(TypeStruct, F(name), F(members))
+        T(TypeFunction, F(args), F(ret_type))
         T(TypePointer, F(pointed), F(is_optional), F(is_stack))
         T(TypeMeasure, F(type), F(units))
         T(Variant, F(type), F(value))

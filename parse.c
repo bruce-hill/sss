@@ -74,6 +74,7 @@ static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs);
+static args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args);
 static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
@@ -510,7 +511,7 @@ PARSER(parse_struct_type) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tuple type");
-    return NewAST(ctx->file, start, pos, TypeStruct, .name=name, .member_names=member_names, .member_types=member_types);
+    return NewAST(ctx->file, start, pos, TypeStruct, .name=name, .members=(args_t){.names=member_names, .types=member_types});
 }
 
 static unsigned short int get_tag_bits(List(int64_t) tag_values)
@@ -530,39 +531,12 @@ static unsigned short int get_tag_bits(List(int64_t) tag_values)
 PARSER(parse_func_type) {
     const char *start = pos;
     if (!match(&pos, "(")) return NULL;
-    NEW_LIST(const char*, arg_names);
-    NEW_LIST(ast_t*, arg_types);
-    NEW_LIST(ast_t*, arg_defaults);
-    for (;;) {
-        const char *arg_start = pos;
-        const char *name = get_word(&pos);
-        spaces(&pos);
-        if (match(&pos, "=")) {
-            APPEND(arg_names, name);
-            APPEND(arg_types, NULL);
-            ast_t *def = expect_ast(ctx, arg_start, &pos, parse_expr, "I expected a default value for this argument");
-            APPEND(arg_defaults, def);
-        } else if (match(&pos, ":")) {
-            APPEND(arg_names, name);
-            ast_t *arg_t = expect_ast(ctx, arg_start, &pos, _parse_type, "I expected a type for this argument");
-            APPEND(arg_types, arg_t);
-            APPEND(arg_defaults, NULL);
-        } else {
-            pos = arg_start;
-            ast_t *arg_t = optional_ast(ctx, &pos, _parse_type);
-            if (!arg_t) break;
-            APPEND(arg_names, NULL);
-            APPEND(arg_defaults, NULL);
-            APPEND(arg_types, arg_t);
-        }
-        spaces(&pos);
-        if (!match(&pos, ",")) break;
-    }
+    args_t args = parse_args(ctx, &pos, true);
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function type");
     spaces(&pos);
     if (!match(&pos, "->")) return NULL;
     ast_t *ret = optional_ast(ctx, &pos, _parse_type);
-    return NewAST(ctx->file, start, pos, TypeFunction, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret_type=ret);
+    return NewAST(ctx->file, start, pos, TypeFunction, .args=args, .ret_type=ret);
 }
 
 PARSER(parse_array_type) {
@@ -1466,44 +1440,27 @@ PARSER(parse_return) {
 
 PARSER(parse_lambda) {
     const char *start = pos;
-    NEW_LIST(const char*, arg_names);
-    NEW_LIST(ast_t*, arg_types);
+    args_t args;
     if (!match(&pos, "(")) {
-        if (match(&pos, "->")) goto thunk;
+        if (match(&pos, "->")) {
+            args.names = LIST(const char*);
+            args.types = LIST(ast_t*);
+            args.defaults = LIST(ast_t*);
+            goto thunk;
+        }
         return NULL;
     }
-    for (spaces(&pos); ; spaces(&pos)) {
-        const char* name = get_id(&pos);
-        if (!name) break;
-        APPEND(arg_names, name);
-        spaces(&pos);
-        if (match(&pos, "::")) return NULL;
-        if (!match(&pos, ":")) {
-            // Only an error if we're definitely in a lambda
-            if (LIST_LEN(arg_types) > 0)
-                parser_err(ctx, pos, pos, "I expected a type annotation here");
-            return NULL; // otherwise just a parse failure
-        }
-        ast_t *type = optional_ast(ctx, &pos, _parse_type);
-        if (!type) parser_err(ctx, pos, pos + strcspn(pos, ",;)\r\n"), "I wasn't able to parse this type");
-        APPEND(arg_types, type);
-        spaces(&pos);
-        if (!match(&pos, ",")) break;
-    }
-
+    args = parse_args(ctx, &pos, false);
     spaces(&pos);
-    if (!match(&pos, ")")) {
-        if (LIST_LEN(arg_names) == 0) return NULL;
-        parser_err(ctx, start, pos, "This lambda doesn't have a closing ')'");
-    }
+    if (!match(&pos, ")"))
+        return NULL;
     spaces(&pos);
     if (!match(&pos, "->"))
         return NULL;
 
   thunk:;
     ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block);
-
-    return NewAST(ctx->file, start, pos, Lambda, .arg_names=arg_names, .arg_types=arg_types, .body=body);
+    return NewAST(ctx->file, start, pos, Lambda, .args=args, .body=body);
 }
 
 PARSER(parse_nil) {
@@ -2185,6 +2142,38 @@ PARSER(parse_enum_def) {
                   .tag_bits=tag_bits, .tag_types=tag_types, .definitions=definitions);
 }
 
+args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args)
+{
+    args_t args = {LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
+    for (;;) {
+        const char *arg_start = *pos;
+        const char *name = get_word(pos);
+        spaces(pos);
+        if (match(pos, "=")) {
+            APPEND(args.names, name);
+            APPEND(args.types, NULL);
+            ast_t *def = expect_ast(ctx, arg_start, pos, parse_expr, "I expected a default value for this argument");
+            APPEND(args.defaults, def);
+        } else if (match(pos, ":")) {
+            if (match(pos, ":")) break;
+            APPEND(args.names, name);
+            ast_t *arg_t = expect_ast(ctx, arg_start, pos, _parse_type, "I expected a type for this argument");
+            APPEND(args.types, arg_t);
+            APPEND(args.defaults, NULL);
+        } else if (allow_unnamed_args) {
+            *pos = arg_start;
+            ast_t *arg_t = optional_ast(ctx, pos, _parse_type);
+            if (!arg_t) break;
+            APPEND(args.names, NULL);
+            APPEND(args.defaults, NULL);
+            APPEND(args.types, arg_t);
+        }
+        spaces(pos);
+        if (!match(pos, ",")) break;
+    }
+    return args;
+}
+
 PARSER(parse_func_def) {
     const char *start = pos;
     if (!match_word(&pos, "func")) return NULL;
@@ -2196,33 +2185,7 @@ PARSER(parse_func_def) {
 
     if (!match(&pos, "(")) return NULL;
 
-    NEW_LIST(const char*, arg_names);
-    NEW_LIST(ast_t*, arg_types);
-    NEW_LIST(ast_t*, arg_defaults);
-    for (;;) {
-        whitespace(&pos);
-        const char *arg_start = pos;
-        const char* arg_name = get_id(&pos);
-        if (!arg_name) break;
-        APPEND(arg_names, arg_name);
-        spaces(&pos);
-        if (match(&pos, ":")) {
-            ast_t *type = expect_ast(ctx, arg_start, &pos, _parse_type,
-                                     "I expected a type for this argument");
-            APPEND(arg_types, type);
-            APPEND(arg_defaults, NULL);
-        } else if (match(&pos, "=")) {
-            ast_t *def_val = expect_ast(ctx, arg_start, &pos, parse_expr,
-                                        "I expected a default value for this argument");
-            APPEND(arg_defaults, def_val);
-            APPEND(arg_types, NULL);
-        } else {
-            parser_err(ctx, arg_start, pos, "This argument needs a type or a default value");
-        }
-        spaces(&pos);
-        if (!match(&pos, ",")) break;
-    }
-
+    args_t args = parse_args(ctx, &pos, false);
     whitespace(&pos);
     bool is_inline = false;
     ast_t *cache_ast = NULL;
@@ -2249,8 +2212,7 @@ PARSER(parse_func_def) {
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
                              "This function needs a body block");
     return NewAST(ctx->file, start, pos, FunctionDef,
-                  .name=name, .arg_names=arg_names, .arg_types=arg_types,
-                  .arg_defaults=arg_defaults, .ret_type=ret_type, .body=body, .cache=cache_ast,
+                  .name=name, .args=args, .ret_type=ret_type, .body=body, .cache=cache_ast,
                   .is_inline=is_inline);
 }
 

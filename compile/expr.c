@@ -886,8 +886,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *def = NewAST(
             env->file, ast->span.start, ast->span.end,
             FunctionDef,
-            .arg_names=LIST(const char*, convert->var),
-            .arg_types=LIST(ast_t*, convert->source_type),
+            .args=(args_t){.names=LIST(const char*, convert->var),
+                           .types=LIST(ast_t*, convert->source_type)},
             .ret_type=convert->target_type,
             .body=convert->body);
         gcc_func_t *func = get_function_def(env, def, fresh("convert"));
