@@ -1600,12 +1600,13 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     if (!fn) return NULL;
     const char *start = fn->span.start;
     const char *pos = fn->span.end;
+    NEW_LIST(ast_t*, args);
 
     // No arguments fn()
     if (match(&pos, "(")) {
         spaces(&pos);
         if (match(&pos, ")"))
-            return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=LIST(ast_t*));
+            goto return_function;
         pos = fn->span.end;
     }
 
@@ -1620,7 +1621,6 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
 
     spaces(&pos);
 
-    NEW_LIST(ast_t*, args);
     for (;;) {
         const char *arg_start = pos;
         const char* name = get_id(&pos);
@@ -1678,6 +1678,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     if (LIST_LEN(args) < 1)
         return NULL;
 
+  return_function:;
     ast_t *extern_return_type = NULL;
     if (is_extern) {
         if (match(&pos, ":"))
