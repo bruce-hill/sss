@@ -367,13 +367,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto target = ith(lvals, i);
             sss_type_t *t_lhs = target.type;
             ast_t *rhs = ith(values, i);
-            sss_type_t *t_rhs = get_type(env, rhs);
+            env_t *rhs_env = scope_with_type(env, t_lhs);
+            sss_type_t *t_rhs = get_type(rhs_env, rhs);
             // TODO: maybe allow generators to assign the *last* value, if any
             if (t_rhs->tag == GeneratorType)
                 compiler_err(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
-            gcc_rvalue_t *rval = compile_expr(env, block, ith(values, i));
 
-            if (!promote(env, t_rhs, &rval, t_lhs))
+            gcc_rvalue_t *rval = compile_expr(rhs_env, block, ith(values, i));
+
+            if (!promote(rhs_env, t_rhs, &rval, t_lhs))
                 compiler_err(env, rhs, "You're assigning this %T value to a variable with type %T and I can't figure out how to make that work.",
                     t_rhs, t_lhs);
 
