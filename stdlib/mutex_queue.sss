@@ -1,0 +1,47 @@
+use ./stdlib/mutex.sss
+
+enum DequeueResult := Empty | Value(data:?Void)
+
+
+struct Queue{head=[:?Void], tail=[:?Void], head_mutex=Mutex.new(), tail_mutex=Mutex.new()}
+    func new(; inline)->@Queue
+        return @Queue{}
+
+    func enqueue(q:&Queue, value:?Void)
+        with q.head_mutex.lock()
+            (&q.head).insert(value)
+
+    func try_dequeue(q:&Queue)->DequeueResult
+        with q.tail_mutex.lock()
+            while #q.tail == 0
+                with q.head_mutex.lock()
+                    if #q.head == 0
+                        return Empty
+
+                    q.tail = q.head[.. by -1]
+                    q.head = [:?Void]
+            
+            val := q.tail[1]
+            q.tail = q.tail[2..]
+            return Value(val)
+        
+    func dequeue(q:&Queue)->?Void
+        backoff := 1u64
+        repeat if q.try_dequeue() matches Value(v)
+            return v
+        else
+            extern usleep(backoff)
+            if backoff < 1000u64 then backoff *= 2u64
+        fail "Unreachable"
+
+new := Queue.new
+
+if IS_MAIN_PROGRAM
+    >>> q := &Queue{}
+    say "Initialized!"
+    for i in 10..25 do q.enqueue(@i)
+    >>> bitcast q.dequeue() as @Int
+    >>> q
+    say "All queued up"
+    >>> [repeat if q.try_dequeue() matches Value(v) then (bitcast v as @Int) else stop]
+    // >>> [while q.filled > 0i32 do (bitcast q.dequeue() as @Int)]
