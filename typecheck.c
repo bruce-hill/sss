@@ -1363,5 +1363,4 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                      type_to_string(t));
 }
 
-
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -179,7 +179,6 @@ static void load_global_functions(env_t *env)
 
 static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
 {
-    sss_type_t *c_str_type = Type(PointerType, .pointed=Type(CStringCharType));
     const char *name = type_to_string(str_type);
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
@@ -192,7 +191,7 @@ static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
     load_method(env, ns, "sss_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
     load_method(env, ns, "sss_string_quoted", "quoted", str_type,
                 ARG("str",str_type,0),
-                ARG("dsl", c_str_type, FakeAST(Nil, .type=FakeAST(Var, .name="Char"))),
+                ARG("dsl", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true), FakeAST(Nil, .type=FakeAST(Var, .name="CStringChar"))),
                 ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
     load_method(env, ns, "sss_string_starts_with", "starts_with", Type(BoolType), ARG("str",str_type,0), ARG("prefix",str_type,0));
     load_method(env, ns, "sss_string_ends_with", "ends_with", Type(BoolType), ARG("str",str_type,0), ARG("suffix",str_type,0));

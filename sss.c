@@ -335,7 +335,9 @@ int main(int argc, char *argv[])
     gcc_jit_context_set_bool_allow_unreachable_blocks(ctx, true);
 
     // register_printf_modifier(L"p");
-    if (register_printf_specifier('T', printf_type, printf_type_size))
+    if (register_printf_specifier('T', printf_type, printf_pointer_size))
+        errx(1, "Couldn't set printf specifier");
+    if (register_printf_specifier('W', printf_ast, printf_pointer_size))
         errx(1, "Couldn't set printf specifier");
 
     for (int i = 1; i < argc; i++) {

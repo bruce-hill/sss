@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+#include "../args.h"
 #include "../ast.h"
 #include "../parse.h"
 #include "../span.h"
@@ -998,7 +999,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "This is not a valid struct type");
 
         auto struct_type = Match(t, StructType);
-        size_t num_values = length(struct_->members);
         if (length(struct_type->field_names) == 0) {
             // GCC doesn't allow empty constructors for empty structs, but for
             // some reason, it's perfectly fine to just declare an empty struct
@@ -1017,95 +1017,40 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (!(num_fields == (size_t)length(struct_type->field_names)))
             compiler_err(env, ast, "Something went wrong with this struct!");
 
-        sss_hashmap_t field_asts = {0}; // Map of field name -> AST
+        List(arg_info_t) arg_infos = bind_arguments(env, struct_->members, struct_type->field_names,
+                                                    struct_type->field_types, struct_type->field_defaults);
 
-        // Put in named fields first:
-        for (int64_t i = 0; i < (int64_t)num_values; i++) {
-            ast_t *member_ast = ith(struct_->members, i);
-            auto member = Match(member_ast, KeywordArg);
-            if (member->name) {
-                hset(&field_asts, member->name, member->arg);
-            }
-        }
-
-        // Next populate positional fields:
-        int64_t first_unused = 0;
-        for (int64_t i = 0; i < (int64_t)num_values; i++) {
-            ast_t *member_ast = ith(struct_->members, i);
-            auto member = Match(member_ast, KeywordArg);
-            if (member->name) continue;
-
-            while (first_unused < (int64_t)num_fields) {
-                const char *field_name = ith(struct_type->field_names, first_unused);
-                ++first_unused;
-                if (hget(&field_asts, field_name, ast_t*))
-                    continue;
-
-                hset(&field_asts, field_name, member->arg);
-                goto next_field;
-            }
-            compiler_err(env, member_ast, "This is one field too many for this %T struct", t);
-
-          next_field: continue;
-        }
-
-        // Finally, populate default/uninitialized fields:
-        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
-            const char *field_name = ith(struct_type->field_names, i);
-            if (hget(&field_asts, field_name, ast_t*))
-                continue;
-
-            ast_t *def = struct_type->field_defaults ? ith(struct_type->field_defaults, i) : NULL;
-            if (def != NULL) {
-                hset(&field_asts, field_name, def);
-                continue;
-            }
-
-            sss_type_t *ft = ith(struct_type->field_types, i);
-            if (!can_leave_uninitialized(ft)) {
-                compiler_err(env, ast, "%T structs are supposed to have a non-optional field '%s' (%T), but you didn't provide a value for it.",
-                      t, field_name, ft);
-            }
-        }
-
-        // Compile the rvals in order:
+        env_t *default_env = file_scope(env); // TODO: use scope from struct def
+        gcc_func_t *func = gcc_block_func(*block);
+        // Evaluate args in order and stash in temp variables:
         gcc_rvalue_t *field_rvals[num_fields] = {};
-        foreach (struct_->members, member, _) {
-            ast_t *field_ast = Match((*member), KeywordArg)->arg;
-            for (int64_t i = 0; i < (int64_t)num_fields; i++) {
-                const char *name = ith(struct_type->field_names, i);
-                if (hget(&field_asts, name, ast_t*) == field_ast) {
-                    sss_type_t *ft = ith(struct_type->field_types, i);
-                    env_t *field_env = scope_with_type(env, ft);
-                    demote_int_literals(&field_ast, ft);
-                    gcc_rvalue_t *rval = compile_expr(field_env, block, field_ast);
-                    if (!promote(field_env, get_type(field_env, field_ast), &rval, ft))
-                        compiler_err(field_env, field_ast, "I was expecting a value of type %T for the %T.%s field, but this value is a %T.", 
-                                     ft, t, name, get_type(field_env, field_ast));
-                    field_rvals[i] = rval;
-                    break;
-                }
-            }
-        }
+        foreach (arg_infos, arg, _) {
+            gcc_rvalue_t *rval;
+            if (arg->ast) {
+                ast_t *arg_ast = arg->ast;
+                env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
+                demote_int_literals(&arg_ast, arg->type);
+                sss_type_t *actual_t = get_type(arg_env, arg_ast);
+                rval = compile_expr(arg_env, block, arg_ast);
+                if (!promote(arg_env, actual_t, &rval, arg->type))
+                    compiler_err(arg_env, arg_ast, "This struct expected this field to have type %T, but this value is a %T", arg->type, actual_t);
 
-        // Compile the remaining default values:
-        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
-            const char *name = ith(struct_type->field_names, i);
-            if (field_rvals[i]) continue;
-            ast_t *def = hget(&field_asts, name, ast_t*);
-            sss_type_t *ft = ith(struct_type->field_types, i);
-            if (def == NULL) {
-                if (!can_leave_uninitialized(ft))
-                    compiler_err(env, ast, "%T structs are supposed to have a non-optional field '%s' (%T), but you didn't provide a value for it.",
-                          t, name, ft);
+                if (arg->ast->tag != Var) {
+                    gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(arg_env, arg->type), arg->name ? arg->name : fresh("arg"));
+                    gcc_assign(*block, loc, tmp, rval);
+                    rval = gcc_rval(tmp);
+                }
+            } else if (arg->type->tag == PointerType && Match(arg->type, PointerType)->is_optional) {
+                rval = gcc_null(env->ctx, sss_type_to_gcc(env, arg->type));
+            } else if (!can_leave_uninitialized(arg->type)) {
+                compiler_err(env, ast, "The required field '%s' (%T) was not provided", arg->name, arg->type);
             } else {
-                env_t *field_env = scope_with_type(env, ft);
-                demote_int_literals(&def, ft);
-                gcc_rvalue_t *rval = compile_expr(field_env, block, def);
-                if (!promote(field_env, get_type(field_env, def), &rval, ft))
-                    compiler_err(field_env, def, "I couldn't make this default value work as a %T", ft);
-                field_rvals[i] = rval;
+                rval = NULL;
             }
+
+            field_rvals[arg->position] = rval;
+            if (rval)
+                hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
         }
 
         // Filter for only the populated fields (those not uninitialized):
@@ -1136,7 +1081,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *fn_ptr = NULL;
         gcc_func_t *fn = NULL;
         sss_type_t *fn_sss_t = NULL;
+        ast_t *self_ast = NULL;
         gcc_rvalue_t *self_val = NULL;
+        sss_type_t *self_t = NULL;
 
         if (call->extern_return_type) {
             sss_type_t *ret_t = parse_type_ast(env, call->extern_return_type);
@@ -1165,8 +1112,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, call->fn, "This is not a callable function (it's a %T)", fn_sss_t);
         if (call->fn->tag == FieldAccess) { // method call (foo.method())
             auto access = Match(call->fn, FieldAccess);
-            ast_t *self = access->fielded;
-            sss_type_t *self_t = get_type(env, self);
+            self_ast = access->fielded;
+            self_t = get_type(env, self_ast);
             if (streq(access->field, "__hash"))
                 (void)get_hash_func(env, self_t); 
             else if (streq(access->field, "__compare"))
@@ -1204,7 +1151,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compiler_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %T.%s()",
                           value_type, access->field);
 
-                self_val = compile_expr(env, block, self);
+                self_val = compile_expr(env, block, self_ast);
                 sss_type_t *expected_self = ith(fn_info->arg_types, 0);
                 if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self))
                     compiler_err(env, ast, "The method %T.%s(...) is being called on a %T, but it wants a %T.",
@@ -1223,113 +1170,60 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         auto fn_t = Match(fn_sss_t, FunctionType);
         int64_t num_args = length(fn_t->arg_types);
-        gcc_rvalue_t **arg_vals = GC_MALLOC(sizeof(gcc_rvalue_t*)*num_args);
-        if (self_val)
-            arg_vals[0] = self_val;
-        const int64_t MASK = -1; // mask is because the hashmap api returns 0 for missing keys
-        sss_hashmap_t arg_positions = {0};
-        if (fn_t->arg_names) {
-            for (int64_t i = 0; i < num_args; i++) {
-                if (!ith(fn_t->arg_names, i)) continue;
-                int64_t masked = i ^ MASK;
-                hset(&arg_positions, ith(fn_t->arg_names, i), masked);
-            }
+        List(ast_t*) args;
+        if (self_val) {
+            assert(self_ast && self_t);
+            args = LIST(ast_t*, self_ast);
+            foreach (call->args, a, _)
+                append(args, *a);
+        } else {
+            args = call->args;
         }
 
-        // First: keyword args
-        foreach (call->args, arg, _) {
-            if ((*arg)->tag != KeywordArg) continue;
-            auto kwarg = Match((*arg), KeywordArg);
-            int64_t arg_index = hget(&arg_positions, kwarg->name, int64_t);
-            if (arg_index == 0) // missing key
-                compiler_err(env, *arg, "\"%s\" is not the name of any argument for this function that I'm aware of",
-                      kwarg->name);
-            arg_index ^= MASK;
-            if (arg_vals[arg_index])
-                compiler_err(env, *arg, "This argument was already passed in earlier to this function call");
-            sss_type_t *expected = ith(fn_t->arg_types, arg_index);
-            ast_t *arg_val = kwarg->arg;
-            demote_int_literals(&arg_val, expected);
-            env_t *arg_env = scope_with_type(env, expected);
-            gcc_rvalue_t *val = compile_expr(arg_env, block, arg_val);
-            sss_type_t *actual = get_type(arg_env, arg_val);
-            if (!promote(arg_env, actual, &val, expected))
-                compiler_err(arg_env, *arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
-            arg_vals[arg_index] = val;
-        }
+        if (length(args) > num_args)
+            compiler_err(env, ast, "This function call has too many arguments");
 
-        // Then positional args
-        int64_t pos = 0;
-        for (int64_t call_index = 0, len = length(call->args); call_index < len; call_index++) {
-            ast_t *arg = ith(call->args, call_index);
-            if (arg->tag == KeywordArg) continue;
-            // Find the next unspecified arg:
-            if (pos >= num_args)
-                compiler_err(env, arg, "This is one argument too many for this function call");
-            while (arg_vals[pos]) {
-                ++pos;
-                if (pos >= num_args)
-                    compiler_err(env, arg, "This is one argument too many for this function call");
-                assert(pos < num_args);
-            }
-            sss_type_t *expected = ith(fn_t->arg_types, pos);
-            demote_int_literals(&arg, expected);
-            env_t *arg_env = scope_with_type(env, expected);
-            gcc_rvalue_t *val = compile_expr(arg_env, block, arg);
-            sss_type_t *actual = get_type(arg_env, arg);
-            if (!promote(arg_env, actual, &val, expected))
-                compiler_err(arg_env, arg, "This function expected this argument to have type %T, but this value is a %T", expected, actual);
-            arg_vals[pos] = val;
-        }
-
-        env_t default_arg_env = fn_t->env ? *(env_t*)fn_t->env : *file_scope(env);
-        default_arg_env.bindings = new(sss_hashmap_t, .fallback=default_arg_env.bindings);
+        List(arg_info_t) arg_infos = bind_arguments(env, args, fn_t->arg_names, fn_t->arg_types, fn_t->arg_defaults);
+        
+        env_t *default_env = fn_t->env ? fresh_scope(fn_t->env) : file_scope(env);
         gcc_func_t *func = gcc_block_func(*block);
+        // Evaluate args in order and stash in temp variables:
+        gcc_rvalue_t *arg_rvals[num_args] = {};
+        foreach (arg_infos, arg, _) {
+            gcc_rvalue_t *rval;
+            if (arg->ast == self_ast) {
+                rval = self_val;
+            } else if (arg->ast) {
+                ast_t *arg_ast = arg->ast;
+                env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
+                demote_int_literals(&arg_ast, arg->type);
+                sss_type_t *actual_t = get_type(arg_env, arg_ast);
+                rval = compile_expr(arg_env, block, arg_ast);
+                if (!promote(arg_env, actual_t, &rval, arg->type))
+                    compiler_err(arg_env, arg_ast, "This function expected this argument to have type %T, but this value is a %T", arg->type, actual_t);
 
-        if (fn_t->arg_names && fn_t->arg_defaults) {
-            // Stash args in local variables so we don't evaluate them multiple times (e.g. def foo(x:Int,y=x)... foo(Int.random()))
-            for (int64_t i = 0; i < num_args; i++) {
-                if (arg_vals[i]) {
-                    const char *arg_name = ith(fn_t->arg_names, i);
-                    gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(env, ith(fn_t->arg_types, i)), arg_name ? arg_name : "_arg");
-                    gcc_assign(*block, loc, tmp, arg_vals[i]);
-                    arg_vals[i] = gcc_rval(tmp);
+                if (arg->ast->tag != Var) {
+                    gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(arg_env, arg->type), arg->name ? arg->name : fresh("arg"));
+                    gcc_assign(*block, loc, tmp, rval);
+                    rval = gcc_rval(tmp);
                 }
+            } else if (arg->type->tag == PointerType && Match(arg->type, PointerType)->is_optional) {
+                rval = gcc_null(env->ctx, sss_type_to_gcc(env, arg->type));
+            } else if (arg->name) {
+                compiler_err(env, ast, "The required argument '%s' (%T) was not provided", arg->name, arg->type);
+            } else {
+                compiler_err(env, ast, "The required %ld argument (%T) was not provided", arg->position, arg->type);
             }
-            for (int64_t i = 0; i < num_args; i++) {
-                if (arg_vals[i] && ith(fn_t->arg_names, i))
-                    hset(default_arg_env.bindings, ith(fn_t->arg_names, i), new(binding_t, .type=ith(fn_t->arg_types, i), .rval=arg_vals[i]));
-            }
-        }
 
-        // Optional values get passed as nil or default values are used:
-        for (int64_t len = num_args; pos < len; pos++) {
-            if (arg_vals[pos]) continue;
-            if (fn_t->arg_defaults) {
-                ast_t *default_val = ith(fn_t->arg_defaults, pos);
-                if (default_val) {
-                    const char *arg_name = ith(fn_t->arg_names, pos);
-                    gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(env, ith(fn_t->arg_types, pos)), arg_name ? arg_name : "_arg");
-                    gcc_assign(*block, loc, tmp, compile_expr(&default_arg_env, block, default_val));
-                    arg_vals[pos] = gcc_rval(tmp);
-                    hset(default_arg_env.bindings, ith(fn_t->arg_names, pos), new(binding_t, .type=ith(fn_t->arg_types, pos), .rval=arg_vals[pos]));
-                    continue;
-                }
-            }
-            sss_type_t *arg_t = ith(fn_t->arg_types, pos);
-            if (arg_t->tag != PointerType || !Match(arg_t, PointerType)->is_optional) {
-                const char *arg_name = fn_t->arg_names ? ith(fn_t->arg_names, pos) : NULL;
-                compiler_err(env, ast, "The non-optional argument %s was not provided",
-                      arg_name ? arg_name : heap_strf("%ld", pos));
-            }
-            arg_vals[pos] = gcc_null(env->ctx, sss_type_to_gcc(env, arg_t));
-            hset(default_arg_env.bindings, ith(fn_t->arg_names, pos), new(binding_t, .type=ith(fn_t->arg_types, pos), .rval=arg_vals[pos]));
+            arg_rvals[arg->position] = rval;
+            if (arg->name)
+                hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
         }
 
         if (fn)
-            return gcc_call(env->ctx, ast_loc(env, ast), fn, num_args, arg_vals);
+            return gcc_call(env->ctx, ast_loc(env, ast), fn, num_args, arg_rvals);
         else if (fn_ptr)
-            return gcc_call_ptr(env->ctx, ast_loc(env, ast), fn_ptr, num_args, arg_vals);
+            return gcc_call_ptr(env->ctx, ast_loc(env, ast), fn_ptr, num_args, arg_rvals);
         else
             assert(false);
     }

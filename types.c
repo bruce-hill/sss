@@ -179,12 +179,12 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
     }
 }
 
-int printf_type_size(const struct printf_info *info, size_t n, int argtypes[n], int sizes[n])
+int printf_pointer_size(const struct printf_info *info, size_t n, int argtypes[n], int sizes[n])
 {
     if (n < 1) return -1;
     (void)info;
     argtypes[0] = PA_POINTER;
-    sizes[0] = sizeof(sss_type_t*);
+    sizes[0] = sizeof(void*);
     return 1;
 }
 
@@ -198,6 +198,17 @@ int printf_type(FILE *stream, const struct printf_info *info, const void *const 
     if (!info->alt || (info->width > 0 && CORD_len(c) > (size_t)info->width))
         c = type_to_cord(t, NULL, flags);
     return CORD_put(c, stream);
+}
+
+int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[])
+{
+    (void)info;
+    ast_t *ast = *(ast_t**)(args[0]);
+    if (ast)
+        // return fprintf(stream, "%.*s", (int)(ast->span.end - ast->span.start), ast->span.start);
+        return fprintf(stream, "%s", ast_to_str(ast));
+    else
+        return fputs("(null)", stream);
 }
 
 const char* type_to_string_concise(sss_type_t *t) {

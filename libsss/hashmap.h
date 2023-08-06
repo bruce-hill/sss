@@ -22,13 +22,15 @@ typedef struct sss_hashmap_s {
     bool copy_on_write;
 } sss_hashmap_t;
 
+uint32_t hash_64bit_value(const void *x);
+int compare_64bit_value(const void *x, const void *y);
 uint32_t hash_64bits(const void *x);
 int compare_64bits(const void *x, const void *y);
 uint32_t hash_str(const void *x);
 int compare_str(const void *x, const void *y);
 #define FIX_STR(x) _Generic(x, char*:(char*)x, default:x)
-#define HASH_FN(t) _Generic(t, char*:hash_str, const char*:hash_str, default: hash_64bits)
-#define COMPARE_FN(t) _Generic(t, char*:compare_str, const char*:compare_str, default:compare_64bits)
+#define HASH_FN(t) _Generic(t, char*:hash_str, const char*:hash_str, default: hash_64bit_value)
+#define COMPARE_FN(t) _Generic(t, char*:compare_str, const char*:compare_str, default:compare_64bit_value)
 #define _hset(h, key, val) ((__typeof__(val)*)sss_hashmap_set(h, HASH_FN(key), COMPARE_FN(key), sizeof(struct{ __typeof__ (key) _k; __typeof__ (val) _v; }), &(__typeof__(key)){key}, offsetof(struct{ __typeof__ (key) _k; __typeof__ (val) _v; }, _v), &(__typeof__(val)){val}))
 #define hset(h, key, val) _hset(h, FIX_STR(key), FIX_STR(val))
 #define _hget(h, key, val_t) ((val_t *)sss_hashmap_get(h, HASH_FN(key), COMPARE_FN(key), sizeof(struct{ __typeof__ (key) _k; val_t _v; }), &(__typeof__(key)){key}, offsetof(struct{ __typeof__ (key) _k; val_t _v; }, _v)))

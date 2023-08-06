@@ -26,11 +26,19 @@
 static uint8_t hash_random_vector[16] = {42,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 uint32_t hash_64bits(const void *x) {
     uint32_t hash;
-    halfsiphash(*(char**)x, 64, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    halfsiphash(*(char**)x, 8, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
     return hash;
 }
 int compare_64bits(const void *x, const void *y) {
-    return memcmp(*(char**)x,*(char**)y,64);
+    return memcmp(*(void**)x, *(void**)y, 8);
+}
+uint32_t hash_64bit_value(const void *x) {
+    uint32_t hash;
+    halfsiphash((char*)x, 8, hash_random_vector, (uint8_t*)&hash, sizeof(hash));
+    return hash;
+}
+int compare_64bit_value(const void *x, const void *y) {
+    return memcmp((void*)x, (void*)y, 8);
 }
 uint32_t hash_str(const void *x) {
     uint32_t hash;
@@ -173,7 +181,7 @@ static void hashmap_resize(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cm
 // Return address of value
 void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, size_t entry_size_padded, const void *key, size_t value_offset, const void *value)
 {
-    hdebug("Raw hash of key being set: %u\n", key_hash(entry));
+    hdebug("Raw hash of key being set: %u\n", key_hash(key));
     if (!h || !key) return NULL;
     hshow(h);
 
