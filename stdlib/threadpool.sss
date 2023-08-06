@@ -58,7 +58,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Void}, nex
         else
             return Empty
 
-    func cleanup(p:&Pool)
+    func close(p:&Pool)
         for w in *p.workers
             w.cancel()
             _ := w.join()
@@ -70,31 +70,26 @@ if IS_MAIN_PROGRAM
         ret := "Worker $(Thread.self()) got $i"
         return @ret
 
-    pool := &Pool.new(2)
-    defer
-        say "Cleaning up..."
-        pool.cleanup()
-        say "All clean!"
+    with pool := &Pool.new(2)
+        say "Initialized pool"
 
-    say "Initialized pool"
+        inputs := 10..20
+        for i in inputs do _ := pool.give(do_work, @i)
 
-    inputs := 10..20
-    for i in inputs do _ := pool.give(do_work, @i)
+        say "Gave out work"
 
-    say "Gave out work"
+        outputs := @[:@Str]
+        while #outputs < #inputs
+            if #outputs == 3
+                >>> bitcast pool.run(do_work, @123) as @Str
 
-    outputs := @[:@Str]
-    while #outputs < #inputs
-        if #outputs == 3
-            >>> bitcast pool.run(do_work, @123) as @Str
+            if pool.take() matches Result(id=id, value=s)
+                say "Result: $(bitcast s as @Str)"
+                outputs.insert(bitcast s as @Str)
+            else
+                extern usleep(10u64)
 
-        if pool.take() matches Result(id=id, value=s)
-            say "Result: $(bitcast s as @Str)"
-            outputs.insert(bitcast s as @Str)
-        else
-            extern usleep(10u64)
+        say "Finished"
+        >>> *outputs
 
-    say "Finished"
-    >>> *outputs
-
-    >>> bitcast pool.run(do_work, @55) as @Str
+        >>> bitcast pool.run(do_work, @55) as @Str
