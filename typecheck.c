@@ -1238,6 +1238,10 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                     unhandled = heap_strf("The tagged union member %s.%s is not handled",
                                           type_to_string(t), member.name);
             } else if (member.type) {
+                foreach (handlers, h, _) {
+                    if ((*h)->tag == Var)
+                        goto handled;
+                }
                 const char *missing = get_missing_pattern(env, member.type, handlers);
                 if (!missing) continue;
                 if (unhandled)
@@ -1246,6 +1250,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                 else
                     unhandled = heap_strf("Among the patterns for %s.%s(...): %s",
                                           type_to_string(t), member.name, missing);
+              handled: continue;
             }
         }
         return unhandled;

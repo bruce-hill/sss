@@ -2043,10 +2043,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         subject = gcc_rval(subject_var);
 
-        gcc_block_t *done = gcc_new_block(func, fresh("endif"));
-
         sss_type_t *result_t = get_type(env, ast);
         bool has_value = !(result_t->tag == GeneratorType || result_t->tag == AbortType || result_t->tag == VoidType);
+
+        gcc_block_t *done = result_t->tag == AbortType ? NULL : gcc_new_block(func, fresh("endif"));
 
         // Check exhaustiveness:
         if (has_value) {
@@ -2066,12 +2066,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     else
                         gcc_eval(outcomes.match_block, loc, result);
                 }
-                gcc_jump(outcomes.match_block, loc, done);
+                if (done)
+                    gcc_jump(outcomes.match_block, loc, done);
             }
             *block = outcomes.no_match_block;
         }
-        if (*block)
+        if (*block && done) {
             gcc_jump(*block, loc, done);
+        } else if (*block && !done) {
+            gcc_comment(*block, loc, "Unreachable");
+            gcc_jump(*block, loc, *block);
+            *block = NULL;
+        }
         *block = done;
         // Ensure the (unreachable) done block is terminated when every branch aborts:
         if (*block && result_t->tag == AbortType) {
