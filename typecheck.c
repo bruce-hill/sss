@@ -1156,6 +1156,32 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         return get_type(env, with->body);
     }
+    case Using: { // using expr *[; expr] body
+        auto using = Match(ast, Using);
+        env = fresh_scope(env);
+        foreach (using->used, used, _) {
+            sss_type_t *t = get_type(env, *used);
+            NEW_LIST(const char*, fields);
+            while (t->tag == PointerType) {
+                if (Match(t, PointerType)->is_optional)
+                    compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
+                t = Match(t, PointerType)->pointed;
+            }
+            switch (t->tag) {
+            case StructType:
+                fields = Match(t, StructType)->field_names;
+                break;
+            default:
+                compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
+                break;
+            }
+            foreach (fields, field, _) {
+                ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
+                hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
+            }
+        }
+        return get_type(env, using->body);
+    }
     case Variant: {
         auto variant = Match(ast, Variant);
         return parse_type_ast(env, variant->type);

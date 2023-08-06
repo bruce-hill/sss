@@ -44,7 +44,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
+    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "del", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_mix_", "_min_", "_max_",
@@ -80,6 +80,7 @@ static PARSER(parse_while);
 static PARSER(parse_repeat);
 static PARSER(parse_defer);
 static PARSER(parse_with);
+static PARSER(parse_using);
 static PARSER(parse_do);
 static PARSER(parse_if);
 static PARSER(parse_expr);
@@ -1082,6 +1083,23 @@ PARSER(parse_with) {
     return NewAST(ctx->file, start, pos, With, .var=var, .expr=expr, .cleanup=cleanup, .body=body);
 }
 
+PARSER(parse_using) {
+    // using expr *[; expr] body
+    const char *start = pos;
+    if (!match_word(&pos, "using")) return NULL;
+    NEW_LIST(ast_t*, exprs);
+    for (;;) {
+        ast_t *expr = optional_ast(ctx, &pos, parse_expr);
+        if (!expr) break;
+        APPEND(exprs, expr);
+        spaces(&pos);
+        if (!match(&pos, ";")) break;
+        whitespace(&pos);
+    }
+    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'using'");
+    return NewAST(ctx->file, start, pos, Using, .used=exprs, .body=body);
+}
+
 PARSER(parse_loop_var) {
     const char *start = pos;
     bool deref = match(&pos, "*");
@@ -1923,6 +1941,7 @@ PARSER(parse_extended_expr) {
         || (expr=optional_ast(ctx, &pos, parse_do))
         || (expr=optional_ast(ctx, &pos, parse_defer))
         || (expr=optional_ast(ctx, &pos, parse_with))
+        || (expr=optional_ast(ctx, &pos, parse_using))
         )
         return expr;
 

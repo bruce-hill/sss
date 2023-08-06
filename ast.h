@@ -58,9 +58,10 @@ typedef enum {
     Delete,
     LinkerDirective,
     Variant,
+    Using,
 } ast_tag_e;
 
-#define NUM_AST_TAGS (LinkerDirective + 1)
+#define NUM_AST_TAGS (Using + 1)
 
 typedef struct ast_s ast_t;
 
@@ -309,6 +310,10 @@ struct ast_s {
         struct {
             ast_t *type, *value;
         } Variant;
+        struct {
+            List(ast_t*) used;
+            ast_t *body;
+        } Using;
     } __data;
 };
 

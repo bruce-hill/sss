@@ -595,6 +595,33 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         APPEND(statements, with->body);
         return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
     }
+    case Using: { // using expr *[; expr] body
+        auto using = Match(ast, Using);
+        env = fresh_scope(env);
+        foreach (using->used, used, _) {
+            sss_type_t *t = get_type(env, *used);
+            NEW_LIST(const char*, fields);
+            while (t->tag == PointerType) {
+                if (Match(t, PointerType)->is_optional)
+                    compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
+                t = Match(t, PointerType)->pointed;
+            }
+            switch (t->tag) {
+            case StructType:
+                fields = Match(t, StructType)->field_names;
+                break;
+            default:
+                compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
+                break;
+            }
+            foreach (fields, field, _) {
+                ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
+                gcc_lvalue_t *lval = get_lvalue(env, block, shim, false);
+                hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
+            }
+        }
+        return compile_expr(env, block, using->body);
+    }
     case Block: {
         // Create scope:
         if (!Match(ast, Block)->keep_scope)
