@@ -38,7 +38,6 @@ List(arg_info_t) bind_arguments(env_t *env, List(ast_t*) args, List(const char*)
     for (int64_t i = 0; i < LIST_LEN(args); i++) {
         ast_t *arg = LIST_ITEM(args, i);
         arg_info_t *info = &arg_infos[next_arg++];
-        info->ast = arg;
         if (arg->tag == KeywordArg && Match(arg, KeywordArg)->name) {
             const char *name = Match(arg, KeywordArg)->name;
             int64_t *pos = hget_opt(&arg_positions, name, int64_t);
@@ -54,6 +53,7 @@ List(arg_info_t) bind_arguments(env_t *env, List(ast_t*) args, List(const char*)
             }
             info->position = next_spec_arg++;
         }
+        info->ast = arg;
         info->name = LIST_ITEM(arg_names, info->position);
         info->type = LIST_ITEM(arg_types, info->position);
         hset(&populated, info->position, info);
