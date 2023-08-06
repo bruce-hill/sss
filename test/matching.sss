@@ -1,34 +1,34 @@
 
->>> if 5 is 5
+>>> if 5 matches 5
     yes
 else
     no
 === yes
 
->>> if 5 is 9
+>>> if 5 matches 9
     -1
-is x
+matches x
     x
 === 5
 
->>> if -0.0 is 0.0 then yes else no
+>>> if -0.0 matches 0.0 then yes else no
 === yes
 
 >>> cases := [{1,2}, {3,4}, {5,6}]
 >>> [
     for c in cases
-        if c is {1,2}
+        if c matches {1,2}
             "first"
-        is {x,4}
+        matches {x,4}
             "has four and $x"
-        is other
+        matches other
             "otherwise $other"
 ]
 === ["first", "has four and 3", "otherwise {5, 6}"]
 
->>> if "two" is "one" then 1
-is "two" then 2
-is other then -1
+>>> if "two" matches "one" then 1
+matches "two" then 2
+matches other then -1
 === 2
 
 struct Vec{x,y:Num}
@@ -44,41 +44,41 @@ enum Foo := int(i:Int)=5|num(n:Num)|str(s:Str)|vec(v:Vec)|tuple(tup:{Num,Num})|n
 >>> [
     for f in cases
         >>> f
-        if f is int(x); num(x)
+        if f matches int(x); num(x)
             "Int or num: $x"
-        is vec(Vec{1,2})
+        matches vec(Vec{1,2})
             "one-two Vec"
-        is vec(Vec{x=99})
+        matches vec(Vec{x=99})
             "99-x Vec"
-        is vec(Vec{x=1,y=x})
+        matches vec(Vec{x=1,y=x})
             "one-x Vec: $x"
-        is vec(v)
+        matches vec(v)
             "Vec: $v"
-        is tuple({1,2})
+        matches tuple({1,2})
             "one-two tuple"
-        is tuple({99})
+        matches tuple({99})
             "99-x tuple"
-        is tuple({1,x})
+        matches tuple({1,x})
             "one-x tuple: $x"
-        is tuple(v)
+        matches tuple(v)
             "tuple: $v"
-        is str("xxx")
+        matches str("xxx")
             "Str of 'x'"
-        is ptr(@5)
+        matches ptr(@5)
             "Five ptr"
-        is ptr(@x)
+        matches ptr(@x)
             "Nonnull ptr: $x"
-        is ptr(!Int)
+        matches ptr(!Int)
             "Nil ptr"
-        is null
+        matches null
             "Null"
-        is other
+        matches other
             "Fallback: $other"
 ]
 === ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "Str of 'x'", "Fallback: Foo.str(s=\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
 
 // Binding:
-if f := Foo.str("abc") is str
+if f := Foo.str("abc") matches str
     >>> f
     === Foo.str(s="abc")
 else

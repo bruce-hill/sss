@@ -64,25 +64,25 @@ enum TempDirResult := Failure(message:Str) | Success(path:Str)
 func temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     path := [c for c in template]
     c_str := path.c_string()
-    if extern mkdtemp(c_str):?CStringChar is !CStringChar
+    if extern mkdtemp(c_str):?CStringChar matches !CStringChar
         return Failure(extern last_err():Str)
 
     return Success(c_str.as_string())
 
 func move(path:Str, dest:Str)->Result
-    if extern rename(path.c_string(), dest):CError is SUCCESS
+    if extern rename(path.c_string(), dest):CError matches SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
 func remove(path:Str)->Result
-    if extern unlink(path.c_string()):CError is SUCCESS
+    if extern unlink(path.c_string()):CError matches SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
 
 func remove_dir(path:Str)->Result
-    if extern rmdir(path.c_string()):CError is SUCCESS
+    if extern rmdir(path.c_string()):CError matches SUCCESS
         return Success
     else
         return Failure((extern last_err:()->Str)())
@@ -106,7 +106,7 @@ alias Glob::Str
         globbuf := glob_t{}
         result := extern glob((bitcast g as Str).c_string(), flags, !Void, &globbuf):GlobResult
         defer extern globfree(&globbuf)
-        if result is SUCCESS
+        if result matches SUCCESS
             mem_addr := bitcast (globbuf.gl_pathv or return [:Str]) as Int
             paths := [
                 for i in 1..globbuf.gl_pathc
@@ -119,9 +119,9 @@ alias Glob::Str
     convert s:Str as Glob
         return bitcast ([
             for c in s
-                if c is `\;`{;`};`*;`?;`[;`]
+                if c matches `\;`{;`};`*;`?;`[;`]
                     ++[`\, c]
-                is plain
+                matches plain
                     ++[plain]
         ]) as Glob
 

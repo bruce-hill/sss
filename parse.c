@@ -45,7 +45,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 
 static const char *keywords[] = {
     "yes", "xor", "with", "while", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
-    "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "is", "in", "if", "func",
+    "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "del", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_mix_", "_min_", "_max_",
     NULL,
@@ -934,7 +934,7 @@ ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos,
     if (!subj) subj = expect_ast(ctx, start, pos, parse_expr, "I expected to find an expression for this 'if'");
 
     ast_t *pattern;
-    if (match_word(pos, "is")) {
+    if (match_word(pos, "matches")) {
         pattern = expect_ast(ctx, *pos, pos, parse_expr, "I expected a pattern to match here");
         if (is_unless)
             return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Var, "*")),
@@ -949,7 +949,7 @@ ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos,
 }
 
 PARSER(parse_if) {
-    // if <expr> [is <pattern> (; <pattern>)* <body> (is ...)*] [else <body>]
+    // if <expr> [matches <pattern> (; <pattern>)* <body> (matches ...)*] [else <body>]
     const char *start = pos;
     size_t starting_indent = sss_get_indent(ctx->file, pos);
 
@@ -957,7 +957,7 @@ PARSER(parse_if) {
         ast_t *subj = optional_ast(ctx, &pos, parse_declaration);
         if (!subj) subj = expect_ast(ctx, start, &pos, parse_expr, "I expected to find an expression for this 'unless'");
 
-        ast_t *pattern = match_word(&pos, "is") ? 
+        ast_t *pattern = match_word(&pos, "matches") ? 
             expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here")
             : FakeAST(Bool, true);
 
@@ -985,7 +985,7 @@ PARSER(parse_if) {
     NEW_LIST(ast_t*, blocks);
 
     const char *tmp = pos;
-    if (!match_word(&tmp, "is")) {
+    if (!match_word(&tmp, "matches")) {
         match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if' statement"); 
         APPEND(patterns, NewAST(ctx->file, pos, pos, Bool, .b=true));
@@ -1015,7 +1015,7 @@ PARSER(parse_if) {
             break;
         }
 
-        if (!match_word(&clause, "is")) break;
+        if (!match_word(&clause, "matches")) break;
         pos = clause;
         ast_t *pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
         List(ast_t*) clause_patterns = LIST(ast_t*, pattern);

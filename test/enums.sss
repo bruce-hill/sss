@@ -4,12 +4,12 @@ say "$(Foo.A)"
 fail unless "$(Foo.A)" == "Foo.A"
 
 for x in [Foo.A, Foo.B, Foo.C, Foo.D]
-    if x is A
-        say "$x is A!"
-    is B
-        say "$x is B!"
+    if x matches A
+        say "$x matches A!"
+    matches B
+        say "$x matches B!"
     else
-        say "$x is something else"
+        say "$x matches something else"
 
 enum Baz := Text(text:Str)
     | Integer(i:Int)
@@ -19,11 +19,11 @@ enum Baz := Text(text:Str)
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2(2.4, 4), Baz.Nil]
 
 for b in bazzes
-    if b is Text(t)
+    if b matches Text(t)
         say "$t"
-    is Integer(x); Vec2(x)
+    matches Integer(x); Vec2(x)
         say "$x"
-    is Nil
+    matches Nil
         say "nil"
 
 // Flags:

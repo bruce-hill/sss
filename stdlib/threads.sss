@@ -5,14 +5,14 @@ enum JoinResult := Success(value:?Void) | NoPermissions=1 | Deadlock=35 | Invali
 alias Thread::Int
     func create(fn:(?Void)->?Void, arg:?Void)->Thread
         thread := Thread::0
-        if status := extern GC_pthread_create(&thread, !Void, fn, arg):CreateResult is Success
+        if status := extern GC_pthread_create(&thread, !Void, fn, arg):CreateResult matches Success
             return thread
         else
             fail "Failed to create thread: $status"
 
     func join(t:Thread, _=!Void)->?Void
         ret := !Void
-        if status := extern GC_pthread_join(t, &ret):JoinResult is Success
+        if status := extern GC_pthread_join(t, &ret):JoinResult matches Success
             return ret
         else
             fail "Failed to join thread: $status"
