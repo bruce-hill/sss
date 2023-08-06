@@ -616,8 +616,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             foreach (fields, field, _) {
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
-                gcc_lvalue_t *lval = get_lvalue(env, block, shim, false);
-                hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
+                if (can_be_lvalue(env, shim, false)) {
+                    gcc_lvalue_t *lval = get_lvalue(env, block, shim, false);
+                    hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
+                } else {
+                    gcc_rvalue_t *rval = compile_expr(env, block, shim);
+                    hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .rval=rval));
+                }
             }
         }
         return compile_expr(env, block, using->body);

@@ -65,6 +65,8 @@ gcc_func_t *get_compare_func(env_t *env, sss_type_t *t);
 gcc_func_t *get_indirect_compare_func(env_t *env, sss_type_t *t);
 // A ternary expression (a ? b : c)
 gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val);
+// Check if an AST can be an lvalue
+bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices);
 // Convert an AST into an lvalue
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices);
 // Apply optional/numeric promotion when possible

@@ -419,9 +419,91 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
     return gcc_rval(result);
 }
 
+bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
+{
+    switch (ast->tag) {
+    case Var: {
+        binding_t *binding = get_binding(env, Match(ast, Var)->name);
+        return binding->lval != NULL;
+    }
+    case Dereference: return true;
+    case FieldAccess: {
+        auto access = Match(ast, FieldAccess);
+        sss_type_t *fielded_t = get_type(env, access->fielded);
+        if (fielded_t->tag == PointerType) {
+            auto ptr = Match(fielded_t, PointerType);
+          dereference_again:
+            if (ptr->is_optional)
+                return false;
+            fielded_t = ptr->pointed;
+            if (fielded_t->tag == PointerType) {
+                ptr = Match(fielded_t, PointerType);
+                goto dereference_again;
+            }
+        } else {
+            if (!can_be_lvalue(env, access->fielded, allow_slices))
+                return false;
+        } 
+
+        if (fielded_t->tag == StructType) {
+            auto fielded_struct = Match(fielded_t, StructType);
+            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+                if (streq(ith(fielded_struct->field_names, i), access->field))
+                    return true;
+            }
+            compiler_err(env, ast, "The struct %T doesn't have a field called '%s'", fielded_t, access->field);
+        } else if (fielded_t->tag == ArrayType) { 
+            // arr.x => [item.x for x in arr]
+            return allow_slices;
+        } else if (fielded_t->tag == TableType) {
+            return streq(access->field, "default") || streq(access->field, "fallback");
+        } else if (fielded_t->tag == TaggedUnionType) {
+            auto tagged = Match(fielded_t, TaggedUnionType);
+            for (int64_t i = 0; i < length(tagged->members); i++) {
+                auto member = ith(tagged->members, i);
+                if (streq(access->field, member.name))
+                    return true;
+            }
+            return false;
+        } else {
+            return false;
+        }
+    }
+    case Index: {
+        auto indexing = Match(ast, Index);
+        if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
+            return false;
+        if (!can_be_lvalue(env, indexing->indexed, allow_slices))
+            return false;
+
+        sss_type_t *indexed_t = get_type(env, indexing->indexed);
+        sss_type_t *pointed_type = indexed_t;
+        while (pointed_type->tag == PointerType) {
+            auto ptr = Match(pointed_type, PointerType);
+            if (ptr->is_optional)
+                return false;
+            pointed_type = ptr->pointed;
+        }
+
+        if (pointed_type->tag == ArrayType) {
+            return true;
+        } else if (pointed_type->tag == TableType) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    case StackReference:
+        return false;
+    case HeapAllocate:
+        return false;
+    default:
+        return false;
+    }
+}
+
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices)
 {
-    (void)block;
     gcc_loc_t *loc = ast_loc(env, ast);
     switch (ast->tag) {
     case Var: {
