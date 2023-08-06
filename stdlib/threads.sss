@@ -1,7 +1,7 @@
 !link -lpthread
 
 enum CreateResult := Success=0 | InsufficientResources=11 | InvalidSettings=22
-enum JoinResult := Success(?Void) | NoPermissions=1 | Deadlock=35 | Invalid=22 | NotFound=3
+enum JoinResult := Success(value:?Void) | NoPermissions=1 | Deadlock=35 | Invalid=22 | NotFound=3
 alias Thread::Int
     func create(fn:(?Void)->?Void, arg:?Void)->Thread
         thread := Thread::0

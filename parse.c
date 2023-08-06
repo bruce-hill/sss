@@ -803,7 +803,7 @@ PARSER(parse_struct) {
         if (!field_name && !type)
             field_name = heap_strf("_%d", i);
         if (!value) break;
-        APPEND(members, NewAST(ctx->file, field_start, pos, StructField, .name=field_name, .value=value));
+        APPEND(members, NewAST(ctx->file, field_start, pos, KeywordArg, .name=field_name, .arg=value));
         whitespace(&pos);
         match(&pos, ",");
     }
@@ -2056,7 +2056,7 @@ PARSER(parse_struct_def) {
 }
 
 PARSER(parse_enum_def) {
-    // tagged union: enum Foo(a|b(Int)=5|...)
+    // tagged union: enum Foo(a|b(x:Int,y:Int)=5|...)
     const char *start = pos;
     if (!match_word(&pos, "enum")) return NULL;
 
@@ -2070,7 +2070,7 @@ PARSER(parse_enum_def) {
     size_t starting_indent = sss_get_indent(ctx->file, pos);
     NEW_LIST(const char*, tag_names);
     NEW_LIST(int64_t, tag_values);
-    NEW_LIST(ast_t*, tag_types);
+    NEW_LIST(args_t, tag_args);
     int64_t next_value = 0;
     whitespace(&pos);
     if (match(&pos, "|"))
@@ -2078,16 +2078,18 @@ PARSER(parse_enum_def) {
     unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
-        const char* tag_name = get_id(&pos);
+        const char *tag_name = get_id(&pos);
         if (!tag_name) break;
 
         spaces(&pos);
-        ast_t *type = NULL;
+        args_t args;
         if (match(&pos, "(")) {
             whitespace(&pos);
-            type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type here");
+            args = parse_args(ctx, &pos, false);
             whitespace(&pos);
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
+        } else {
+            args = (args_t){LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
         }
 
         spaces(&pos);
@@ -2104,7 +2106,7 @@ PARSER(parse_enum_def) {
 
         APPEND(tag_names, tag_name);
         APPEND(tag_values, next_value);
-        APPEND(tag_types, type);
+        APPEND_STRUCT(tag_args, args);
 
         const char *next_pos = pos;
         whitespace(&next_pos);
@@ -2139,7 +2141,7 @@ PARSER(parse_enum_def) {
         tag_bits = get_tag_bits(tag_values);
     List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
     return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
-                  .tag_bits=tag_bits, .tag_types=tag_types, .definitions=definitions);
+                  .tag_bits=tag_bits, .tag_args=tag_args, .definitions=definitions);
 }
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args)
@@ -2150,6 +2152,10 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args)
         const char *name = get_word(pos);
         spaces(pos);
         if (match(pos, "=")) {
+            if (match(pos, "=")) {
+                *pos -= 2;
+                break;
+            }
             APPEND(args.names, name);
             APPEND(args.types, NULL);
             ast_t *def = expect_ast(ctx, arg_start, pos, parse_expr, "I expected a default value for this argument");

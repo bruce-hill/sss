@@ -116,22 +116,22 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         // Named fields:
         for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
             ast_t *field_ast = ith(pat_struct->members, i);
-            const char *name = Match(field_ast, StructField)->name;
+            const char *name = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->name : NULL;
             if (!name) continue;
             if (hget(&field_pats, name, ast_t*))
                 compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
             else if (!hget(&field_types, name, sss_type_t*))
                 compiler_err(env, field_ast, "This is not a valid member of the struct %T", t);
 
-            ast_t *pat_member = Match(field_ast, StructField)->value;
+            ast_t *pat_member = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->arg : field_ast;
             hset(&field_pats, name, pat_member);
         }
         // Unnamed fields:
         for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
             ast_t *field_ast = ith(pat_struct->members, i);
-            const char *name = Match(field_ast, StructField)->name;
+            const char *name = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->name : NULL;
             if (name) continue;
-            ast_t *pat_member = Match(field_ast, StructField)->value;
+            ast_t *pat_member = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->arg : field_ast;
             foreach (struct_info->field_names, name, _) {
                 if (!hget(&field_pats, (*name), ast_t*)) {
                     hset(&field_pats, (*name), pat_member);
@@ -179,8 +179,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         auto member = ith(tu_t->members, tag_index);
         if (!member.type)
             compiler_err(env, pattern, "This tagged union member doesn't have any value");
-        else if (LIST_LEN(call->args) != 1)
-            compiler_err(env, pattern, "This tagged union constructor needs to have exactly 1 argument");
 
         gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
 
@@ -199,7 +197,8 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 
         gcc_rvalue_t *data_val = gcc_rvalue_access_field(
             gcc_rvalue_access_field(val, loc, data_field), loc, gcc_get_union_field(union_gcc_t, tag_index));
-        auto submatch_outcomes = perform_conditional_match(env, &outcomes.match_block, member.type, data_val, ith(call->args, 0));
+        ast_t *m_pat = WrapAST(pattern, Struct, .members=call->args);
+        auto submatch_outcomes = perform_conditional_match(env, &outcomes.match_block, member.type, data_val, m_pat);
         gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);
         return (match_outcomes_t){
             submatch_outcomes.match_block,

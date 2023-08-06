@@ -225,21 +225,47 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         bool any_values = false;
         for (int64_t i = 0; i < length(tagged->members); i++) {
             auto member = ith(tagged->members, i);
-            if (member.type) any_values = true;
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
             gcc_block_t *rest_of_tag_block = tag_block;
             WRITE_LITERAL(rest_of_tag_block, member.name);
-            if (member.type) {
+            if (member.type && member.type->tag == StructType && length(Match(member.type, StructType)->field_types) > 0) {
+                any_values = true;
                 WRITE_LITERAL(rest_of_tag_block, "(");
                 COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
+                // TODO: don't print curly braces
                 gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
                 gcc_rvalue_t *data = gcc_rvalue_access_field(obj, NULL, data_field);
                 gcc_field_t *union_field = gcc_get_union_field(union_gcc_t, i);
-                gcc_func_t *tag_print = get_print_func(env, member.type);
-                gcc_eval(rest_of_tag_block, NULL, gcc_callx(
-                    env->ctx, NULL, tag_print,
-                    gcc_rvalue_access_field(data, NULL, union_field),
-                    file, rec, color));
+
+                gcc_rvalue_t *val = gcc_rvalue_access_field(data, NULL, union_field);
+
+                List(const char*) field_names = Match(member.type, StructType)->field_names;
+                List(sss_type_t*) field_types = Match(member.type, StructType)->field_types;
+                gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, member.type));
+                for (int64_t i = 0; i < length(field_names); i++) {
+                    if (i > 0) {
+                        COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
+                        WRITE_LITERAL(rest_of_tag_block, ", ");
+                    }
+
+                    const char* name = ith(field_names, i);
+                    if (name && !streq(name, heap_strf("_%lu", i+1))) {
+                        COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
+                        WRITE_LITERAL(rest_of_tag_block, name);
+                        COLOR_LITERAL(&rest_of_tag_block, "\x1b[33m");
+                        WRITE_LITERAL(rest_of_tag_block, "=");
+                    }
+
+                    sss_type_t *member_t = ith(field_types, i);
+                    gcc_func_t *print_fn = get_print_func(env, member_t);
+                    assert(print_fn);
+                    gcc_field_t *field = gcc_get_field(gcc_struct, i);
+                    gcc_eval(rest_of_tag_block, NULL, gcc_callx(
+                            env->ctx, NULL, print_fn, 
+                            gcc_rvalue_access_field(val, NULL, field),
+                            file, rec, color));
+                }
+
                 COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
                 WRITE_LITERAL(rest_of_tag_block, ")");
                 COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");

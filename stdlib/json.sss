@@ -1,4 +1,12 @@
-enum Object := Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean(Bool)|Null|Invalid(JSON)
+enum Object :=
+    | Map(map:{Str=>Object})
+    | List(list:[Object])
+    | String(s:Str)
+    | Number(n:Num)
+    | Boolean(b:Bool)
+    | Null
+    | Invalid(invalid:JSON)
+
     convert j:Object as JSON
         if j is Map(table)
             return JSON::[`{,
@@ -22,6 +30,8 @@ enum Object := Map({Str=>Object})|List([Object])|String(Str)|Number(Num)|Boolean
             return JSON::"null"
         is Invalid(js)
             fail "invalid JSON: $js"
+        else
+            fail
 
 alias JSON::Str
     convert js:JSON as Str
@@ -112,7 +122,7 @@ alias JSON::Str
             if Num.parse(bitcast *js as Str) is Success(n)
                 *js = (*js)[(#js+1)..]
                 return Object.Number(n)
-            is PartialSuccess({value=n, remainder=remaining})
+            is PartialSuccess(value=n, remainder=remaining)
                 *js = (bitcast remaining as JSON)
                 return Object.Number(n)
             else
@@ -149,8 +159,8 @@ if IS_MAIN_PROGRAM
     >>> Object.String(${"Quotes" and \\backslashes}) as JSON
     === JSON::"\"\\"Quotes\\" and \\backslashes\""
     >>> JSON::$|{"x": true}| as Object
-    === Object.Map({"x"=>Object.Boolean(yes)})
+    === Object.Map(map={"x"=>Object.Boolean(b=yes)})
     >>> JSON::$|[1,2]| as Object
-    === Object.List([Object.Number(1), Object.Number(2)])
+    === Object.List(list=[Object.Number(n=1), Object.Number(n=2)])
     >>> x := Object.Map({"x"=> Object.String("hello")})
-    >>> x.Map["x"].String
+    >>> x.Map.map["x"].String

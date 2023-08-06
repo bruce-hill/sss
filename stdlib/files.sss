@@ -9,7 +9,7 @@ struct FileInfo{
     accessed, modified, moved:time.Timestamp
 }
 
-enum Result := Failure(Str) | Success
+enum Result := Failure(message:Str) | Success
 
 // Opaque value:
 alias _CFile::Void
@@ -53,13 +53,13 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-enum OpenResult := Failure(Str) | Success(@File)
+enum OpenResult := Failure(message:Str) | Success(file:@File)
 
 enum FileMode := Read=0 | Write=1 | ReadWrite=2
 open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
-enum TempDirResult := Failure(Str) | Success(Str)
+enum TempDirResult := Failure(message:Str) | Success(path:Str)
 
 func temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     path := [c for c in template]

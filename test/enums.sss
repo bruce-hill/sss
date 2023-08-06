@@ -11,12 +11,12 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     else
         say "$x is something else"
 
-enum Baz := Text(Str)
-    | Integer(Int)
-    | Vec2({x:Num,y:Num})
+enum Baz := Text(text:Str)
+    | Integer(i:Int)
+    | Vec2(x:Num, y:Num)
     | Nil
 
-bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2({2.4, 4}), Baz.Nil]
+bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2(2.4, 4), Baz.Nil]
 
 for b in bazzes
     if b is Text(t)
@@ -51,4 +51,4 @@ func doop(b:Baz)->Baz
 === Baz.Nil
 struct HasBaz{x:Int, b:Baz}
 >>> HasBaz{Integer(3), x=9}
-=== HasBaz{x=9, b=Baz.Integer(3)}
+=== HasBaz{x=9, b=Baz.Integer(i=3)}

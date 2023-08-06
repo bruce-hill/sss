@@ -208,25 +208,33 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
     for (int64_t i = 0; i < length(members); i++) {
         auto member = ith(members, i);
         // Constructor:
-        if (member.type) {
-            gcc_param_t *params[] = {
-                gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, member.type), fresh(member.name)),
-            };
+        if (member.type && member.type->tag == StructType && length(Match(member.type, StructType)->field_types) > 0) {
+            gcc_type_t *member_gcc_t = sss_type_to_gcc(env, member.type);
+            List(const char*) names = Match(member.type, StructType)->field_names;
+            List(sss_type_t*) types = Match(member.type, StructType)->field_types;
+            List(ast_t*) defaults = Match(member.type, StructType)->field_defaults;
+            gcc_param_t *params[length(names)] = {};
+            gcc_field_t *fields[length(names)] = {};
+            gcc_rvalue_t *field_rvals[length(names)] = {};
+            for (int64_t i = 0; i < length(names); i++) {
+                params[i] = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, ith(types, i)), ith(names, i));
+                fields[i] = gcc_get_field(gcc_type_if_struct(member_gcc_t), i);
+                field_rvals[i] = gcc_param_as_rvalue(params[i]);
+            }
             gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_ALWAYS_INLINE, sss_type_to_gcc(env, t),
-                                            fresh(member.name), 1, params, 0);
+                                            fresh(member.name), length(names), params, 0);
             gcc_block_t *func_body = gcc_new_block(func, fresh("constructor"));
             assert(gcc_get_union_field(union_gcc_t, i));
+            gcc_rvalue_t *struct_val = gcc_struct_constructor(env->ctx, NULL, member_gcc_t, length(names), fields, field_rvals);
             gcc_return(func_body, NULL, gcc_struct_constructor(
                     env->ctx, NULL, gcc_tagged_t, 2, (gcc_field_t*[]){
                         tag_field,
                         union_field,
                     }, (gcc_rvalue_t*[]){
                         gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
-                        gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), gcc_param_as_rvalue(params[0])),
+                        gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), struct_val),
                     }));
-            hset(ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*, member.type),
-                                                                 .arg_names=LIST(const char*, member.name),
-                                                                 .ret=t),
+            hset(ns, member.name, new(binding_t, .type=Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=t),
                                            .visible_in_closures=true,
                                            .func=func, .rval=gcc_get_func_address(func, NULL)));
         } else {
@@ -282,16 +290,16 @@ void populate_def_members(env_t *env, ast_t *def)
         auto members = Match(t, TaggedUnionType)->members;
         sss_hashmap_t used_names = {0};
         for (int64_t i = 0; i < length(tu_def->tag_names); i++) {
-            ast_t *member_type_ast = ith(tu_def->tag_types, i);
-            sss_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            args_t args = ith(tu_def->tag_args, i);
+            sss_type_t *member_t = parse_type_ast(env, WrapAST(def, TypeStruct, .members=args));
             if (member_t && member_t->tag == PointerType && Match(member_t, PointerType)->is_stack)
-                compiler_err(env, member_type_ast, "Tagged unions are not allowed to hold stack references, because the tagged union might outlive the stack frame.");
+                compiler_err(env, def, "Tagged unions are not allowed to hold stack references, because the tagged union might outlive the stack frame.");
             const char *name = ith(tu_def->tag_names, i);
             if (hget(&used_names, name, bool))
                 compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);
             hset(&used_names, name, true);
             sss_tagged_union_member_t member = {
-                .name=ith(tu_def->tag_names, i),
+                .name=name,
                 .tag_value=ith(tu_def->tag_values, i),
                 .type=member_t,
             };

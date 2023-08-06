@@ -56,6 +56,17 @@ static inline void _load_method(
 
 sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, List(sss_tagged_union_member_t) members)
 {
+    for (int64_t i = 0; i < length(members); i++) {
+        auto member = ith(members, i);
+        if (member.type && member.type->tag != StructType) {
+            members[0][i].type = Type(StructType, .field_names=LIST(const char*, ith(members, i).name),
+                                      .field_types=LIST(sss_type_t*, ith(members, i).type),
+                                      .field_defaults=LIST(ast_t*, NULL));
+        } else if (!member.type) {
+            members[0][i].type = Type(StructType, .field_names=LIST(const char*), .field_types=LIST(sss_type_t*),
+                                      .field_defaults=LIST(ast_t*));
+        }
+    }
     sss_type_t *t = Type(TaggedUnionType, .filename="<builtin>", .name=name, .tag_bits=tag_bits, .members=members);
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     hset(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));

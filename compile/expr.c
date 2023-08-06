@@ -990,9 +990,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // Put in named fields first:
         for (int64_t i = 0; i < (int64_t)num_values; i++) {
             ast_t *member_ast = ith(struct_->members, i);
-            auto member = Match(member_ast, StructField);
+            auto member = Match(member_ast, KeywordArg);
             if (member->name) {
-                hset(&field_asts, member->name, member->value);
+                hset(&field_asts, member->name, member->arg);
             }
         }
 
@@ -1000,7 +1000,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         int64_t first_unused = 0;
         for (int64_t i = 0; i < (int64_t)num_values; i++) {
             ast_t *member_ast = ith(struct_->members, i);
-            auto member = Match(member_ast, StructField);
+            auto member = Match(member_ast, KeywordArg);
             if (member->name) continue;
 
             while (first_unused < (int64_t)num_fields) {
@@ -1009,7 +1009,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (hget(&field_asts, field_name, ast_t*))
                     continue;
 
-                hset(&field_asts, field_name, member->value);
+                hset(&field_asts, field_name, member->arg);
                 goto next_field;
             }
             compiler_err(env, member_ast, "This is one field too many for this %T struct", t);
@@ -1039,7 +1039,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // Compile the rvals in order:
         gcc_rvalue_t *field_rvals[num_fields] = {};
         foreach (struct_->members, member, _) {
-            ast_t *field_ast = Match((*member), StructField)->value;
+            ast_t *field_ast = Match((*member), KeywordArg)->arg;
             for (int64_t i = 0; i < (int64_t)num_fields; i++) {
                 const char *name = ith(struct_type->field_names, i);
                 if (hget(&field_asts, name, ast_t*) == field_ast) {
@@ -1761,7 +1761,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             int64_t all_tags = 0;
             auto members = Match(t, TaggedUnionType)->members;
             for (int64_t i = 0; i < length(members); i++) {
-                if (ith(members, i).type)
+                if (ith(members, i).type && length(Match(ith(members, i).type, StructType)->field_types) > 0)
                     compiler_err(env, ast, "%T tagged union values can't be negated because some tags have data attached to them.", t);
                 all_tags |= ith(members, i).tag_value;
             }
@@ -2348,7 +2348,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     info = heap_strf("%.*s = ", (int)(last->span.end - first->span.start), first->span.start);
                     NEW_LIST(ast_t*, members);
                     for (int64_t i = 0; i < length(assign->targets); i++) {
-                        APPEND(members, WrapAST(ith(assign->targets, i), StructField, .name=heap_strf("_%d", i+1), .value=ith(assign->targets, i)));
+                        APPEND(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
                     }
                     lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
                 }

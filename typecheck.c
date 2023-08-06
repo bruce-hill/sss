@@ -96,20 +96,20 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);
-        // binding_t *b = struct_->name ? hashmap_get(env->bindings, struct_->name) : NULL;
-        // if (b && b->type->tag == TypeType) return Match(b->type, TypeType)->type;
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
         sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
-                             .name=struct_->name, .field_names=member_names, .field_types=member_types);
+                             .name=struct_->name, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
         if (struct_->name) {
             env = fresh_scope(env);
             hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
         }
         for (int64_t i = 0, len = length(struct_->members.types); i < len; i++) {
-            const char* member_name = ith(struct_->members.names, i);
+            const char *member_name = ith(struct_->members.names, i);
+            assert(member_name);
             APPEND(member_names, member_name);
-            sss_type_t *member_t = parse_type_ast(env, ith(struct_->members.types, i));
+            ast_t *type_ast = ith(struct_->members.types, i);
+            sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
             if (has_stack_memory(member_t))
                 compiler_err(env, ith(struct_->members.types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
             APPEND(member_types, member_t);
@@ -126,10 +126,10 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto tu = Match(ast, TypeTaggedUnion);
         NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
-            ast_t *member_type_ast = ith(tu->tag_types, i);
-            sss_type_t *member_t = member_type_ast ? parse_type_ast(env, member_type_ast) : NULL;
+            args_t args = ith(tu->tag_args, i);
+            sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .members=args));
             if (member_t && has_stack_memory(member_t))
-                compiler_err(env, ith(tu->tag_types, i), "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
+                compiler_err(env, ast, "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
             sss_tagged_union_member_t member = {
                 .name=ith(tu->tag_names, i),
                 .tag_value=ith(tu->tag_values, i),
@@ -295,11 +295,12 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         sss_hashmap_t checked = {0};
         for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
             ast_t *field_ast = ith(pat_struct->members, i);
-            const char *name = Match(field_ast, StructField)->name;
+            if (field_ast->tag != KeywordArg) continue;
+            const char *name = Match(field_ast, KeywordArg)->name;
             if (hget(&checked, name, ast_t*))
                 compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
 
-            ast_t *pat_member = Match(field_ast, StructField)->value;
+            ast_t *pat_member = Match(field_ast, KeywordArg)->arg;
             hset(&checked, name, pat_member);
             for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
                 if (!streq(ith(struct_info->field_names, j), name)) continue;
@@ -309,6 +310,21 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
             compiler_err(env, field_ast, "There is no field called '%s' on the struct %T", name, t);
 
           found_field_name: continue;
+        }
+        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
+            ast_t *field_ast = ith(pat_struct->members, i);
+            if (field_ast->tag == KeywordArg) continue;
+
+            for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
+                const char *name = ith(struct_info->field_names, j);
+                if (hget(&checked, name, ast_t*)) continue;
+                hset(&checked, name, field_ast);
+                bind_match_patterns(env, ith(struct_info->field_types, j), field_ast);
+                goto next_unnamed_field;
+            }
+            compiler_err(env, field_ast, "There are too many fields provided for type %T", t);
+
+          next_unnamed_field: continue;
         }
         return;
     }
@@ -333,10 +349,9 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         auto member = ith(tu_t->members, tag_index);
         if (!member.type)
             compiler_err(env, pattern, "This tagged union member doesn't have any value");
-        else if (LIST_LEN(call->args) != 1)
-            compiler_err(env, pattern, "This tagged union constructor needs to have exactly 1 argument");
 
-        bind_match_patterns(env, member.type, ith(call->args, 0));
+        ast_t *m_pat = WrapAST(pattern, Struct, .members=call->args);
+        bind_match_patterns(env, member.type, m_pat);
         return;
     }
     default: return;
@@ -1006,13 +1021,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             NEW_LIST(const char*, field_names);
             NEW_LIST(sss_type_t*, field_types);
             foreach (struct_->members, member, _) {
-                if ((*member)->tag != StructField)
+                if ((*member)->tag != KeywordArg)
                     compiler_err(env, *member, "Anonymous structs must have names for each field");
-                auto field = Match(*member, StructField);
+                auto field = Match(*member, KeywordArg);
                 APPEND(field_names, field->name);
-                sss_type_t *field_type = get_type(env, field->value);
+                sss_type_t *field_type = get_type(env, field->arg);
                 if (has_stack_memory(field_type))
-                    compiler_err(env, field->value, "Structs aren't allowed to have stack references because the struct may outlive the reference's stack frame.");
+                    compiler_err(env, field->arg, "Structs aren't allowed to have stack references because the struct may outlive the reference's stack frame.");
                 APPEND(field_types, field_type);
             }
 
@@ -1199,9 +1214,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                     List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
                     if (handlers) {
                         auto args = Match(*pat, FunctionCall)->args;
-                        if (LIST_LEN(args) != 1)
-                            compiler_err(env, *pat, "This constructor expected exactly one argument");
-                        append(handlers, ith(args, 0));
+                        ast_t *m_pat = WrapAST(*pat, Struct, .members=args);
+                        append(handlers, m_pat);
                     }
                 }
             } else if ((*pat)->tag == Var) {
@@ -1288,17 +1302,16 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             auto struct_ = Match(*pat, Struct);
             sss_hashmap_t named_members = {0};
             foreach (struct_->members, member, _) {
-                auto memb = Match(*member, StructField);
-                if (!memb->name) continue;
-                hset(&named_members, memb->name, memb->value);
+                if ((*member)->tag != KeywordArg) continue;
+                auto memb = Match(*member, KeywordArg);
+                hset(&named_members, memb->name, memb->arg);
             }
             foreach (struct_->members, member, _) {
-                auto memb = Match(*member, StructField);
-                if (memb->name) continue;
+                if ((*member)->tag == KeywordArg) continue;
                 for (int64_t i = 0; i < length(field_names); i++) {
                     const char *name = ith(field_names, i);
                     if (!hget(&named_members, name, ast_t*)) {
-                        hset(&named_members, name, memb->value);
+                        hset(&named_members, name, *member);
                         break;
                     }
                 }
@@ -1308,6 +1321,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             for (int64_t i = 1; i <= named_members.count; i++) {
                 auto entry = hnth(&named_members, i, const char*, ast_t*);
                 sss_type_t *type = hget(&field_types, entry->key, sss_type_t*);
+                if (!type) continue;
                 missing = get_missing_pattern(env, type, LIST(ast_t*, entry->value));
                 if (missing) break;
             }

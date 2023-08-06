@@ -3,5 +3,5 @@ struct Baz { f:?Foo }
 
 >>> @Foo{b=@Baz{}}
 
-enum Tagged := t(@Tagged) | nope
+enum Tagged := t(next:@Tagged) | nope
 >>> Tagged.t(@Tagged.nope)

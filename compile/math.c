@@ -215,7 +215,7 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
         auto members = Match(lhs_t, TaggedUnionType)->members;
         for (int64_t i = 0; i < length(members); i++) {
-            if (ith(members, i).type)
+            if (ith(members, i).type && length(Match(ith(members, i).type, StructType)->field_types) > 0)
                 compiler_err(env, ast, "%T tagged union values can't be combined because some tags have data attached to them.", lhs_t);
         }
         gcc_rvalue_t *result_tag;

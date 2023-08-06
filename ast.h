@@ -45,7 +45,7 @@ typedef enum {
     TypeFunction, TypePointer,
     TypeMeasure, TypeTypeAST,
     Cast, Bitcast,
-    Struct, StructDef, StructField,
+    Struct, StructDef,
     TaggedUnionDef, TypeTaggedUnion, TaggedUnionField,
     Index, FieldAccess,
     UnitDef, ConvertDef, VariantDef,
@@ -245,13 +245,9 @@ struct ast_s {
         } StructDef;
         struct {
             const char *name;
-            ast_t *value;
-        } StructField;
-        struct {
-            const char *name;
             List(const char*) tag_names;
             List(int64_t) tag_values;
-            List(ast_t*) tag_types;
+            List(args_t) tag_args;
             List(ast_t*) definitions;
             unsigned short int tag_bits;
         } TaggedUnionDef, TypeTaggedUnion;

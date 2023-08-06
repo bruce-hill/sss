@@ -12,7 +12,7 @@ alias Entry::@Void
     func set_value(e:Entry, value:?Void)
         *(bitcast ((bitcast e as UInt)+16u64) as @?Void) = value
 
-enum DequeueResult := Empty | Value(?Void)
+enum DequeueResult := Empty | Value(data:?Void)
 
 alias Queue::@Void
     func new()->Queue

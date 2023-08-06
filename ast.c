@@ -70,6 +70,7 @@ const char *label_int(const char *name, int64_t i) { return heap_strf("%s=\x1b[3
 const char *label_double(const char *name, double d) { return heap_strf("%s=\x1b[35m%g\x1b[m", name, d); }
 const char *label_bool(const char *name, bool b) { return heap_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
 const char *label_args(const char *name, args_t args) { (void)args; return heap_strf("%s=...args...", name); }
+const char *label_args_list(const char *name, List(args_t) args) { (void)args; return heap_strf("%s=...args...", name); }
 
 const char *_ast_to_str(const char *name, ast_t *ast)
 {
@@ -90,6 +91,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           bool: label_bool, \
                           unsigned char: label_bool, \
                           args_t: label_args, \
+                          List(args_t): label_args_list, \
                           List(const char *): str_list_to_str)(#field, data->field)
 #define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs("\x1b[1m" #t "(\x1b[m", mem); \
     fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
@@ -154,9 +156,8 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Bitcast, F(value), F(type))
         T(Struct, F(type), F(members))
         T(StructDef, F(name), F(field_names), F(field_types), F(field_defaults), F(definitions))
-        T(StructField, F(name), F(value))
-        T(TaggedUnionDef, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_types), F(definitions))
-        T(TypeTaggedUnion, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_types))
+        T(TaggedUnionDef, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_args), F(definitions))
+        T(TypeTaggedUnion, F(name), F(tag_bits), F(tag_names), "tag_values=...", F(tag_args))
         T(TaggedUnionField, F(name), F(value))
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))

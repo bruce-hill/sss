@@ -267,6 +267,8 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case StructType: {
         auto struct_t = Match(t, StructType);
         const char *t_str = type_to_string(t);
+        gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
+        if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, t_str, gcc_t);
@@ -291,9 +293,11 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
         const char *t_str = type_to_string(t);
+        gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
+        if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name ? tagged->name : "TaggedUnion");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(&cache, type_to_string(t), gcc_t);
+        hset(&cache, t_str, gcc_t);
         hset(&opaque_structs, t_str, gcc_t);
         gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
             gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
