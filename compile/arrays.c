@@ -557,7 +557,7 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
         COLOR_LITERAL(block, "\x1b[0;2;36m");
         WRITE_LITERAL(*block, ":");
         COLOR_LITERAL(block, "\x1b[0;36m");
-        WRITE_LITERAL(*block, type_to_string(item_type));
+        WRITE_LITERAL(*block, type_to_string_concise(item_type));
         COLOR_LITERAL(block, "\x1b[m");
         WRITE_LITERAL(*block, "]");
         gcc_return_void(*block, NULL);
