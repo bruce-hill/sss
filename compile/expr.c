@@ -2151,7 +2151,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // (1-amount)*lhs + amount*rhs
         ast_t *amount_var = WrapAST(mix->key, Var, "$mix_amount");
-        ast_t *amount = mix->key;
+        ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, Var, "Num32"));
         if (streq(type_units(mix_t), "%"))
             amount = WrapAST(mix->key, Divide, amount, WrapAST(mix->key, Num, .n=1.0, .precision=32, .units="%"));
         ast_t *mix_equation = WrapAST(ast, Block, LIST(ast_t*,
