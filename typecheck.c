@@ -1335,10 +1335,12 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != KeywordArg) continue;
                 auto memb = Match(*member, KeywordArg);
+                if (!memb->name) continue;
                 hset(&named_members, memb->name, memb->arg);
             }
             foreach (struct_->members, member, _) {
-                if ((*member)->tag == KeywordArg) continue;
+                if ((*member)->tag == KeywordArg && Match(*member, KeywordArg)->name)
+                    continue;
                 for (int64_t i = 0; i < length(field_names); i++) {
                     const char *name = ith(field_names, i);
                     if (!hget(&named_members, name, ast_t*)) {
