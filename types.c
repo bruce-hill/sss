@@ -1,3 +1,4 @@
+// Logic for handling sss_type_t types
 #include <gc/cord.h>
 
 #include "libsss/hashmap.h"
@@ -130,7 +131,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
             const char *name = ((flags & FILENAMES) && tagged->name) ? heap_strf("%s:%s", tagged->filename, tagged->name) : tagged->name;
-            if (!expanded || (name && hget(expanded, name, char*)))
+            if (tagged->name && (!expanded || (name && hget(expanded, name, char*))))
                 return name;
 
             if (name && expanded)
@@ -138,21 +139,37 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
 
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
 
-            CORD c = name ? CORD_cat(name, "{|") : "{|";
+            CORD c = name ? name : "|";
+            if (!name) return "???";
 
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, "|");
                 auto member = LIST_ITEM(tagged->members, i);
-                if (i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value)
-                    c = CORD_cat(c, member.name);
-                else
-                    CORD_sprintf(&c, "%r%s=%ld", c, member.name, member.tag_value);
+                // name, tag_value, type
+                c = CORD_cat(c, member.name);
+                if (member.type) {
+                    c = CORD_cat(c, "(");
+                    auto struct_ = Match(member.type, StructType);
+                    for (int64_t j = 0; j < LIST_LEN(struct_->field_types); j++) {
+                        sss_type_t *ft = LIST_ITEM(struct_->field_types, j);
+                        const char* fname = LIST_ITEM(struct_->field_names, j);
+                        if (j > 0)
+                            c = CORD_cat(c, ",");
 
-                if (member.type)
-                    CORD_sprintf(&c, "%r:%r", c, type_to_cord(member.type, expanded, flags));
+                        if (fname && !streq(fname, heap_strf("_%lu", j+1)))
+                            c = CORD_cat(CORD_cat(c, fname), ":");
+
+                        CORD fstr = type_to_cord(ft, expanded, flags);
+                        c = CORD_cat(c, fstr);
+                    }
+                    c = CORD_cat(c, ")");
+                }
+
+                if (!(i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value))
+                    CORD_sprintf(&c, "%r=%ld", c, member.tag_value);
             }
-            c = CORD_cat(c, "|}");
+            c = CORD_cat(c, "|");
             return c;
         }
         case ModuleType: {

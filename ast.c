@@ -1,5 +1,7 @@
 // Some basic operations defined on AST nodes, mainly converting to
 // strings for debugging.
+#include <gc/cord.h>
+
 #include "ast.h"
 
 static const char *_ast_to_str(const char *name, ast_t *ast);
@@ -69,7 +71,17 @@ const char *label_str(const char *name, const char *str) {
 const char *label_int(const char *name, int64_t i) { return heap_strf("%s=\x1b[35m%ld\x1b[m", name, i); }
 const char *label_double(const char *name, double d) { return heap_strf("%s=\x1b[35m%g\x1b[m", name, d); }
 const char *label_bool(const char *name, bool b) { return heap_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
-const char *label_args(const char *name, args_t args) { (void)args; return heap_strf("%s=...args...", name); }
+const char *label_args(const char *name, args_t args) {
+    CORD c = CORD_cat(name, "={");
+    for (int64_t i = 0; i < LIST_LEN(args.names); i++) {
+        if (i > 0) c = CORD_cat(c, ", ");
+        c = CORD_cat(c, _ast_to_str(LIST_ITEM(args.names, i), LIST_ITEM(args.types, i)));
+        c = CORD_cat(c, "=");
+        c = CORD_cat(c, ast_to_str(LIST_ITEM(args.defaults, i)));
+    }
+    c = CORD_cat(c, "}");
+    return CORD_to_char_star(c);
+}
 const char *label_args_list(const char *name, List(args_t) args) { (void)args; return heap_strf("%s=...args...", name); }
 
 const char *_ast_to_str(const char *name, ast_t *ast)

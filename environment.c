@@ -499,6 +499,11 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
     *fresh = *env;
     fresh->bindings = new(sss_hashmap_t, .fallback=env->bindings);
     sss_hashmap_t *ns = get_namespace(env, t);
+    if (t->tag == TaggedUnionType) {
+        auto members = Match(t, TaggedUnionType)->members;
+        if (length(members) > 0 && !hget(ns, ith(members, 0).name, binding_t*))
+            populate_tagged_union_constructors(env, t);
+    }
     for (uint32_t i = 1; i <= ns->count; i++) {
         auto entry = hnth(ns, i, const char*, binding_t*);
         if (!hget(fresh->bindings, entry->key, binding_t*))

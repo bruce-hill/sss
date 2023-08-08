@@ -127,7 +127,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
             args_t args = ith(tu->tag_args, i);
-            sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .members=args));
+            sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .name=ith(tu->tag_names, i), .members=args));
             if (member_t && has_stack_memory(member_t))
                 compiler_err(env, ast, "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
             sss_tagged_union_member_t member = {
