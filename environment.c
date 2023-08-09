@@ -477,7 +477,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     define_num_types(env);
 #define DEFTYPE(t) hset(&env->global->bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
-    DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort);
+    DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort); DEFTYPE(Memory);
     DEFTYPE(Char); DEFTYPE(CStringChar);
 #undef DEFTYPE
     define_int_types(env);

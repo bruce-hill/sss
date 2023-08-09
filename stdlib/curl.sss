@@ -32,17 +32,17 @@ enum ResultCode :=
 enum NetRC := Ignored=0 | Optional=1 | Required=2
 
 enum Header :=
-    | WRITEDATA(data:?Void)=10001
+    | WRITEDATA(data:?Memory)=10001
     | URL(url:@CStringChar)=10002
     | PORT(port:Int64)=3
     | PROXY(proxy:@CStringChar)=10004
     | USERPWD(userpwd:@CStringChar)=10005
     | PROXYUSERPWD(proxyuserpwd:@CStringChar)=10006
     | RANGE(range:@CStringChar)=10007
-    | READDATA(data:?Void)=10009
+    | READDATA(data:?Memory)=10009
     | ERRORBUFFER(buf:@Char)=10010
-    | WRITEFUNCTION(fn:(@Char,Int64,Int64,?Void)->Int64)=20011
-    | READFUNCTION(fn:(@Char,Int64,Int64,?Void)->Int64)=20012
+    | WRITEFUNCTION(fn:(@Char,Int64,Int64,?Memory)->Int64)=20011
+    | READFUNCTION(fn:(@Char,Int64,Int64,?Memory)->Int64)=20012
     | TIMEOUT(timeout:Int64)=13
     | INFILESIZE(size:Int64)=14
     | POSTFIELDS(fields:@CStringChar)=10015
@@ -58,13 +58,13 @@ enum Header :=
     | KEYPASSWD(passwd:@CStringChar)=10026
     | CRLF(crlf:Bool)=27
     | QUOTE(quote:[@CStringChar])=10028
-    | HEADERDATA(data:?Void)=10029
+    | HEADERDATA(data:?Memory)=10029
     | COOKIEFILE(file:@CStringChar)=10031
     | SSLVERSION(version:Int64)=32
     | TIMECONDITION(condition:Int64)=33
     | TIMEVALUE(value:Int64)=34
     | CUSTOMREQUEST(request:@CStringChar)=10036
-    | STDERR(dat:@Void)=10037
+    | STDERR(dat:@Memory)=10037
     | POSTQUOTE(quote:[@CStringChar])=10039
     | VERBOSE(verbose:Bool)=41
     | HEADER(header:Bool)=42
@@ -78,7 +78,7 @@ enum Header :=
     | NETRC(netrc:NetRC)=51
     | FOLLOWLOCATION(follow:Bool)=52
     | TRANSFERTEXT(transfer:Bool)=53
-    | XFERINFODATA(data:?Void)=10057
+    | XFERINFODATA(data:?Memory)=10057
     | AUTOREFERER(name:Bool)=58
     | PROXYPORT(port:Int64)=59
     | POSTFIELDSIZE(field_size:Int64)=60
@@ -168,8 +168,8 @@ enum Header :=
     | OPENSOCKETDATA=10164
     | COPYPOSTFIELDS=10165
     | PROXY_TRANSFER_MODE=166
-    | SEEKFUNCTION(fn:(?Void,Int64,Int32)->Int32)=20167
-    | SEEKDATA(data:?Void)=10168
+    | SEEKFUNCTION(fn:(?Memory,Int64,Int32)->Int32)=20167
+    | SEEKDATA(data:?Memory)=10168
     | CRLFILE=10169
     | ISSUERCERT=10170
     | ADDRESS_SCOPE=171
@@ -359,8 +359,8 @@ func get(url:Str, headers=[:Header])->Result
     buf := &""
     code := _curl(headers ++ [
         Header.URL(url),
-        Header.WRITEFUNCTION(bitcast _write as (@Char,Int64,Int64,?Void)->Int64),
-        Header.WRITEDATA(bitcast buf as ?Void),
+        Header.WRITEFUNCTION(bitcast _write as (@Char,Int64,Int64,?Memory)->Int64),
+        Header.WRITEDATA(bitcast buf as ?Memory),
     ])
 
     if code matches OK

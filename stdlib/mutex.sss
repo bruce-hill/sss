@@ -1,13 +1,13 @@
 !link -lpthread
 
-alias Mutex::@Void
+alias Mutex::@Memory
     func new()->Mutex
         mutex := extern GC_malloc(40u64):Mutex
-        pthread_mutex_init := extern pthread_mutex_init:(Mutex,?Void)->Int32
-        if extern pthread_mutex_init(mutex, !Void):CError != CError.SUCCESS
+        pthread_mutex_init := extern pthread_mutex_init:(Mutex,?Memory)->Int32
+        if extern pthread_mutex_init(mutex, !Memory):CError != CError.SUCCESS
             fail "Mutex failed to initialize"
-        cleanup := extern pthread_mutex_destroy:(Mutex,?Void)->Void
-        extern GC_register_finalizer(mutex, cleanup, !Void, !Void, !Void)
+        cleanup := extern pthread_mutex_destroy:(Mutex,?Memory)->Void
+        extern GC_register_finalizer(mutex, cleanup, !Memory, !Memory, !Memory)
         return mutex
 
     func lock(mutex:Mutex)->MutexLock
@@ -32,14 +32,14 @@ struct MutexLock{mutex:Mutex}
     func close(lock:MutexLock)
         lock.mutex.unlock()
 
-alias Condition::@Void
+alias Condition::@Memory
     func new()->Condition
         cond := extern GC_malloc(48u64):Condition
-        if extern pthread_cond_init(cond, !Void):CError != CError.SUCCESS
+        if extern pthread_cond_init(cond, !Memory):CError != CError.SUCCESS
             fail "Condition failed to initialize"
 
-        cleanup := extern pthread_cond_destroy:(Condition,?Void)->Void
-        extern GC_register_finalizer(cond, cleanup, !Void, !Void, !Void)
+        cleanup := extern pthread_cond_destroy:(Condition,?Memory)->Void
+        extern GC_register_finalizer(cond, cleanup, !Memory, !Memory, !Memory)
         return cond
 
     func announce_change(cond:Condition, broadcast=no)

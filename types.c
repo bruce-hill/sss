@@ -17,6 +17,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         case UnknownType: return "???";
         case AbortType: return "Abort";
         case VoidType: return "Void";
+        case MemoryType: return "Memory";
         case BoolType: return "Bool";
         case IntType: {
             auto int_ = Match(t, IntType);
@@ -499,9 +500,9 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);
         auto actual_ptr = Match(actual, PointerType);
-        if (needed_ptr->pointed->tag != VoidType && !type_eq(needed_ptr->pointed, actual_ptr->pointed))
+        if (needed_ptr->pointed->tag != MemoryType && !type_eq(needed_ptr->pointed, actual_ptr->pointed))
             // Can't use @Foo for a function that wants @Baz
-            // But you *can* use @Foo for a function that wants @Void
+            // But you *can* use @Foo for a function that wants @Memory
             return false;
         else if (actual_ptr->is_stack && !needed_ptr->is_stack)
             // Can't use &x for a function that wants a @Foo or ?Foo

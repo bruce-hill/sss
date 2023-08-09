@@ -65,7 +65,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
     }
     case VariantType: return gcc_alignof(env, Match(sss_t, VariantType)->variant_of);
     case ModuleType: return 1;
-    case VoidType: return 1;
+    case VoidType: case MemoryType: return 1;
     default:
         return gcc_sizeof(env, sss_t);
     }
@@ -124,7 +124,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     }
     case VariantType: return gcc_sizeof(env, Match(sss_t, VariantType)->variant_of);
     case ModuleType: return 0;
-    case VoidType: return 0;
+    case VoidType: case MemoryType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
     }
 }
@@ -196,7 +196,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case CharType: case CStringCharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
-    case VoidType: case AbortType: gcc_t = gcc_type(env->ctx, VOID); break;
+    case VoidType: case MemoryType: case AbortType: gcc_t = gcc_type(env->ctx, VOID); break;
     case PointerType: {
         gcc_t = sss_type_to_gcc(env, Match(t, PointerType)->pointed);
         gcc_t = gcc_get_ptr_type(gcc_t);
@@ -315,7 +315,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case GeneratorType: {
         auto generator = Match(t, GeneratorType);
         switch (generator->generated->tag) {
-        case AbortType: case VoidType: return gcc_type(env->ctx, VOID);
+        case AbortType: case VoidType: case MemoryType: return gcc_type(env->ctx, VOID);
         default: goto unknown_gcc_type;
         }
     }
@@ -778,7 +778,7 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
             gcc_rvalue_t *file = gcc_rval(file_var);
 
             // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
-            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
             gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
             gcc_assign(*block, NULL, cycle_checker, gcc_struct_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL, NULL));

@@ -51,7 +51,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
 
-    gcc_type_t *void_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(VoidType)));
+    gcc_type_t *void_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(MemoryType)));
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, gcc_t, fresh("obj")),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, FILE_PTR), fresh("file")),
@@ -61,8 +61,8 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
     const char* sym_name = fresh("__print");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), sym_name, 4, params, 0);
     sss_type_t *fn_t = Type(FunctionType,
-                           .arg_types=LIST(sss_type_t*, t, Type(PointerType, .pointed=Type(VoidType)),
-                                           Type(PointerType, .pointed=Type(VoidType)), Type(BoolType)),
+                           .arg_types=LIST(sss_type_t*, t, Type(PointerType, .pointed=Type(MemoryType)),
+                                           Type(PointerType, .pointed=Type(MemoryType)), Type(BoolType)),
                            .arg_names=LIST(const char*, "obj", "file", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(IntType));
     sss_hashmap_t *ns = get_namespace(env, t);
@@ -364,9 +364,9 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
         const char *sigil = Match(t, PointerType)->is_stack ? "&" : "@";
 
         block = nonnil_block;
-        if (pointed_type->tag == VoidType) {
+        if (pointed_type->tag == MemoryType) {
             COLOR_LITERAL(&block, "\x1b[0;34;1m");
-            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "%sVoid<%p>"), gcc_str(env->ctx, sigil), obj));
+            gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "%sMemory<%p>"), gcc_str(env->ctx, sigil), obj));
             COLOR_LITERAL(&block, "\x1b[m");
             gcc_return_void(block, NULL);
             block = NULL;
@@ -393,7 +393,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
 
             // If the cycle checker is null, stack allocate one here and initialize it:
             block = needs_cycle_checker;
-            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
             gcc_func_t *func = gcc_block_func(block);
             gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
@@ -416,7 +416,7 @@ gcc_func_t *get_print_func(env_t *env, sss_type_t *t)
             // val = sss_hashmap_set(rec, &obj, NULL)
             gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
             gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
-            sss_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(VoidType)), .value_type=Type(IntType, .bits=64));
+            sss_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
             gcc_rvalue_t *index_ptr = gcc_callx(
                 env->ctx, NULL, hash_set_func, rec,
                 gcc_cast(env->ctx, NULL, gcc_get_func_address(hash_func, NULL), void_ptr_t),

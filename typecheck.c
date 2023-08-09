@@ -63,6 +63,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypePointer: {
         auto ptr = Match(ast, TypePointer);
         sss_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
+        if (pointed_t->tag == VoidType)
+            compiler_err(env, ast, "Void pointers are not supported in SSS. You probably meant '!Memory'");
         return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack);
     }
     case TypeMeasure: {

@@ -1,13 +1,13 @@
 use ./stdlib/mutex.sss
 
-enum DequeueResult := Empty | Value(data:?Void)
+enum DequeueResult := Empty | Value(data:?Memory)
 
 
-struct Queue{head=[:?Void], tail=[:?Void], head_mutex=Mutex.new(), tail_mutex=Mutex.new()}
+struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mutex=Mutex.new()}
     func new(; inline)->@Queue
         return @Queue{}
 
-    func enqueue(q:&Queue, value:?Void)
+    func enqueue(q:&Queue, value:?Memory)
         with q.head_mutex.lock()
             (&q.head).insert(value)
 
@@ -19,13 +19,13 @@ struct Queue{head=[:?Void], tail=[:?Void], head_mutex=Mutex.new(), tail_mutex=Mu
                         return Empty
 
                     q.tail = q.head[.. by -1]
-                    q.head = [:?Void]
+                    q.head = [:?Memory]
             
             val := q.tail[1]
             q.tail = q.tail[2..]
             return Value(val)
         
-    func dequeue(q:&Queue)->?Void
+    func dequeue(q:&Queue)->?Memory
         backoff := 1u64
         repeat if q.try_dequeue() matches Value(v)
             return v

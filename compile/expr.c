@@ -1666,6 +1666,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Nil: {
         sss_type_t *t = get_type(env, ast);
+        if (t->tag == VoidType)
+            compiler_err(env, ast, "Void pointers are not supported in SSS. You probably meant '!Memory'");
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         if (gcc_type_if_pointer(gcc_t))
             return gcc_null(env->ctx, sss_type_to_gcc(env, t));

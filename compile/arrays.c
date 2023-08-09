@@ -839,7 +839,7 @@ static void define_array_sort(env_t *env, sss_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("sort"), 1, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("sort"));
     gcc_func_t *c_sort_func = get_function(env, "array_sort");
-    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType));
+    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(MemoryType));
     sss_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
     gcc_type_t *ptr_cmp_fn_gcc_t = sss_type_to_gcc(env, ptr_cmp_fn_t);
     gcc_rvalue_t *cmp = gcc_get_func_address(get_indirect_compare_func(env, item_t), NULL);

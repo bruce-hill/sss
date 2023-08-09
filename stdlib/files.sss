@@ -12,7 +12,7 @@ struct FileInfo{
 enum Result := Failure(message:Str) | Success
 
 // Opaque value:
-alias _CFile::Void
+alias _CFile::Memory
 
 struct File{raw_c_file:?_CFile}
     func line(f:@File)->Str
@@ -104,7 +104,7 @@ alias Glob::Str
         enum GlobResult := SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
-        result := extern glob((bitcast g as Str).c_string(), flags, !Void, &globbuf):GlobResult
+        result := extern glob((bitcast g as Str).c_string(), flags, !Memory, &globbuf):GlobResult
         defer extern globfree(&globbuf)
         if result matches SUCCESS
             mem_addr := bitcast (globbuf.gl_pathv or return [:Str]) as Int

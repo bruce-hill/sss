@@ -24,7 +24,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     binding_t *b = get_from_namespace(env, t, "__hash");
     if (b) return b->func;
 
-    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(VoidType), .is_optional=true);
+    sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(MemoryType), .is_optional=true);
     if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
         gcc_func_t *func = get_hash_func(env, void_ptr_t);
         hset(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));

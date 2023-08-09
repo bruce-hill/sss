@@ -1,32 +1,32 @@
 !link -llfds
 
-alias Entry::@Void
-    func new(value=!Void)->Entry
+alias Entry::@Memory
+    func new(value=!Memory)->Entry
         e := extern GC_malloc(24u64):Entry
         e.set_value(value)
         return e
 
-    func get_value(e:Entry)->?Void
-        return *(bitcast ((bitcast e as UInt)+16u64) as @?Void)
+    func get_value(e:Entry)->?Memory
+        return *(bitcast ((bitcast e as UInt)+16u64) as @?Memory)
 
-    func set_value(e:Entry, value:?Void)
-        *(bitcast ((bitcast e as UInt)+16u64) as @?Void) = value
+    func set_value(e:Entry, value:?Memory)
+        *(bitcast ((bitcast e as UInt)+16u64) as @?Memory) = value
 
-enum DequeueResult := Empty | Value(data:?Void)
+enum DequeueResult := Empty | Value(data:?Memory)
 
-alias Queue::@Void
+alias Queue::@Memory
     func new()->Queue
         q := extern GC_malloc(768u64):Queue
         dummy := Entry.new()
-        extern lfds711_queue_umm_init_valid_on_current_logical_core(q, dummy, !Void)
-        cleanup := extern lfds711_queue_umm_cleanup:(Queue,?Void)->Void
-        extern GC_register_finalizer(q, cleanup, !Void, !Void, !Void)
+        extern lfds711_queue_umm_init_valid_on_current_logical_core(q, dummy, !Memory)
+        cleanup := extern lfds711_queue_umm_cleanup:(Queue,?Memory)->Void
+        extern GC_register_finalizer(q, cleanup, !Memory, !Memory, !Memory)
         return q
     
-    func enqueue(q:Queue, value:?Void)
+    func enqueue(q:Queue, value:?Memory)
         extern lfds711_queue_umm_enqueue(q, Entry.new(value))
 
-    func dequeue(q:Queue)->?Void
+    func dequeue(q:Queue)->?Memory
         repeat if q.try_dequeue() matches Value(v)
             return v
         else

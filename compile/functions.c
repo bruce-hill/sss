@@ -21,7 +21,7 @@ static bool is_cacheable(sss_type_t *t)
     switch (t->tag) {
     case ArrayType: return true;
     case TableType: return true;
-    case PointerType: return Match(t, PointerType)->pointed->tag == VoidType;
+    case PointerType: return Match(t, PointerType)->pointed->tag == MemoryType;
     case GeneratorType: return false;
     case StructType: {
         auto field_types = Match(t, StructType)->field_types;
