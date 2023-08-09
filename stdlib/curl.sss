@@ -321,7 +321,7 @@ enum Header :=
     | CA_CACHE_TIMEOUT=321
     | QUICK_EXIT=322
 
-struct _CURL{}
+alias _CURL::Memory
 
 func _write(data:@Char, size:Int64, nmemb:Int64, buf:@Str)->Int64
     buf ++= (bitcast {data,(size * nmemb) as Int32,1i16,0i16} as Str)
@@ -329,7 +329,7 @@ func _write(data:@Char, size:Int64, nmemb:Int64, buf:@Str)->Int64
 
 enum Result := Success(response:Str) | Failure(code:ResultCode)
 
-struct _CurlSList{}
+alias _CurlSList::Memory
 
 func _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init():?_CURL) or fail "Couldn't initialize CURL!"
