@@ -2083,7 +2083,7 @@ PARSER(parse_struct_def) {
 }
 
 static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
-    // tagged union: enum Foo(a|b(x:Int,y:Int)=5|...)
+    // tagged union: enum Foo := a|b(x:Int,y:Int)=5|...
     const char *start = pos;
 
     const char *name;
@@ -2102,9 +2102,11 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
     NEW_LIST(int64_t, tag_values);
     NEW_LIST(args_t, tag_args);
     int64_t next_value = 0;
-    whitespace(&pos);
+
+    size_t (*ws)(const char **) = name ? whitespace : spaces;
+    ws(&pos);
     if (match(&pos, "|"))
-        whitespace(&pos);
+        ws(&pos);
     else if (!named)
         return NULL;
     unsigned short int tag_bits = 0;
@@ -2116,9 +2118,9 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
         spaces(&pos);
         args_t args;
         if (match(&pos, "(")) {
-            whitespace(&pos);
+            ws(&pos);
             args = parse_args(ctx, &pos, false);
-            whitespace(&pos);
+            ws(&pos);
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         } else {
             args = (args_t){LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
@@ -2141,11 +2143,11 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
         APPEND_STRUCT(tag_args, args);
 
         const char *next_pos = pos;
-        whitespace(&next_pos);
+        ws(&next_pos);
         if (match(&next_pos, ";")) {
-            whitespace(&next_pos);
+            ws(&next_pos);
             if (match_word(&next_pos, "bits") && (spaces(&next_pos), match(&next_pos, "="))) {
-                whitespace(&next_pos);
+                ws(&next_pos);
                 char *after = NULL;
                 const char *bits_start = next_pos;
                 tag_bits = strtol(next_pos, &after, 10);
@@ -2154,13 +2156,13 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
                 if (tag_bits < get_tag_bits(tag_values))
                     parser_err(ctx, bits_start, after, "This isn't enough bits to hold the largest tag value");
                 next_pos = after;
-                whitespace(&next_pos);
+                ws(&next_pos);
                 match(&next_pos, "|");
                 pos = next_pos;
                 break;
             }
         } else if (match(&next_pos, "|")) {
-            whitespace(&next_pos);
+            ws(&next_pos);
         } else if (sss_get_indent(ctx->file, next_pos) <= starting_indent) {
             break;
         } else {

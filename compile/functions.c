@@ -148,6 +148,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     // Use a set of bindings that don't include any closures
     env = file_scope(env);
     env->return_type = fn_info->ret;
+    env = scope_with_type(env, fn_info->ret);
 
     args_t args = def->tag == FunctionDef ? Match(def, FunctionDef)->args : Match(def, Lambda)->args;
 
