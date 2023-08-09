@@ -1,101 +1,103 @@
 // Some basic operations defined on AST nodes, mainly converting to
 // strings for debugging.
 #include <gc/cord.h>
+#include <stdarg.h>
 
 #include "ast.h"
 
-static const char *_ast_to_str(const char *name, ast_t *ast);
-
-const char *ast_list_to_str(const char *name, List(ast_t*) asts)
+static inline CORD CORD_asprintf(const char *fmt, ...)
 {
-    char *buf; size_t size;
-    FILE *mem = open_memstream(&buf, &size);
-    if (name) fprintf(mem, "%s=", name);
-    if (asts) {
-        fputs("[", mem);
-        for (int64_t i = 0, len = LIST_LEN(asts); i < len; i++) {
-            if (i > 0) fputs(", ", mem);
-            fputs(_ast_to_str(NULL, LIST_ITEM(asts, i)), mem);
-        }
-        fputs("]", mem);
-    } else {
-        fputs("\x1b[35mNULL\x1b[m", mem);
-    }
-    fflush(mem);
-    char *ret = GC_MALLOC_ATOMIC(size+1);
-    memcpy(ret, buf, size);
-    fclose(mem);
-    free(buf);
-    return ret;
+    va_list args;
+    va_start(args, fmt);
+    CORD c = NULL;
+    CORD_vsprintf(&c, fmt, args);
+    va_end(args);
+    return c;
 }
 
-static void fputs_list(FILE *out, int len, const char *strs[len]) {
+static CORD ast_to_cord(const char *name, ast_t *ast);
+
+static CORD ast_list_to_cord(const char *name, List(ast_t*) asts)
+{
+    if (!asts)
+        return "\x1b[35mNULL\x1b[m";
+
+    CORD c = "[";
+    if (name) CORD_sprintf(&c, "%s=[", name);
+    for (int64_t i = 0, len = LIST_LEN(asts); i < len; i++) {
+        if (i > 0) c = CORD_cat(c, ", ");
+        c = CORD_cat(c, ast_to_cord(NULL, LIST_ITEM(asts, i)));
+    }
+    c = CORD_cat(c, "]");
+    return c;
+}
+
+static CORD concat_cords(int len, CORD cords[len]) {
+    CORD c = NULL;
     for (int i = 0; i < len; i++) {
-        if (i > 0) fputs(", ", out);
-        fputs(strs[i], out);
+        if (i > 0) c = CORD_cat(c, ", ");
+        c = CORD_cat(c, cords[i]);
     }
+    return c;
 }
 
-const char *str_list_to_str(const char *name, List(const char*) strs)
+static CORD str_list_to_cord(const char *name, List(const char*) strs)
 {
-    char *buf; size_t size;
-    FILE *mem = open_memstream(&buf, &size);
-    if (name) fprintf(mem, "%s=", name);
-    if (strs) {
-        fputs("[", mem);
-        for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
-            if (i > 0) fputs(", ", mem);
-            if (LIST_ITEM(strs, i))
-                fputs(LIST_ITEM(strs, i), mem);
-            else
-                fputs("(NULL)", mem);
-        }
-        fputs("]", mem);
-    } else {
-        fputs("\x1b[35mNULL\x1b[m", mem);
+    CORD c;
+    if (name) CORD_sprintf(&c, "%s=", name);
+    else c = NULL;
+    if (!strs) return CORD_cat(c, "\x1b[35mNULL\x1b[m");
+    c = CORD_cat(c, "[");
+    for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
+        if (i > 0) c = CORD_cat(c, ", ");
+        if (LIST_ITEM(strs, i))
+            c = CORD_cat(c, LIST_ITEM(strs, i));
+        else
+            c = CORD_cat(c, "(NULL)");
     }
-    fflush(mem);
-    char *ret = GC_MALLOC_ATOMIC(size+1);
-    memcpy(ret, buf, size);
-    fclose(mem);
-    free(buf);
-    return ret;
+    c = CORD_cat(c, "]");
+    return c;
 }
 
-const char *label_str(const char *name, const char *str) {
+static CORD label_str(const char *name, const char *str) {
     if (str)
-        return heap_strf("%s=\x1b[35m\"%s\"\x1b[m", name, str);
+        return CORD_asprintf("%s=\x1b[35m\"%s\"\x1b[m", name, str);
     else
-        return heap_strf("%s=\x1b[35m(NULL)\x1b[m", name);
+        return CORD_asprintf("%s=\x1b[35m(NULL)\x1b[m", name);
 }
-const char *label_int(const char *name, int64_t i) { return heap_strf("%s=\x1b[35m%ld\x1b[m", name, i); }
-const char *label_double(const char *name, double d) { return heap_strf("%s=\x1b[35m%g\x1b[m", name, d); }
-const char *label_bool(const char *name, bool b) { return heap_strf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
-const char *label_args(const char *name, args_t args) {
-    CORD c = CORD_cat(name, "={");
+static CORD label_int(const char *name, int64_t i) { return CORD_asprintf("%s=\x1b[35m%ld\x1b[m", name, i); }
+static CORD label_double(const char *name, double d) { return CORD_asprintf("%s=\x1b[35m%g\x1b[m", name, d); }
+static CORD label_bool(const char *name, bool b) { return CORD_asprintf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
+static CORD label_args(const char *name, args_t args) {
+    CORD c = CORD_asprintf("%s={", name ? name : "(NULL)");
     for (int64_t i = 0; i < LIST_LEN(args.names); i++) {
         if (i > 0) c = CORD_cat(c, ", ");
-        c = CORD_cat(c, _ast_to_str(LIST_ITEM(args.names, i), LIST_ITEM(args.types, i)));
-        c = CORD_cat(c, "=");
-        c = CORD_cat(c, ast_to_str(LIST_ITEM(args.defaults, i)));
+        if (args.names && LIST_ITEM(args.names, i))
+            c = CORD_cat(c, LIST_ITEM(args.names, i));
+        if (args.types && LIST_ITEM(args.types, i))
+            CORD_sprintf(&c, "%r:%s", c, ast_to_cord(NULL, LIST_ITEM(args.types, i)));
+        if (args.defaults && LIST_ITEM(args.defaults, i))
+            CORD_sprintf(&c, "%r=%s", c, ast_to_cord(NULL, LIST_ITEM(args.defaults, i)));
     }
     c = CORD_cat(c, "}");
-    return CORD_to_char_star(c);
+    return c;
 }
-const char *label_args_list(const char *name, List(args_t) args) { (void)args; return heap_strf("%s=...args...", name); }
+static CORD label_args_list(const char *name, List(args_t) args) {
+    (void)args;
+    return CORD_asprintf("%s=...args...", name);
+}
 
-const char *_ast_to_str(const char *name, ast_t *ast)
+CORD ast_to_cord(const char *name, ast_t *ast)
 {
-    char *buf; size_t size;
-    FILE *mem = open_memstream(&buf, &size);
-    if (name) fprintf(mem, "%s=", name);
-    if (!ast) return heap_strf("%s=\x1b[35mNULL\x1b[m", name);
+    CORD c = NULL;
+    if (name) CORD_sprintf(&c, "%s=", name);
+    if (!ast) return CORD_cat(c, "\x1b[35mNULL\x1b[m");
 
     // A small DSL to make it easier to whip up string representations of these
     // values with minimal boilerplate.
 #define F(field) _Generic((data->field), \
-                          ast_t*: _ast_to_str, \
-                          List(ast_t*): ast_list_to_str, \
+                          ast_t*: ast_to_cord, \
+                          List(ast_t*): ast_list_to_cord, \
                           const char *: label_str, \
                           int64_t: label_int, \
                           unsigned short int: label_int, \
@@ -104,10 +106,10 @@ const char *_ast_to_str(const char *name, ast_t *ast)
                           unsigned char: label_bool, \
                           args_t: label_args, \
                           List(args_t): label_args_list, \
-                          List(const char *): str_list_to_str)(#field, data->field)
-#define T(t, ...) case t: { auto data = Match(ast, t); (void)data; fputs("\x1b[1m" #t "(\x1b[m", mem); \
-    fputs_list(mem, (int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__}); \
-    fputs("\x1b[1m)\x1b[m", mem); break; }
+                          List(const char *): str_list_to_cord)(#field, data->field)
+#define T(t, ...) case t: { auto data = Match(ast, t); (void)data; c = CORD_cat(c, "\x1b[1m" #t "(\x1b[m"); \
+    c = CORD_cat(c, concat_cords((int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__})); \
+    c = CORD_cat(c, "\x1b[1m)\x1b[m"); break; }
 #define BINOP(b) T(b, F(lhs), F(rhs))
 #define UNOP(u) T(u, F(value))
 
@@ -119,7 +121,7 @@ const char *_ast_to_str(const char *name, ast_t *ast)
         T(Int, F(i), F(precision), F(is_unsigned), F(units))
         T(Num, F(n), F(precision), F(units))
         T(Range, F(first), F(last), F(step))
-        T(Char, heap_strf("'%c'", data->c))
+        T(Char, CORD_asprintf("'%c'", data->c))
         T(StringLiteral, F(str))
         T(StringJoin, F(children))
         T(Interp, F(value), data->labelled ? "labeled=true" : "labelled=false")
@@ -190,16 +192,12 @@ const char *_ast_to_str(const char *name, ast_t *ast)
 #undef F
 #undef T
     }
-    fflush(mem);
-    char *ret = GC_MALLOC_ATOMIC(size+1);
-    memcpy(ret, buf, size);
-    fclose(mem);
-    free(buf);
-    return ret;
+    return c;
 }
 
 const char *ast_to_str(ast_t *ast) {
-    return _ast_to_str(NULL, ast);
+    CORD c = ast_to_cord(NULL, ast);
+    return CORD_to_char_star(c);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
