@@ -501,7 +501,7 @@ PARSER(parse_struct_type) {
         if (match(&pos, ":")) {
             whitespace(&pos);
         } else {
-            field_name = heap_strf("_%d", i);
+            field_name = NULL;
             pos = field_start;
         }
         ast_t *t = expect_ast(ctx, field_start, &pos, _parse_type, "I couldn't parse the type for this field");
@@ -811,8 +811,6 @@ PARSER(parse_struct) {
           pos = field_start;
         }
         ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
-        if (!field_name && !type)
-            field_name = heap_strf("_%d", i);
         if (!value) break;
         APPEND(members, NewAST(ctx->file, field_start, pos, KeywordArg, .name=field_name, .arg=value));
         whitespace(&pos);

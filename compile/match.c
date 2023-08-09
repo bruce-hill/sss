@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+#include "../args.h"
 #include "../ast.h"
 #include "../parse.h"
 #include "../span.h"
@@ -93,8 +94,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             pat_t = Match(pat_t, TypeType)->type;
             if (!type_eq(t, pat_t))
                 compiler_err(env, pattern, "This pattern is a %T, but you're attempting to match it against a value with type %T", pat_t, t);
-        } else if (Match(t, StructType)->name) {
-            compiler_err(env, pattern, "This pattern is a nameless tuple, but you're attempting to match it against a value with type %T", t);
         } else if (!streq(Match(t, StructType)->units, pat_struct->units)) {
             compiler_err(env, pattern, "The units of this pattern: <%s> don't match the units of the value being matched: <%s>",
                          Match(t, StructType)->units, pat_struct->units);
@@ -102,52 +101,19 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 
         auto struct_info = Match(t, StructType);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
-        sss_hashmap_t field_types = {0};
-        for (int64_t i = 0; i < length(struct_info->field_names); i++) {
-            const char *name = ith(struct_info->field_names, i); 
-            sss_type_t *type = ith(struct_info->field_types, i); 
-            hset(&field_types, name, type);
-        }
 
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
 
-        sss_hashmap_t field_pats = {0};
-        // Named fields:
-        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
-            ast_t *field_ast = ith(pat_struct->members, i);
-            const char *name = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->name : NULL;
-            if (!name) continue;
-            if (hget(&field_pats, name, ast_t*))
-                compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
-            else if (!hget(&field_types, name, sss_type_t*))
-                compiler_err(env, field_ast, "This is not a valid member of the struct %T", t);
+        List(arg_info_t) arg_infos = bind_arguments(
+            env, pat_struct->members, struct_info->field_names, struct_info->field_types, struct_info->field_defaults);
 
-            ast_t *pat_member = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->arg : field_ast;
-            hset(&field_pats, name, pat_member);
-        }
-        // Unnamed fields:
-        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
-            ast_t *field_ast = ith(pat_struct->members, i);
-            const char *name = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->name : NULL;
-            if (name) continue;
-            ast_t *pat_member = field_ast->tag == KeywordArg ? Match(field_ast, KeywordArg)->arg : field_ast;
-            foreach (struct_info->field_names, name, _) {
-                if (!hget(&field_pats, (*name), ast_t*)) {
-                    hset(&field_pats, (*name), pat_member);
-                    goto found_name;
-                }
-            }
-            compiler_err(env, field_ast, "This is one field too many for this struct");
-          found_name: continue;
-        }
-
-        for (int64_t i = 0; i < LIST_LEN(struct_info->field_names); i++) {
-            const char *name = ith(struct_info->field_names, i);
-            auto pat = hget(&field_pats, name, ast_t*);
-            if (!pat) continue;
-            gcc_rvalue_t *member_val = gcc_rvalue_access_field(val, loc, gcc_get_field(gcc_struct, i));
-            auto submatch_outcomes = perform_conditional_match(outcomes.match_env, &outcomes.match_block, ith(struct_info->field_types, i), member_val, pat);
+        foreach (arg_infos, arg_info, _) {
+            ast_t *arg = arg_info->ast;
+            if (!arg) continue;
+            if (arg->tag == KeywordArg) arg = Match(arg, KeywordArg)->arg;
+            gcc_rvalue_t *member_val = gcc_rvalue_access_field(val, loc, gcc_get_field(gcc_struct, arg_info->position));
+            auto submatch_outcomes = perform_conditional_match(outcomes.match_env, &outcomes.match_block, arg_info->type, member_val, arg);
             outcomes.match_block = submatch_outcomes.match_block;
             outcomes.match_env = submatch_outcomes.match_env;
             gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);

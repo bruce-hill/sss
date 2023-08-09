@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <string.h>
 
+#include "args.h"
 #include "ast.h"
 #include "environment.h"
 #include "parse.h"
@@ -106,7 +107,6 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         }
         for (int64_t i = 0, len = length(struct_->members.types); i < len; i++) {
             const char *member_name = ith(struct_->members.names, i);
-            assert(member_name);
             APPEND(member_names, member_name);
             ast_t *type_ast = ith(struct_->members.types, i);
             sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
@@ -279,52 +279,24 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         return;
     }
     case Struct: {
+        auto struct_type = Match(t, StructType);
         auto pat_struct = Match(pattern, Struct);
         if (t->tag != StructType) {
             return;
         } else if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
             if (!type_eq(t, pat_t)) return;
-        } else if (Match(t, StructType)->name) {
+        } else if (struct_type->name) {
             return;
-        } else if (!streq(Match(t, StructType)->units, pat_struct->units)) {
+        } else if (!streq(struct_type->units, pat_struct->units)) {
             return;
         }
 
-        auto struct_info = Match(t, StructType);
-        sss_hashmap_t checked = {0};
-        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
-            ast_t *field_ast = ith(pat_struct->members, i);
-            if (field_ast->tag != KeywordArg) continue;
-            const char *name = Match(field_ast, KeywordArg)->name;
-            if (hget(&checked, name, ast_t*))
-                compiler_err(env, field_ast, "This struct member is a duplicate of an earlier member.");
-
-            ast_t *pat_member = Match(field_ast, KeywordArg)->arg;
-            hset(&checked, name, pat_member);
-            for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
-                if (!streq(ith(struct_info->field_names, j), name)) continue;
-                bind_match_patterns(env, ith(struct_info->field_types, j), pat_member);
-                goto found_field_name;
-            }
-            compiler_err(env, field_ast, "There is no field called '%s' on the struct %T", name, t);
-
-          found_field_name: continue;
-        }
-        for (int64_t i = 0; i < LIST_LEN(pat_struct->members); i++) {
-            ast_t *field_ast = ith(pat_struct->members, i);
-            if (field_ast->tag == KeywordArg) continue;
-
-            for (int64_t j = 0; j < LIST_LEN(struct_info->field_names); j++) {
-                const char *name = ith(struct_info->field_names, j);
-                if (hget(&checked, name, ast_t*)) continue;
-                hset(&checked, name, field_ast);
-                bind_match_patterns(env, ith(struct_info->field_types, j), field_ast);
-                goto next_unnamed_field;
-            }
-            compiler_err(env, field_ast, "There are too many fields provided for type %T", t);
-
-          next_unnamed_field: continue;
+        List(arg_info_t) arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
+                                                    struct_type->field_types, struct_type->field_defaults);
+        LIST_FOR (arg_infos, arg_info, _) {
+            if (arg_info->ast)
+                bind_match_patterns(env, arg_info->type, arg_info->ast);
         }
         return;
     }
@@ -576,7 +548,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         case StructType: {
             auto struct_t = Match(value_t, StructType);
             for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
-                if (streq(LIST_ITEM(struct_t->field_names, i), access->field)) {
+                const char *field_name = LIST_ITEM(struct_t->field_names, i);
+                if (!field_name) field_name = heap_strf("_%ld", i+1);
+                if (streq(field_name, access->field)) {
                     if (is_optional)
                         compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
 
@@ -618,7 +592,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 // vecs.x ==> [v.x for v in vecs]
                 auto struct_ = Match(item_t, StructType);
                 for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
-                    if (streq(LIST_ITEM(struct_->field_names, i), access->field)) {
+                    const char *field_name = LIST_ITEM(struct_->field_names, i);
+                    if (!field_name) field_name = heap_strf("_%ld", i+1);
+                    if (streq(field_name, access->field)) {
                         if (is_optional)
                             compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
                         return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));

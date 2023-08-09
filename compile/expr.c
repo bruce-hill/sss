@@ -1051,7 +1051,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             field_rvals[arg->position] = rval;
-            if (rval)
+            if (rval && arg->name)
                 hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
         }
 
@@ -1370,7 +1370,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
             auto struct_type = Match(fielded_t, StructType);
             for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
-                if (streq(ith(struct_type->field_names, i), access->field)) {
+                const char *field_name = ith(struct_type->field_names, i);
+                if (!field_name) field_name = heap_strf("_%ld", i+1);
+                if (streq(field_name, access->field)) {
                     gcc_field_t *field = gcc_get_field(gcc_struct, (size_t)i);
                     return gcc_rvalue_access_field(obj, loc, field);
                 }

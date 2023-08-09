@@ -282,7 +282,9 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
                              t, t);
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
             assert(gcc_ft);
-            gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, ith(struct_t->field_names, i));
+            const char *field_name = ith(struct_t->field_names, i);
+            if (!field_name) field_name = heap_strf("%_ld", i);
+            gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, field_name);
             append(fields, field);
         }
         gcc_set_fields(gcc_struct, NULL, length(fields), fields[0]);

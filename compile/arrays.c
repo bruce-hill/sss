@@ -324,7 +324,9 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
 
     auto struct_type = Match(item_t, StructType);
     for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
-        if (!streq(ith(struct_type->field_names, i), field_name))  continue;
+        const char *struct_field_name = ith(struct_type->field_names, i);
+        if (!struct_field_name) struct_field_name = heap_strf("_%ld", i+1);
+        if (!streq(struct_field_name, field_name))  continue;
 
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *arr_var;
