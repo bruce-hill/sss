@@ -95,7 +95,7 @@ static PARSER(parse_opt_indented_block);
 static PARSER(parse_var);
 static PARSER(parse_struct_def);
 static PARSER(parse_func_def);
-static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named);
+static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag);
 static PARSER(parse_alias_def);
 static PARSER(parse_unit_def);
 static PARSER(parse_def);
@@ -565,15 +565,6 @@ PARSER(parse_pointer_type) {
     return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack);
 }
 
-PARSER(parse_enum_type) {
-    ast_t *def = parse_enum_def(ctx, pos, false);
-    if (!def) return NULL;
-    auto tu = Match(def, TaggedUnionDef);
-    return NewAST(ctx->file, def->span.start, def->span.end, TypeTaggedUnion,
-                  .name=NULL, .tag_names=tu->tag_names, .tag_values=tu->tag_values,
-                  .tag_args=tu->tag_args, .definitions=tu->definitions, .tag_bits=tu->tag_bits);
-}
-
 PARSER(parse_type_type) {
     const char *start = pos;
     if (!match_word(&pos, "Type")) return NULL;
@@ -607,7 +598,7 @@ PARSER(_parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
     bool success = (false
-        || (type=parse_enum_type(ctx, pos))
+        || (type=parse_enum(ctx, pos, TypeTaggedUnion))
         || (type=parse_pointer_type(ctx, pos))
         || (type=parse_type_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
@@ -1899,7 +1890,7 @@ PARSER(parse_def) {
     ast_t *stmt = NULL;
     (void)((stmt=parse_func_def(ctx, pos))
         || (stmt=parse_struct_def(ctx, pos))
-        || (stmt=parse_enum_def(ctx, pos, true))
+        || (stmt=parse_enum(ctx, pos, TaggedUnionDef))
         || (stmt=parse_alias_def(ctx, pos))
         || (stmt=parse_unit_def(ctx, pos))
         || (stmt=parse_convert_def(ctx, pos)));
@@ -2082,20 +2073,16 @@ PARSER(parse_struct_def) {
                   .field_defaults=field_defaults, .definitions=definitions);
 }
 
-static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
+static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
+    assert(tag == TaggedUnionDef || tag == TypeTaggedUnion);
     // tagged union: enum Foo := a|b(x:Int,y:Int)=5|...
     const char *start = pos;
 
-    const char *name;
-    if (named) {
-        if (!match_word(&pos, "enum")) return NULL;
-        name = get_id(&pos);
-        if (!name) return NULL;
-        spaces(&pos);
-        if (!match(&pos, ":=")) return NULL;
-    } else {
-        name = NULL;
-    }
+    if (!match_word(&pos, "enum")) return NULL;
+    const char *name = get_id(&pos);
+    if (!name) return NULL;
+    spaces(&pos);
+    if (!match(&pos, ":=")) return NULL;
 
     size_t starting_indent = sss_get_indent(ctx->file, pos);
     NEW_LIST(const char*, tag_names);
@@ -2103,12 +2090,10 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
     NEW_LIST(args_t, tag_args);
     int64_t next_value = 0;
 
-    size_t (*ws)(const char **) = name ? whitespace : spaces;
+    size_t (*ws)(const char **) = (tag == TaggedUnionDef) ? whitespace : spaces;
     ws(&pos);
     if (match(&pos, "|"))
         ws(&pos);
-    else if (!named)
-        return NULL;
     unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
@@ -2174,9 +2159,11 @@ static ast_t *parse_enum_def(parse_ctx_t *ctx, const char *pos, bool named) {
 
     if (tag_bits == 0)
         tag_bits = get_tag_bits(tag_values);
-    List(ast_t*) definitions = named ? parse_def_definitions(ctx, &pos, starting_indent) : LIST(ast_t*);
-    return NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
-                  .tag_bits=tag_bits, .tag_args=tag_args, .definitions=definitions);
+    List(ast_t*) definitions = (tag == TaggedUnionDef) ? parse_def_definitions(ctx, &pos, starting_indent) : LIST(ast_t*);
+    ast_t *ast = NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
+                        .tag_bits=tag_bits, .tag_args=tag_args, .definitions=definitions);
+    ast->tag = tag;
+    return ast;
 }
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args)

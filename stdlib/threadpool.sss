@@ -1,8 +1,6 @@
 use ./stdlib/mutex_queue.sss
 use ./stdlib/threads.sss
 
-enum PoolResult := Result(id:Int, value:?Memory) | Empty
-
 struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, next_request_id=0}
     func new(workers=10)->Pool
         input := @Queue{}
@@ -46,7 +44,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
         p.input.enqueue(@{id, fn, arg})
         return id
 
-    func take(p:&Pool)->PoolResult
+    func take(p:&Pool)-> enum PoolResult := Result(id:Int, value:?Memory) | Empty
         if p.output.try_dequeue() matches Value(result)
             result := (bitcast result as @{id:Int, value:?Memory})
             return Result(id=result.id, value=result.value)
