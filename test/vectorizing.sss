@@ -3,15 +3,15 @@ struct Vec{x,y:Num}
 // Vectorized updates:
 >>> vecs := @[Vec{1,2}, Vec{3,4}, Vec{5,6}]
 
->>> vecs *= 2
+>>> *vecs *= 2
 >>> vecs
 === @[Vec{x=2, y=4}, Vec{x=6, y=8}, Vec{x=10, y=12}]
 
->>> vecs += [Vec{10,20}]
+>>> *vecs += [Vec{10,20}]
 >>> vecs
 === @[Vec{x=12, y=24}, Vec{x=6, y=8}, Vec{x=10, y=12}]
 
->>> vecs += [Vec{100,100}, Vec{200,200}, Vec{300,300}, Vec{400,400}]
+>>> *vecs += [Vec{100,100}, Vec{200,200}, Vec{300,300}, Vec{400,400}]
 >>> vecs
 === @[Vec{x=112, y=124}, Vec{x=206, y=208}, Vec{x=310, y=312}]
 

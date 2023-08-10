@@ -17,26 +17,14 @@ static gcc_rvalue_t *math_binop_rec(
 {
     gcc_loc_t *loc = ast_loc(env, ast);
 
-    // Automatically dereference non-nil pointers:
-    if (lhs_t->tag == PointerType) {
-        auto ptr = Match(lhs_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
-        return math_binop_rec(env, block, ast, ptr->pointed, gcc_rval(gcc_rvalue_dereference(lhs, ast_loc(env, ast))), op, rhs_t, rhs);
-    }
-
-    // Automatically dereference non-nil pointers:
-    if (rhs_t->tag == PointerType) {
-        auto ptr = Match(rhs_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
-        return math_binop_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
-    }
-
     if (lhs_t->tag == VariantType)
         return math_binop_rec(env, block, ast, Match(lhs_t, VariantType)->variant_of, lhs, op, rhs_t, rhs);
     else if (rhs_t->tag == VariantType)
         return math_binop_rec(env, block, ast, lhs_t, lhs, op, Match(rhs_t, VariantType)->variant_of, rhs);
+    else if (lhs_t->tag == PointerType)
+        compiler_err(env, ast, "The target of this update is a %T pointer. You need to dereference it with '*' to assign to the value it points to", lhs_t);
+    else if (rhs_t->tag == PointerType)
+        compiler_err(env, ast, "The right hand side of this update is a %T pointer. You need to dereference it with '*' to use its value in a math operation", lhs_t);
 
     gcc_func_t *func = gcc_block_func(*block);
 
@@ -330,27 +318,14 @@ void math_update_rec(
     gcc_type_t *gcc_t = sss_type_to_gcc(env, lhs_t);
     gcc_loc_t *loc = ast_loc(env, ast);
 
-    // Automatically dereference non-nil pointers:
-    if (lhs_t->tag == PointerType) {
-        auto ptr = Match(lhs_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, ast, "The left hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
-
-        return math_update_rec(env, block, ast, ptr->pointed, gcc_rvalue_dereference(gcc_rval(lhs), ast_loc(env, ast)), op, rhs_t, rhs);
-    }
-
-    // Automatically dereference non-nil pointers:
-    if (rhs_t->tag == PointerType) {
-        auto ptr = Match(rhs_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, ast, "The right hand side of this operation contains a potentially nil pointer that can't be safely dereferenced.");
-        return math_update_rec(env, block, ast, lhs_t, lhs, op, ptr->pointed, gcc_rval(gcc_rvalue_dereference(rhs, ast_loc(env, ast))));
-    }
-
     if (lhs_t->tag == VariantType)
         return math_update_rec(env, block, ast, Match(lhs_t, VariantType)->variant_of, lhs, op, rhs_t, rhs);
     else if (rhs_t->tag == VariantType)
         return math_update_rec(env, block, ast, lhs_t, lhs, op, Match(rhs_t, VariantType)->variant_of, rhs);
+    else if (lhs_t->tag == PointerType)
+        compiler_err(env, ast, "The left hand side of this operation is a %T pointer. You need to get its value with '*' to use it in a math operation", lhs_t);
+    else if (rhs_t->tag == PointerType)
+        compiler_err(env, ast, "The right hand side of this operation is a %T pointer. You need to get its value with '*' to use it in a math operation", lhs_t);
 
     if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
         compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
