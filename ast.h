@@ -239,9 +239,7 @@ struct ast_s {
         } Struct;
         struct {
             const char *name;
-            List(const char*) field_names;
-            List(ast_t*) field_types;
-            List(ast_t*) field_defaults;
+            args_t fields;
             List(ast_t*) definitions;
         } StructDef;
         struct {

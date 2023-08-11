@@ -74,7 +74,7 @@ static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs);
-static args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args);
+static args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed);
 static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
@@ -111,6 +111,7 @@ static ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char
 //
 // Print a parse error and exit (or use the on_err longjmp)
 //
+#include <signal.h>
 __attribute__((noreturn))
 static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, va_list args) {
     if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
@@ -128,6 +129,7 @@ static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, co
 
     if (ctx->on_err)
         longjmp(*ctx->on_err, 1);
+    raise(SIGABRT);
     exit(1);
 }
 
@@ -135,7 +137,6 @@ static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, co
 // Wrapper for vparser_err
 //
 __attribute__((noreturn))
-
 static void parser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -1457,25 +1458,14 @@ PARSER(parse_return) {
 
 PARSER(parse_lambda) {
     const char *start = pos;
-    args_t args;
-    if (!match(&pos, "(")) {
-        if (match(&pos, "->")) {
-            args.names = LIST(const char*);
-            args.types = LIST(ast_t*);
-            args.defaults = LIST(ast_t*);
-            goto thunk;
-        }
-        return NULL;
-    }
-    args = parse_args(ctx, &pos, false);
-    spaces(&pos);
-    if (!match(&pos, ")"))
+    if (!match_word(&pos, "func"))
         return NULL;
     spaces(&pos);
-    if (!match(&pos, "->"))
+    if (!match(&pos, "("))
         return NULL;
-
-  thunk:;
+    args_t args = parse_args(ctx, &pos, false);
+    spaces(&pos);
+    expect_closing(ctx, &pos, ")", "I was expecting a ')' to finish this anonymous function's arguments");
     ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block);
     return NewAST(ctx->file, start, pos, Lambda, .args=args, .body=body);
 }
@@ -2027,50 +2017,16 @@ PARSER(parse_struct_def) {
     const char *name = get_id(&pos);
     if (!name) return NULL;
 
+    size_t starting_indent = sss_get_indent(ctx->file, pos);
     spaces(&pos);
 
     if (!match(&pos, "{")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
-    NEW_LIST(const char*, field_names);
-    NEW_LIST(ast_t*, field_types);
-    NEW_LIST(ast_t*, field_defaults);
-    for (;;) {
-        const char *batch_start = pos;
-        int64_t first = LIST_LEN(field_names);
-        ast_t *default_val = NULL;
-        ast_t *type = NULL;
-        for (;;) {
-            whitespace(&pos);
-            const char* name = get_id(&pos);
-            if (!name) break;
-            APPEND(field_names, name);
-            whitespace(&pos);
-            if (match(&pos, "=")) {
-                default_val = expect_ast(ctx, pos-1, &pos, parse_term, "I expected a value after this '='");
-                break;
-            } else if (match(&pos, ":")) {
-                type = expect_ast(ctx, pos-1, &pos, _parse_type, "I expected a type here");
-                break;
-            }
-            if (!match(&pos, ",")) break;
-        }
-        if (LIST_LEN(field_names) == first) break;
-        whitespace(&pos);
-        if (!default_val && !type)
-            parser_err(ctx, batch_start, pos, "I expected a ':' and type, or '=' and a default value after this field(s)");
-
-        for (int64_t i = first; i < LIST_LEN(field_names); i++) {
-            APPEND(field_defaults, default_val);
-            APPEND(field_types, type);
-        }
-        match(&pos, ",");
-    }
+    args_t fields = parse_args(ctx, &pos, false);
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
 
     List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
-    return NewAST(ctx->file, start, pos, StructDef, .name=name, .field_names=field_names, .field_types=field_types,
-                  .field_defaults=field_defaults, .definitions=definitions);
+    return NewAST(ctx->file, start, pos, StructDef, .name=name, .fields=fields, .definitions=definitions);
 }
 
 static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
@@ -2166,39 +2122,54 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
     return ast;
 }
 
-args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed_args)
+args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
 {
     args_t args = {LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
     for (;;) {
-        const char *arg_start = *pos;
-        const char *name = get_word(pos);
-        spaces(pos);
-        if (match(pos, "=")) {
-            if (match(pos, "=")) {
-                *pos -= 2;
+        const char *batch_start = *pos;
+        int64_t first = LIST_LEN(args.names);
+        ast_t *default_val = NULL;
+        ast_t *type = NULL;
+        for (;;) {
+            whitespace(pos);
+            const char *arg_start = *pos;
+            const char *name = get_id(pos);
+            whitespace(pos);
+            if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
+                default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");
+                APPEND(args.names, name);
+                break;
+            } else if (match(pos, ":")) {
+                type = expect_ast(ctx, *pos-1, pos, _parse_type, "I expected a type here");
+                APPEND(args.names, name);
+                break;
+            } else if (allow_unnamed) {
+                *pos = arg_start;
+                type = optional_ast(ctx, pos, _parse_type);
+                if (type)
+                    APPEND(args.names, NULL);
+                break;
+            } else if (name) {
+                APPEND(args.names, name);
+                spaces(pos);
+                if (!match(pos, ",")) break;
+            } else {
                 break;
             }
-            APPEND(args.names, name);
-            APPEND(args.types, NULL);
-            ast_t *def = expect_ast(ctx, arg_start, pos, parse_expr, "I expected a default value for this argument");
-            APPEND(args.defaults, def);
-        } else if (match(pos, ":")) {
-            if (match(pos, ":")) break;
-            APPEND(args.names, name);
-            ast_t *arg_t = expect_ast(ctx, arg_start, pos, _parse_type, "I expected a type for this argument");
-            APPEND(args.types, arg_t);
-            APPEND(args.defaults, NULL);
-        } else if (allow_unnamed_args) {
-            *pos = arg_start;
-            ast_t *arg_t = optional_ast(ctx, pos, _parse_type);
-            if (!arg_t) break;
-            APPEND(args.names, NULL);
-            APPEND(args.defaults, NULL);
-            APPEND(args.types, arg_t);
         }
-        spaces(pos);
-        if (!match(pos, ",")) break;
+        if (LIST_LEN(args.names) == first) break;
+        if (!default_val && !type)
+            parser_err(ctx, batch_start, *pos, "I expected a ':' and type, or '=' and a default value after this parameter (%s)",
+                       LIST_ITEM(args.names, first));
+
+        for (int64_t i = first; i < LIST_LEN(args.names); i++) {
+            APPEND(args.defaults, default_val);
+            APPEND(args.types, type);
+        }
+        whitespace(pos);
+        match(pos, ",");
     }
+
     return args;
 }
 

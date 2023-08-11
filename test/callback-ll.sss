@@ -15,6 +15,6 @@ struct NumberValue {_value:Num, _callbacks:?CallbackList}
         return callback
 
 n := @NumberValue{1.5}
-_ := n.on_changed((n:Num)-> say "callback 1: Changed to $n")
-_ := n.on_changed((n:Num)-> say "callback 2: Changed to $n")
+_ := n.on_changed(func(n:Num) say "callback 1: Changed to $n")
+_ := n.on_changed(func(n:Num) say "callback 2: Changed to $n")
 n.set(5.3)

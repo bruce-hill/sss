@@ -1,8 +1,8 @@
->>> addOne := (x:Int64)-> x + 1
+>>> addOne := func(x:Int64) x + 1
 >>> addOne
 === (Int64)->Int64
->>> addTwo := (x:Int64)-> x + 2
->>> addThree := (x:Int64)->
+>>> addTwo := func(x:Int64) x + 2
+>>> addThree := func(x:Int64)
     if x == 1
         return x + 3
     x + 2
@@ -14,8 +14,8 @@
 // >>> addThree(1)
 // === 4
 
->>> thunk := -> "Arrow thunks work"
+>>> thunk := func() "thunks work"
 >>> thunk
 === ()->Str
 >>> thunk()
-// === "Arrow thunks work"
+// === "thunks work"

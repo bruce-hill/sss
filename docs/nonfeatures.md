@@ -344,13 +344,13 @@ complexity of the type system.
 ## Non-feature 6: Full Type Inference
 
 In SSS, there are two little morsels of type inference: variable declaration
-(`x := 5`) and lambda return values (`fn := (x:Int)-> x+1`). Everything else in
-SSS is either annotated with a type (as in the case of function arguments and
-return types) or a literal value whose type is trivial to deduce (e.g. `5` is
-an `Int` and `["hi"]` is a `[Str]`). A small amount of type inference
-prevents redundant noise in variable declarations like `Str str = "hello"`
-(of course it's a string, the value is `"hello"`). SSS strives to hit the
-happy medium between too much redundant noise and too much inference.
+(`x := 5`) and lambda return values (`fn := func(x:Int) x+1`). Everything else
+in SSS is either annotated with a type (as in the case of function arguments
+and return types) or a literal value whose type is trivial to deduce (e.g. `5`
+is an `Int` and `["hi"]` is a `[Str]`). A small amount of type inference
+prevents redundant noise in variable declarations like `Str str = "hello"` (of
+course it's a string, the value is `"hello"`). SSS strives to hit the happy
+medium between too much redundant noise and too much inference.
 
 It is possible to use type inference much more aggressively (e.g. inferring the
 return types of functions) or even to have complete type inference (no declared

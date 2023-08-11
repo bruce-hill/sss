@@ -261,14 +261,14 @@ void populate_def_members(env_t *env, ast_t *def)
 
         auto struct_type = Match(t, StructType);
         sss_hashmap_t used_names = {0};
-        for (int64_t i = 0, len = LIST_LEN(struct_def->field_names); i < len; i++) {
-            const char *name = ith(struct_def->field_names, i);
+        for (int64_t i = 0, len = LIST_LEN(struct_def->fields.names); i < len; i++) {
+            const char *name = ith(struct_def->fields.names, i);
             if (hget(&used_names, name, bool))
                 compiler_err(env, def, "This struct has a duplicated field name: '%s'", name);
             hset(&used_names, name, true);
             APPEND(struct_type->field_names, name);
-            ast_t *type = ith(struct_def->field_types, i);
-            ast_t *default_val = ith(struct_def->field_defaults, i);
+            ast_t *type = ith(struct_def->fields.types, i);
+            ast_t *default_val = ith(struct_def->fields.defaults, i);
             sss_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
             if (ft->tag == VoidType)
                 compiler_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
