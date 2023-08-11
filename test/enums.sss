@@ -13,7 +13,7 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
 
 enum Baz := Text(text:Str)
     | Integer(i:Int)
-    | Vec2(x:Num, y:Num)
+    | Vec2(x,y:Num)
     | Nil
 
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2(2.4, 4), Baz.Nil]
