@@ -26,7 +26,8 @@ char *resolve_path(const char *path, const char *relative_to)
         char *resolved = realpath(heap_strf("%s%s", getenv("HOME"), path+1), buf);
         if (resolved) return heap_str(resolved);
     } else if (streq(path, ".") || strncmp(path, "./", 2) == 0) {
-        char *resolved = realpath(path, buf);
+        char *relative_dir = dirname(heap_str(relative_to));
+        char *resolved = realpath(heap_strf("%s/%s", relative_dir, path), buf);
         if (resolved) return heap_str(resolved);
     } else if (path[0] == '/') {
         // Absolute path:
