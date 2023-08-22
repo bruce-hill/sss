@@ -140,8 +140,8 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
 
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
 
-            CORD c = name ? name : "|";
-            if (!name) return "???";
+            CORD c = CORD_cat("enum ", name);
+            c = CORD_cat(c, " := ");
 
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
@@ -170,7 +170,6 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                 if (!(i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value))
                     CORD_sprintf(&c, "%r=%ld", c, member.tag_value);
             }
-            c = CORD_cat(c, "|");
             return c;
         }
         case ModuleType: {
