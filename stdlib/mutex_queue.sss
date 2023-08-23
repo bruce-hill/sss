@@ -1,4 +1,4 @@
-use ./stdlib/mutex.sss
+use ./mutex.sss
 
 struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mutex=Mutex.new()}
     func new(; inline)->@Queue

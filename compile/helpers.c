@@ -22,7 +22,6 @@ static sss_hashmap_t opaque_structs = {0};
 const char *fresh(const char *name)
 {
     static sss_hashmap_t seen = {0};
-    // static int id = 0;
     char *tmp = (char*)heap_str(name);
     for (size_t i = 0; i < strlen(tmp); i++) {
         if (!isalpha(name[i]) && !isdigit(name[i]) && name[i] != '_')

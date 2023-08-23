@@ -1,5 +1,5 @@
-use ./stdlib/mutex_queue.sss
-use ./stdlib/threads.sss
+use ./mutex_queue.sss
+use ./threads.sss
 
 struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, next_request_id=0}
     func new(workers=10)->Pool
