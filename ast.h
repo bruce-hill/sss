@@ -31,7 +31,7 @@ typedef enum {
     In, NotIn,
     Not, Negative,
     TypeOf, SizeOf,
-    HeapAllocate, StackReference, AssertNonNull,
+    HeapAllocate, StackReference,
     Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
@@ -133,7 +133,7 @@ struct ast_s {
         } Min, Max, Mix;
         struct {
             ast_t *value;
-        } Not, Negative, TypeOf, SizeOf, HeapAllocate, StackReference, AssertNonNull;
+        } Not, Negative, TypeOf, SizeOf, HeapAllocate, StackReference;
         struct {
             ast_t *type;
             List(ast_t*) items;

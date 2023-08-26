@@ -69,7 +69,6 @@ static inline bool indent(parse_ctx_t *ctx, const char **pos);
 static inline ast_tag_e match_binary_operator(const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool is_extern);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
-static ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
@@ -828,14 +827,6 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
-ast_t *parse_bang_suffix(parse_ctx_t *ctx, ast_t *value) {
-    if (!value) return NULL;
-    const char *pos = value->span.end;
-    if (!match(&pos, "!")) return NULL;
-    if (match(&pos, "=")) return NULL;
-    return NewAST(ctx->file, value->span.start, pos, AssertNonNull, .value=value);
-}
-
 PARSER(parse_ellipsis) {
     const char *start = pos;
     if (!match(&pos, "..")) return NULL;
@@ -858,7 +849,6 @@ PARSER(parse_reduction) {
             progress = (false
                 || (new_term=parse_index_suffix(ctx, key))
                 || (new_term=parse_field_suffix(ctx, key))
-                || (new_term=parse_bang_suffix(ctx, key))
                 || (new_term=parse_fncall_suffix(ctx, key, NEEDS_PARENS, NORMAL_FUNCTION))
                 );
             if (progress) key = new_term;
@@ -1538,7 +1528,6 @@ PARSER(parse_term) {
             || (new_term=parse_index_suffix(ctx, term))
             || (new_term=parse_variant_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
-            || (new_term=parse_bang_suffix(ctx, term))
             || (new_term=parse_fncall_suffix(ctx, term, NEEDS_PARENS, NORMAL_FUNCTION))
             );
         if (progress) term = new_term;
@@ -1700,7 +1689,6 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 progress = (false
                     || (new_term=parse_index_suffix(ctx, key))
                     || (new_term=parse_field_suffix(ctx, key))
-                    || (new_term=parse_bang_suffix(ctx, key))
                     || (new_term=parse_fncall_suffix(ctx, key, NEEDS_PARENS, NORMAL_FUNCTION))
                     );
                 if (progress) key = new_term;

@@ -16,10 +16,8 @@ say "$foo"
 >>> maybe_int := if yes then @5 else !Int
 >>> typeof maybe_int
 === ?Int64
->>> maybe_int!
+>>> (maybe_int or fail)
 === @5
->>> typeof maybe_int!
-=== @Int64
 >>> typeof (maybe_int or fail)
 === @Int64
 >>> typeof (maybe_int or @6)

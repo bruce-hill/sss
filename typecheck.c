@@ -399,15 +399,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         return Type(PointerType, .pointed=pointed_t, .is_stack=is_stack);
     }
-    case AssertNonNull: {
-        sss_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
-        if (t->tag != PointerType)
-            compiler_err(env, ast, "This value isn't a pointer, so the '!' operator can't be applied to it.");
-        auto ptr = Match(t, PointerType);
-        if (!ptr->is_optional)
-            compiler_err(env, ast, "This value is guaranteed to be non-null, so the '!' operator isn't needed.");
-        return Type(PointerType, ptr->pointed, .is_optional=false, .is_immutable=ptr->is_immutable);
-    }
     case Range: {
         return Type(RangeType);
     }

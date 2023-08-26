@@ -1309,23 +1309,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         }
     }
-    case AssertNonNull: {
-        sss_type_t *t = get_type(env, ast);
-        ast_t *value = Match(ast, AssertNonNull)->value;
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *value_var = gcc_local(func, loc, gcc_t, "_ptr");
-        gcc_assign(*block, loc, value_var, compile_expr(env, block, value));
-        gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
-                    *done = gcc_new_block(func, fresh("done"));
-        gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(value_var), gcc_null(env->ctx, gcc_t)),
-                           if_nil, done);
-        *block = if_nil;
-        insert_failure(env, block, &ast->span, "Error: this %s value was null when it was expected to be non-null",
-                       type_to_string(get_type(env, value)));
-        *block = done;
-        return gcc_rval(value_var);
-    }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         gcc_rvalue_t *slice = array_field_slice(env, block, access->fielded, access->field, ACCESS_READ);
