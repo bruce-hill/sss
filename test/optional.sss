@@ -1,7 +1,7 @@
 should_nil := yes
 s := if should_nil then !Str else @"Not nil"
 say "$s (Optional(Str) $(if s matches @x then "wasn't" else "was") nil)"
-say(*(s or @"Nah"))
+say((s or @"Nah")[])
 
 func maybe_str(s:Str,nil_it:Bool)->?Str
     if nil_it
@@ -9,7 +9,7 @@ func maybe_str(s:Str,nil_it:Bool)->?Str
     else
         return ?s
 
-say(*(maybe_str("hi", no) or @"XXX"))
+say((maybe_str("hi", no) or @"XXX")[])
 foo := maybe_str("hi", no)
 say "$foo"
 

@@ -170,8 +170,8 @@ alias UTF8::Str
         defer (extern free:(@CStringChar)->Void)(buf)
         gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
         memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
-        data := memcpy(gc_alloc(*len + 1), buf, *len + 1)
-        return bitcast ({data=data, length=(*len as Int32), stride=1i16, capacity=0i16}) as UTF8
+        data := memcpy(gc_alloc(len[] + 1), buf, len[] + 1)
+        return bitcast ({data=data, length=(len[] as Int32), stride=1i16, capacity=0i16}) as UTF8
 
     func uppercased(str:UTF8)->UTF8
         toupper := extern uc_toupper:(CodePoint)->CodePoint

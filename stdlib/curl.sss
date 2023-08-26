@@ -364,6 +364,6 @@ func get(url:Str, headers=[:Header])->Result
     ])
 
     if code matches OK
-        return Result.Success(*buf)
+        return Result.Success(buf[])
     else
         return Result.Failure(code)

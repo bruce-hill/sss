@@ -5,22 +5,22 @@ struct Vec{x,y:Num}
         return (x*x + y*y).sqrt()
 
     func normalize(v:&Vec) using v
-        len := (*v).len()
+        len := v[].len()
         if len > 0
             x /= len
             y /= len
 
 >>> v := &Vec{3,4}
->>> (*v).len()
+>>> v[].len()
 === 5
 >>> v.normalize()
->>> *v
+>>> v[]
 === Vec{x=0.6, y=0.8}
->>> (*v).len()
+>>> v[].len()
 === 1
 
 >>> using v x
 === 0.6
 >>> using v x += 10
->>> *v
+>>> v[]
 === Vec{x=10.6, y=0.8}

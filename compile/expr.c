@@ -1269,7 +1269,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, value);
         gcc_func_t *func = gcc_block_func(*block);
         switch (value->tag) {
-        case Var: case FieldAccess: case Index: case Dereference: {
+        case Var: case FieldAccess: case Index: {
             gcc_lvalue_t *lval = get_lvalue(env, block, value, false);
             // With &x, &x.y, &x[i], &*x, we need to set the COW flag for arrays/tables:
             if (t->tag == TableType)
@@ -1296,16 +1296,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_lvalue_address(var, loc);
         }
         }
-    }
-    case Dereference: {
-        sss_type_t *t = get_type(env, ast); // Check this is a pointer type
-        ast_t *value = Match(ast, Dereference)->value;
-        gcc_rvalue_t *obj = compile_expr(env, block, value);
-        if (t->tag == ArrayType)
-            mark_array_cow(env, block, obj);
-        else if (t->tag == TableType)
-            mark_table_cow(env, block, obj);
-        return gcc_rval(gcc_rvalue_dereference(obj, loc));
     }
     case AssertNonNull: {
         sss_type_t *t = get_type(env, ast);
@@ -1524,6 +1514,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto indexing = Match(ast, Index);
 
         sss_type_t *t = get_type(env, indexing->indexed);
+        while (t->tag == VariantType)
+            t = Match(t, VariantType)->variant_of;
+
+        if (t->tag == PointerType && !indexing->index) {
+            if (indexing->index)
+                compiler_err(env, ast, "The value being indexed here is a pointer, you must use [] instead of [index]");
+            sss_type_t *t = get_type(env, ast); // Check this is a pointer type
+            gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
+            if (t->tag == ArrayType)
+                mark_array_cow(env, block, obj);
+            else if (t->tag == TableType)
+                mark_table_cow(env, block, obj);
+            return gcc_rval(gcc_rvalue_dereference(obj, loc));
+        }
+
         for (;;) {
             if (t->tag == PointerType)
                 t = Match(t, PointerType)->pointed;
@@ -1535,6 +1540,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == ArrayType) {
             return gcc_rval(array_index(env, block, indexing->indexed, indexing->index, indexing->unchecked, ACCESS_READ));
         } else if (t->tag == TableType) {
+            if (!indexing->index)
+                compiler_err(env, ast, "There is no key provided for this table indexing");
             gcc_rvalue_t *key_rval;
             gcc_rvalue_t *val_opt = table_lookup_optional(env, block, indexing->indexed, indexing->index, &key_rval, false);
             if (indexing->unchecked)

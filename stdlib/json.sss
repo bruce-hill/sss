@@ -39,44 +39,44 @@ alias JSON::Str
 
     convert js:JSON as Object
         func match(js:&JSON, pattern:JSON; inline)->Bool
-            if (*js).starts_with(pattern)
-                *js = (*js)[(#pattern+1)..]
+            if js[].starts_with(pattern)
+                js[] = js[][(#pattern+1)..]
                 return yes
             else
                 return no
 
         func match_chars(js:&JSON, chars:JSON; inline)->JSON
-            rest := (*js).trimmed(chars, trim_right=no)
-            defer *js = rest
-            matched := (*js)[..(#js - #rest)]
+            rest := js[].trimmed(chars, trim_right=no)
+            defer js[] = rest
+            matched := js[][..(#js - #rest)]
             return matched
 
         func skip_spaces(js:&JSON; inline)
-            *js = (*js).trimmed(JSON::" \n\r\t", trim_right=no)
+            js[] = js[].trimmed(JSON::" \n\r\t", trim_right=no)
 
         func match_str(js:&JSON)->Object
             unless match(js, JSON::$("))
-                return Object.Invalid(*js)
-            content := *js
-            for i,c in *js
+                return Object.Invalid(js[])
+            content := js[]
+            for i,c in js[]
                 if c == `"
-                    *js = js[(i+1)..]
+                    js[] = js[(i+1)..]
                     return Object.String(bitcast content[..(i-1)] as Str)
-            return Object.Invalid(*js)
+            return Object.Invalid(js[])
 
         func match_bool(js:&JSON)->Object
             if match(js, JSON::"true")
                 return Object.Boolean(yes)
             if match(js, JSON::"false")
                 return Object.Boolean(no)
-            return Object.Invalid(*js)
+            return Object.Invalid(js[])
 
         func match_null(js:&JSON)->Object
-            return (if match(js, JSON::"null") then Object.Null else Object.Invalid(*js))
+            return (if match(js, JSON::"null") then Object.Null else Object.Invalid(js[]))
 
         func match_obj(js:&JSON)->Object
             unless match(js, JSON::"{")
-                return Object.Invalid(*js)
+                return Object.Invalid(js[])
 
             obj := &{:Str=>Object}
             repeat
@@ -84,7 +84,7 @@ alias JSON::Str
                 key := if match_str(js) matches String(s) then s else stop
                 skip_spaces(js)
                 unless match(js, JSON::":")
-                    return Object.Invalid(*js)
+                    return Object.Invalid(js[])
                 skip_spaces(js)
                 value := match_json(js)
                 obj[key] = value
@@ -92,13 +92,13 @@ alias JSON::Str
                 stop unless match(js, JSON::",")
 
             unless match(js, JSON::"}")
-                return Object.Invalid(*js)
+                return Object.Invalid(js[])
 
-            return Object.Map(*obj)
+            return Object.Map(obj[])
 
         func match_list(js:&JSON)->Object
             unless match(js, JSON::"[")
-                return Object.Invalid(*js)
+                return Object.Invalid(js[])
 
             skip_spaces(js)
             list := &[:Object]
@@ -114,19 +114,19 @@ alias JSON::Str
 
             skip_spaces(js)
             unless match(js, JSON::"]")
-                return Object.Invalid(*js)
+                return Object.Invalid(js[])
 
-            return Object.List(*list)
+            return Object.List(list[])
 
         func match_num(js:&JSON)->Object
-            if Num.parse(bitcast *js as Str) matches Success(n)
-                *js = (*js)[(#js+1)..]
+            if Num.parse(bitcast js[] as Str) matches Success(n)
+                js[] = js[][(#js+1)..]
                 return Object.Number(n)
             matches PartialSuccess(value=n, remainder=remaining)
-                *js = (bitcast remaining as JSON)
+                js[] = (bitcast remaining as JSON)
                 return Object.Number(n)
             else
-                return Object.Invalid(*js)
+                return Object.Invalid(js[])
 
         func match_json(js:&JSON)->Object
             if m:=match_num(js) matches Number(_) then return m
@@ -135,7 +135,7 @@ alias JSON::Str
             if m:=match_bool(js) matches Boolean(_) then return m
             if m:=match_list(js) matches List(_) then return m
             if m:=match_null(js) matches Null then return m
-            return Object.Invalid(*js)
+            return Object.Invalid(js[])
 
         skip_spaces(&js)
         obj := match_json(&js)

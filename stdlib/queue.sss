@@ -7,10 +7,10 @@ alias Entry::@Memory
         return e
 
     func get_value(e:Entry)->?Memory
-        return *(bitcast ((bitcast e as UInt)+16u64) as @?Memory)
+        return (bitcast ((bitcast e as UInt)+16u64) as @?Memory)[]
 
     func set_value(e:Entry, value:?Memory)
-        *(bitcast ((bitcast e as UInt)+16u64) as @?Memory) = value
+        (bitcast ((bitcast e as UInt)+16u64) as @?Memory)[] = value
 
 enum DequeueResult := Empty | Value(data:?Memory)
 

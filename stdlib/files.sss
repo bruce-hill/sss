@@ -110,7 +110,7 @@ alias Glob::Str
             mem_addr := bitcast (globbuf.gl_pathv or return [:Str]) as Int
             paths := [
                 for i in 1..globbuf.gl_pathc
-                    (*(bitcast (mem_addr + (i-1)*8) as @@CStringChar)).as_string()
+                    (bitcast (mem_addr + (i-1)*8) as @@CStringChar)[].as_string()
             ]
             return [for p in paths if not p.ends_with("/./") and not p.ends_with("/../") then p else skip]
         else

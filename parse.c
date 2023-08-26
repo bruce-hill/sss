@@ -902,8 +902,7 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char *start = lhs->span.start;
     const char *pos = lhs->span.end;
     if (!match(&pos, "[")) return NULL;
-    ast_t *index = expect_ast(ctx, start, &pos, parse_extended_expr,
-                              "I expected to find an expression here to index with");
+    ast_t *index = optional_ast(ctx, &pos, parse_extended_expr);
     spaces(&pos);
     bool unchecked = match(&pos, ";") && (spaces(&pos), match_word(&pos, "unchecked") != 0);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
@@ -1100,23 +1099,16 @@ PARSER(parse_using) {
     return NewAST(ctx->file, start, pos, Using, .used=exprs, .body=body);
 }
 
-PARSER(parse_loop_var) {
-    const char *start = pos;
-    bool deref = match(&pos, "*");
-    ast_t *var = optional_ast(ctx, &pos, parse_var);
-    return deref ? NewAST(ctx->file, start, pos, Dereference, .value=var) : var;
-}
-
 PARSER(parse_for) {
     // for [k,] v in iter [do] [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "for")) return NULL;
     size_t starting_indent = sss_get_indent(ctx->file, pos);
-    ast_t *index = expect_ast(ctx, start, &pos, parse_loop_var, "I expected an iteration variable for this 'for'");
+    ast_t *index = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
     spaces(&pos);
     ast_t *value = NULL;
     if (match(&pos, ",")) {
-        value = expect_ast(ctx, pos-1, &pos, parse_loop_var, "I expected a variable after this comma");
+        value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
     }
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
@@ -1227,7 +1219,6 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 #define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-", false)
 #define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@", false)
 #define parse_stack_reference(...) parse_unary(__VA_ARGS__, StackReference, "&", false)
-#define parse_dereference(...) parse_unary(__VA_ARGS__, Dereference, "*", false)
 #define parse_len(...) parse_unary(__VA_ARGS__, Len, "#", false)
 #define parse_maybe(...) parse_unary(__VA_ARGS__, Maybe, "?", false)
 #define parse_not(...) parse_unary(__VA_ARGS__, Not, "not", true)
@@ -1515,7 +1506,6 @@ PARSER(parse_term_no_suffix) {
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
         || (term=parse_stack_reference(ctx, pos))
-        || (term=parse_dereference(ctx, pos))
         || (term=parse_len(ctx, pos))
         || (term=parse_splat(ctx, pos))
         || (term=parse_maybe(ctx, pos))

@@ -57,13 +57,13 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
             return Empty
 
     func close(p:&Pool)
-        for w in *p.workers
+        for w in p.workers[]
             w.cancel()
             _ := w.join()
         
 if IS_MAIN_PROGRAM
     func do_work(v:?Memory)->?Memory
-        i := *(bitcast (v or fail) as @Int)
+        i := (bitcast (v or fail) as @Int)[]
         extern usleep(UInt64.random(10))
         ret := "Worker $(Thread.self()) got $i"
         return @ret
@@ -88,6 +88,6 @@ if IS_MAIN_PROGRAM
                 extern usleep(10u64)
 
         say "Finished"
-        >>> *outputs
+        >>> outputs[]
 
         >>> bitcast pool.run(do_work, @55) as @Str

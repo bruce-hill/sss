@@ -251,7 +251,7 @@ b := @Vec{1, 2}
 === no
 
 // Dereference memory to compare contents:
->>> *a == *b
+>>> a[] == b[]
 === yes
 ```
 

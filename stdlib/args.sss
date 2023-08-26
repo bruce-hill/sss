@@ -24,7 +24,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
             longest := |(if #x > #y then x else y)| arg_aliases
             for arg_alias in arg_aliases
                 flag_infos[arg_alias] = {longest, needs_value}
-        return Spec{*flag_infos, positional_args}
+        return Spec{flag_infos[], positional_args}
 
     func usage(spec:Spec)->Str
         usage := @""
@@ -37,7 +37,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
 
         for pos in spec.positional_args
             usage ++= " " ++ pos
-        return (*usage).trimmed()
+        return usage[].trimmed()
 
     func parse(spec:Spec, args:[Str], allow_duplicates=no)->ArgumentResult
         positional := @[:Str]
@@ -51,7 +51,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
             else if arg.starts_with('\-')
                 positional.insert(arg[2..])
             else if arg == "--"
-                positional.insert_all(*args)
+                positional.insert_all(args[])
                 stop
             else if arg.starts_with("--")
                 flag := if `= in arg
@@ -117,7 +117,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
             stop if #positional == 0
             flags[name] = positional.pop(1)
 
-        return ArgumentResult.Success(flags=*flags, positional=*positional)
+        return ArgumentResult.Success(flags=flags[], positional=positional[])
 
 spec := Spec.new
 

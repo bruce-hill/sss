@@ -16,13 +16,6 @@
 #include "../types.h"
 #include "../util.h"
 
-static const char* loop_var_name(ast_t *var)
-{
-    if (var->tag == Dereference)
-        return loop_var_name(Match(var, Dereference)->value);
-    return Match(var, Var)->name;
-}
-
 static gcc_rvalue_t *rvalue_in_var(gcc_block_t **block, const char *name, gcc_type_t *gcc_t, gcc_rvalue_t *rval)
 {
     gcc_func_t *func = gcc_block_func(*block);
@@ -117,9 +110,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     if (iter_t->tag == PointerType) {
         auto ptr = Match(iter_t, PointerType);
         if (ptr->pointed->tag == StructType) {
-            if (for_->value && for_->value->tag == Dereference)
-                original_pointer = iter_rval;
-
             if (ptr->is_optional) {
                 gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
                 gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
@@ -137,7 +127,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             iter_t = Match(iter_t, PointerType)->pointed;
             gcc_iter_t = sss_type_to_gcc(env, iter_t);
         } else {
-            compiler_err(env, iter, "This value is a %T pointer. You must dereference the pointer with *%.*s to access the underlying value to iterate over it.",
+            compiler_err(env, iter, "This value is a %T pointer. You must dereference the pointer with %.*s[] to access the underlying value to iterate over it.",
                          iter_t, (int)(iter->span.end - iter->span.start), iter->span.start);
         }
     }
@@ -161,12 +151,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         item_t = Match(iter_t, ArrayType)->item_type;
         gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
-        if (for_->value && for_->value->tag == Dereference) {
-            if (!original_pointer)
-                compiler_err(env, for_->value, "You can't iterate by internal pointers to an array value");
-            item_t = Type(PointerType, .pointed=item_t, .is_optional=false);
-            gcc_item_t = gcc_get_ptr_type(gcc_item_t);
-        }
         gcc_assign(*block, NULL, item_ptr,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD)));
 
@@ -187,8 +171,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Now populate top of loop body (with variable bindings)
         // item = *item_ptr (or item = item_ptr)
-        gcc_rvalue_t *item_rval = for_->value && for_->value->tag == Dereference ?
-            gcc_rval(item_ptr) : gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
+        gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
         gcc_assign(for_body, NULL, item_shadow, item_rval);
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
@@ -207,9 +190,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case TableType: {
-        if (for_->value && for_->value->tag == Dereference)
-            compiler_err(env, for_->value, "Iterating references to table entries is not supported");
-
         // entry_ptr = table->entries
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
         item_t = table_entry_type(iter_t);
@@ -235,8 +215,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Now populate top of loop body (with variable bindings)
         // item = *entry_ptr (or item = entry_ptr)
-        gcc_rvalue_t *item_rval = for_->value && for_->value->tag == Dereference ?
-            gcc_rval(entry_ptr) : gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
+        gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
         gcc_assign(for_body, NULL, item_shadow, item_rval);
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
@@ -259,8 +238,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *iter_var = gcc_local(func, NULL, gcc_iter_t, "_iter");
         gcc_assign(*block, NULL, iter_var, iter_rval);
         iter_rval = gcc_rval(iter_var);
-        if (for_->value && for_->value->tag == Dereference)
-            compiler_err(env, for_->value, "Range values can't be dereferenced because they don't reside in memory anywhere");
         // x = range.first
         gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
         assert(range_struct);
@@ -346,13 +323,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
       found_next_field:
 
         sss_type_t *iter_var_t = Type(PointerType, .is_optional=false, .pointed=iter_t);
-        if (for_->value && for_->value->tag == Dereference) {
-            item_t = iter_var_t;
-            if (!original_pointer)
-                compiler_err(env, for_->iter, "You can't dereference a raw struct value (I would expect an @%T instead)", iter_t);
-        } else {
-            item_t = iter_t;
-        }
+        item_t = iter_t;
         gcc_type_t *gcc_iter_var_t = sss_type_to_gcc(env, iter_var_t);
 
         // iter = obj
@@ -405,13 +376,13 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     auto label_names = LIST(const char*, "for");
     if (for_->index) {
-        append(label_names, loop_var_name(for_->index));
-        hset(loop_env->bindings, loop_var_name(for_->index),
+        append(label_names, Match(for_->index, Var)->name);
+        hset(loop_env->bindings, Match(for_->index, Var)->name,
              new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {
-        append(label_names, loop_var_name(for_->value));
-        hset(loop_env->bindings, loop_var_name(for_->value),
+        append(label_names, Match(for_->value, Var)->name);
+        hset(loop_env->bindings, Match(for_->value, Var)->name,
              new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
     }
     loop_env->loop_label = &(loop_label_t){

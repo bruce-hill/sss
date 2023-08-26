@@ -28,10 +28,10 @@ create := Thread.create
 
 if IS_MAIN_PROGRAM
     func test(v:?Memory)->?Memory
-        i := *(bitcast (v or fail) as @Int)
+        i := (bitcast (v or fail) as @Int)[]
         say "($i)"
         return @(10*i)
 
     >>> threads := [Thread.create(test, @i) for i in 1..10]
-    >>> [*(bitcast t.join() as @Int) for t in threads]
+    >>> [(bitcast t.join() as @Int)[] for t in threads]
     === [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]

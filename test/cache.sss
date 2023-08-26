@@ -14,10 +14,10 @@ func pow(base:Int, exponent:Int; cached)->Int
 >>> pow(2, 9)
 === 512
 // Verify that pow(2, 4) and so on only get called once:
->>> *calls == [{2,9}, {2,8}, {2,4}, {2,2}, {2,1}, {2,0}]
+>>> calls[] == [{2,9}, {2,8}, {2,4}, {2,2}, {2,1}, {2,0}]
 === yes
 // Only unique members here:
->>> #calls == #{c=>yes for c in *calls}
+>>> #calls == #{c=>yes for c in calls[]}
 === yes
 
 func heap_for_string(str:Str; cached)->@Memory

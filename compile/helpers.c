@@ -427,7 +427,6 @@ bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
         binding_t *binding = get_binding(env, Match(ast, Var)->name);
         return binding->lval != NULL;
     }
-    case Dereference: return true;
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         sss_type_t *fielded_t = get_type(env, access->fielded);
@@ -520,12 +519,6 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             else
                 compiler_err(env, ast, "I don't know what this variable is referring to."); 
         }
-    }
-    case Dereference: {
-        (void)get_type(env, ast); // Check this is a pointer type
-        ast_t *value = Match(ast, Dereference)->value;
-        gcc_rvalue_t *rval = compile_expr(env, block, value);
-        return gcc_rvalue_dereference(rval, loc);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
@@ -630,10 +623,15 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     case Index: {
         auto indexing = Match(ast, Index);
 
+        sss_type_t *indexed_t = get_type(env, indexing->indexed);
+        if (!indexing->index && indexed_t->tag == PointerType) {
+            gcc_rvalue_t *rval = compile_expr(env, block, indexing->indexed);
+            return gcc_rvalue_dereference(rval, loc);
+        }
+
         if (!allow_slices && get_type(env, indexing->index)->tag == RangeType)
             compiler_err(env, ast, "I can't assign to array slices");
 
-        sss_type_t *indexed_t = get_type(env, indexing->indexed);
         if (indexed_t->tag == ArrayType) {
             if (!allow_slices)
                 compiler_err(env, ast, "I can't assign to an array value (which is immutable), only to array pointers.");

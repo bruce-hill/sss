@@ -391,11 +391,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         bool is_stack = true;
         // References to heap members/indexes are heap pointers, e.g. v := @Vec{1,2}; &v.x
         switch (value->tag) {
-        case Dereference: {
-            sss_type_t *dereferenced_t = get_type(env, Match(value, Dereference)->value);
-            is_stack = dereferenced_t->tag == PointerType ? Match(dereferenced_t, PointerType)->is_stack : true;
-            break;
-        }
         case FieldAccess: {
             sss_type_t *fielded_t = get_type(env, Match(value, FieldAccess)->fielded);
             is_stack = fielded_t->tag == PointerType ? Match(fielded_t, PointerType)->is_stack : true;
@@ -417,18 +412,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         else if (!Match(t, PointerType)->is_optional)
             compiler_err(env, ast, "This value is guaranteed to be non-null, so the '!' operator isn't needed.");
         return Type(PointerType, Match(t, PointerType)->pointed, .is_optional=false);
-    }
-    case Dereference: {
-        sss_type_t *pointer_t = get_type(env, Match(ast, Dereference)->value);
-        while (pointer_t->tag == VariantType)
-            pointer_t = Match(pointer_t, VariantType)->variant_of;
-
-        if (pointer_t->tag != PointerType)
-            compiler_err(env, ast, "You're attempting to dereference a %T, which isn't a pointer", pointer_t);
-        auto ptr = Match(pointer_t, PointerType);
-        if (ptr->is_optional)
-            compiler_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
-        return ptr->pointed;
     }
     case Range: {
         return Type(RangeType);
@@ -636,9 +619,17 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Index: {
         auto indexing = Match(ast, Index);
         sss_type_t *indexed_t = get_type(env, indexing->indexed);
+        if (indexed_t->tag == PointerType && !indexing->index) {
+            auto ptr = Match(indexed_t, PointerType);
+            if (ptr->is_optional)
+                compiler_err(env, ast, "You're attempting to dereference a pointer whose type indicates it could be nil");
+            return ptr->pointed;
+        }
+
       try_again:
         switch (indexed_t->tag) {
         case ArrayType: {
+            if (!indexing->index) return indexed_t;
             sss_type_t *index_t = get_type(env, indexing->index);
             switch (index_t->tag) {
             case RangeType: return indexed_t;
@@ -656,7 +647,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         case VariantType: {
             if (Match(indexed_t, VariantType)->variant_of->tag == ArrayType) {
-                sss_type_t *index_t = get_type(env, indexing->index);
+                sss_type_t *index_t = indexing->index ? get_type(env, indexing->index) : Type(RangeType);
                 if (index_t->tag == RangeType)
                     return indexed_t;
             }
@@ -1078,20 +1069,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         env_t *loop_env = fresh_scope(env);
         if (for_loop->index) {
-            ast_t *index = for_loop->index;
-            if (index->tag == Dereference) {
-                index = Match(index, Dereference)->value;
-                index_type = Type(PointerType, .pointed=index_type, .is_optional=false);
-            }
-            hset(loop_env->bindings, Match(index, Var)->name, new(binding_t, .type=index_type));
+            hset(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
         }
         if (for_loop->value) {
-            ast_t *value = for_loop->value;
-            if (value->tag == Dereference) {
-                value = Match(value, Dereference)->value;
-                value_type = Type(PointerType, .pointed=value_type, .is_optional=false);
-            }
-            hset(loop_env->bindings, Match(value, Var)->name, new(binding_t, .type=value_type));
+            hset(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
         }
         
         if (for_loop->first)

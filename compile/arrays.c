@@ -309,7 +309,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         auto ptr = Match(array_t, PointerType);
         if (ptr->is_optional)
             compiler_err(env, ast, "This value can't be sliced, because it may or may not be null.");
-        return array_field_slice(env, block, WrapAST(ast, Dereference, ast), field_name, access);
+        return array_field_slice(env, block, WrapAST(ast, Index, .indexed=ast), field_name, access);
     }
 
     sss_type_t *item_t = get_item_type(array_t);
@@ -414,6 +414,7 @@ static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_l
 
 gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t *index, bool unchecked, access_type_e access)
 {
+    if (!index) index = FakeAST(Range);
     sss_type_t *index_t = get_type(env, index);
     if (index_t->tag == RangeType) {
         gcc_func_t *func = gcc_block_func(*block);
