@@ -98,30 +98,20 @@ Special behaviors can be accessed (or modified) by attributes:
 
 ```
 >>> typeof t.default
-=== {Int=>Int}
+=== ?!{Int=>Int}
 >>> typeof t.fallback
-=== Int
->>> typeof t.has_fallback
-=== Bool
->>> typeof t.has_default
-=== Bool
+=== ?!Int
 
 >>> t := @{1=>2; fallback={3=>4}, default=99}
 >>> t.fallback
-=== {3=>4}
+=== @{3=>4}
 >>> t.default
-=== 99
->>> del t.default
->>> t.has_default
-=== no
->>> t.default = 123
->>> t.default
-=== 123
+=== @99
+>>> t.default = !Int # No default
+>>> t.default = @123 # New default value
+>>> t.fallback = !{Int=>Int} # No fallback
+>>> t.fallback = @{5=>5} # New fallback
 ```
-
-**Note:** accessing `t.default` when `t.has_default` is `no` or accessing
-`t.fallback` when `t.has_fallback` is `no` will result in a runtime failure.
-Use with caution.
 
 ## Removing Entries
 
