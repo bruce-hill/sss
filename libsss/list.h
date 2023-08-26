@@ -13,7 +13,6 @@ typedef struct {
 list_t *list_new(size_t item_size, size_t min_items);
 list_t *list_new_items(size_t item_size, size_t len, void *items);
 void list_append(list_t *list, size_t item_size, void *item);
-void list_insert(list_t *list, size_t item_size, int64_t index, void *item, const char *err_fmt);
 void list_remove(list_t *list, size_t item_size, int64_t index, int64_t count, const char *err_fmt);
 
 #define List(t) t**
