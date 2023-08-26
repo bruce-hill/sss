@@ -531,9 +531,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
           dereference_again:
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
+            if (ptr->is_immutable)
+                compiler_err(env, ast, "This value is immutable and can't be assigned to");
             fielded_lval = gcc_rvalue_dereference(ptr_rval, loc);
             fielded_t = ptr->pointed;
             if (fielded_t->tag == PointerType) {
+                if (Match(fielded_t, PointerType)->is_immutable)
+                    compiler_err(env, ast, "This value is immutable and can't be assigned to");
                 ptr_rval = gcc_rval(fielded_lval);
                 ptr = Match(fielded_t, PointerType);
                 goto dereference_again;
@@ -565,26 +569,18 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             return slice;
         } else if (fielded_t->tag == TableType) {
             sss_type_t *table_t = fielded_t;
-            gcc_func_t *func = gcc_block_func(*block);
             if (streq(access->field, "default")) {
-                sss_type_t *key_t = Match(table_t, TableType)->key_type;
-                gcc_func_t *alloc_func = get_function(env, has_heap_memory(key_t) ? "GC_malloc" : "GC_malloc_atomic");
-                gcc_lvalue_t *def_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, key_t)), "_default_ptr");
-                gcc_assign(*block, loc, def_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t))), 
-                                                          gcc_get_ptr_type(sss_type_to_gcc(env, key_t))));
+                // if (get_type(env, access->fielded)->tag != PointerType)
+                //     compiler_err(env, ast, "The .default field can't be assigned to on a local value-typed variable."); 
                 gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
-                gcc_assign(*block, loc, gcc_lvalue_access_field(fielded_lval, loc, field), gcc_rval(def_ptr));
-                return gcc_rvalue_dereference(gcc_rval(def_ptr), loc);
+                return gcc_lvalue_access_field(fielded_lval, loc, field);
             } else if (streq(access->field, "fallback")) {
-                gcc_func_t *alloc_func = get_function(env, has_heap_memory(table_t) ? "GC_malloc" : "GC_malloc_atomic");
-                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, table_t)), "_fallback_ptr");
-                gcc_assign(*block, loc, fallback_ptr, gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_t))), 
-                                                          gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
+                // if (get_type(env, access->fielded)->tag != PointerType)
+                //     compiler_err(env, ast, "The .fallback field can't be assigned to on a local value-typed variable."); 
                 gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
-                gcc_assign(*block, loc, gcc_lvalue_access_field(fielded_lval, loc, field), gcc_rval(fallback_ptr));
-                return gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc);
+                return gcc_lvalue_access_field(fielded_lval, loc, field);
             } else {
                 compiler_err(env, ast, "The only fields that can be mutated on a table are '.default' and '.fallback', not '.%s'", access->field);
             }
@@ -625,6 +621,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
 
         sss_type_t *indexed_t = get_type(env, indexing->indexed);
         if (!indexing->index && indexed_t->tag == PointerType) {
+            if (Match(indexed_t, PointerType)->is_immutable)
+                compiler_err(env, ast, "This value is immutable and can't be assigned to");
             gcc_rvalue_t *rval = compile_expr(env, block, indexing->indexed);
             return gcc_rvalue_dereference(rval, loc);
         }
@@ -645,6 +643,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             auto ptr = Match(pointed_type, PointerType);
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing an index on this value could result in trying to dereference a nil value, since the type is optional");
+            if (ptr->is_immutable)
+                compiler_err(env, ast, "This value is immutable and can't be assigned to");
             pointed_type = ptr->pointed;
         }
 

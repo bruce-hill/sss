@@ -346,6 +346,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               carry_on:
                 if (Match(table_t, PointerType)->is_optional)
                     compiler_err(env, *lhs, "This table pointer might be nil, so it's not safe to dereference it");
+                else if (Match(table_t, PointerType)->is_immutable)
+                    compiler_err(env, *lhs, "This table is not mutable, so you can't assign keys to it");
 
                 // Check for indirect references like @@@t[x]
                 if (Match(table_t, PointerType)->pointed->tag == PointerType) {
@@ -1399,46 +1401,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (streq(access->field, "length")) {
                 gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_COUNT_FIELD);
                 return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
-            } else if (streq(access->field, "has_default")) {
-                gcc_type_t *ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, Match(fielded_t, TableType)->value_type));
-                gcc_lvalue_t *default_ptr = gcc_local(func, loc, ptr_t, "_default_ptr");
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_DEFAULT_FIELD);
-                gcc_assign(*block, loc, default_ptr, gcc_rvalue_access_field(obj, loc, field));
-                return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(default_ptr), gcc_null(env->ctx, ptr_t));
-            } else if (streq(access->field, "has_fallback")) {
-                gcc_type_t *ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, fielded_t));
-                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, ptr_t, "_fallback_ptr");
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_FALLBACK_FIELD);
-                gcc_assign(*block, loc, fallback_ptr, gcc_rvalue_access_field(obj, loc, field));
-                return gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(fallback_ptr), gcc_null(env->ctx, ptr_t));
             } else if (streq(access->field, "default")) {
-                gcc_type_t *ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, Match(fielded_t, TableType)->value_type));
-                gcc_lvalue_t *default_ptr = gcc_local(func, loc, ptr_t, "_default_ptr");
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_DEFAULT_FIELD);
-                gcc_assign(*block, loc, default_ptr, gcc_rvalue_access_field(obj, loc, field));
-
-                gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
-                            *if_nonnil = gcc_new_block(func, fresh("if_nonnil"));
-                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(default_ptr), gcc_null(env->ctx, ptr_t)),
-                                   if_nil, if_nonnil);
-                *block = if_nil;
-                insert_failure(env, block, &ast->span, "This table has no default value");
-                *block = if_nonnil;
-                return gcc_rval(gcc_rvalue_dereference(gcc_rval(default_ptr), loc));
-            } else if (streq(access->field, "fallback")) {
-                gcc_type_t *ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, fielded_t));
-                gcc_lvalue_t *fallback_ptr = gcc_local(func, loc, ptr_t, "_fallback_ptr");
                 gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, fielded_t);
-                gcc_assign(*block, loc, fallback_ptr, gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_FALLBACK_FIELD)));
-
-                gcc_block_t *if_nil = gcc_new_block(func, fresh("if_nil")),
-                            *if_nonnil = gcc_new_block(func, fresh("if_nonnil"));
-                gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, gcc_rval(fallback_ptr), gcc_null(env->ctx, ptr_t)),
-                                   if_nil, if_nonnil);
-                *block = if_nil;
-                insert_failure(env, block, &ast->span, "This table has no fallback value");
-                *block = if_nonnil;
-                return gcc_rval(gcc_rvalue_dereference(gcc_rval(fallback_ptr), loc));
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD));
+            } else if (streq(access->field, "fallback")) {
+                gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, fielded_t);
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_FALLBACK_FIELD));
             } else if (streq(access->field, "keys")) {
                 sss_type_t *item_t = Match(fielded_t, TableType)->key_type;
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=item_t));

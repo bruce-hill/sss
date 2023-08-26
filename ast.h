@@ -220,7 +220,7 @@ struct ast_s {
         } TypeFunction;
         struct {
             ast_t *pointed;
-            bool is_optional:1, is_stack:1;
+            bool is_optional:1, is_stack:1, is_immutable:1;
         } TypePointer;
         struct {
             ast_t *type;

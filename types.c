@@ -118,10 +118,9 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         }
         case PointerType: {
             auto ptr = Match(t, PointerType);
-            if (ptr->is_stack)
-                return CORD_cat("&", type_to_cord(ptr->pointed, expanded, flags));
-            else
-                return CORD_cat(ptr->is_optional ? "?" : "@", type_to_cord(ptr->pointed, expanded, flags));
+            CORD sigil = ptr->is_stack ? "&" : (ptr->is_optional ? "?" : "@");
+            if (ptr->is_immutable) sigil = CORD_cat(sigil, "!");
+            return CORD_cat(sigil, type_to_cord(ptr->pointed, expanded, flags));
         }
         case GeneratorType: {
             auto gen = Match(t, GeneratorType);
@@ -508,6 +507,9 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
             return false;
         else if (actual_ptr->is_optional && !needed_ptr->is_optional)
             // Can't use !Foo for a function that wants @Foo
+            return false;
+        else if (actual_ptr->is_immutable && !needed_ptr->is_immutable)
+            // Can't use pointer to immutable data when we need a pointer to mutable data
             return false;
         else
             return true;

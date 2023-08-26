@@ -36,6 +36,8 @@ t := @{"abc"=>1, "def"=>2}
 
 // Fallbacks:
 >>> t := @{1=>10, 2=>20; fallback={3=>33}}
+>>> t.fallback
+=== @{3=>33}
 >>> t
 === @{1=>10, 2=>20; fallback={3=>33}}
 >>> t[3]
@@ -81,25 +83,23 @@ t := @{"abc"=>1, "def"=>2}
 
 // Mutating/accessing defaults and fallbacks:
 >>> t := @{1=>2; fallback={4=>5}; default=99}
->>> t.has_default
-=== yes
 >>> t.default
-=== 99
->>> del t.default
+=== @99
+>>> t.default = !Int
 >>> t
 === @{1=>2; fallback={4=>5}}
->>> t.default = 345
+>>> t.default = @345
 >>> t
 === @{1=>2; fallback={4=>5}; default=345}
 >>> t[-1]
 === 345
 
->>> del t.fallback
+>>> t.fallback = !{Int=>Int}
 >>> t
 === @{1=>2; default=345}
 >>> t[4]
 === 345
->>> t.fallback = {9=>10}
+>>> t.fallback = @{9=>10}
 >>> t
 === @{1=>2; fallback={9=>10}; default=345}
 >>> t[9]

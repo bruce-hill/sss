@@ -65,7 +65,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         sss_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
         if (pointed_t->tag == VoidType)
             compiler_err(env, ast, "Void pointers are not supported in SSS. You probably meant '!Memory'");
-        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack);
+        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack, .is_immutable=ptr->is_immutable);
     }
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
@@ -403,9 +403,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *t = get_type(env, Match(ast, AssertNonNull)->value);
         if (t->tag != PointerType)
             compiler_err(env, ast, "This value isn't a pointer, so the '!' operator can't be applied to it.");
-        else if (!Match(t, PointerType)->is_optional)
+        auto ptr = Match(t, PointerType);
+        if (!ptr->is_optional)
             compiler_err(env, ast, "This value is guaranteed to be non-null, so the '!' operator isn't needed.");
-        return Type(PointerType, Match(t, PointerType)->pointed, .is_optional=false);
+        return Type(PointerType, ptr->pointed, .is_optional=false, .is_immutable=ptr->is_immutable);
     }
     case Range: {
         return Type(RangeType);
@@ -594,12 +595,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         case TableType: {
             if (streq(access->field, "length"))
                 return INT_TYPE;
-            else if (streq(access->field, "has_default") || streq(access->field, "has_fallback"))
-                return Type(BoolType);
             else if (streq(access->field, "default"))
-                return Match(value_t, TableType)->value_type;
+                return Type(PointerType, .pointed=Match(value_t, TableType)->value_type, .is_optional=true, .is_immutable=true);
             else if (streq(access->field, "fallback"))
-                return value_t;
+                return Type(PointerType, .pointed=value_t, .is_optional=true, .is_immutable=true);
             else if (streq(access->field, "keys"))
                 return Type(ArrayType, .item_type=Match(value_t, TableType)->key_type);
             else if (streq(access->field, "values"))
@@ -788,7 +787,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             auto lhs_ptr = Match(lhs_t, PointerType);
             auto rhs_ptr = Match(rhs_t, PointerType);
             if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
-                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional);
+                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional,
+                            .is_immutable=lhs_ptr->is_immutable || rhs_ptr->is_immutable);
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
@@ -816,11 +816,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (lhs_t->tag == PointerType) {
             auto lhs_ptr = Match(lhs_t, PointerType);
             if (rhs_t->tag == AbortType) {
-                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false);
+                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false, .is_immutable=lhs_ptr->is_immutable);
             } else if (rhs_t->tag == PointerType) {
                 auto rhs_ptr = Match(rhs_t, PointerType);
                 if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
-                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional);
+                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional,
+                                .is_immutable=lhs_ptr->is_immutable || rhs_ptr->is_immutable);
             }
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
