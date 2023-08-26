@@ -29,7 +29,7 @@ typedef enum {
     And, Or, Xor, Min, Max, Mix, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In, NotIn,
-    Not, Negative, Len, Maybe,
+    Not, Negative, Maybe,
     TypeOf, SizeOf,
     HeapAllocate, StackReference, AssertNonNull,
     Array, Table, TableEntry,
@@ -133,7 +133,7 @@ struct ast_s {
         } Min, Max, Mix;
         struct {
             ast_t *value;
-        } Not, Negative, Len, Maybe, TypeOf, SizeOf, HeapAllocate, StackReference, AssertNonNull;
+        } Not, Negative, Maybe, TypeOf, SizeOf, HeapAllocate, StackReference, AssertNonNull;
         struct {
             ast_t *type;
             List(ast_t*) items;

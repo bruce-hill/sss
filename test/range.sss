@@ -1,7 +1,13 @@
 
-r := 5..10 by 2
-say "$r"
-say "len: $(#r)"
+>>> r := 5..10 by 2
+>>> r.first
+=== 5
+>>> r.last
+=== 10
+>>> r.step
+=== 2
+>>> r.length
+=== 3
 
 for i,x in r
     say "$i) $x"

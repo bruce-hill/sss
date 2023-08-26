@@ -1,11 +1,14 @@
-s := "12345"
-say "Len(\"$s\") == $(#s)"
-fail unless #s == 5
+>>> s := "12345"
+>>> s.length
+=== 5
 
-l := [1,2,3,4,5]
-say "Len($l) == $(#l)"
-fail unless #l == 5
+>>> l := [1,2,3,4,5]
+>>> l.length
+=== 5
 
-r := 1..10 by 2
-say "Len($r) == $(#r)"
-fail unless #r == 5
+>>> r := 1..10 by 2
+>>> r.length == 5
+
+>>> t := {1=>yes, 2=>yes, 3=>yes}
+>>> t.length
+=== 3

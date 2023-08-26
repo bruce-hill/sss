@@ -1324,15 +1324,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = done;
         return gcc_rval(value_var);
     }
-    case Len: {
-        ast_t *value = Match(ast, Len)->value;
-        sss_type_t *t = get_type(env, value);
-        gcc_rvalue_t *obj = compile_expr(env, block, value);
-        gcc_rvalue_t *len = compile_len(env, block, t, obj);
-        if (!len)
-            compiler_err(env, ast, "I don't know how to get the length of a %T", t);
-        return len;
-    }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         gcc_rvalue_t *slice = array_field_slice(env, block, access->fielded, access->field, ACCESS_READ);
@@ -1379,8 +1370,36 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             break;
         }
+        case ArrayType: {
+            if (streq(access->field, "length")) {
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
+                gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+                gcc_field_t *field = gcc_get_field(array_struct, ARRAY_LENGTH_FIELD);
+                return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
+            }
+            break;
+        }
+        case RangeType: {
+            if (streq(access->field, "length")) {
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
+                return range_len(env, gcc_t, obj);
+            } else if (streq(access->field, "first")) {
+                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 0));
+            } else if (streq(access->field, "step")) {
+                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 1));
+            } else if (streq(access->field, "last")) {
+                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 2));
+            }
+            break;
+        }
         case TableType: {
-            if (streq(access->field, "has_default")) {
+            if (streq(access->field, "length")) {
+                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_COUNT_FIELD);
+                return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
+            } else if (streq(access->field, "has_default")) {
                 gcc_type_t *ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, Match(fielded_t, TableType)->value_type));
                 gcc_lvalue_t *default_ptr = gcc_local(func, loc, ptr_t, "_default_ptr");
                 gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_DEFAULT_FIELD);

@@ -10,9 +10,9 @@ struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mute
 
     func try_dequeue(q:&Queue)-> enum DequeueResult := Empty | Value(data:?Memory)
         with q.tail_mutex.lock()
-            while #q.tail == 0
+            while q.tail.length == 0
                 with q.head_mutex.lock()
-                    if #q.head == 0
+                    if q.head.length == 0
                         return Empty
 
                     q.tail = q.head[.. by -1]

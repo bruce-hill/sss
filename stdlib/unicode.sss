@@ -109,7 +109,7 @@ struct uninorm_t{}
 alias UTF8::Str
     convert str:Str as UTF8
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
-        err := u8_check(str.c_string(), #str)
+        err := u8_check(str.c_string(), str.length)
         fail "Invalid UTF8!" unless err == !CStringChar
         return bitcast str as UTF8
 
@@ -121,13 +121,13 @@ alias UTF8::Str
 
     func is_valid_utf8(u:UTF8)->Bool
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
-        err := u8_check(u.c_string(), #u)
+        err := u8_check(u.c_string(), u.length)
         return err == !CStringChar
 
     func normalized(u:UTF8)->UTF8
         len := 0
         u8_normalize := (extern u8_normalize:(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
-        buf := u8_normalize((extern &uninorm_nfd:uninorm_t), u.c_string(), #u, !CStringChar, &len) or fail "Couldn't normalize string: $u"
+        buf := u8_normalize((extern &uninorm_nfd:uninorm_t), u.c_string(), u.length, !CStringChar, &len) or fail "Couldn't normalize string: $u"
         defer (extern free:(@CStringChar)->Void)(buf)
         gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
         memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
@@ -137,18 +137,18 @@ alias UTF8::Str
     func compare_utf8(s1, s2:UTF8)->Int32
         u8_normcmp := extern u8_normcmp:(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
         ret := 0i32
-        _ := u8_normcmp(s1.c_string(), #s1, s2.c_string(), #s2, (extern &uninorm_nfd:uninorm_t), &ret)
+        _ := u8_normcmp(s1.c_string(), s1.length, s2.c_string(), s2.length, (extern &uninorm_nfd:uninorm_t), &ret)
         return ret
 
-    func length(u:UTF8)->Int64
-        return (extern u8_mbsnlen:(@CStringChar,Int64)->Int32)(u.c_string(), #u)
+    func multibyte_length(u:UTF8)->Int64
+        return (extern u8_mbsnlen:(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
 
     func width(u:UTF8)->Int64
         setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
-        return (extern u8_width:(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), #u, setlocale(0i32,!CStringChar))
+        return (extern u8_width:(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), u.length, setlocale(0i32,!CStringChar))
 
     func first_codepoint(u:UTF8)->CodePoint
-        len := (extern u8_mblen:(@CStringChar,Int64)->Int32)(u.c_string(), #u)
+        len := (extern u8_mblen:(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
         ret := 0i32
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,&Int32,&Int64)->?Int32
         first_len := 1
@@ -156,17 +156,17 @@ alias UTF8::Str
         return CodePoint{ret}
 
     func codepoints(u:UTF8)->[CodePoint]
-        ret := [CodePoint{0i32} for _ in 1..u.length()]
-        len := #ret
+        ret := [CodePoint{0i32} for _ in 1..u.multibyte_length()]
+        len := ret.length
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
-        _ := u8_to_u32(u.c_string(), #u, (bitcast ret as {data:@CodePoint,length:Int32,stride:Int16,capacity:Int16}).data, &len)
+        _ := u8_to_u32(u.c_string(), u.length, (bitcast ret as {data:@CodePoint,length:Int32,stride:Int16,capacity:Int16}).data, &len)
         return ret
 
     func from_codepoints(codepoints:[CodePoint])->UTF8
         u32_to_u8 := extern u32_to_u8:(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
         data_ptr := (bitcast codepoints as {data:?CodePoint,length:Int32,stride:Int16,capacity:Int16}).data or return UTF8::""
         len := @0
-        buf := u32_to_u8(data_ptr, #codepoints, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
+        buf := u32_to_u8(data_ptr, codepoints.length, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
         defer (extern free:(@CStringChar)->Void)(buf)
         gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
         memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
@@ -205,9 +205,9 @@ if IS_MAIN_PROGRAM
     >>> smile
     === UTF8::"smile: 😀"
     say "$smile"
-    >>> #smile
+    >>> smile.length
     === 11
-    >>> smile.length()
+    >>> smile.multibyte_length()
     === 8
     >>> smile.width()
     === 9
@@ -218,9 +218,9 @@ if IS_MAIN_PROGRAM
     === yes
 
     >>> amelie := UTF8::"Amélie"
-    >>> #amelie
+    >>> amelie.length
     === 7
-    >>> amelie.length()
+    >>> amelie.multibyte_length()
     === 6
     >>> amelie.width()
     === 6

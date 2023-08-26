@@ -40,7 +40,7 @@ alias JSON::Str
     convert js:JSON as Object
         func match(js:&JSON, pattern:JSON; inline)->Bool
             if js.starts_with(pattern)
-                js[] = js[][(#pattern+1)..]
+                js[] = js[][(pattern.length+1)..]
                 return yes
             else
                 return no
@@ -48,7 +48,7 @@ alias JSON::Str
         func match_chars(js:&JSON, chars:JSON; inline)->JSON
             rest := js.trimmed(chars, trim_right=no)
             defer js[] = rest
-            matched := js[][..(#js - #rest)]
+            matched := js[][..(js.length - rest.length)]
             return matched
 
         func skip_spaces(js:&JSON; inline)
@@ -120,7 +120,7 @@ alias JSON::Str
 
         func match_num(js:&JSON)->Object
             if Num.parse(bitcast js[] as Str) matches Success(n)
-                js[] = js[][(#js+1)..]
+                js[] = js[][(js.length+1)..]
                 return Object.Number(n)
             matches PartialSuccess(value=n, remainder=remaining)
                 js[] = (bitcast remaining as JSON)
@@ -140,7 +140,7 @@ alias JSON::Str
         skip_spaces(&js)
         obj := match_json(&js)
         skip_spaces(&js)
-        if #js > 0
+        if js.length > 0
             return Object.Invalid(js)
         return obj
 

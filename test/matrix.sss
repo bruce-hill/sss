@@ -1,5 +1,5 @@
 func dot(a:[Num],b:[Num])->Num
-    fail unless #a == #b
+    fail unless a.length == b.length
     sum := 0.
     for i, ai in a
         bi := b[i]
@@ -8,8 +8,8 @@ func dot(a:[Num],b:[Num])->Num
 
 struct Mat2D {rows,cols:Int, data:[Num]}
     func from_nested(data:[[Num]])->Mat2D
-        fail unless #row == #data[1] for row in data[2..]
-        return Mat2D{#data,#data[1], [x for x in row for row in data]}
+        fail unless row.length == data[1].length for row in data[2..]
+        return Mat2D{data.length, data[1].length, [x for x in row for row in data]}
 
     func get(mat:Mat2D, row:Int, col:Int)->Num
         return mat.data[row + (col-1)*mat.rows]

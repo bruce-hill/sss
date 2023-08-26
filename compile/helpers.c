@@ -80,7 +80,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     switch (sss_t->tag) {
     case ArrayType: return sizeof (struct {void* items; int32_t len; int16_t stride, free;});
     case TableType: return sizeof (sss_hashmap_t);
-    case RangeType: return sizeof (struct {int64_t start,stop,step;});
+    case RangeType: return sizeof (struct {int64_t first,step,last;});
     case BoolType: return sizeof(bool);
     case TypeType: return sizeof(char*);
     case NumType: return Match(sss_t, NumType)->bits / 8;

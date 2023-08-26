@@ -435,9 +435,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         return binding->type;
     }
-    case Len: {
-        return INT_TYPE;
-    }
     case Array: {
         auto array = Match(ast, Array);
         sss_type_t *item_type = NULL;
@@ -570,8 +567,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 compiler_err(env, ast, "I can't find anything called %s on the type %T", access->field, Match(type_binding->type, TypeType)->type);
         }
         case ArrayType: {
+            if (streq(access->field, "length"))
+                return INT_TYPE;
+
             auto array = Match(value_t, ArrayType);
             sss_type_t *item_t = array->item_type;
+
             // TODO: support other things like pointers
             if (item_t->tag == StructType) {
                 // vecs.x ==> [v.x for v in vecs]
@@ -591,8 +592,15 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
             return binding->type;
         }
+        case RangeType: {
+            if (streq(access->field, "first") || streq(access->field, "last") || streq(access->field, "step") || streq(access->field, "length"))
+                return INT_TYPE;
+            goto class_lookup;
+        }
         case TableType: {
-            if (streq(access->field, "has_default") || streq(access->field, "has_fallback"))
+            if (streq(access->field, "length"))
+                return INT_TYPE;
+            else if (streq(access->field, "has_default") || streq(access->field, "has_fallback"))
                 return Type(BoolType);
             else if (streq(access->field, "default"))
                 return Match(value_t, TableType)->value_type;

@@ -16,12 +16,12 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
     func new(flags:[Str], positional_args=[:Str])->Spec
         flag_infos := @{:Str=>{canonical:Str,needs_value:Bool}}
         for flag in flags
-            skip if #flag < 1
+            skip if flag.length < 1
             needs_value := flag.ends_with("=")
-            if needs_value then flag = flag[..(#flag-1)]
+            if needs_value then flag = flag[..(flag.length-1)]
             arg_aliases := flag.split("| -=")
-            skip if #arg_aliases < 1
-            longest := |(if #x > #y then x else y)| arg_aliases
+            skip if arg_aliases.length < 1
+            longest := |(if x.length > y.length then x else y)| arg_aliases
             for arg_alias in arg_aliases
                 flag_infos[arg_alias] = {longest, needs_value}
         return Spec{flag_infos[], positional_args}
@@ -29,7 +29,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
     func usage(spec:Spec)->Str
         usage := @""
         for i,entry in spec.flag_infos
-            usage ++= (if #entry.key == 1 then "-" else "--")
+            usage ++= (if entry.key.length == 1 then "-" else "--")
             usage ++= entry.key
             prev_canonical := entry.value.canonical
         between
@@ -44,7 +44,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
         flags := @{:Str=>Str}
 
         args := @args
-        while #args > 0
+        while args.length > 0
             arg := args.pop(1)
             if arg == "-"
                 positional.insert(arg)
@@ -68,7 +68,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
                 value := if `= in arg
                     "=".join(arg[3..].split("=")[2..])
                 else if info.needs_value
-                    if #args > 0
+                    if args.length > 0
                         args.pop(1)
                     else
                         return ArgumentResult.MissingValue(flag)
@@ -81,7 +81,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
                 flags[flag] = value
             else if arg.starts_with("-")
                 char_index := 2
-                while char_index <= #arg
+                while char_index <= arg.length
                     flag := arg[char_index..char_index]
                     info := if flag in spec.flag_infos
                         spec.flag_infos[flag]
@@ -89,16 +89,16 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
                         return ArgumentResult.InvalidArgument("-"++flag)
                     flag = info.canonical
 
-                    value := if char_index+1 <= #arg and arg[char_index+1] == `=
+                    value := if char_index+1 <= arg.length and arg[char_index+1] == `=
                         val := arg[(char_index+2)..]
-                        char_index = #arg+1
+                        char_index = arg.length+1
                         val
                     else if info.needs_value
-                        if char_index+1 <= #arg
+                        if char_index+1 <= arg.length
                             val := arg[(char_index+1)..(char_index+1)]
                             char_index += 1
                             val
-                        else if #args > 0
+                        else if args.length > 0
                             args.pop(1)
                         else
                             return ArgumentResult.MissingValue(flag)
@@ -114,7 +114,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
                 positional.insert(arg)
 
         for name in spec.positional_args
-            stop if #positional == 0
+            stop if positional.length == 0
             flags[name] = positional.pop(1)
 
         return ArgumentResult.Success(flags=flags[], positional=positional[])

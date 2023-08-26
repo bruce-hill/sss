@@ -303,6 +303,9 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
 gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access)
 {
+    if (streq(field_name, "length"))
+        return NULL;
+
     sss_type_t *array_t = get_type(env, ast);
     gcc_loc_t *loc = ast_loc(env, ast);
     if (array_t->tag == PointerType) {
@@ -703,7 +706,7 @@ static void define_array_insert(env_t *env, sss_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
+    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length"), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "item", "index"),
                                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), item_t, Type(IntType, .bits=64)),
@@ -732,7 +735,7 @@ static void define_array_insert_all(env_t *env, sss_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(Len, .value=FakeAST(Var, .name="array")), .rhs=FakeAST(Int, .i=1, .precision=64));
+    ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length"), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "other", "index"),
                                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), t, Type(IntType, .bits=64)),
@@ -761,7 +764,7 @@ static void define_array_remove(env_t *env, sss_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return_void(block, NULL);
 
-    ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
+    ast_t *len = FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length");
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index", "count"),
                                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64), Type(IntType, .bits=64)),
@@ -798,7 +801,7 @@ static void define_array_pop(env_t *env, sss_type_t *t)
                                     gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t))));
     gcc_return(block, NULL, gcc_rval(item));
 
-    ast_t *len = FakeAST(Len, .value=FakeAST(Var, .name="array"));
+    ast_t *len = FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length");
     binding_t *b = new(binding_t, .func=func,
                        .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index"),
                                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64)),

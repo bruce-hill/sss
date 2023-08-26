@@ -17,7 +17,7 @@ func pow(base:Int, exponent:Int; cached)->Int
 >>> calls[] == [{2,9}, {2,8}, {2,4}, {2,2}, {2,1}, {2,0}]
 === yes
 // Only unique members here:
->>> #calls == #{c=>yes for c in calls[]}
+>>> calls.length == {c=>yes for c in calls[]}.length
 === yes
 
 func heap_for_string(str:Str; cached)->@Memory
@@ -42,9 +42,9 @@ func heap_for_int(i:Int; cache_size=1)->@Memory
     return @yes
 
 >>> t := @{heap_for_int(i)=>yes for i in [3,3,3,3,3,3]}
->>> #t
+>>> t.length
 === 1
 
 >>> t := @{heap_for_int(i)=>yes for i in [1,2,1,2,1,2]}
->>> #t
+>>> t.length
 === 6
