@@ -39,20 +39,20 @@ alias JSON::Str
 
     convert js:JSON as Object
         func match(js:&JSON, pattern:JSON; inline)->Bool
-            if js[].starts_with(pattern)
+            if js.starts_with(pattern)
                 js[] = js[][(#pattern+1)..]
                 return yes
             else
                 return no
 
         func match_chars(js:&JSON, chars:JSON; inline)->JSON
-            rest := js[].trimmed(chars, trim_right=no)
+            rest := js.trimmed(chars, trim_right=no)
             defer js[] = rest
             matched := js[][..(#js - #rest)]
             return matched
 
         func skip_spaces(js:&JSON; inline)
-            js[] = js[].trimmed(JSON::" \n\r\t", trim_right=no)
+            js[] = js.trimmed(JSON::" \n\r\t", trim_right=no)
 
         func match_str(js:&JSON)->Object
             unless match(js, JSON::$("))

@@ -1155,9 +1155,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
                 self_val = compile_expr(env, block, self_ast);
                 sss_type_t *expected_self = ith(fn_info->arg_types, 0);
-                if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self))
+                if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self)) {
+                    while (self_t->tag == PointerType && expected_self->tag != PointerType) {
+                        if (Match(self_t, PointerType)->is_optional)
+                            compiler_err(env, self_ast, "This value needs to be dereferenced to pass it as a method argument, but it might be null");
+                        self_t = Match(self_t, PointerType)->pointed;
+                        self_val = gcc_rval(gcc_rvalue_dereference(self_val, loc));
+                        if (type_eq(self_t, expected_self) || promote(env, self_t, &self_val, expected_self))
+                            goto successfully_dereferenced;
+                    }
                     compiler_err(env, ast, "The method %T.%s(...) is being called on a %T, but it wants a %T.",
                           self_t, access->field, self_t, expected_self);
+                }
+              successfully_dereferenced:
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;

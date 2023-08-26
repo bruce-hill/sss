@@ -37,7 +37,7 @@ struct Spec{flag_infos:{Str=>{canonical:Str, needs_value:Bool}}, positional_args
 
         for pos in spec.positional_args
             usage ++= " " ++ pos
-        return usage[].trimmed()
+        return usage.trimmed()
 
     func parse(spec:Spec, args:[Str], allow_duplicates=no)->ArgumentResult
         positional := @[:Str]
