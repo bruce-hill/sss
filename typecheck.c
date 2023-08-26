@@ -379,12 +379,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             compiler_err(env, ast, "Stack references cannot be moved to the heap because they may outlive the stack frame they were created in.");
         return Type(PointerType, .is_optional=false, .pointed=pointed);
     }
-    case Maybe: {
-        sss_type_t *pointed = get_type(env, Match(ast, Maybe)->value);
-        if (has_stack_memory(pointed))
-            compiler_err(env, ast, "Stack references cannot be moved to the heap because they may outlive the stack frame they were created in.");
-        return Type(PointerType, .is_optional=true, .pointed=pointed);
-    }
     case StackReference: {
         ast_t *value = Match(ast, StackReference)->value;
         sss_type_t *pointed_t = get_type(env, Match(ast, StackReference)->value);

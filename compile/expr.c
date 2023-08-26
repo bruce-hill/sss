@@ -1245,8 +1245,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Bool: {
         return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), Match(ast, Bool)->b ? 1 : 0);
     }
-    case Maybe: case HeapAllocate: {
-        ast_t *value = ast->tag == Maybe ? Match(ast, Maybe)->value : Match(ast, HeapAllocate)->value;
+    case HeapAllocate: {
+        ast_t *value = Match(ast, HeapAllocate)->value;
         gcc_rvalue_t *rval;
         // Don't mark these as COW as they would otherwise be:
         if (value->tag == Array)

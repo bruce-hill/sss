@@ -7,13 +7,13 @@ func maybe_str(s:Str,nil_it:Bool)->?Str
     if nil_it
         return !Str
     else
-        return ?s
+        return @s
 
 say((maybe_str("hi", no) or @"XXX")[])
 foo := maybe_str("hi", no)
 say "$foo"
 
->>> maybe_int := ?5
+>>> maybe_int := if yes then @5 else !Int
 >>> typeof maybe_int
 === ?Int64
 >>> maybe_int!
