@@ -18,7 +18,7 @@
 
 typedef enum {
     Unknown = 0,
-    Nil, Bool, Var,
+    Nil, Bool, Var, Wildcard,
     Int, Num, Range, Char,
     StringLiteral, StringJoin, Interp,
     Predeclare, Declare, Assign,
@@ -29,7 +29,7 @@ typedef enum {
     And, Or, Xor, Min, Max, Mix, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In, NotIn,
-    Not, Negative, Wildcard,
+    Not, Negative,
     TypeOf, SizeOf,
     HeapAllocate, StackReference,
     Array, Table, TableEntry,
