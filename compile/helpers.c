@@ -655,7 +655,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_lvalue_t *table_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, pointed_type)), "_table");
             gcc_assign(*block, loc, table_ptr, compile_expr(env, block, indexing->indexed));
             mark_table_cow(env, block, gcc_rval(table_ptr));
-            return table_lvalue(env, block, pointed_type, gcc_rval(table_ptr), indexing->index);
+            return table_lvalue(env, block, pointed_type, gcc_rval(table_ptr), indexing->index, allow_slices);
         } else {
             compiler_err(env, ast, "I only know how to index into Arrays and Tables for assigning");
         }
