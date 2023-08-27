@@ -8,27 +8,27 @@ enum Object :=
     | Invalid(invalid:JSON)
 
     convert j:Object as JSON
-        if j matches Map(table)
+        if j matches Map(?table)
             return JSON::[`{,
                 for entry in table
                     c for c in JSON::"$(Object.String(entry.key)): $(entry.value)"
                 between
                     c for c in ", "
                 , `}]
-        matches List(list)
+        matches List(?list)
             return JSON::[`[,
                 for item in list
                     c for c in item as JSON
                 between
                     c for c in ", "
                 , `]]
-        matches String(s)
+        matches String(?s)
             return bitcast s.quoted() as JSON
-        matches Number(x); Boolean(x)
+        matches Number(?x); Boolean(?x)
             return JSON::"$x"
         matches Null
             return JSON::"null"
-        matches Invalid(js)
+        matches Invalid(?js)
             fail "invalid JSON: $js"
         else
             fail
@@ -81,7 +81,7 @@ alias JSON::Str
             obj := &{:Str=>Object}
             repeat
                 skip_spaces(js)
-                key := if match_str(js) matches String(s) then s else stop
+                key := if match_str(js) matches String(?s) then s else stop
                 skip_spaces(js)
                 unless match(js, JSON::":")
                     return Object.Invalid(js[])
@@ -104,7 +104,7 @@ alias JSON::Str
             list := &[:Object]
             repeat
                 skip_spaces(js)
-                if item := match_json(js) matches Invalid(_)
+                if item := match_json(js) matches Invalid
                     stop
                 else
                     list.insert(item)
@@ -119,21 +119,21 @@ alias JSON::Str
             return Object.List(list[])
 
         func match_num(js:&JSON)->Object
-            if Num.parse(bitcast js[] as Str) matches Success(n)
+            if Num.parse(bitcast js[] as Str) matches Success(?n)
                 js[] = js[][(js.length+1)..]
                 return Object.Number(n)
-            matches PartialSuccess(value=n, remainder=remaining)
+            matches PartialSuccess(value=?n, remainder=?remaining)
                 js[] = (bitcast remaining as JSON)
                 return Object.Number(n)
             else
                 return Object.Invalid(js[])
 
         func match_json(js:&JSON)->Object
-            if m:=match_num(js) matches Number(_) then return m
-            if m:=match_str(js) matches String(_) then return m
-            if m:=match_obj(js) matches Map(_) then return m
-            if m:=match_bool(js) matches Boolean(_) then return m
-            if m:=match_list(js) matches List(_) then return m
+            if m:=match_num(js) matches Number then return m
+            if m:=match_str(js) matches String then return m
+            if m:=match_obj(js) matches Map then return m
+            if m:=match_bool(js) matches Boolean then return m
+            if m:=match_list(js) matches List then return m
             if m:=match_null(js) matches Null then return m
             return Object.Invalid(js[])
 

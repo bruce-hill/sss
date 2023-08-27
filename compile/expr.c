@@ -256,6 +256,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         compiler_err(env, ast, "I can't find a definition for this variable"); 
     }
+    case Wildcard: {
+        compiler_err(env, ast, "Wildcards can only be used inside 'matches' expressions, they can't be used as values");
+    }
     case Predeclare: {
         return NULL;
     }

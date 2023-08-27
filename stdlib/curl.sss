@@ -335,20 +335,20 @@ func _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init():?_CURL) or fail "Couldn't initialize CURL!"
     defer extern curl_easy_cleanup(curl)
     for header in headers
-        if header matches URL(url)
+        if header matches URL(?url)
             extern curl_easy_setopt(curl, header as Int32, url)
-        matches WRITEFUNCTION(fn)
+        matches WRITEFUNCTION(?fn)
             extern curl_easy_setopt(curl, header as Int32, fn)
-        matches WRITEDATA(data)
+        matches WRITEDATA(?data)
             extern curl_easy_setopt(curl, header as Int32, data)
-        matches VERBOSE(val); HEADER(val)
+        matches VERBOSE(?val); HEADER(?val)
             extern curl_easy_setopt(curl, header as Int32, (if val then 1 else 0))
-        matches HTTPHEADER(http_headers)
+        matches HTTPHEADER(?http_headers)
             list := !_CurlSList
             for h in http_headers
                 list = extern curl_slist_append(list, h):?_CurlSList
             extern curl_easy_setopt(curl, header as Int32, list)
-        matches _
+        else
             fail "This header is not yet supported: $header"
 
     return extern curl_easy_perform(curl):ResultCode

@@ -27,7 +27,7 @@ alias Queue::@Memory
         extern lfds711_queue_umm_enqueue(q, Entry.new(value))
 
     func dequeue(q:Queue)->?Memory
-        repeat if q.try_dequeue() matches Value(v)
+        repeat if q.try_dequeue() matches Value(?v)
             return v
         else
             extern usleep(10u64)
@@ -47,4 +47,4 @@ if IS_MAIN_PROGRAM
     say "Initialized!"
     for i in 10..15 do q.enqueue(@i)
     say "All queued up"
-    >>> [repeat if q.try_dequeue() matches Value(v) then (bitcast v as @Int) else stop]
+    >>> [repeat if q.try_dequeue() matches Value(?v) then (bitcast v as @Int) else stop]

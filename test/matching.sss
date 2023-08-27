@@ -7,7 +7,7 @@ else
 
 >>> if 5 matches 9
     -1
-matches x
+matches ?x
     x
 === 5
 
@@ -19,16 +19,16 @@ matches x
     for c in cases
         if c matches {1,2}
             "first"
-        matches {x,4}
+        matches {?x,4}
             "has four and $x"
-        matches other
+        matches ?other
             "otherwise $other"
 ]
 === ["first", "has four and 3", "otherwise {5, 6}"]
 
 >>> if "two" matches "one" then 1
 matches "two" then 2
-matches other then -1
+matches ?other then -1
 === 2
 
 struct Vec{x,y:Num}
@@ -44,35 +44,35 @@ enum Foo := int(i:Int)=5|num(n:Num)|str(s:Str)|vec(v:Vec)|tuple(tup:{Num,Num})|n
 >>> [
     for f in cases
         >>> f
-        if f matches int(x); num(x)
+        if f matches int(?x); num(?x)
             "Int or num: $x"
         matches vec(Vec{1,2})
             "one-two Vec"
         matches vec(Vec{x=99})
             "99-x Vec"
-        matches vec(Vec{x=1,y=x})
+        matches vec(Vec{x=1,y=?x})
             "one-x Vec: $x"
-        matches vec(v)
+        matches vec(?v)
             "Vec: $v"
         matches tuple({1,2})
             "one-two tuple"
         matches tuple({99})
             "99-x tuple"
-        matches tuple({1,x})
+        matches tuple({1,?x})
             "one-x tuple: $x"
-        matches tuple(v)
+        matches tuple(?v)
             "tuple: $v"
         matches str("xxx")
             "Str of 'x'"
         matches ptr(@5)
             "Five ptr"
-        matches ptr(@x)
+        matches ptr(@?x)
             "Nonnull ptr: $x"
         matches ptr(!Int)
             "Nil ptr"
         matches null
             "Null"
-        matches other
+        matches ?other
             "Fallback: $other"
 ]
 === ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "Str of 'x'", "Fallback: Foo.str(s=\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]

@@ -260,6 +260,14 @@ static sss_type_t *generate(sss_type_t *t)
 static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
 {
     switch (pattern->tag) {
+    case Wildcard: {
+        const char *name = Match(pattern, Wildcard)->name;
+        if (!name) return;
+        binding_t *b = get_binding(env, name);
+        if (!b)
+            hset(env->bindings, name, new(binding_t, .type=t));
+        return;
+    }
     case Var: {
         const char *name = Match(pattern, Var)->name;
         if (t->tag == TaggedUnionType) {
@@ -269,10 +277,6 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
                     return;
             }
         }
-
-        binding_t *b = get_binding(env, name);
-        if (!b)
-            hset(env->bindings, name, new(binding_t, .type=t));
         return;
     }
     case HeapAllocate: {
@@ -420,6 +424,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             compiler_err(env, ast, "I don't know what \"%s\" refers to", name);
         }
         return binding->type;
+    }
+    case Wildcard: {
+        compiler_err(env, ast, "Wildcards can only be used inside 'matches' expressions, they can't be used as values");
     }
     case Array: {
         auto array = Match(ast, Array);
@@ -1165,12 +1172,9 @@ bool is_discardable(env_t *env, ast_t *ast)
 
 const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns)
 {
-    // Wildcard pattern:
-    if (t->tag != TaggedUnionType) {
-        foreach (patterns, pat, _) {
-            if ((*pat)->tag == Var && (streq(Match(*pat, Var)->name, "*") || !get_binding(env, Match(*pat, Var)->name)))
-                return NULL;
-        }
+    foreach (patterns, pat, _) {
+        if ((*pat)->tag == Wildcard)
+            return NULL;
     }
 
     if (t->tag == TaggedUnionType) {
@@ -1180,14 +1184,6 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             auto member = ith(members, i);
             NEW_LIST(ast_t*, list);
             hset(&member_handlers, member.name, list);
-        }
-
-        // Wildcard pattern (but not counting tagged union field names)
-        foreach (patterns, pat, _) {
-            if ((*pat)->tag != Var) continue;
-            const char *name = Match(*pat, Var)->name;
-            if (!get_binding(env, name) && !hget(&member_handlers, name, List(ast_t*)))
-                return NULL;
         }
 
         foreach (patterns, pat, _) {
@@ -1282,6 +1278,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
         sss_hashmap_t field_types = {0};
         for (int64_t i = 0; i < length(field_names); i++) {
             auto name = ith(field_names, i);
+            if (!name) continue;
             auto type = ith(field_type_list, i);
             hset(&field_types, name, type);
         }
@@ -1301,7 +1298,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                     continue;
                 for (int64_t i = 0; i < length(field_names); i++) {
                     const char *name = ith(field_names, i);
-                    if (!hget(&named_members, name, ast_t*)) {
+                    if (name && !hget(&named_members, name, ast_t*)) {
                         hset(&named_members, name, *member);
                         break;
                     }
@@ -1319,7 +1316,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             if (!missing) return NULL;
         }
     }
-    return heap_strf("I can't prove that every %s case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'is _ then ...'",
+    return heap_strf("I can't prove that every %s case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'else ...'",
                      type_to_string(t));
 }
 

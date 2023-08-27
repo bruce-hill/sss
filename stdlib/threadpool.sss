@@ -45,7 +45,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
         return id
 
     func take(p:&Pool)-> enum PoolResult := Result(id:Int, value:?Memory) | Empty
-        if p.output.try_dequeue() matches Value(result)
+        if p.output.try_dequeue() matches Value(?result)
             result := (bitcast result as @{id:Int, value:?Memory})
             return Result(id=result.id, value=result.value)
         else if p.completed.length > 0
@@ -81,7 +81,7 @@ if IS_MAIN_PROGRAM
             if outputs.length == 3
                 >>> bitcast pool.run(do_work, @123) as @Str
 
-            if pool.take() matches Result(id=id, value=s)
+            if pool.take() matches Result(id=?id, value=?s)
                 say "Result: $(bitcast s as @Str)"
                 outputs.insert(bitcast s as @Str)
             else

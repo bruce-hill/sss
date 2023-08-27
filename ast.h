@@ -29,7 +29,7 @@ typedef enum {
     And, Or, Xor, Min, Max, Mix, Concatenate,
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In, NotIn,
-    Not, Negative,
+    Not, Negative, Wildcard,
     TypeOf, SizeOf,
     HeapAllocate, StackReference,
     Array, Table, TableEntry,
@@ -84,7 +84,7 @@ struct ast_s {
         } Bool;
         struct {
             const char *name;
-        } Var;
+        } Var, Wildcard;
         struct {
             int64_t i;
             uint8_t precision;

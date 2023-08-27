@@ -19,9 +19,9 @@ enum Baz := Text(text:Str)
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2(2.4, 4), Baz.Nil]
 
 for b in bazzes
-    if b matches Text(t)
+    if b matches Text(?t)
         say "$t"
-    matches Integer(x); Vec2(x)
+    matches Integer(?x); Vec2(?x)
         say "$x"
     matches Nil
         say "nil"

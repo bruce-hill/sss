@@ -32,6 +32,14 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     };
 
     switch (pattern->tag) {
+    case Wildcard: {
+        const char *name = Match(pattern, Wildcard)->name;
+        if (name)
+            hset(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
+        gcc_jump(*block, loc, outcomes.match_block);
+        *block = NULL;
+        return outcomes;
+    }
     case Var: {
         const char *name = Match(pattern, Var)->name;
         if (t->tag == TaggedUnionType) {
@@ -48,15 +56,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
                     return outcomes;
                 }
             }
-        }
-
-        binding_t *b = get_binding(env, name);
-        if (!b) {
-            if (!streq(name, "*"))
-                hset(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
-            gcc_jump(*block, loc, outcomes.match_block);
-            *block = NULL;
-            return outcomes;
         }
         goto compare_values;
     }

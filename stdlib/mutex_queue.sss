@@ -24,7 +24,7 @@ struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mute
         
     func dequeue(q:&Queue)->?Memory
         backoff := 1u64
-        repeat if q.try_dequeue() matches Value(v)
+        repeat if q.try_dequeue() matches Value(?v)
             return v
         else
             extern usleep(backoff)
@@ -40,5 +40,5 @@ if IS_MAIN_PROGRAM
     >>> bitcast q.dequeue() as @Int
     >>> q
     say "All queued up"
-    >>> [repeat if q.try_dequeue() matches Value(v) then (bitcast v as @Int) else stop]
+    >>> [repeat if q.try_dequeue() matches Value(?v) then (bitcast v as @Int) else stop]
     // >>> [while q.filled > 0i32 do (bitcast q.dequeue() as @Int)]

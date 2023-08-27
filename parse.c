@@ -928,10 +928,10 @@ ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos,
     if (match_word(pos, "matches")) {
         pattern = expect_ast(ctx, *pos, pos, parse_expr, "I expected a pattern to match here");
         if (is_unless)
-            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Var, "*")),
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Wildcard)),
                           .blocks=LIST(ast_t*, else_ast, ast));
         else
-            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Var, "*")),
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Wildcard)),
                           .blocks=LIST(ast_t*, ast, else_ast));
     } else {
         return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, WrapAST(ast, Bool, .b=!is_unless), WrapAST(ast, Bool, .b=is_unless)),
@@ -957,10 +957,10 @@ PARSER(parse_if) {
 
         if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
             ast_t *else_body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Var, "*")),
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Wildcard)),
                           .blocks=LIST(ast_t*, else_body, body));
         } else {
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Var, "*")),
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Wildcard)),
                           .blocks=LIST(ast_t*, FakeAST(Pass), body));
         }
     }
@@ -987,7 +987,7 @@ PARSER(parse_if) {
         if (sss_get_indent(ctx->file, tmp) == starting_indent && match_word(&tmp, "else")) {
             pos = tmp;
             ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            APPEND(patterns, NewAST(ctx->file, pos, pos, Var, .name="*"));
+            APPEND(patterns, NewAST(ctx->file, pos, pos, Wildcard));
             APPEND(blocks, body);
         }
         return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=patterns, .blocks=blocks);
@@ -1001,7 +1001,7 @@ PARSER(parse_if) {
         if (match_word(&clause, "else")) {
             pos = clause;
             ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            APPEND(patterns, NewAST(ctx->file, clause, clause, Var, .name="*"));
+            APPEND(patterns, NewAST(ctx->file, clause, clause, Wildcard));
             APPEND(blocks, body);
             break;
         }
@@ -1213,6 +1213,13 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 #define parse_not(...) parse_unary(__VA_ARGS__, Not, "not", true)
 #define parse_typeof(...) parse_unary(__VA_ARGS__, TypeOf, "typeof", true)
 #define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof", true)
+
+PARSER(parse_wildcard) {
+    const char *start = pos;
+    if (!match(&pos, "?")) return NULL;
+    const char *name = get_id(&pos);
+    return NewAST(ctx->file, start, pos, Wildcard, .name=name);
+}
 
 PARSER(parse_bool) {
     const char *start = pos;
@@ -1494,6 +1501,7 @@ PARSER(parse_term_no_suffix) {
         || (term=parse_int(ctx, pos))
         || (term=parse_negative(ctx, pos))
         || (term=parse_heap_alloc(ctx, pos))
+        || (term=parse_wildcard(ctx, pos))
         || (term=parse_stack_reference(ctx, pos))
         || (term=parse_splat(ctx, pos))
         || (term=parse_bool(ctx, pos))

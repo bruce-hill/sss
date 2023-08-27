@@ -121,7 +121,7 @@ alias Glob::Str
             for c in s
                 if c matches `\;`{;`};`*;`?;`[;`]
                     ++[`\, c]
-                matches plain
+                matches ?plain
                     ++[plain]
         ]) as Glob
 
