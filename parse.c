@@ -1974,11 +1974,13 @@ static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, si
             const char *next = *pos;
             whitespace(&next);
             if (sss_get_indent(ctx->file, next) != indent) break;
-            ast_t *def = optional_ast(ctx, &next, parse_declaration);
-            if (!def) def = optional_ast(ctx, &next, parse_predeclaration);
-            if (!def) def = optional_ast(ctx, &next, parse_def);
-            if (!def) {
-                if (sss_get_indent(ctx->file, next) > starting_indent)
+            ast_t *def;
+            bool success = ((def=optional_ast(ctx, &next, parse_declaration))
+                            || (def=optional_ast(ctx, &next, parse_predeclaration))
+                            || (def=optional_ast(ctx, &next, parse_def)));
+            whitespace(&next);
+            if (!success) {
+                if (sss_get_indent(ctx->file, next) > starting_indent && next < strchrnul(next, '\n'))
                     parser_err(ctx, next, strchrnul(next, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
                 break;
             }
