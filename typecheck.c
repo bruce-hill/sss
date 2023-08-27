@@ -594,6 +594,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 return Type(ArrayType, .item_type=Match(value_t, TableType)->key_type);
             else if (streq(access->field, "values"))
                 return Type(ArrayType, .item_type=Match(value_t, TableType)->value_type);
+
+            binding_t *binding = get_table_method(env, fielded_t, access->field);
+            if (!binding)
+                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
+
             goto class_lookup;
         }
         default: {
@@ -676,7 +681,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
         case AndUpdate: case OrUpdate: case XorUpdate:
-        case Assign: case Delete: case Declare: case FunctionDef: case StructDef:
+        case Assign: case Declare: case FunctionDef: case StructDef:
             return Type(VoidType);
         default: break;
         }
@@ -735,7 +740,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *t = parse_type_ast(env, Match(ast, Extern)->type);
         return Match(ast, Extern)->address ? Type(PointerType, .pointed=t, .is_optional=false) : t;
     }
-    case Declare: case Assign: case Delete: case DocTest: case LinkerDirective: {
+    case Declare: case Assign: case DocTest: case LinkerDirective: {
         return Type(VoidType);
     }
     case Use: {
@@ -1149,7 +1154,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case Assign: case Delete: case Declare: case FunctionDef: case StructDef: case Use:
+    case Assign: case Declare: case FunctionDef: case StructDef: case Use:
         return true;
     default: break;
     }

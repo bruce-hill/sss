@@ -98,15 +98,26 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     }
 }
 
-void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, gcc_rvalue_t *key_val)
+static binding_t *define_table_remove_method(env_t *env, sss_type_t *t)
 {
-    gcc_func_t *func = gcc_block_func(*block);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+    sss_type_t *key_t = Match(t, TableType)->key_type;
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("table")),
+        gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, key_t), fresh("key")),
+    };
+    gcc_rvalue_t *table = gcc_param_as_rvalue(params[0]);
+    gcc_rvalue_t *key_val = gcc_param_as_rvalue(params[1]);
+
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, VOID), fresh("remove"), 2, params, 0);
+    gcc_block_t *block = gcc_new_block(func, fresh("remove"));
+
     gcc_type_t *key_gcc_t = sss_type_to_gcc(env, Match(t, TableType)->key_type);
     gcc_rvalue_t *key_ptr;
     if (key_val) {
         gcc_lvalue_t *key_lval = gcc_local(func, NULL, key_gcc_t, "_key");
-        gcc_assign(*block, NULL, key_lval, key_val);
-        flatten_arrays(env, block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
+        gcc_assign(block, NULL, key_lval, key_val);
+        flatten_arrays(env, &block, Match(t, TableType)->key_type, gcc_lvalue_address(key_lval, NULL));
         key_ptr = gcc_lvalue_address(key_lval, NULL);
     } else {
         key_ptr = gcc_null(env->ctx, gcc_get_ptr_type(key_gcc_t));
@@ -122,7 +133,34 @@ void table_remove(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *
         gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
         gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
         key_ptr);
-    gcc_eval(*block, NULL, call);
+    gcc_eval(block, NULL, call);
+
+    gcc_return_void(block, NULL);
+    binding_t *b = new(binding_t, .func=func,
+        .type=Type(FunctionType, .arg_names=LIST(const char*, "table", "key"),
+                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), key_t),
+                   .arg_defaults=LIST(ast_t*, NULL, NULL),
+                   .ret=Type(VoidType)));
+    set_in_namespace(env, t, "remove", b);
+    return b;
+}
+
+binding_t *get_table_method(env_t *env, sss_type_t *t, const char *method_name)
+{
+    for (;;) {
+        if (t->tag == PointerType) t = Match(t, PointerType)->pointed; 
+        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of; 
+        else break;
+    }
+
+    binding_t *b = get_from_namespace(env, t, method_name);
+    if (b) return b;
+
+    if (streq(method_name, "remove")) {
+        return define_table_remove_method(env, t);
+    } else {
+        return NULL;
+    }
 }
 
 static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table_insert_info_t *info)

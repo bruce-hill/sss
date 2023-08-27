@@ -24,7 +24,7 @@ t := @{"abc"=>1, "def"=>2}
 >>> t["new_key"]
 === 3
 
->>> del t["abc"]
+>>> t.remove("abc")
 >>> t
 === @{"new_key"=>3, "def"=>2}
 

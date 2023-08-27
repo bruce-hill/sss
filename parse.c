@@ -46,7 +46,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 static const char *keywords[] = {
     "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
-    "for", "fail", "extern", "enum", "else", "do", "del", "defer", "convert", "by", "bitcast", "between", "as",
+    "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_mix_", "_min_", "_max_",
     NULL,
 };
@@ -1843,13 +1843,6 @@ PARSER(parse_assignment) {
     return NewAST(ctx->file, start, pos, Assign, .targets=targets, .values=values);
 }
 
-PARSER(parse_deletion) {
-    const char *start = pos;
-    if (!match_word(&pos, "del")) return NULL;
-    ast_t *val = expect_ast(ctx, start, &pos, parse_term, "I expected a value after this 'del'");
-    return NewAST(ctx->file, start, pos, Delete, .value=val);
-}
-
 PARSER(parse_def) {
     ast_t *stmt = NULL;
     (void)((stmt=parse_func_def(ctx, pos))
@@ -1871,7 +1864,6 @@ PARSER(parse_statement) {
         return stmt;
 
     if (!(false 
-        || (stmt=parse_deletion(ctx, pos))
         || (stmt=parse_update(ctx, pos))
         || (stmt=parse_assignment(ctx, pos))
     ))

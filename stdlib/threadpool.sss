@@ -35,7 +35,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
                 (&p.completed)[result.id] = result.value
                 if id in p.completed
                     completed := p.completed[id]
-                    del (&p.completed)[id]
+                    (&p.completed).remove(id)
                     return completed
         fail
 
@@ -51,7 +51,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
         else if p.completed.length > 0
             id := p.completed.keys[1]
             result := p.completed[id]
-            del (&p.completed)[id]
+            (&p.completed).remove(id)
             return Result(id=id, value=result)
         else
             return Empty

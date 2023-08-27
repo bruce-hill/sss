@@ -115,10 +115,10 @@ Special behaviors can be accessed (or modified) by attributes:
 
 ## Removing Entries
 
-Entries can be removed with the `del` statement:
+Entries can be removed with the `.remove()` method:
 
 ```
-del my_table[key]
+my_table.remove(key)
 ```
 
 ## Semantics

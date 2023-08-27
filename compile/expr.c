@@ -429,87 +429,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             fields[i] = gcc_get_field(gcc_type_if_struct(values_gcc_t), i);
         return gcc_struct_constructor(env->ctx, loc, values_gcc_t, len, fields, rvals[0]);
     }
-    case Delete: {
-        ast_t *to_delete = Match(ast, Delete)->value;
-        switch (to_delete->tag) {
-        case Index: {
-            auto index = Match(to_delete, Index);
-            sss_type_t *t = get_type(env, index->indexed);
-            if (t->tag != PointerType)
-                compiler_err(env, ast, "Only mutable containers can be used with 'del', not %T", t);
-            if (Match(t, PointerType)->is_optional)
-                compiler_err(env, index->indexed, "This value is optional and can't be safely dereferenced");
-            sss_type_t *container_t = Match(t, PointerType)->pointed;
-            if (container_t->tag == TableType) {
-                sss_type_t *key_t = get_type(env, index->index);
-                if (!type_is_a(key_t, Match(container_t, TableType)->key_type))
-                    compiler_err(env, index->index, "This key has type %T, but this table has a different key type: %T",
-                                key_t, Match(container_t, TableType)->key_type);
-
-                table_remove(env, block, container_t, compile_expr(env, block, index->indexed), compile_expr(env, block, index->index));
-            } else if (container_t->tag == ArrayType) {
-                binding_t *b = get_array_method(env, container_t, "remove");
-                gcc_func_t *func = gcc_block_func(*block);
-                gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
-                gcc_assign(*block, loc, arr_var, compile_expr(env, block, index->indexed));
-                gcc_rvalue_t *index_val = compile_expr(env, block, index->index);
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_rval(arr_var), index_val, gcc_rvalue_int64(env->ctx, 1)));
-            } else {
-                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %T", t);
-            }
-            return NULL;
-        }
-        case FieldAccess: {
-            auto access = Match(to_delete, FieldAccess);
-            sss_type_t *t = get_type(env, access->fielded);
-            if (t->tag != PointerType)
-                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %T", t);
-            if (Match(t, PointerType)->is_optional)
-                compiler_err(env, access->fielded, "This value is optional and can't be safely dereferenced");
-            sss_type_t *table_t = Match(t, PointerType)->pointed;
-            if (table_t->tag != TableType)
-                compiler_err(env, ast, "Only mutable tables can be used with 'del', not %T", t);
-
-            if (streq(access->field, "default")) {
-                gcc_rvalue_t *table = compile_expr(env, block, access->fielded);
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, table_t)), TABLE_DEFAULT_FIELD);
-                gcc_assign(*block, loc, gcc_rvalue_dereference_field(table, loc, field),
-                           gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(table_t, TableType)->value_type))));
-            } else if (streq(access->field, "fallback")) {
-                gcc_rvalue_t *table = compile_expr(env, block, access->fielded);
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, table_t)), TABLE_FALLBACK_FIELD);
-                gcc_assign(*block, loc, gcc_rvalue_dereference_field(table, loc, field),
-                           gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, table_t))));
-            } else {
-                compiler_err(env, ast, "The only table fields that can be deleted are .default and .fallback, not .%s", access->field);
-            }
-            return NULL;
-        }
-        default: {
-            sss_type_t *t = get_type(env, to_delete);
-            if (t->tag == PointerType) {
-                if (Match(t, PointerType)->is_optional)
-                    compiler_err(env, to_delete, "This value is optional and can't be safely dereferenced");
-                sss_type_t *value_t = Match(t, PointerType)->pointed;
-                if (value_t->tag == TableType) {
-                    table_remove(env, block, value_t, compile_expr(env, block, to_delete), NULL);
-                } else if (value_t->tag == ArrayType) {
-                    binding_t *b = get_array_method(env, value_t, "remove");
-                    gcc_func_t *func = gcc_block_func(*block);
-                    gcc_lvalue_t *arr_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_array");
-                    gcc_assign(*block, loc, arr_var, compile_expr(env, block, to_delete));
-                    gcc_rvalue_t *len = compile_len(env, block, t, gcc_rval(arr_var));
-                    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_rval(arr_var), len, gcc_rvalue_int64(env->ctx, 1)));
-                } else {
-                    compiler_err(env, ast, "Only mutable tables can be used with 'del', not %T", t);
-                }
-
-                return NULL;
-            }
-            compiler_err(env, ast, "The 'del' statement is only supported for indexed values like val[x]");
-        }
-        }
-    }
     case Do: {
         auto do_ = Match(ast, Do);
         gcc_func_t *func = gcc_block_func(*block);
@@ -1143,7 +1062,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
                 binding_t *binding = (base_t->tag == ArrayType) ?
                     get_array_method(env, value_type, access->field)
-                    : get_from_namespace(env, self_t, access->field);
+                    : (base_t->tag == TableType ?
+                       get_table_method(env, value_type, access->field)
+                       : get_from_namespace(env, self_t, access->field));
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)

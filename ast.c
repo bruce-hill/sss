@@ -183,7 +183,6 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(With, F(var), F(expr), F(cleanup), F(body))
         T(Extend, F(type), F(body))
         T(Use, F(path), F(main_program))
-        T(Delete, F(value))
         T(LinkerDirective, F(directives))
         T(Using, F(used), F(body))
 #undef BINOP

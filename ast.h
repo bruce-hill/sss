@@ -55,7 +55,6 @@ typedef enum {
     With,
     Extend,
     Use,
-    Delete,
     LinkerDirective,
     Variant,
     Using,
@@ -296,9 +295,6 @@ struct ast_s {
             sss_file_t *file;
             bool main_program;
         } Use;
-        struct {
-            ast_t *value;
-        } Delete;
         struct {
             ast_t *member, *container;
         } In, NotIn;
