@@ -21,7 +21,7 @@ typedef enum {
     Nil, Bool, Var,
     Int, Num, Range, Char,
     StringLiteral, StringJoin, Interp,
-    Declare, Assign,
+    Predeclare, Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
     AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
     Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
@@ -112,6 +112,9 @@ struct ast_s {
             ast_t *value;
             bool labelled:1, colorize:1, quote_string:1;
         } Interp;
+        struct {
+            ast_t *var, *type;
+        } Predeclare;
         struct {
             ast_t *var, *value;
             bool is_global;

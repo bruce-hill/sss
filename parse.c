@@ -100,6 +100,7 @@ static PARSER(parse_unit_def);
 static PARSER(parse_def);
 static PARSER(parse_convert_def);
 static PARSER(parse_extern);
+static PARSER(parse_predeclaration);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
@@ -1769,6 +1770,19 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     return expr;
 }
 
+PARSER(parse_predeclaration) {
+    const char *start = pos;
+    ast_t *var = parse_var(ctx, pos);
+    if (!var) return NULL;
+    pos = var->span.end;
+    spaces(&pos);
+    if (!match(&pos, ":")) return NULL;
+    if (match(&pos, "=") || match(&pos, ":")) return NULL;
+    spaces(&pos);
+    ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this declaration");
+    return NewAST(ctx->file, start, pos, Predeclare, .var=var, .type=type);
+}
+
 PARSER(parse_declaration) {
     const char *start = pos;
     ast_t *var = parse_var(ctx, pos);
@@ -1857,6 +1871,7 @@ PARSER(parse_def) {
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
+        || (stmt=parse_predeclaration(ctx, pos))
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_doctest(ctx, pos))
         || (stmt=parse_linker(ctx,pos))
@@ -1960,6 +1975,7 @@ static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, si
             whitespace(&next);
             if (sss_get_indent(ctx->file, next) != indent) break;
             ast_t *def = optional_ast(ctx, &next, parse_declaration);
+            if (!def) def = optional_ast(ctx, &next, parse_predeclaration);
             if (!def) def = optional_ast(ctx, &next, parse_def);
             if (!def) {
                 if (sss_get_indent(ctx->file, next) > starting_indent)
@@ -2070,10 +2086,8 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
             }
         } else if (match(&next_pos, "|")) {
             ws(&next_pos);
-        } else if (sss_get_indent(ctx->file, next_pos) <= starting_indent) {
-            break;
         } else {
-            spaces(&next_pos);
+            break;
         }
         pos = next_pos;
         ++next_value;
