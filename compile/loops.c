@@ -128,7 +128,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_iter_t = sss_type_to_gcc(env, iter_t);
         } else {
             compiler_err(env, iter, "This value is a %T pointer. You must dereference the pointer with %.*s[] to access the underlying value to iterate over it.",
-                         iter_t, (int)(iter->span.end - iter->span.start), iter->span.start);
+                         iter_t, (int)(iter->end - iter->start), iter->start);
         }
     }
 

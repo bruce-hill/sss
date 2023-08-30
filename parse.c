@@ -9,8 +9,10 @@
 #include <string.h>
 #include <unistr.h>
 #include <unictype.h>
+#include <signal.h>
 
 #include "ast.h"
+#include "span.h"
 #include "parse.h"
 #include "libsss/list.h"
 #include "units.h"
@@ -111,7 +113,6 @@ static ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char
 //
 // Print a parse error and exit (or use the on_err longjmp)
 //
-#include <signal.h>
 __attribute__((noreturn))
 static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, const char *fmt, va_list args) {
     if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
@@ -123,8 +124,7 @@ static void vparser_err(parse_ctx_t *ctx, const char *start, const char *end, co
         fputs(" \x1b[m", stderr);
     fputs("\n\n", stderr);
 
-    span_t span = {.file=ctx->file, .start=start, .end=end};
-    fprint_span(stderr, span, "\x1b[31;1;7m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
+    fprint_span(stderr, ctx->file, start, end, "\x1b[31;1;7m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
     fputs("\n", stderr);
 
     if (ctx->on_err)
@@ -261,7 +261,7 @@ static ast_t *expect_ast(
     spaces(pos);
     ast_t *ast = parser(ctx, *pos);
     if (ast) {
-        *pos = ast->span.end;
+        *pos = ast->end;
         return ast;
     }
 
@@ -279,7 +279,7 @@ static ast_t *expect_ast(
 static inline ast_t *optional_ast(parse_ctx_t *ctx, const char **pos, parser_t *parser) {
     spaces(pos);
     ast_t *ast = parser(ctx, *pos);
-    if (ast) *pos = ast->span.end;
+    if (ast) *pos = ast->end;
     return ast;
 }
 
@@ -386,7 +386,7 @@ PARSER(parse_parens) {
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this expression");
 
     // Update the span to include the parens:
-    return new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
+    return new(ast_t, .file=(ctx)->file, .start=start, .end=pos,
                .tag=expr->tag, .__data=expr->__data);
 }
 
@@ -615,18 +615,18 @@ PARSER(_parse_type) {
         whitespace(&pos);
         expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
         // Use the enclosing span
-        type = new(ast_t, .span.file=(ctx)->file, .span.start=start, .span.end=pos,
+        type = new(ast_t, .file=(ctx)->file, .start=start, .end=pos,
                    .tag=type->tag, .__data=type->__data);
     }
 
     if (!type) return NULL;
 
-    pos = type->span.end;
+    pos = type->end;
     // Measure type
     if (match(&pos, "<")) {
         const char* units = get_units(&pos);
         expect_closing(ctx, &pos, ">", "I expected a closing '>' for these units");
-        type = NewAST(ctx->file, type->span.start, pos, TypeMeasure, .type=type, .units=units);
+        type = NewAST(ctx->file, type->start, pos, TypeMeasure, .type=type, .units=units);
     }
     return type;
 }
@@ -741,7 +741,7 @@ PARSER(parse_table) {
             if (progress) entry = new_entry;
         }
         entry = optional_suffix_condition(ctx, entry, &pos, FakeAST(Skip));
-        pos = entry->span.end;
+        pos = entry->end;
 
         APPEND(entries, entry);
         whitespace(&pos);
@@ -816,7 +816,7 @@ PARSER(parse_struct) {
 
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
-    const char *pos = lhs->span.end;
+    const char *pos = lhs->end;
     whitespace(&pos);
     if (!match(&pos, ".")) return NULL;
     if (*pos == '.') return NULL;
@@ -825,7 +825,7 @@ ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char* field = get_id(&pos);
     if (!field) return NULL;
     if (dollar) field = heap_strf("$%s", field);
-    return NewAST(ctx->file, lhs->span.start, pos, FieldAccess, .fielded=lhs, .field=field);
+    return NewAST(ctx->file, lhs->start, pos, FieldAccess, .fielded=lhs, .field=field);
 }
 
 PARSER(parse_ellipsis) {
@@ -855,8 +855,8 @@ PARSER(parse_reduction) {
             if (progress) key = new_term;
         }
         if (key->tag == Var) key = NULL;
-        else pos = key->span.end;
-        combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Min={
+        else pos = key->end;
+        combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Min={
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"),
                              .key=key});
@@ -867,7 +867,7 @@ PARSER(parse_reduction) {
         combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"), .key=key);
     } else if (binop != Unknown) {
-        combination = new(ast_t, .tag=binop, .span.file=ctx->file, .span.start=combo_start, .span.end=pos, .__data.Add={
+        combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Add={
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y")});
     } else {
@@ -890,8 +890,8 @@ PARSER(parse_reduction) {
 
 ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
-    const char *start = lhs->span.start;
-    const char *pos = lhs->span.end;
+    const char *start = lhs->start;
+    const char *pos = lhs->end;
     if (!match(&pos, "[")) return NULL;
     ast_t *index = optional_ast(ctx, &pos, parse_extended_expr);
     spaces(&pos);
@@ -902,8 +902,8 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
 
 ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     if (!lhs) return NULL;
-    const char *start = lhs->span.start;
-    const char *pos = lhs->span.end;
+    const char *start = lhs->start;
+    const char *pos = lhs->end;
     if (!match(&pos, "::")) return NULL;
     ast_t *obj = expect_ast(ctx, start, &pos, parse_term_no_suffix,
                             "I expected to find an expression here to create a variant of");
@@ -1060,9 +1060,9 @@ PARSER(parse_with) {
     ast_t *var = optional_ast(ctx, &pos, parse_var);
     ast_t *expr;
     if (var && match_word(&pos, ":=")) {
-        expr = expect_ast(ctx, var->span.start, &pos, parse_expr, "I expected an expression for this variable");
+        expr = expect_ast(ctx, var->start, &pos, parse_expr, "I expected an expression for this variable");
     } else {
-        pos = var ? var->span.start : pos;
+        pos = var ? var->start : pos;
         var = NULL;
         expr = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression for this 'with'");
     }
@@ -1121,7 +1121,7 @@ PARSER(parse_for) {
         pos = between_start;
         between = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'between'");
     } else {
-        pos = body->span.end;
+        pos = body->end;
     }
 
     const char *else_start = pos;
@@ -1136,8 +1136,8 @@ PARSER(parse_for) {
 
 ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
     if (!body) return NULL;
-    const char *start = body->span.start;
-    const char *pos = body->span.end;
+    const char *start = body->start;
+    const char *pos = body->end;
     if (!match_word(&pos, "for")) return NULL;
     ast_t *index = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
     spaces(&pos);
@@ -1186,8 +1186,8 @@ PARSER(parse_while) {
 
 ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
     if (!body) return NULL;
-    const char *start = body->span.start;
-    const char *pos = body->span.end;
+    const char *start = body->start;
+    const char *pos = body->end;
     if (!match_word(&pos, "while")) return NULL;
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
     body = optional_suffix_condition(ctx, body, &pos, FakeAST(Skip));
@@ -1203,7 +1203,7 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
     ast_t *val = exprs_ok ? parse_expr(ctx, pos) : parse_term(ctx, pos);
     if (!val) return NULL;
     // Unsafe: all the unary ops have a '.value' field in the same spot, so this is a hack
-    return new(ast_t, .span.file=ctx->file, .span.start=start, .span.end=val->span.end,
+    return new(ast_t, .file=ctx->file, .start=start, .end=val->end,
                .tag=tag, .__data.Not.value=val);
     // End unsafe area
 }
@@ -1236,7 +1236,7 @@ PARSER(parse_splat) {
     if (!match(&pos, "++")) return NULL;
     ast_t *item = optional_ast(ctx, &pos, parse_expr);
     if (!item) return NULL;
-    return NewAST(ctx->file, start, item->span.end, For,
+    return NewAST(ctx->file, start, item->end, For,
                   .iter=item,
                   .value=WrapAST(item, Var, .name="item"),
                   .body=WrapAST(item, Var, .name="item"));
@@ -1346,7 +1346,7 @@ PARSER(parse_string) {
                 } else if (*pos == interp_char) {
                     ast_t *chunk = parse_interpolation(ctx, pos);
                     APPEND(chunks, chunk);
-                    pos = chunk->span.end;
+                    pos = chunk->end;
                 }
             }
         }
@@ -1357,7 +1357,7 @@ PARSER(parse_string) {
             if (last_chunk->tag == StringLiteral) {
                 auto str = Match(last_chunk, StringLiteral);
                 const char* trimmed = heap_strn(str->str, strlen(str->str)-1);
-                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx->file, last_chunk->span.start, last_chunk->span.end-1, StringLiteral, .str=trimmed);
+                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx->file, last_chunk->start, last_chunk->end-1, StringLiteral, .str=trimmed);
             }
         }
     } else {
@@ -1375,7 +1375,7 @@ PARSER(parse_string) {
             if (*pos == interp_char) {
                 ast_t *chunk = parse_interpolation(ctx, pos);
                 APPEND(chunks, chunk);
-                pos = chunk->span.end;
+                pos = chunk->end;
             } else if (*pos == escape_char) {
                 const char *start = pos;
                 const char* unescaped = unescape(&pos);
@@ -1462,14 +1462,14 @@ PARSER(parse_nil) {
     if (!match(&pos, "!")) return NULL;
     ast_t *type = _parse_type(ctx, pos);
     if (!type) return NULL;
-    return NewAST(ctx->file, start, type->span.end, Nil, .type=type);
+    return NewAST(ctx->file, start, type->end, Nil, .type=type);
 }
 
 PARSER(parse_fail) {
     const char *start = pos;
     if (!match_word(&pos, "fail")) return NULL;
     ast_t *msg = parse_term(ctx, pos);
-    if (msg) pos = msg->span.end;
+    if (msg) pos = msg->end;
     ast_t *fail = NewAST(ctx->file, start, pos, Fail, .message=msg);
     return optional_suffix_condition(ctx, fail, &pos, FakeAST(Pass));
 }
@@ -1546,8 +1546,8 @@ PARSER(parse_term) {
 
 ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool is_extern) {
     if (!fn) return NULL;
-    const char *start = fn->span.start;
-    const char *pos = fn->span.end;
+    const char *start = fn->start;
+    const char *pos = fn->end;
     NEW_LIST(ast_t*, args);
 
     // No arguments fn()
@@ -1555,7 +1555,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
         spaces(&pos);
         if (match(&pos, ")"))
             goto return_function;
-        pos = fn->span.end;
+        pos = fn->end;
     }
 
     const char *paren_pos = pos;
@@ -1596,10 +1596,10 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
                 spaces(&pos);
                 ast_t *arg = parse_expr(ctx, pos);
                 if (!arg) parser_err(ctx, arg_start, pos, "I couldn't parse this keyword argument value");
-                ast_t *kwarg = NewAST(ctx->file, arg_start, arg->span.end, KeywordArg,
+                ast_t *kwarg = NewAST(ctx->file, arg_start, arg->end, KeywordArg,
                                       .name=name, .arg=arg);
                 APPEND(args, kwarg);
-                pos = kwarg->span.end;
+                pos = kwarg->end;
                 goto got_arg;
             }
             pos = arg_start;
@@ -1608,7 +1608,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
         ast_t *arg = parse_expr(ctx, pos);
         if (!arg) break;
         APPEND(args, arg);
-        pos = arg->span.end;
+        pos = arg->end;
 
       got_arg:
         ;
@@ -1680,7 +1680,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     ast_t *term = parse_term(ctx, pos);
     if (!term) return NULL;
 
-    pos = term->span.end;
+    pos = term->end;
 
     auto terms = LIST(ast_t*, term);
     NEW_LIST(ast_tag_e, binops);
@@ -1703,7 +1703,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                 if (progress) key = new_term;
             }
             if (key->tag == Var) key = NULL;
-            else pos = key->span.end;
+            else pos = key->end;
         } else if (tag == Mix) {
             key = expect_ast(ctx, pos, &pos, parse_expr, "I expected an amount to mix by");
             if (!match_word(&pos, "of"))
@@ -1723,7 +1723,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             continue;
         }
         if (!rhs) break;
-        pos = rhs->span.end;
+        pos = rhs->end;
         APPEND(terms, rhs);
         APPEND(binops, tag);
         APPEND(minmax_keys, key);
@@ -1751,9 +1751,9 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         ast_t *merged;
         if (tag == RANGE_STEP) {
             if (lhs->tag != Range)
-                parser_err(ctx, lhs->span.start, rhs->span.end, "This 'by' is not attached to a Range");
+                parser_err(ctx, lhs->start, rhs->end, "This 'by' is not attached to a Range");
 
-            merged = NewAST(ctx->file, lhs->span.start, rhs->span.end, Range,
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Range,
                             .first=Match(lhs, Range)->first,
                             .last=Match(lhs, Range)->last,
                             .step=rhs);
@@ -1761,7 +1761,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             // Unsafe, relies on these having the same type:
             merged = new(
                 ast_t,
-                .span.file=ctx->file, .span.start=lhs->span.start, .span.end=rhs->span.end,
+                .file=ctx->file, .start=lhs->start, .end=rhs->end,
                 .tag=tag,
                 .__data.Min.lhs=lhs,
                 .__data.Min.rhs=rhs,
@@ -1782,7 +1782,7 @@ PARSER(parse_predeclaration) {
     const char *start = pos;
     ast_t *var = parse_var(ctx, pos);
     if (!var) return NULL;
-    pos = var->span.end;
+    pos = var->end;
     spaces(&pos);
     if (!match(&pos, ":")) return NULL;
     if (match(&pos, "=") || match(&pos, ":")) return NULL;
@@ -1795,7 +1795,7 @@ PARSER(parse_declaration) {
     const char *start = pos;
     ast_t *var = parse_var(ctx, pos);
     if (!var) return NULL;
-    pos = var->span.end;
+    pos = var->end;
     spaces(&pos);
     if (!match(&pos, ":=")) return NULL;
     spaces(&pos);
@@ -1960,7 +1960,7 @@ PARSER(parse_block) {
         APPEND(statements, stmt);
         whitespace(&pos);
         if (sss_get_indent(ctx->file, pos) != block_indent) {
-            pos = stmt->span.end; // backtrack
+            pos = stmt->end; // backtrack
             break;
         }
     }
@@ -2253,10 +2253,10 @@ PARSER(parse_unit_def) {
         parser_err(ctx, start, pos, "Invalid derived unit definition");
 
     if (derived->tag == Int)
-        derived = NewAST(ctx->file, derived->span.start, derived->span.end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
+        derived = NewAST(ctx->file, derived->start, derived->end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
 
     if (derived->tag != Num || Match(derived, Num)->units == NULL)
-        parser_err(ctx, derived->span.start, derived->span.end, "Derived units must have units");
+        parser_err(ctx, derived->start, derived->end, "Derived units must have units");
 
     spaces(&pos);
     if (!match(&pos, ":="))
@@ -2268,10 +2268,10 @@ PARSER(parse_unit_def) {
         parser_err(ctx, start, pos, "Invalid derived unit definition");
 
     if (base->tag == Int)
-        base = NewAST(ctx->file, base->span.start, base->span.end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
+        base = NewAST(ctx->file, base->start, base->end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
 
     if (base->tag != Num || Match(base, Num)->units == NULL)
-        parser_err(ctx, base->span.start, base->span.end, "Derived units must have units");
+        parser_err(ctx, base->start, base->end, "Derived units must have units");
     return NewAST(ctx->file, start, pos, UnitDef, .derived=derived, .base=base);
 }
 
@@ -2370,7 +2370,7 @@ ast_t *parse_file(sss_file_t *file, jmp_buf *on_err) {
 
     whitespace(&pos);
     ast_t *ast = parse_block(&ctx, pos);
-    pos = ast->span.end;
+    pos = ast->end;
     whitespace(&pos);
     if (strlen(pos) > 0) {
         parser_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the file");
@@ -2386,7 +2386,7 @@ ast_t *parse_type(sss_file_t *file, jmp_buf *on_err) {
 
     const char *pos = file->text;
     ast_t *ast = _parse_type(&ctx, pos);
-    pos = ast->span.end;
+    pos = ast->end;
     whitespace(&pos);
     if (strlen(pos) > 0) {
         parser_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the type");

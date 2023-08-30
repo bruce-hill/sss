@@ -381,7 +381,9 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
     return NULL;
 }
 
-static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_loc_t *loc, span_t *span, gcc_struct_t *array_struct, gcc_type_t *gcc_item_t, gcc_rvalue_t *arr, gcc_rvalue_t *index_val)
+static gcc_lvalue_t *bounds_checked_index(
+    env_t *env, gcc_block_t **block, gcc_loc_t *loc, sss_file_t *file, const char *start, const char *end,
+    gcc_struct_t *array_struct, gcc_type_t *gcc_item_t, gcc_rvalue_t *arr, gcc_rvalue_t *index_val)
 {
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
     gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index_val, gcc_one(env->ctx, i64_t));
@@ -401,10 +403,10 @@ static gcc_lvalue_t *bounds_checked_index(env_t *env, gcc_block_t **block, gcc_l
     gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, len64, gcc_rvalue_int64(env->ctx, 0)),
                        nonempty, empty);
     *block = nonempty;
-    insert_failure(env, block, span, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
+    insert_failure(env, block, file, start, end, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
                    Type(IntType, .bits=64), index_val, Type(IntType, .bits=64), len64);
     *block = empty;
-    insert_failure(env, block, span, "Error: this is an empty array and it cannot be indexed into");
+    insert_failure(env, block, file, start, end, "Error: this is an empty array and it cannot be indexed into");
 
     // Bounds check success:
     *block = bounds_safe;
@@ -467,7 +469,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     if (unchecked)
         return gcc_rvalue_dereference(pointer_offset(env, gcc_get_ptr_type(gcc_item_t), items, index0), loc);
     else
-        return bounds_checked_index(env, block, loc, &index->span, array_struct, gcc_item_t, arr, index_val);
+        return bounds_checked_index(env, block, loc, index->file, index->start, index->end, array_struct, gcc_item_t, arr, index_val);
 }
 
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow)
@@ -790,7 +792,7 @@ static void define_array_pop(env_t *env, sss_type_t *t)
     gcc_lvalue_t *item = gcc_local(func, NULL, sss_type_to_gcc(env, item_t), "_popped");
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_assign(block, NULL, item,
-               gcc_rval(bounds_checked_index(env, &block, NULL, NULL, array_struct,
+               gcc_rval(bounds_checked_index(env, &block, NULL, NULL, NULL, NULL, array_struct,
                                              sss_type_to_gcc(env, item_t),
                                              gcc_rval(gcc_rvalue_dereference(gcc_param_as_rvalue(params[0]), NULL)),
                                              gcc_param_as_rvalue(params[1]))));

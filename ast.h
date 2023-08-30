@@ -7,13 +7,12 @@
 #include "files.h"
 #include "libsss/list.h"
 #include "compile/libgccjit_abbrev.h"
-#include "span.h"
 #include "util.h"
 
-#define NewAST(_file, _start, _end, ast_tag, ...) (new(ast_t, .span.file=_file, .span.start=_start, .span.end=_end,\
+#define NewAST(_file, _start, _end, ast_tag, ...) (new(ast_t, .file=_file, .start=_start, .end=_end,\
                                                      .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define FakeAST(ast_tag, ...) (new(ast_t, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
-#define WrapAST(ast, ast_tag, ...) (new(ast_t, .span=(ast)->span, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
+#define WrapAST(ast, ast_tag, ...) (new(ast_t, .file=(ast)->file, .start=(ast)->start, .end=(ast)->end, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define StringAST(ast, _str) WrapAST(ast, StringLiteral, .str=heap_str(_str))
 
 typedef enum {
@@ -72,7 +71,8 @@ typedef struct {
 
 struct ast_s {
     ast_tag_e tag;
-    span_t span;
+    sss_file_t *file;
+    const char *start, *end;
     union {
         struct {
         } Unknown;

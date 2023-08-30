@@ -700,8 +700,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert((*chunk)->tag == Interp);
             auto interp = Match(*chunk, Interp);
             if (interp->labelled) {
-                span_t span = interp->value->span;
-                const char *label = heap_strf("%.*s: ", (int)(span.end - span.start), span.start);
+                const char *label = heap_strf("%.*s: ", (int)(interp->value->end - interp->value->start), interp->value->start);
                 APPEND_CORD(*block, gcc_str(env->ctx, label));
             }
 
@@ -804,7 +803,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *target_t = parse_type_ast(env, convert->target_type);
 
         ast_t *def = NewAST(
-            env->file, ast->span.start, ast->span.end,
+            env->file, ast->start, ast->end,
             FunctionDef,
             .args=(args_t){.names=LIST(const char*, convert->var),
                            .types=LIST(ast_t*, convert->source_type)},
@@ -836,7 +835,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (ast->tag == VariantDef) {
             auto def = Match(ast, VariantDef);
             members = def->body ? Match(def->body, Block)->statements : LIST(ast_t*);
-            t = Type(VariantType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
+            t = Type(VariantType, .filename=sss_get_file_pos(ast->file, ast->start),
                      .name=def->name, .variant_of=parse_type_ast(env, def->variant_of));
         } else {
             errx(1, "Unreachable");
@@ -1344,7 +1343,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);
                 *block = wrong_tag;
-                insert_failure(env, block, &ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
+                insert_failure(env, block, ast->file, ast->start, ast->end,
+                               "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
                                fielded_t, obj);
                 if (*block) gcc_jump(*block, loc, *block);
 
@@ -1421,7 +1421,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val_opt, gcc_null(env->ctx, gcc_get_ptr_type(gcc_value_t))),
                                if_nil, if_nonnil);
             *block = if_nil;
-            insert_failure(env, block, &ast->span, "Error: this table does not have the given key: %#s",
+            insert_failure(env, block, ast->file, ast->start, ast->end,
+                           "Error: this table does not have the given key: %#s",
                            Match(t, TableType)->key_type, key_rval);
 
             *block = if_nonnil;
@@ -2080,9 +2081,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *message = Match(ast, Fail)->message;
         if (message) {
             gcc_rvalue_t *msg = compile_expr(env, block, message);
-            insert_failure(env, block, &ast->span, "%#s", get_type(env, message), msg);
+            insert_failure(env, block, ast->file, ast->start, ast->end, "%#s", get_type(env, message), msg);
         } else {
-            insert_failure(env, block, &ast->span, "A failure occurred");
+            insert_failure(env, block, ast->file, ast->start, ast->end, "A failure occurred");
         }
         return NULL;
     }
@@ -2094,8 +2095,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
         gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
         if (!test->skip_source) {
-            const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
-            const char* plain_src = heap_strf(">>> %.*s\n", (int)(test->expr->span.end - test->expr->span.start), test->expr->span.start);
+            const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m\n", (int)(test->expr->end - test->expr->start), test->expr->start);
+            const char* plain_src = heap_strf(">>> %.*s\n", (int)(test->expr->end - test->expr->start), test->expr->start);
             gcc_rvalue_t *source = ternary(block, use_color, gcc_type(env->ctx, STRING), gcc_str(env->ctx, color_src), gcc_str(env->ctx, plain_src));
             gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, source, stderr_val)); 
         }
@@ -2109,7 +2110,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *func = gcc_block_func(*block);
             gcc_lvalue_t *ret_var = gcc_local(func, loc, sss_type_to_gcc(env, ret_t), "_ret");
             gcc_assign(*block, loc, ret_var, compile_expr(env, block, ret));
-            const char *info = heap_strf("%.*s = ", (int)(ret->span.end - ret->span.start), ret->span.start);
+            const char *info = heap_strf("%.*s = ", (int)(ret->end - ret->start), ret->start);
             print_doctest_value(env, block, loc, info, ret_t, gcc_rval(ret_var));
             gcc_return(*block, loc, gcc_rval(ret_var));
             *block = NULL;
@@ -2141,7 +2142,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
                 // END UNSAFE
                 lhs_t = get_type(env, lhs_ast);
-                info = heap_strf("%.*s = ", (int)(lhs_ast->span.end - lhs_ast->span.start), lhs_ast->span.start);
+                info = heap_strf("%.*s = ", (int)(lhs_ast->end - lhs_ast->start), lhs_ast->start);
                 break;
             }
             case Assign: {
@@ -2149,13 +2150,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *first = ith(assign->targets, 0);
                 if (length(assign->targets) == 1) {
                     lhs_t = get_type(env, first);
-                    info = heap_strf("%.*s = ", (int)(first->span.end - first->span.start), first->span.start);
+                    info = heap_strf("%.*s = ", (int)(first->end - first->start), first->start);
                     gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=LIST(sss_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
                 } else {
                     ast_t *last = ith(assign->targets, length(assign->targets)-1);
-                    info = heap_strf("%.*s = ", (int)(last->span.end - first->span.start), first->span.start);
+                    info = heap_strf("%.*s = ", (int)(last->end - first->start), first->start);
                     NEW_LIST(ast_t*, members);
                     for (int64_t i = 0; i < length(assign->targets); i++) {
                         APPEND(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
@@ -2197,7 +2198,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         gcc_zero(env->ctx, gcc_type(env->ctx, INT))),
                     done_block, fail_block);
                 gcc_assign(fail_block, loc, cord_var, gcc_callx(env->ctx, loc, get_function(env, "CORD_to_char_star"), gcc_rval(cord_var)));
-                insert_failure(env, &fail_block, &ast->span, "Test failed!\nExpected: %s \nBut got:  %#s ",
+                insert_failure(env, &fail_block, ast->file, ast->start, ast->end,
+                               "Test failed!\nExpected: %s \nBut got:  %#s ",
                                test->output, Type(PointerType, Type(CStringCharType)),
                                gcc_rval(cord_var));
                 *block = done_block;

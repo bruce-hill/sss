@@ -19,9 +19,9 @@
 #define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
 #define gcc_int64(ctx,i) gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), i)
 
-#define ast_loc(env, ast) ((ast) && (ast)->span.start ? gcc_new_location((env)->ctx, (ast)->span.file->filename,\
-        (int)sss_get_line_number((ast)->span.file, (ast)->span.start),\
-        (int)sss_get_line_column((ast)->span.file, (ast)->span.start)) : NULL)
+#define ast_loc(env, ast) ((ast) && (ast)->start ? gcc_new_location((env)->ctx, (ast)->file->filename,\
+        (int)sss_get_line_number((ast)->file, (ast)->start),\
+        (int)sss_get_line_column((ast)->file, (ast)->start)) : NULL)
 
 #define TABLE_ENTRIES_FIELD 0
 #define TABLE_BUCKETS_FIELD 1
@@ -76,7 +76,7 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed);
 // Compile all the deferred statements up to a given point
 void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer);
 // Ensure array is flat (stride == 1) for easy comparisons/hashes
-void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...);
+void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const char *start, const char *end, const char *user_fmt, ...);
 // Add a byte offset to a pointer
 gcc_rvalue_t *pointer_offset(env_t *env, gcc_type_t *ptr_type, gcc_rvalue_t *ptr, gcc_rvalue_t *offset);
 

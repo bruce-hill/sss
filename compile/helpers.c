@@ -13,6 +13,7 @@
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 #include "../libsss/hashmap.h"
+#include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
@@ -602,7 +603,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);
                 *block = wrong_tag;
-                insert_failure(env, block, &ast->span, "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
+                insert_failure(env, block, ast->file, ast->start, ast->end,
+                               "Error: this was expected to have the '%s' tag, but instead it's %#s", access->field,
                                fielded_t, gcc_rval(fielded_lval));
                 if (*block) gcc_jump(*block, loc, *block);
 
@@ -680,14 +682,14 @@ void insert_defers(env_t *env, gcc_block_t **block, defer_t *stop_at_defer)
     }
 }
 
-void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *user_fmt, ...)
+void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const char *start, const char *end, const char *user_fmt, ...)
 {
     char *info = NULL, *info_nocolor = NULL;
     {
         char *buf = NULL; size_t size = 0;
         FILE *f = open_memstream(&info, &size);
-        if (span)
-            fprint_span(f, *span, "\x1b[31;1m", 2, true);
+        if (file && start && end)
+            fprint_span(f, file, start, end, "\x1b[31;1m", 2, true);
         fflush(f);
         info = heap_strn(buf, size);
         fclose(f);
@@ -696,8 +698,8 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     {
         char *buf = NULL; size_t size = 0;
         FILE *f = open_memstream(&buf, &size);
-        if (span)
-            fprint_span(f, *span, NULL, 2, false);
+        if (file && start && end)
+            fprint_span(f, file, start, end, NULL, 2, false);
         fflush(f);
         info_nocolor = heap_strn(buf, size);
         fclose(f);
@@ -712,19 +714,19 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
                 *carry_on = gcc_new_block(func, fresh("fmt_set"));
     gcc_jump_condition(*block, NULL, get_binding(env, "USE_COLOR")->rval, use_color, no_color);
 
-    if (span) {
+    if (file && start && end) {
         gcc_assign(no_color, NULL, fmt_var, gcc_str(
             env->ctx, heap_strf("%s:%ld.%ld: %s\n\n%s",
-                span->file->relative_filename,
-                sss_get_line_number(span->file, span->start),
-                sss_get_line_column(span->file, span->start),
+                file->relative_filename,
+                sss_get_line_number(file, start),
+                sss_get_line_column(file, start),
                 user_fmt,
                 info_nocolor)));
         gcc_assign(use_color, NULL, fmt_var, gcc_str(
             env->ctx, heap_strf("\x1b[31;1;7m%s:%ld.%ld: %s\x1b[m\n\n%s",
-                span->file->relative_filename,
-                sss_get_line_number(span->file, span->start),
-                sss_get_line_column(span->file, span->start),
+                file->relative_filename,
+                sss_get_line_number(file, start),
+                sss_get_line_column(file, start),
                 user_fmt,
                 info)));
     } else {

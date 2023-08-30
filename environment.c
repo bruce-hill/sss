@@ -14,6 +14,7 @@
 #include "environment.h"
 #include "compile/compile.h"
 #include "compile/libgccjit_abbrev.h"
+#include "span.h"
 
 #define load_global_func(env, t_ret, name, ...) _load_global_func(env, t_ret, name, \
                  sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
@@ -550,9 +551,9 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 {
     if (isatty(STDERR_FILENO) && !getenv("NO_COLOR"))
         fputs("\x1b[31;7;1m", stderr);
-    if (ast && ast->span.file)
-        fprintf(stderr, "%s:%ld.%ld: ", ast->span.file->relative_filename, sss_get_line_number(ast->span.file, ast->span.start),
-                sss_get_line_column(ast->span.file, ast->span.start));
+    if (ast && ast->file)
+        fprintf(stderr, "%s:%ld.%ld: ", ast->file->relative_filename, sss_get_line_number(ast->file, ast->start),
+                sss_get_line_column(ast->file, ast->start));
     va_list args;
     va_start(args, fmt);
     vfprintf(stderr, fmt, args);
@@ -561,7 +562,7 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
         fputs(" \x1b[m", stderr);
     fputs("\n\n", stderr);
     if (ast)
-        fprint_span(stderr, ast->span, "\x1b[31;1m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
+        fprint_span(stderr, ast->file, ast->start, ast->end, "\x1b[31;1m", 2, isatty(STDERR_FILENO) && !getenv("NO_COLOR"));
 
     if (env->on_err)
         longjmp(*env->on_err, 1);

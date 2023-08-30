@@ -69,7 +69,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                 if ((flags & ARG_NAMES) && fn->arg_defaults) {
                     ast_t *def = LIST_ITEM(fn->arg_defaults, i);
                     if (def) {
-                        CORD_sprintf(&c, "%r=%.*s", c, (int)(def->span.end - def->span.start), def->span.start);
+                        CORD_sprintf(&c, "%r=%.*s", c, (int)(def->end - def->start), def->start);
                         continue;
                     }
                 }

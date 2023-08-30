@@ -90,7 +90,8 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
                     *done = gcc_new_block(func, fresh("done"));
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(dest), gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))),
                            if_missing, done);
-        insert_failure(env, &if_missing, &key_ast->span, "Error: this table does not have the given key: %#s",
+        insert_failure(env, &if_missing, key_ast->file, key_ast->start, key_ast->end,
+                       "Error: this table does not have the given key: %#s",
                        needed_key_t, gcc_rval(key_lval));
 
         *block = done;

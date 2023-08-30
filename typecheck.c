@@ -101,7 +101,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto struct_ = Match(ast, TypeStruct);
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
-        sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
+        sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(ast->file, ast->start),
                              .name=struct_->name, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
         if (struct_->name) {
             env = fresh_scope(env);
@@ -139,7 +139,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .filename=sss_get_file_pos(ast->span.file, ast->span.start),
+        return Type(TaggedUnionType, .filename=sss_get_file_pos(ast->file, ast->start),
                     .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeTypeAST: {

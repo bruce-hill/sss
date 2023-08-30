@@ -40,7 +40,8 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
                                                        gcc_zero(env->ctx, gcc_type(env->ctx, INT64))),
                            if_zero, done);
 
-        insert_failure(env, &if_zero, &ast->span, "This range was created with a step of zero, which is not allowed");
+        insert_failure(env, &if_zero, ast->file, ast->start, ast->end,
+                       "This range was created with a step of zero, which is not allowed");
         *block = done;
     }
 
