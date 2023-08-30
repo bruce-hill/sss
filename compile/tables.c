@@ -338,15 +338,17 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
     return gcc_rval(table_var);
 }
 
-void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t)
+void compile_table_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    gcc_func_t *fputs_fn = get_function(env, "fputs");
-
-#define WRITE_LITERAL(block, str) gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
-#define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
-
+    gcc_func_t *cord_cat_fn = get_function(env, "CORD_cat");
     gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *cord = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "cord");
+    gcc_assign(*block, NULL, cord, gcc_null(env->ctx, gcc_type(env->ctx, STRING)));
+
+#define APPEND_CORD(b, to_append) gcc_assign(b, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_fn, gcc_rval(cord), to_append))
+#define APPEND_LITERAL(b, str) gcc_assign(b, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_fn, gcc_rval(cord), gcc_str(env->ctx, str)))
+#define APPEND_COLOR_LITERAL(block, str) maybe_append_cord(env, block, cord, color, str)
 
     sss_type_t *entry_t = table_entry_type(t);
 
@@ -362,24 +364,24 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, UINT32))),
                        is_not_empty, is_empty);
     *block = is_empty;
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "{");
-    COLOR_LITERAL(block, "\x1b[0;2;36m");
-    WRITE_LITERAL(*block, ":");
-    COLOR_LITERAL(block, "\x1b[0;36m");
-    WRITE_LITERAL(*block, type_to_string(Match(t, TableType)->key_type));
-    COLOR_LITERAL(block, "\x1b[33m");
-    WRITE_LITERAL(*block, "=>");
-    COLOR_LITERAL(block, "\x1b[36m");
-    WRITE_LITERAL(*block, type_to_string(Match(t, TableType)->value_type));
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "}");
-    gcc_return_void(*block, NULL);
+    APPEND_COLOR_LITERAL(block, "\x1b[m");
+    APPEND_LITERAL(*block, "{");
+    APPEND_COLOR_LITERAL(block, "\x1b[0;2;36m");
+    APPEND_LITERAL(*block, ":");
+    APPEND_COLOR_LITERAL(block, "\x1b[0;36m");
+    APPEND_LITERAL(*block, type_to_string(Match(t, TableType)->key_type));
+    APPEND_COLOR_LITERAL(block, "\x1b[33m");
+    APPEND_LITERAL(*block, "=>");
+    APPEND_COLOR_LITERAL(block, "\x1b[36m");
+    APPEND_LITERAL(*block, type_to_string(Match(t, TableType)->value_type));
+    APPEND_COLOR_LITERAL(block, "\x1b[m");
+    APPEND_LITERAL(*block, "}");
+    gcc_return(*block, NULL, gcc_rval(cord));
 
     *block = is_not_empty;
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
-    COLOR_LITERAL(block, "\x1b[m");
-    WRITE_LITERAL(*block, "{");
+    APPEND_COLOR_LITERAL(block, "\x1b[m");
+    APPEND_LITERAL(*block, "{");
 
     gcc_block_t *add_comma = gcc_new_block(func, fresh("add_comma"));
     gcc_block_t *add_next_entry = gcc_new_block(func, fresh("next_entry"));
@@ -400,18 +402,18 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
     gcc_rvalue_t *entry = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
     // print(key) print("=>") print(value)
     sss_type_t *key_type = Match(t, TableType)->key_type;
-    gcc_func_t *key_print = get_print_func(env, key_type);
+    gcc_func_t *key_cord_fn = get_cord_func(env, key_type);
     gcc_struct_t *entry_struct = gcc_type_if_struct(sss_type_to_gcc(env, entry_t));
     gcc_rvalue_t *key = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 0));
-    gcc_eval(add_next_entry, NULL, gcc_callx(env->ctx, NULL, key_print, key, file, rec, color));
+    APPEND_CORD(add_next_entry, gcc_callx(env->ctx, NULL, key_cord_fn, key, rec, color));
     gcc_block_t *rest_of_entry = add_next_entry;
-    COLOR_LITERAL(&rest_of_entry, "\x1b[0;33m");
-    WRITE_LITERAL(rest_of_entry, "=>");
-    COLOR_LITERAL(&rest_of_entry, "\x1b[m");
+    APPEND_COLOR_LITERAL(&rest_of_entry, "\x1b[0;33m");
+    APPEND_LITERAL(rest_of_entry, "=>");
+    APPEND_COLOR_LITERAL(&rest_of_entry, "\x1b[m");
     gcc_rvalue_t *value = gcc_rvalue_access_field(entry, NULL, gcc_get_field(entry_struct, 1));
     sss_type_t *value_type = Match(t, TableType)->value_type;
-    gcc_func_t *value_print = get_print_func(env, value_type);
-    gcc_eval(rest_of_entry, NULL, gcc_callx(env->ctx, NULL, value_print, value, file, rec, color));
+    gcc_func_t *value_cord_fn = get_cord_func(env, value_type);
+    APPEND_CORD(rest_of_entry, gcc_callx(env->ctx, NULL, value_cord_fn, value, rec, color));
     
     // i += 1
     gcc_update(rest_of_entry, NULL, i, GCC_BINOP_PLUS, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
@@ -424,52 +426,53 @@ void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
                   add_comma, done_with_entries);
 
     // add_comma:
-    COLOR_LITERAL(&add_comma, "\x1b[m");
-    WRITE_LITERAL(add_comma, ", ");
+    APPEND_COLOR_LITERAL(&add_comma, "\x1b[m");
+    APPEND_LITERAL(add_comma, ", ");
 
     // goto add_next_entry;
     gcc_jump(add_comma, NULL, add_next_entry);
 
     // done_with_entries:
-    gcc_block_t *print_fallback = gcc_new_block(func, fresh("print_fallback")),
+    gcc_block_t *add_fallback = gcc_new_block(func, fresh("add_fallback")),
                 *check_default = gcc_new_block(func, fresh("check_default")),
-                *print_default = gcc_new_block(func, fresh("print_default")),
+                *add_default = gcc_new_block(func, fresh("add_default")),
                 *done_with_metadata = gcc_new_block(func, fresh("done_with_metadata"));
     gcc_rvalue_t *fallback = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_FALLBACK_FIELD));
     gcc_rvalue_t *has_fallback = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, fallback, gcc_null(env->ctx, gcc_get_ptr_type(gcc_t)));
-    gcc_jump_condition(done_with_entries, NULL, has_fallback, print_fallback, check_default);
+    gcc_jump_condition(done_with_entries, NULL, has_fallback, add_fallback, check_default);
 
-    // Print fallback:
-    COLOR_LITERAL(&print_fallback, "\x1b[0;33m");
-    WRITE_LITERAL(print_fallback, "; ");
-    COLOR_LITERAL(&print_fallback, "\x1b[32m");
-    WRITE_LITERAL(print_fallback, "fallback=");
-    COLOR_LITERAL(&print_fallback, "\x1b[m");
-    gcc_eval(print_fallback, NULL, gcc_callx(env->ctx, NULL, func, gcc_rval(gcc_rvalue_dereference(fallback, NULL)), file, rec, color));
-    gcc_jump(print_fallback, NULL, check_default);
+    // Add fallback:
+    APPEND_COLOR_LITERAL(&add_fallback, "\x1b[0;33m");
+    APPEND_LITERAL(add_fallback, "; ");
+    APPEND_COLOR_LITERAL(&add_fallback, "\x1b[32m");
+    APPEND_LITERAL(add_fallback, "fallback=");
+    APPEND_COLOR_LITERAL(&add_fallback, "\x1b[m");
+    APPEND_CORD(add_fallback, gcc_callx(env->ctx, NULL, func, gcc_rval(gcc_rvalue_dereference(fallback, NULL)), rec, color));
+    gcc_jump(add_fallback, NULL, check_default);
 
     // Check default
     sss_type_t *default_t = Match(t, TableType)->value_type;
     gcc_type_t *default_gcc_t = sss_type_to_gcc(env, default_t);
     gcc_rvalue_t *def = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD));
     gcc_rvalue_t *has_default = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_NE, def, gcc_null(env->ctx, gcc_get_ptr_type(default_gcc_t)));
-    gcc_jump_condition(check_default, NULL, has_default, print_default, done_with_metadata);
+    gcc_jump_condition(check_default, NULL, has_default, add_default, done_with_metadata);
 
-    // Print default:
-    COLOR_LITERAL(&print_default, "\x1b[0;33m");
-    WRITE_LITERAL(print_default, "; ");
-    COLOR_LITERAL(&print_default, "\x1b[32m");
-    WRITE_LITERAL(print_default, "default=");
-    COLOR_LITERAL(&print_default, "\x1b[m");
-    gcc_func_t *def_print_func = get_print_func(env, default_t);
-    gcc_eval(print_default, NULL, gcc_callx(env->ctx, NULL, def_print_func, gcc_rval(gcc_rvalue_dereference(def, NULL)), file, rec, color));
-    gcc_jump(print_default, NULL, done_with_metadata);
+    // Add default:
+    APPEND_COLOR_LITERAL(&add_default, "\x1b[0;33m");
+    APPEND_LITERAL(add_default, "; ");
+    APPEND_COLOR_LITERAL(&add_default, "\x1b[32m");
+    APPEND_LITERAL(add_default, "default=");
+    APPEND_COLOR_LITERAL(&add_default, "\x1b[m");
+    gcc_func_t *def_cord_fn = get_cord_func(env, default_t);
+    APPEND_CORD(add_default, gcc_callx(env->ctx, NULL, def_cord_fn, gcc_rval(gcc_rvalue_dereference(def, NULL)), rec, color));
+    gcc_jump(add_default, NULL, done_with_metadata);
 
-    COLOR_LITERAL(&done_with_metadata, "\x1b[m");
-    WRITE_LITERAL(done_with_metadata, "}");
+    APPEND_COLOR_LITERAL(&done_with_metadata, "\x1b[m");
+    APPEND_LITERAL(done_with_metadata, "}");
 
-    gcc_return_void(done_with_metadata, NULL);
-#undef WRITE_LITERAL 
-#undef COLOR_LITERAL 
+    gcc_return(done_with_metadata, NULL, gcc_rval(cord));
+#undef APPEND_COLOR_LITERAL 
+#undef APPEND_LITERAL 
+#undef APPEND_CORD 
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

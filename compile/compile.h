@@ -51,10 +51,10 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t);
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t);
 // Check whether a value is truthy or not
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
-// Maybe print a string
-void maybe_print_str(env_t *env, gcc_block_t **block, gcc_rvalue_t *do_print, gcc_rvalue_t *file, const char *str);
-// Get a function to convert an object of a given type to a string
-gcc_func_t *get_print_func(env_t *env, sss_type_t *t);
+// Maybe append a string to a cord
+void maybe_append_cord(env_t *env, gcc_block_t **block, gcc_lvalue_t *cord, gcc_rvalue_t *do_append, const char *str);
+// Get a function to convert an object of a given type to a cord
+gcc_func_t *get_cord_func(env_t *env, sss_type_t *t);
 // Get a hash function for a type
 gcc_func_t *get_hash_func(env_t *env, sss_type_t *t);
 // Compare two values (returns [-1,0,1])
@@ -125,7 +125,7 @@ gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr);
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t *arr);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
-void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
+void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
 gcc_rvalue_t *array_contains(env_t *env, gcc_block_t **block, ast_t *array, ast_t *member);
 binding_t *get_array_method(env_t *env, sss_type_t *t, const char *method_name);
 void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array);
@@ -136,7 +136,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast, bool autocreate);
 gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
 binding_t *get_table_method(env_t *env, sss_type_t *t, const char *method_name);
-void compile_table_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
+void compile_table_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t);
 void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr);
 
 // ============================== ranges.c ==============================

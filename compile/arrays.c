@@ -537,20 +537,22 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
     return gcc_rval(array_var);
 }
 
-void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *file, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t)
+void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj, gcc_rvalue_t *rec, gcc_rvalue_t *color, sss_type_t *t)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    gcc_func_t *fputs_fn = get_function(env, "fputs");
+    gcc_func_t *cord_cat_fn = get_function(env, "CORD_cat");
+    gcc_func_t *func = gcc_block_func(*block);
+    gcc_lvalue_t *cord = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "cord");
+    gcc_assign(*block, NULL, cord, gcc_null(env->ctx, gcc_type(env->ctx, STRING)));
 
-#define WRITE_LITERAL(b, str) gcc_eval(b, NULL, gcc_callx(env->ctx, NULL, fputs_fn, gcc_str(env->ctx, str), file))
-#define COLOR_LITERAL(block, str) maybe_print_str(env, block, color, file, str)
+#define APPEND_CORD(b, to_append) gcc_assign(b, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_fn, gcc_rval(cord), to_append))
+#define APPEND_LITERAL(b, str) gcc_assign(b, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_fn, gcc_rval(cord), gcc_str(env->ctx, str)))
+#define APPEND_COLOR_LITERAL(block, str) maybe_append_cord(env, block, cord, color, str)
 
     sss_type_t *item_type = get_item_type(t);
     bool is_string = (item_type->tag == CharType);
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
-
-    gcc_func_t *func = gcc_block_func(*block);
 
     if (!is_string) {
         gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
@@ -558,25 +560,25 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, INT32))),
                            is_not_empty, is_empty);
         *block = is_empty;
-        COLOR_LITERAL(block, "\x1b[m");
-        WRITE_LITERAL(*block, "[");
-        COLOR_LITERAL(block, "\x1b[0;2;36m");
-        WRITE_LITERAL(*block, ":");
-        COLOR_LITERAL(block, "\x1b[0;36m");
-        WRITE_LITERAL(*block, type_to_string_concise(item_type));
-        COLOR_LITERAL(block, "\x1b[m");
-        WRITE_LITERAL(*block, "]");
-        gcc_return_void(*block, NULL);
+        APPEND_COLOR_LITERAL(block, "\x1b[m");
+        APPEND_LITERAL(*block, "[");
+        APPEND_COLOR_LITERAL(block, "\x1b[0;2;36m");
+        APPEND_LITERAL(*block, ":");
+        APPEND_COLOR_LITERAL(block, "\x1b[0;36m");
+        APPEND_LITERAL(*block, type_to_string_concise(item_type));
+        APPEND_COLOR_LITERAL(block, "\x1b[m");
+        APPEND_LITERAL(*block, "]");
+        gcc_return(*block, NULL, gcc_rval(cord));
 
         *block = is_not_empty;
     }
 
     if (is_string) {
-        COLOR_LITERAL(block, "\x1b[0;35m");
-        WRITE_LITERAL(*block, "\"");
+        APPEND_COLOR_LITERAL(block, "\x1b[0;35m");
+        APPEND_LITERAL(*block, "\"");
     } else {
-        COLOR_LITERAL(block, "\x1b[m");
-        WRITE_LITERAL(*block, "[");
+        APPEND_COLOR_LITERAL(block, "\x1b[m");
+        APPEND_LITERAL(*block, "[");
     }
 
     // i = 1
@@ -619,9 +621,9 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
             if (!escape_str) continue;
             gcc_block_t *case_block = gcc_new_block(func, fresh("char_escape"));
             ADD_CASE(case_block, i, i);
-            COLOR_LITERAL(&case_block, "\x1b[1;34m");
-            WRITE_LITERAL(case_block, escape_str);
-            COLOR_LITERAL(&case_block, "\x1b[0;35m");
+            APPEND_COLOR_LITERAL(&case_block, "\x1b[1;34m");
+            APPEND_LITERAL(case_block, escape_str);
+            APPEND_COLOR_LITERAL(&case_block, "\x1b[0;35m");
             gcc_jump(case_block, NULL, continue_next_item);
         }
 
@@ -631,23 +633,23 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
         ADD_CASE(hex_block, '\x0E', '\x1A');
         ADD_CASE(hex_block, '\x1C', '\x1F');
         ADD_CASE(hex_block, '\x7F', '\x7F');
-        COLOR_LITERAL(&hex_block, "\x1b[1;34m");
-        gcc_func_t *fprintf_fn = get_function(env, "fprintf");
-        gcc_eval(hex_block, NULL, gcc_callx(env->ctx, NULL, fprintf_fn, file, gcc_str(env->ctx, "\\x%02X"), item));
-        COLOR_LITERAL(&hex_block, "\x1b[0;35m");
+        APPEND_COLOR_LITERAL(&hex_block, "\x1b[1;34m");
+        gcc_func_t *cord_sprintf_fn = get_function(env, "CORD_sprintf");
+        gcc_eval(hex_block, NULL, gcc_callx(env->ctx, NULL, cord_sprintf_fn, gcc_lvalue_address(cord, NULL), gcc_str(env->ctx, "%r\\x%02X"), gcc_rval(cord), item));
+        APPEND_COLOR_LITERAL(&hex_block, "\x1b[0;35m");
         gcc_jump(hex_block, NULL, continue_next_item);
 #undef ADD_CASE
 
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
         gcc_switch(add_next_item, NULL, item, default_block, length(cases), cases[0]);
 
-        gcc_func_t *fputc_fn = get_function(env, "fputc");
-        gcc_eval(default_block, NULL, gcc_callx(env->ctx, NULL, fputc_fn, item, file));
+        gcc_func_t *cord_cat_char_fn = get_function(env, "CORD_cat_char");
+        gcc_assign(default_block, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_char_fn, gcc_rval(cord), item));
         gcc_jump(default_block, NULL, continue_next_item);
     } else {
-        gcc_func_t *item_print = get_print_func(env, item_type);
-        assert(item_print);
-        gcc_eval(continue_next_item, NULL, gcc_callx(env->ctx, NULL, item_print, item, file, rec, color));
+        gcc_func_t *item_cord_fn = get_cord_func(env, item_type);
+        assert(item_cord_fn);
+        APPEND_CORD(continue_next_item, gcc_callx(env->ctx, NULL, item_cord_fn, item, rec, color));
     }
     
     // i += 1
@@ -662,8 +664,8 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // add_comma:
     if (!is_string) {
-        COLOR_LITERAL(&add_comma, "\x1b[m");
-        WRITE_LITERAL(add_comma, ", ");
+        APPEND_COLOR_LITERAL(&add_comma, "\x1b[m");
+        APPEND_LITERAL(add_comma, ", ");
     }
 
     // goto add_next_item;
@@ -671,17 +673,18 @@ void compile_array_print_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj
 
     // end:
     if (is_string) {
-        COLOR_LITERAL(&end, "\x1b[35m");
-        WRITE_LITERAL(end, "\"");
-        COLOR_LITERAL(&end, "\x1b[m");
+        APPEND_COLOR_LITERAL(&end, "\x1b[35m");
+        APPEND_LITERAL(end, "\"");
+        APPEND_COLOR_LITERAL(&end, "\x1b[m");
     } else {
-        COLOR_LITERAL(&end, "\x1b[m");
-        WRITE_LITERAL(end, "]");
+        APPEND_COLOR_LITERAL(&end, "\x1b[m");
+        APPEND_LITERAL(end, "]");
     }
 
-    gcc_return_void(end, NULL);
-#undef WRITE_LITERAL 
-#undef COLOR_LITERAL 
+    gcc_return(end, NULL, gcc_rval(cord));
+#undef APPEND_COLOR_LITERAL
+#undef APPEND_LITERAL
+#undef APPEND_CORD
 }
 
 #define AS_VOID_PTR(x) gcc_cast(env->ctx, NULL, x, gcc_type(env->ctx, VOID_PTR))

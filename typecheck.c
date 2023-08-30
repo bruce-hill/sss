@@ -508,8 +508,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             (void)get_hash_func(env, fielded_t); 
         else if (streq(access->field, "__compare"))
             (void)get_compare_func(env, fielded_t); 
-        else if (streq(access->field, "__print"))
-            (void)get_print_func(env, fielded_t); 
+        else if (streq(access->field, "__cord"))
+            (void)get_cord_func(env, fielded_t); 
         bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
 
         sss_type_t *value_t = fielded_t;

@@ -209,33 +209,16 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
 static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
 {
     gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
-    gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
-    gcc_func_t *func = gcc_block_func(*block);
-    gcc_block_t *use_dim = gcc_new_block(func, fresh("use_dim")),
-                *no_dim = gcc_new_block(func, fresh("no_dim")),
-                *done_with_dim = gcc_new_block(func, "done_with_dim");
-    gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim, no_dim);
-
-    gcc_eval(use_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf("\x1b[0;2m%s\x1b[m", info)), stderr_val)); 
-    gcc_jump(use_dim, loc, done_with_dim);
-
-    gcc_eval(no_dim, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, info), stderr_val)); 
-    gcc_jump(no_dim, loc, done_with_dim);
-
-    *block = done_with_dim;
-    gcc_func_t *print_fn = get_print_func(env, t);
-    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, print_fn, rval, stderr_val, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                                    get_binding(env, "USE_COLOR")->rval));
-
-    gcc_block_t *use_dim_type = gcc_new_block(func, fresh("use_dim_type")),
-                *no_dim_type = gcc_new_block(func, fresh("no_dim_type")),
-                *done_with_type = gcc_new_block(func, fresh("done_with_type"));
-    gcc_jump_condition(*block, loc, get_binding(env, "USE_COLOR")->rval, use_dim_type, no_dim_type);
-    gcc_eval(use_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" \x1b[0;2m: %s\x1b[m\n", type_to_string_concise(t))), stderr_val)); 
-    gcc_jump(use_dim_type, loc, done_with_type);
-    gcc_eval(no_dim_type, loc, gcc_callx(env->ctx, loc, fputs_fn, gcc_str(env->ctx, heap_strf(" : %s\n", type_to_string_concise(t))), stderr_val)); 
-    gcc_jump(no_dim_type, loc, done_with_type);
-    *block = done_with_type;
+    gcc_rvalue_t *fmt = ternary(block, get_binding(env, "USE_COLOR")->rval, gcc_type(env->ctx, STRING),
+                                gcc_str(env->ctx, "\x1b[0;2m%s\x1b[m%r \x1b[0;2m: %s\x1b[m\n"),
+                                gcc_str(env->ctx, "%s%r : %s\n"));
+    gcc_func_t *cord_fprintf_fn = get_function(env, "CORD_fprintf");
+    gcc_func_t *cord_fn = get_cord_func(env, t);
+    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, cord_fprintf_fn,
+        stderr_val, fmt, gcc_str(env->ctx, info), 
+        gcc_callx(env->ctx, loc, cord_fn, rval, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                  get_binding(env, "USE_COLOR")->rval),
+        gcc_str(env->ctx, type_to_string_concise(t))));
 }
 
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
@@ -701,41 +684,25 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return compile_expr(env, block, LIST_ITEM(chunks, 0));
         }
 
-        gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
-        gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
-        gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
-        gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
-        gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
-
-        // char *buf; size_t size;
-        // FILE *f = open_memstream(&buf, &size);
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *buf_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "buf");
-        gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), "size");
-        gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), "file");
-        gcc_assign(*block, loc, file_var,
-                   gcc_callx(env->ctx, loc, open_memstream_fn, gcc_lvalue_address(buf_var, loc), gcc_lvalue_address(size_var, loc)));
-        gcc_rvalue_t *file = gcc_rval(file_var);
+        gcc_lvalue_t *cord_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "cord");
+        gcc_assign(*block, loc, cord_var, gcc_null(env->ctx, gcc_type(env->ctx, STRING)));
+        gcc_func_t *cord_cat_fn = get_function(env, "CORD_cat");
+#define APPEND_CORD(block, c) gcc_assign(block, loc, cord_var, gcc_callx(env->ctx, loc, cord_cat_fn, gcc_rval(cord_var), c))
 
         foreach (chunks, chunk, _) {
-            gcc_loc_t *chunk_loc = ast_loc(env, *chunk);
+            loc = ast_loc(env, *chunk);
             if ((*chunk)->tag == StringLiteral) {
                 const char* str = Match(*chunk, StringLiteral)->str;
-                gcc_eval(*block, chunk_loc,
-                         gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, str), file));
+                APPEND_CORD(*block, gcc_str(env->ctx, str));
                 continue;
             }
             assert((*chunk)->tag == Interp);
             auto interp = Match(*chunk, Interp);
             if (interp->labelled) {
-                char *buf; size_t size;
-                FILE *f = open_memstream(&buf, &size);
                 span_t span = interp->value->span;
-                fwrite(span.start, 1, (size_t)(span.end - span.start), f);
-                fprintf(f, ": ");
-                fflush(f);
-                gcc_eval(*block, chunk_loc, gcc_callx(env->ctx, chunk_loc, fputs_fn, gcc_str(env->ctx, buf), file));
-                fclose(f);
+                const char *label = heap_strf("%.*s: ", (int)(span.end - span.start), span.start);
+                APPEND_CORD(*block, gcc_str(env->ctx, label));
             }
 
             ast_t *interp_value = interp->value;
@@ -747,7 +714,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 t = Type(ArrayType, .item_type=Type(CharType));
             }
 
-            gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp_str");
+            gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp");
             gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
             gcc_rvalue_t *obj = gcc_rval(interp_var);
 
@@ -782,13 +749,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                               add_next_item, done);
 
                 // add_next_item:
-                // fputc(items[i*stride], file)
-                gcc_func_t *fputc_fn = get_function(env, "fputc");
-                gcc_eval(add_next_item, loc, gcc_callx(
-                        env->ctx, loc, fputc_fn,
+                // cord = CORD_cat_char(cord, items[i*stride])
+                gcc_func_t *cord_cat_char_fn = get_function(env, "CORD_cat_char");
+                gcc_assign(add_next_item, loc, cord_var, gcc_callx(
+                        env->ctx, loc, cord_cat_char_fn,
+                        gcc_rval(cord_var),
                         gcc_rval(gcc_array_access(env->ctx, loc, items,
-                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, gcc_rval(i), gcc_cast(env->ctx, loc, stride, i32_t)))),
-                        gcc_rval(file_var)));
+                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, gcc_rval(i), gcc_cast(env->ctx, loc, stride, i32_t))))));
                 
                 // i += 1
                 gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i32_t));
@@ -800,31 +767,22 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 *block = done;
                 continue;
             }
-            gcc_func_t *print_fn = get_print_func(env, t);
-            assert(print_fn);
+            gcc_func_t *cord_fn = get_cord_func(env, t);
+            assert(cord_fn);
             
-            gcc_rvalue_t *print_call = gcc_callx(
-                env->ctx, chunk_loc, print_fn, obj, file, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false));
-            assert(print_call);
-            gcc_eval(*block, chunk_loc, print_call);
+            APPEND_CORD(*block, gcc_callx(
+                env->ctx, loc, cord_fn, obj, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false)));
         }
-        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
+        loc = ast_loc(env, ast);
+        gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
+        gcc_func_t *cord_to_char_star_fn = get_function(env, "CORD_to_char_star");
+        gcc_assign(*block, loc, char_star, gcc_callx(env->ctx, loc, cord_to_char_star_fn, gcc_rval(cord_var)));
+        gcc_func_t *strlen_fn = get_function(env, "strlen");
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, "_str_final");
-        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_rval(size_var), i32_t);
-
-        gcc_func_t *alloc_fn = hget(&env->global->funcs, "GC_malloc_atomic", gcc_func_t*);
-        gcc_rvalue_t *size = gcc_rval(size_var);
-        gcc_rvalue_t *str = gcc_callx(
-            env->ctx, loc, alloc_fn,
-            gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
-                          size, gcc_one(env->ctx, gcc_type(env->ctx, SIZE))));
-        gcc_func_t *memcpy_fn = hget(&env->global->funcs, "memcpy", gcc_func_t*);
-        str = gcc_callx(env->ctx, loc, memcpy_fn, str, gcc_rval(buf_var), size);
-        str = gcc_cast(env->ctx, loc, str, gcc_type(env->ctx, STRING));
-        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, str, len32, gcc_one(env->ctx, i16_t)));
-        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
-        gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
+        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, strlen_fn, gcc_rval(char_star)), i32_t);
+        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, gcc_rval(char_star), len32, gcc_one(env->ctx, i16_t)));
+#undef APPEND_CORD
         return gcc_rval(str_struct_var);
     }
     case Array: {
@@ -1047,8 +1005,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 (void)get_hash_func(env, self_t); 
             else if (streq(access->field, "__compare"))
                 (void)get_compare_func(env, self_t); 
-            else if (streq(access->field, "__print"))
-                (void)get_print_func(env, self_t); 
+            else if (streq(access->field, "__cord"))
+                (void)get_cord_func(env, self_t); 
             sss_type_t *value_type = self_t;
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
@@ -2221,45 +2179,28 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             val = gcc_rval(val_var);
             print_doctest_value(env, block, loc, "= ", t, val);
             if (test->output) {
-                gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
-
-                // char *buf; size_t size;
-                // FILE *f = open_memstream(&buf, &size);
-                gcc_lvalue_t *buf_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "buf");
-                gcc_lvalue_t *size_var = gcc_local(func, loc, gcc_type(env->ctx, SIZE), "size");
-                gcc_lvalue_t *file_var = gcc_local(func, loc, gcc_type(env->ctx, FILE_PTR), "file");
-                gcc_assign(*block, loc, file_var,
-                           gcc_callx(env->ctx, loc, open_memstream_fn, gcc_lvalue_address(buf_var, loc), gcc_lvalue_address(size_var, loc)));
-                gcc_rvalue_t *file = gcc_rval(file_var);
-
-                gcc_func_t *print_fn = get_print_func(env, t);
-                assert(print_fn);
+                gcc_func_t *cord_fn = get_cord_func(env, t);
+                assert(cord_fn);
                 
-                gcc_rvalue_t *print_call = gcc_callx(env->ctx, loc, print_fn, val, file, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                                                     gcc_rvalue_bool(env->ctx, false));
-                gcc_eval(*block, loc, print_call);
-
-                gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fflush_fn, file));
+                gcc_lvalue_t *cord_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "result");
+                gcc_assign(*block, loc, cord_var,
+                           gcc_callx(env->ctx, loc, cord_fn, val, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                                     gcc_rvalue_bool(env->ctx, false)));
 
                 // fail unless strcmp(output, "expected") == 0
-                gcc_func_t *strcmp_fn = hget(&env->global->funcs, "strcmp", gcc_func_t*);
+                gcc_func_t *cmp_fn = get_function(env, "CORD_cmp");
                 gcc_block_t *done_block = gcc_new_block(func, fresh("test_done")),
                             *fail_block = gcc_new_block(func, fresh("test_failed"));
                 gcc_jump_condition(*block, loc,
                     gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ,
-                        gcc_callx(env->ctx, loc, strcmp_fn, gcc_rval(buf_var), gcc_str(env->ctx, test->output)),
+                        gcc_callx(env->ctx, loc, cmp_fn, gcc_rval(cord_var), gcc_str(env->ctx, test->output)),
                         gcc_zero(env->ctx, gcc_type(env->ctx, INT))),
                     done_block, fail_block);
+                gcc_assign(fail_block, loc, cord_var, gcc_callx(env->ctx, loc, get_function(env, "CORD_to_char_star"), gcc_rval(cord_var)));
                 insert_failure(env, &fail_block, &ast->span, "Test failed!\nExpected: %s \nBut got:  %#s ",
-                               test->output, Type(PointerType, Type(CStringCharType)), gcc_rval(buf_var));
+                               test->output, Type(PointerType, Type(CStringCharType)),
+                               gcc_rval(cord_var));
                 *block = done_block;
-
-                // Cleanup
-                gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fclose_fn, file));
-                gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
-                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, free_fn, gcc_rval(buf_var)));
             }
             return NULL;
         }

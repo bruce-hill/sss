@@ -91,6 +91,7 @@ static void load_global_functions(env_t *env)
                *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
                *t_size = gcc_get_type(ctx, GCC_T_SIZE),
                *t_bool = gcc_get_type(ctx, GCC_T_BOOL),
+               *t_char = gcc_get_type(ctx, GCC_T_CHAR),
                *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
                *t_range = sss_type_to_gcc(env, Type(RangeType)),
                *t_bl_str = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
@@ -112,9 +113,22 @@ static void load_global_functions(env_t *env)
     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
     load_global_func(env, t_int, "strcmp", PARAM(t_str, "str1"), PARAM(t_str, "str2"));
+    load_global_func(env, t_size, "strlen", PARAM(t_str, "str"));
     load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
     load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
+    // Cord functions:
+    gcc_type_t *cord_t = gcc_get_type(ctx, GCC_T_STRING);
+    load_global_func(env, cord_t, "CORD_cat", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
+    load_global_func(env, cord_t, "CORD_cat_char_star", PARAM(cord_t, "x"), PARAM(t_str, "y"), PARAM(t_size, "leny"));
+    load_global_func(env, cord_t, "CORD_cat_char", PARAM(cord_t, "x"), PARAM(t_char, "c"));
+    load_global_func(env, t_int, "CORD_cmp", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
+    load_global_func(env, cord_t, "CORD_to_const_char_star", PARAM(cord_t, "x"));
+    load_global_func(env, cord_t, "CORD_to_char_star", PARAM(cord_t, "x"));
+    load_global_func(env, t_int, "CORD_put", PARAM(cord_t, "x"), PARAM(gcc_get_type(ctx, GCC_T_FILE_PTR), "f"));
+    load_global_var_func(env, t_int, "CORD_sprintf", PARAM(gcc_get_ptr_type(cord_t), "out"), PARAM(cord_t, "format"));
+    load_global_var_func(env, t_int, "CORD_fprintf", PARAM(t_file, "out"), PARAM(cord_t, "format"));
+
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
     load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
     gcc_func_t *exit_fn = hget(&env->global->funcs, "exit", gcc_func_t*);
@@ -125,10 +139,10 @@ static void load_global_functions(env_t *env)
         .arg_defaults=LIST(ast_t*, FakeAST(Int, .i=0, .precision=32)),
         .ret=Type(AbortType))));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
-    load_global_func(env, t_int, "range_print", PARAM(t_range, "range"), PARAM(t_file, "file"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
-    gcc_func_t *range_print = hget(&env->global->funcs, "range_print", gcc_func_t*);
-    hset(get_namespace(env, Type(RangeType)), "__print",
-         new(binding_t, .func=range_print, .sym_name="range_print"));
+    load_global_func(env, gcc_type(ctx, STRING), "range_to_cord", PARAM(t_range, "range"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
+    gcc_func_t *range_to_cord = hget(&env->global->funcs, "range_to_cord", gcc_func_t*);
+    hset(get_namespace(env, Type(RangeType)), "__cord",
+         new(binding_t, .func=range_to_cord, .sym_name="range_to_cord"));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
     load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
@@ -571,7 +585,9 @@ binding_t *get_local_binding(env_t *env, const char *name)
 
 gcc_func_t *get_function(env_t *env, const char *name)
 {
-    return hget(&env->global->funcs, name, gcc_func_t*);
+    gcc_func_t *func = hget(&env->global->funcs, name, gcc_func_t*);
+    assert(func);
+    return func;
 }
 
 binding_t *get_ast_binding(env_t *env, ast_t *ast)
@@ -636,7 +652,7 @@ env_t *get_type_env(env_t *env, sss_type_t *t)
 binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
 {
     // Do lookup without fallbacks
-    // (we don't want module.Struct.__print to return module.__print, even
+    // (we don't want module.Struct.__cord to return module.__cord, even
     // though the namespace may have that set as a fallback so that code
     // module.Struct can reference things inside the module's namespace)
     sss_hashmap_t *ns = get_namespace(env, t);

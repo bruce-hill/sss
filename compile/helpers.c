@@ -743,13 +743,6 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
     va_list ap;
     va_start(ap, user_fmt);
 
-    gcc_func_t *open_memstream_fn = hget(&env->global->funcs, "open_memstream", gcc_func_t*);
-    gcc_func_t *fflush_fn = hget(&env->global->funcs, "fflush", gcc_func_t*);
-    gcc_func_t *free_fn = hget(&env->global->funcs, "free", gcc_func_t*);
-    gcc_func_t *fclose_fn = hget(&env->global->funcs, "fclose", gcc_func_t*);
-    gcc_func_t *alloc_fn = hget(&env->global->funcs, "GC_malloc_atomic", gcc_func_t*);
-    gcc_func_t *memcpy_fn = hget(&env->global->funcs, "memcpy", gcc_func_t*);
-
     for (const char *p = user_fmt; *p; p++) {
         if (*p != '%') continue;
         switch (*(++p)) {
@@ -765,15 +758,6 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
                 continue;
             }
 
-            // char *buf; size_t size;
-            // FILE *f = open_memstream(&buf, &size);
-            gcc_lvalue_t *buf_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_buf");
-            gcc_lvalue_t *size_var = gcc_local(func, NULL, gcc_type(env->ctx, SIZE), "_size");
-            gcc_lvalue_t *file_var = gcc_local(func, NULL, gcc_type(env->ctx, FILE_PTR), "_file");
-            gcc_assign(*block, NULL, file_var,
-                       gcc_callx(env->ctx, NULL, open_memstream_fn, gcc_lvalue_address(buf_var, NULL), gcc_lvalue_address(size_var, NULL)));
-            gcc_rvalue_t *file = gcc_rval(file_var);
-
             // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
             sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
@@ -786,23 +770,13 @@ void insert_failure(env_t *env, gcc_block_t **block, span_t *span, const char *u
                 gcc_lvalue_address(next_index, NULL));
 
             gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_func_t *print_fn = get_print_func(env, t);
-            gcc_rvalue_t *print_call = gcc_callx(
-                env->ctx, NULL, print_fn, rval, file,
+            gcc_func_t *cord_fn = get_cord_func(env, t);
+            gcc_rvalue_t *cord_result = gcc_callx(
+                env->ctx, NULL, cord_fn, rval,
                 gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star),
                 gcc_rvalue_bool(env->ctx, false));
-            gcc_eval(*block, NULL, print_call);
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, fflush_fn, file));
-
-            gcc_rvalue_t *size = gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, gcc_type(env->ctx, SIZE),
-                                               gcc_rval(size_var), gcc_one(env->ctx, gcc_type(env->ctx, SIZE)));
-            gcc_rvalue_t *str = gcc_callx(env->ctx, NULL, alloc_fn, size);
-            str = gcc_callx(env->ctx, NULL, memcpy_fn, str, gcc_rval(buf_var), size);
-            str = gcc_cast(env->ctx, NULL, str, gcc_type(env->ctx, STRING));
             gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_str");
-            gcc_assign(*block, NULL, str_var, str);
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, fclose_fn, file));
-            gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, free_fn, gcc_rval(buf_var)));
+            gcc_assign(*block, NULL, str_var, gcc_callx(env->ctx, NULL, get_function(env, "CORD_to_char_star"), cord_result));
             append(args, gcc_rval(str_var));
             break;
         }

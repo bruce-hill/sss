@@ -326,7 +326,7 @@ int main(int argc, char *argv[])
         gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
 
     const char *driver_flags[] = {
-        "-lgc", "-lm", "-L.", "-l:libsss.so."SSS_VERSION,
+        "-lgc", "-lcord", "-lm", "-L.", "-l:libsss.so."SSS_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)

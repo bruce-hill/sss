@@ -198,28 +198,30 @@ sss_fileinfo_t sss_fstat(FILE* f)
     return ret;
 }
 
-void range_print(range_t range, FILE *f, void *stack, bool color) {
+CORD range_to_cord(range_t range, void *stack, bool color) {
     (void)stack;
-    if (color) fputs("\x1b[0;35m", f);
+    CORD c = NULL;
+    if (color) c = "\x1b[0;35m";
     if (range.first != INT64_MIN)
-        fprintf(f, "%ld", range.first);
+        CORD_sprintf(&c, "%r%ld", c, range.first);
 
-    if (color) fputs("\x1b[33m", f);
-    fputs("..", f);
+    if (color) c = CORD_cat(c, "\x1b[33m");
+    c = CORD_cat(c, "..");
 
     if (range.last != INT64_MAX) {
-        if (color) fputs("\x1b[0;35m", f);
-        fprintf(f, "%ld", range.last);
+        if (color) c = CORD_cat(c, "\x1b[0;35m");
+        CORD_sprintf(&c, "%r%ld", c, range.last);
     }
 
     if (range.stride != 1) {
-        if (color) fputs("\x1b[0;33m", f);
-        fputs(" by ", f);
-        if (color) fputs("\x1b[35m", f);
-        fprintf(f, "%ld", range.stride);
+        if (color) c = CORD_cat(c, "\x1b[0;33m");
+        c = CORD_cat(c, " by ");
+        if (color) c = CORD_cat(c, "\x1b[35m");
+        CORD_sprintf(&c, "%r%ld", c, range.stride);
     }
 
-    if (color) fputs("\x1b[m", f);
+    if (color) c = CORD_cat(c, "\x1b[m");
+    return c;
 }
 
 string_t range_slice(string_t array, range_t range, int64_t item_size)
