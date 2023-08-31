@@ -206,21 +206,6 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
-static void print_doctest_value(env_t *env, gcc_block_t **block, gcc_loc_t *loc, const char *info, sss_type_t *t, gcc_rvalue_t *rval)
-{
-    gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
-    gcc_rvalue_t *fmt = ternary(block, get_binding(env, "USE_COLOR")->rval, gcc_type(env->ctx, STRING),
-                                gcc_str(env->ctx, "\x1b[0;2m%s\x1b[m%r \x1b[0;2m: %s\x1b[m\n"),
-                                gcc_str(env->ctx, "%s%r : %s\n"));
-    gcc_func_t *cord_fprintf_fn = get_function(env, "CORD_fprintf");
-    gcc_func_t *cord_fn = get_cord_func(env, t);
-    gcc_eval(*block, loc, gcc_callx(env->ctx, loc, cord_fprintf_fn,
-        stderr_val, fmt, gcc_str(env->ctx, info), 
-        gcc_callx(env->ctx, loc, cord_fn, rval, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                  get_binding(env, "USE_COLOR")->rval),
-        gcc_str(env->ctx, type_to_string_concise(t))));
-}
-
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -2092,14 +2077,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *expr = test->expr;
 
         gcc_rvalue_t *use_color = get_binding(env, "USE_COLOR")->rval;
-        gcc_rvalue_t *stderr_val = gcc_rval(gcc_global(env->ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(env->ctx, FILE_PTR), "stderr"));
-        gcc_func_t *fputs_fn = hget(&env->global->funcs, "fputs", gcc_func_t*);
-        if (!test->skip_source) {
-            const char* color_src = heap_strf("\x1b[33;1m>>> \x1b[0m%.*s\x1b[m\n", (int)(test->expr->end - test->expr->start), test->expr->start);
-            const char* plain_src = heap_strf(">>> %.*s\n", (int)(test->expr->end - test->expr->start), test->expr->start);
-            gcc_rvalue_t *source = ternary(block, use_color, gcc_type(env->ctx, STRING), gcc_str(env->ctx, color_src), gcc_str(env->ctx, plain_src));
-            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, fputs_fn, source, stderr_val)); 
-        }
+        const char *filename = test->expr->file->filename;
+        int start = (int)(test->expr->start - test->expr->file->text),
+            end = (int)(test->expr->end - test->expr->file->text);
+
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_func_t *doctest_fn = get_function(env, "sss_doctest");
+
+#define DOCTEST(label, t, expr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
+           gcc_str(env->ctx, label), \
+           gcc_callx(env->ctx, loc, get_cord_func(env, t), expr, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true)), \
+           gcc_str(env->ctx, type_to_string_concise(t)), \
+           use_color, \
+           test->output ? gcc_str(env->ctx, test->output) : gcc_null(env->ctx, gcc_type(env->ctx, STRING)), \
+           test->skip_source ? gcc_null(env->ctx, gcc_type(env->ctx, STRING)) : gcc_str(env->ctx, filename), \
+           gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)))
 
         if (expr->tag == Return && Match(expr, Return)->value) {
             if (test->output)
@@ -2107,11 +2099,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *ret = Match(expr, Return)->value;
             sss_type_t *ret_t = get_type(env, ret);
             if (ret_t->tag == VoidType) return NULL;
-            gcc_func_t *func = gcc_block_func(*block);
             gcc_lvalue_t *ret_var = gcc_local(func, loc, sss_type_to_gcc(env, ret_t), "_ret");
             gcc_assign(*block, loc, ret_var, compile_expr(env, block, ret));
-            const char *info = heap_strf("%.*s = ", (int)(ret->end - ret->start), ret->start);
-            print_doctest_value(env, block, loc, info, ret_t, gcc_rval(ret_var));
+            DOCTEST("return", ret_t, gcc_rval(ret_var));
             gcc_return(*block, loc, gcc_rval(ret_var));
             *block = NULL;
             return NULL;
@@ -2133,77 +2123,47 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             // doesn't evaluate to a value, it's helpful to print out the new
             // values of the variable. (For multi-assignments, the result is a
             // tuple)
-            sss_type_t *lhs_t = NULL;
-            const char *info = NULL;
             switch (expr->tag) {
             case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate: case XorUpdate: case ConcatenateUpdate:
             case Declare: {
                 // UNSAFE: this assumes all these types have the same layout:
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
                 // END UNSAFE
-                lhs_t = get_type(env, lhs_ast);
-                info = heap_strf("%.*s = ", (int)(lhs_ast->end - lhs_ast->start), lhs_ast->start);
+                sss_type_t *lhs_t = get_type(env, lhs_ast);
+                DOCTEST(heap_strf("%.*s =", (int)(lhs_ast->end - lhs_ast->start), lhs_ast->start), lhs_t, val);
                 break;
             }
             case Assign: {
                 auto assign = Match(expr, Assign);
                 ast_t *first = ith(assign->targets, 0);
                 if (length(assign->targets) == 1) {
-                    lhs_t = get_type(env, first);
-                    info = heap_strf("%.*s = ", (int)(first->end - first->start), first->start);
+                    sss_type_t *lhs_t = get_type(env, first);
                     gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=LIST(sss_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
+                    DOCTEST(heap_strf("%.*s =", (int)(first->end - first->start), first->start), lhs_t, val);
                 } else {
                     ast_t *last = ith(assign->targets, length(assign->targets)-1);
-                    info = heap_strf("%.*s = ", (int)(last->end - first->start), first->start);
                     NEW_LIST(ast_t*, members);
                     for (int64_t i = 0; i < length(assign->targets); i++) {
                         APPEND(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
                     }
-                    lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
+                    sss_type_t *lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
+                    DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), lhs_t, val);
                 }
                 break;
             }
             default: break;
             }
 
-            if (info && lhs_t)
-                print_doctest_value(env, block, loc, info, lhs_t, val);
             return NULL;
         } else {
             // Print "= <expr>"
             gcc_rvalue_t *val = compile_expr(env, block, expr);
-            gcc_func_t *func = gcc_block_func(*block);
             gcc_lvalue_t *val_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_expression");
             gcc_assign(*block, loc, val_var, val);
             val = gcc_rval(val_var);
-            print_doctest_value(env, block, loc, "= ", t, val);
-            if (test->output) {
-                gcc_func_t *cord_fn = get_cord_func(env, t);
-                assert(cord_fn);
-                
-                gcc_lvalue_t *cord_var = gcc_local(func, loc, gcc_type(env->ctx, STRING), "result");
-                gcc_assign(*block, loc, cord_var,
-                           gcc_callx(env->ctx, loc, cord_fn, val, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_bool(env->ctx, false)));
-
-                // fail unless strcmp(output, "expected") == 0
-                gcc_func_t *cmp_fn = get_function(env, "CORD_cmp");
-                gcc_block_t *done_block = gcc_new_block(func, fresh("test_done")),
-                            *fail_block = gcc_new_block(func, fresh("test_failed"));
-                gcc_jump_condition(*block, loc,
-                    gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ,
-                        gcc_callx(env->ctx, loc, cmp_fn, gcc_rval(cord_var), gcc_str(env->ctx, test->output)),
-                        gcc_zero(env->ctx, gcc_type(env->ctx, INT))),
-                    done_block, fail_block);
-                gcc_assign(fail_block, loc, cord_var, gcc_callx(env->ctx, loc, get_function(env, "CORD_to_char_star"), gcc_rval(cord_var)));
-                insert_failure(env, &fail_block, ast->file, ast->start, ast->end,
-                               "Test failed!\nExpected: %s \nBut got:  %#s ",
-                               test->output, Type(PointerType, Type(CStringCharType)),
-                               gcc_rval(cord_var));
-                *block = done_block;
-            }
+            DOCTEST("=", t, val);
             return NULL;
         }
     }

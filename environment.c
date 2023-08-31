@@ -131,6 +131,9 @@ static void load_global_functions(env_t *env)
     load_global_var_func(env, t_int, "CORD_fprintf", PARAM(t_file, "out"), PARAM(cord_t, "format"));
 
     load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
+    load_global_var_func(env, t_void, "sss_doctest", PARAM(t_str, "label"), PARAM(cord_t, "expr"), PARAM(t_str, "type"),
+                         PARAM(t_bool, "use_color"), PARAM(t_str, "expected"), PARAM(t_str, "filename"), PARAM(t_int, "start"),
+                         PARAM(t_int, "end"));
     load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
     gcc_func_t *exit_fn = hget(&env->global->funcs, "exit", gcc_func_t*);
     hset(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
