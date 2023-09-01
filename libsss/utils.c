@@ -643,7 +643,7 @@ void sss_doctest(const char *label, CORD expr, const char *type, bool use_color,
             if (strcmp(actual, expected) != 0) {
                 if (filename && file)
                     fprint_span(stderr, file, file->text+start, file->text+end, "\x1b[31;1m", 2, use_color);
-                fail("Expected %s, but got %s\n", expected, actual);
+                fail(use_color ? "\x1b[31;1mExpected: \x1b[32;7m%s\x1b[0m\n\x1b[31;1m But got: \x1b[31;7m%s\x1b[0m\n" : "Expected: %s\n But got: %s\n", expected, actual);
             }
         }
     }

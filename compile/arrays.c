@@ -615,7 +615,7 @@ void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj,
         // (i.e. print `\x1b[35m"Hello"\x1b[m` instead of `\x1b[35m"\x1b[35mH\x1b[m\x1b[35me\x1b[m...` )
         continue_next_item = gcc_new_block(func, fresh("carry_on"));
 
-        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",['"']="\\\""};
+        char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",['"']="\\\"",['\\']="\\\\"};
         NEW_LIST(gcc_case_t*, cases);
 #define ADD_CASE(block, lo, hi) APPEND(cases, gcc_new_case(env->ctx, gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), block))
         for (int i = 0; i < 128; i++) {

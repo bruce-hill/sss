@@ -156,8 +156,8 @@ alias JSON::Str
 if IS_MAIN_PROGRAM
     >>> Object.Map({"x"=> Object.Boolean(yes), "y"=> Object.Null, "z"=> Object.List([Object.Number(1.2), Object.Number(3.4)])}) as JSON
     === JSON::"{\"x\": true, \"y\": null, \"z\": [1.2, 3.4]}"
-    >>> Object.String(${"Quotes" and \\backslashes}) as JSON
-    === JSON::"\"\\"Quotes\\" and \\backslashes\""
+    >>> Object.String(${"Quotes" and \backslashes}) as JSON
+    === JSON::"\"\\\"Quotes\\\" and \\backslashes\""
     >>> JSON::$|{"x": true}| as Object
     === Object.Map(map={"x"=>Object.Boolean(b=yes)})
     >>> JSON::$|[1,2]| as Object
