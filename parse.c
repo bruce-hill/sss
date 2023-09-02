@@ -2049,12 +2049,19 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
         spaces(&pos);
         if (match(&pos, ":")) {
             spaces(&pos);
-            ast_t *name_ast = expect_ast(ctx, tag_start, &pos, parse_var, "I expected an identifier after this ':'");
-            APPEND(tag_names, Match(name_ast, Var)->name);
+            ast_t *type_ast = expect_ast(ctx, tag_start, &pos, _parse_type, "I expected a type after this ':'");
+            char *name = GC_malloc_atomic(type_ast->end - type_ast->start + 1);
+            char *dest = name;
+            for (const char *src = type_ast->start; src < type_ast->end; src++) {
+                if (isalnum(*src) || *src == '_')
+                    *(dest++) = *src;
+            }
+            *dest = '\0';
+            APPEND(tag_names, name);
             APPEND(tag_values, next_value);
-            args_t args = (args_t){LIST(const char*, "value"), LIST(ast_t*, name_ast), LIST(ast_t*, NULL)};
+            args_t args = (args_t){LIST(const char*, "value"), LIST(ast_t*, type_ast), LIST(ast_t*, NULL)};
             APPEND_STRUCT(tag_args, args);
-            pos = name_ast->end;
+            pos = type_ast->end;
             goto carry_on;
         }
 
