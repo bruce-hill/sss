@@ -1505,6 +1505,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_cast(env->ctx, loc, tag, sss_type_to_gcc(env, cast_t));
         }
 
+        if (cast_t->tag == TaggedUnionType) {
+            const char *tag_name = NULL;
+            auto members = Match(cast_t, TaggedUnionType)->members;
+            foreach (members, member, _) {
+                if (!member->type || member->type->tag != StructType) continue;
+                auto struct_ = Match(member->type, StructType);
+                if (LIST_LEN(struct_->field_types) != 1) continue;
+                if (!can_promote(src_t, ith(struct_->field_types, 0))) continue;
+                assert(promote(env, src_t, &val, ith(struct_->field_types, 0)));
+                if (tag_name)
+                    goto failed_tagged_union_cast;
+                tag_name = member->name;
+            }
+            if (tag_name) {
+                binding_t *b = get_from_namespace(env, cast_t, tag_name);
+                return gcc_callx(env->ctx, loc, b->func, val);
+            }
+          failed_tagged_union_cast:;
+        }
+
+
         if (!((is_numeric(src_t) && is_numeric(cast_t))
               || (src_t->tag == PointerType && cast_t->tag == PointerType && can_promote(src_t, cast_t))
               || (is_numeric(src_t) && (cast_t->tag == BoolType || cast_t->tag == CharType))
