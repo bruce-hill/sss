@@ -15,9 +15,12 @@
 #include "compile/compile.h"
 #include "util.h"
 
+static bool verbose = false;
+static bool tail_calls = false;
+
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
-int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool tail_calls, bool verbose, int argc, char *argv[])
+int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -61,7 +64,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, bool tail_calls, bool v
     return 0;
 }
 
-int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls, bool verbose, int argc, char *argv[])
+int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, int argc, char *argv[])
 {
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mParsing %s...\x1b[m\n", f->filename);
@@ -84,7 +87,7 @@ int run_file(gcc_jit_context *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_cal
     return 0;
 }
 
-int run_repl(gcc_jit_context *ctx, bool tail_calls, bool verbose)
+int run_repl(gcc_jit_context *ctx)
 {
     bool use_color = !getenv("NO_COLOR");
     const char *prompt = !use_color ? ">>> " : "\x1b[33;1m>>>\x1b[m ";
@@ -308,7 +311,6 @@ int main(int argc, char *argv[])
 #endif
 
     GC_INIT();
-    bool verbose = false, tail_calls = false;
     char *prog_name = strrchr(argv[0], '/');
     prog_name = prog_name ? prog_name + 1 : argv[0];
     bool run_program = true;
@@ -387,7 +389,7 @@ int main(int argc, char *argv[])
             const char *src = isatty(STDOUT_FILENO) ? heap_strf(">>> %s", argv[++i]) : heap_strf("say \"$(%s)\"", argv[++i]);
             sss_file_t *f = sss_spoof_file("<argument>", src);
             argv[i] = argv[0];
-            return run_file(ctx, NULL, f, tail_calls, verbose, argc-i, &argv[i]);
+            return run_file(ctx, NULL, f, argc-i, &argv[i]);
         }
 
 #ifdef __OpenBSD__
@@ -405,20 +407,20 @@ int main(int argc, char *argv[])
 
         if (run_program) {
             argv[i] = argv[0];
-            return run_file(ctx, NULL, f, tail_calls, verbose, argc-i, &argv[i]);
+            return run_file(ctx, NULL, f, argc-i, &argv[i]);
         } else {
-            return compile_to_file(ctx, f, tail_calls, verbose, argc-i, &argv[i]);
+            return compile_to_file(ctx, f, argc-i, &argv[i]);
         }
     }
 
     if (isatty(STDIN_FILENO)) {
-        run_repl(ctx, tail_calls, verbose);
+        run_repl(ctx);
     } else {
         sss_file_t *f = sss_load_file("/dev/stdin");
         if (run_program) {
-            return run_file(ctx, NULL, f, tail_calls, verbose, 1, argv);
+            return run_file(ctx, NULL, f, 1, argv);
         } else {
-            return compile_to_file(ctx, f, tail_calls, verbose, 1, argv);
+            return compile_to_file(ctx, f, 1, argv);
         }
     }
 
