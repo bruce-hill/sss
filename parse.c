@@ -2045,6 +2045,19 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
     unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
+
+        spaces(&pos);
+        if (match(&pos, ":")) {
+            spaces(&pos);
+            ast_t *name_ast = expect_ast(ctx, tag_start, &pos, parse_var, "I expected an identifier after this ':'");
+            APPEND(tag_names, Match(name_ast, Var)->name);
+            APPEND(tag_values, next_value);
+            args_t args = (args_t){LIST(const char*, "value"), LIST(ast_t*, name_ast), LIST(ast_t*, NULL)};
+            APPEND_STRUCT(tag_args, args);
+            pos = name_ast->end;
+            goto carry_on;
+        }
+
         const char *tag_name = get_id(&pos);
         if (!tag_name) break;
 
@@ -2075,6 +2088,7 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
         APPEND(tag_values, next_value);
         APPEND_STRUCT(tag_args, args);
 
+      carry_on:
         const char *next_pos = pos;
         ws(&next_pos);
         if (match(&next_pos, ";")) {
