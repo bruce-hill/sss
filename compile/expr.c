@@ -1520,6 +1520,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             if (tag_name) {
                 binding_t *b = get_from_namespace(env, cast_t, tag_name);
+                if (!b) compiler_err(env, ast, "I couldn't find the %T constructor for the tag %s in the namespace %p",
+                                     cast_t, tag_name, get_namespace(env, cast_t));
                 return gcc_callx(env->ctx, loc, b->func, val);
             }
           failed_tagged_union_cast:;
