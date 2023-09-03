@@ -685,7 +685,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert((*chunk)->tag == Interp);
             auto interp = Match(*chunk, Interp);
             if (interp->labelled) {
-                const char *label = heap_strf("%.*s: ", (int)(interp->value->end - interp->value->start), interp->value->start);
+                const char *label = heap_strf("%#W: ", interp->value);
                 APPEND_CORD(*block, gcc_str(env->ctx, label));
             }
 
@@ -2151,7 +2151,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
                 // END UNSAFE
                 sss_type_t *lhs_t = get_type(env, lhs_ast);
-                DOCTEST(heap_strf("%.*s =", (int)(lhs_ast->end - lhs_ast->start), lhs_ast->start), lhs_t, val);
+                DOCTEST(heap_strf("%#W =", lhs_ast), lhs_t, val);
                 break;
             }
             case Assign: {
@@ -2162,7 +2162,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=LIST(sss_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
-                    DOCTEST(heap_strf("%.*s =", (int)(first->end - first->start), first->start), lhs_t, val);
+                    DOCTEST(heap_strf("%#W =", first), lhs_t, val);
                 } else {
                     ast_t *last = ith(assign->targets, length(assign->targets)-1);
                     NEW_LIST(ast_t*, members);

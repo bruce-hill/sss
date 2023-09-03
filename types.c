@@ -69,7 +69,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                 if ((flags & ARG_NAMES) && fn->arg_defaults) {
                     ast_t *def = LIST_ITEM(fn->arg_defaults, i);
                     if (def) {
-                        CORD_sprintf(&c, "%r=%.*s", c, (int)(def->end - def->start), def->start);
+                        CORD_sprintf(&c, "%r=%#W", c, def);
                         continue;
                     }
                 }
@@ -207,7 +207,6 @@ int printf_pointer_size(const struct printf_info *info, size_t n, int argtypes[n
 int printf_type(FILE *stream, const struct printf_info *info, const void *const args[])
 {
     sss_type_t *t = *(sss_type_t**)args[0];
-    (void)info;
     sss_hashmap_t expanded = {0};
     stringify_flags_e flags = info->alt ? ARG_NAMES : DEFAULT;
     CORD c = type_to_cord(t, &expanded, flags);
@@ -218,13 +217,15 @@ int printf_type(FILE *stream, const struct printf_info *info, const void *const 
 
 int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[])
 {
-    (void)info;
     ast_t *ast = *(ast_t**)(args[0]);
-    if (ast)
-        // return fprintf(stream, "%.*s", (int)(ast->span.end - ast->span.start), ast->span.start);
-        return fprintf(stream, "%s", ast_to_str(ast));
-    else
+    if (ast) {
+        if (info->alt)
+            return fprintf(stream, "%.*s", (int)(ast->end - ast->start), ast->start);
+        else
+            return fprintf(stream, "%s", ast_to_str(ast));
+    } else {
         return fputs("(null)", stream);
+    }
 }
 
 const char* type_to_string_concise(sss_type_t *t) {
