@@ -556,25 +556,6 @@ void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj,
     gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
 
-    if (!is_string) {
-        gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
-                    *is_not_empty = gcc_new_block(func, fresh("is_not_empty"));
-        gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, INT32))),
-                           is_not_empty, is_empty);
-        *block = is_empty;
-        APPEND_COLOR_LITERAL(block, "\x1b[m");
-        APPEND_LITERAL(*block, "[");
-        APPEND_COLOR_LITERAL(block, "\x1b[0;2;36m");
-        APPEND_LITERAL(*block, ":");
-        APPEND_COLOR_LITERAL(block, "\x1b[0;36m");
-        APPEND_LITERAL(*block, type_to_string_concise(item_type));
-        APPEND_COLOR_LITERAL(block, "\x1b[m");
-        APPEND_LITERAL(*block, "]");
-        gcc_return(*block, NULL, gcc_rval(cord));
-
-        *block = is_not_empty;
-    }
-
     if (is_string) {
         APPEND_COLOR_LITERAL(block, "\x1b[0;35m");
         APPEND_LITERAL(*block, "\"");
