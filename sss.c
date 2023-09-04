@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "api.h"
 #include "parse.h"
 #include "files.h"
 #include "typecheck.h"
@@ -367,6 +368,18 @@ int main(int argc, char *argv[])
             gcc_jit_context_add_command_line_option(ctx, "-fverbose-asm");
             verbose = true;
             continue;
+        } else if (streq(argv[i], "-a") || streq(argv[i], "--api")) {
+            if (i+1 >= argc)
+                errx(1, "I expected a .sss file to generate an API file for");
+
+            sss_file_t *f = sss_load_file(argv[i+1]);
+            if (!f) {
+                if (argv[i+1][0] == '-')
+                    errx(1, "'%s' is not a recognized command-line argument", argv[i+1]);
+                errx(1, "Couldn't open file: %s", argv[i+1]);
+            }
+            generate_api_file(argv[i+1], parse_file(f, NULL));
+            return 0;
         } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
             if (streq(argv[i]+2, "fast")) {
                 tail_calls = true;
