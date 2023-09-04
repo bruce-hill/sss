@@ -360,26 +360,6 @@ void compile_table_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj,
     gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
     gcc_rvalue_t *len = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD));
 
-    gcc_block_t *is_empty = gcc_new_block(func, fresh("is_empty")),
-                *is_not_empty = gcc_new_block(func, fresh("is_not_empty"));
-    gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, len, gcc_zero(env->ctx, gcc_type(env->ctx, UINT32))),
-                       is_not_empty, is_empty);
-    *block = is_empty;
-    APPEND_COLOR_LITERAL(block, "\x1b[m");
-    APPEND_LITERAL(*block, "{");
-    APPEND_COLOR_LITERAL(block, "\x1b[0;2;36m");
-    APPEND_LITERAL(*block, ":");
-    APPEND_COLOR_LITERAL(block, "\x1b[0;36m");
-    APPEND_LITERAL(*block, type_to_string(Match(t, TableType)->key_type));
-    APPEND_COLOR_LITERAL(block, "\x1b[33m");
-    APPEND_LITERAL(*block, "=>");
-    APPEND_COLOR_LITERAL(block, "\x1b[36m");
-    APPEND_LITERAL(*block, type_to_string(Match(t, TableType)->value_type));
-    APPEND_COLOR_LITERAL(block, "\x1b[m");
-    APPEND_LITERAL(*block, "}");
-    gcc_return(*block, NULL, gcc_rval(cord));
-
-    *block = is_not_empty;
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
     APPEND_COLOR_LITERAL(block, "\x1b[m");
     APPEND_LITERAL(*block, "{");
