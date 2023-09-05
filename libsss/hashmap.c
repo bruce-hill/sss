@@ -220,7 +220,9 @@ void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
     }
 
     int32_t index1 = ++h->count;
-    h->entries = GC_REALLOC(h->entries, h->count*entry_size_padded);
+    char *old_entries = h->entries;
+    h->entries = GC_MALLOC(h->count*entry_size_padded);
+    if (old_entries) memcpy(h->entries, old_entries, (h->count-1)*entry_size_padded);
     void *entry = h->entries + (index1-1)*entry_size_padded;
     memcpy(entry, key, value_offset);
     sss_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
@@ -240,6 +242,21 @@ void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, 
     // If unspecified, pop a random key:
     if (!key)
         key = h->entries + entry_size_padded*arc4random_uniform(h->count);
+
+    // Steps: look up the bucket for the removed key
+    // If missing, then return immediately
+    // Swap last key/value into the removed bucket's index1
+    // Zero out the last key/value and decrement the count
+    // Find the last key/value's bucket and update its index1
+    // Look up the bucket for the removed key
+    // If bucket is first in chain:
+    //    Move bucket->next to bucket's spot
+    //    zero out bucket->next's old spot
+    //    maybe update lastfree_index1 to second-in-chain's index
+    // Else:
+    //    set prev->next = bucket->next
+    //    zero out bucket
+    //    maybe update lastfree_index1 to removed bucket's index
 
     uint32_t hash = key_hash(key) % (uint32_t)h->capacity;
     sss_hash_bucket_t *bucket, *prev = NULL;
@@ -296,21 +313,6 @@ void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, 
         h->lastfree_index1 = to_clear_index1;
 
     hshow(h);
-
-    // Steps: look up the bucket for the removed key
-    // If missing, then return immediately
-    // Swap last key/value into the removed bucket's index1
-    // Zero out the last key/value and decrement the count
-    // Find the last key/value's bucket and update its index1
-    // Look up the bucket for the removed key
-    // If bucket is first in chain:
-    //    Move bucket->next to bucket's spot
-    //    zero out bucket->next's old spot
-    //    maybe update lastfree_index1 to second-in-chain's index
-    // Else:
-    //    set prev->next = bucket->next
-    //    zero out bucket
-    //    maybe update lastfree_index1 to removed bucket's index
 }
 
 void *sss_hashmap_nth(sss_hashmap_t *h, int32_t n, size_t entry_size_padded)
