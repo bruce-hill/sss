@@ -64,11 +64,11 @@ uint32_t sss_hashmap_len(sss_hashmap_t *h)
     return h->count;
 }
 
-static void copy_on_write(sss_hashmap_t *h, size_t entry_size_padded)
+static void copy_on_write(sss_hashmap_t *h, size_t entry_size_padded, sss_hash_bucket_t *original_buckets, char *original_entries)
 {
-    if (h->entries)
+    if (h->entries && h->entries == original_entries)
         h->entries = memcpy(GC_MALLOC((h->count+1)*entry_size_padded), h->entries, (h->count+1)*entry_size_padded);
-    if (h->buckets)
+    if (h->buckets && h->buckets == original_buckets)
         h->buckets = memcpy(GC_MALLOC(sizeof(sss_hash_bucket_t)*h->capacity), h->buckets, sizeof(sss_hash_bucket_t)*h->capacity);
     h->copy_on_write = false;
 }
@@ -174,6 +174,11 @@ static void hashmap_resize(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cm
         hdebug("Rehashing %u\n", i);
         sss_hashmap_set_bucket(h, key_hash, key_cmp, h->entries + entry_size_padded*(i-1), entry_size_padded, i);
     }
+
+    char *new_entries = GC_MALLOC(new_capacity*entry_size_padded);
+    if (h->entries) memcpy(new_entries, h->entries, h->count*entry_size_padded);
+    h->entries = new_entries;
+
     hshow(h);
     hdebug("Finished resizing\n");
 }
@@ -185,23 +190,30 @@ void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
     if (!h || !key) return NULL;
     hshow(h);
 
-    if (h->copy_on_write)
-        copy_on_write(h, entry_size_padded);
+    sss_hash_bucket_t *original_buckets = h->buckets;
+    char *original_entries = h->entries;
 
     if (h->capacity == 0)
         hashmap_resize(h, key_hash, key_cmp, 4, entry_size_padded);
 
     size_t value_size = entry_size_padded - value_offset;
     void *value_home = sss_hashmap_get_raw(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
-    if (value_home) {
-        if (!value && (h->fallback || h->default_value))
-            value = sss_hashmap_get(h, key_hash, key_cmp, entry_size_padded, key, value_offset);
+    if (value_home) { // Update existing slot
+        if (h->copy_on_write) {
+            // Ensure that `value_home` is still inside h->entries, even if COW occurs
+            ptrdiff_t offset = value_home - (void*)h->entries;
+            copy_on_write(h, entry_size_padded, original_buckets, original_entries);
+            value_home = h->entries + offset;
+        }
 
         if (value && value_size > 0)
             memcpy(value_home, value, value_size);
+
         return value_home;
     }
+    // Otherwise add a new entry:
 
+    // Resize buckets if necessary
     if (h->count >= h->capacity) {
         uint32_t newsize = h->capacity;
         if (h->count + 1 > newsize) newsize *= 2;
@@ -219,16 +231,17 @@ void *sss_hashmap_set(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, si
         }
     }
 
+    if (h->copy_on_write)
+        copy_on_write(h, entry_size_padded, original_buckets, original_entries);
+
     int32_t index1 = ++h->count;
-    char *old_entries = h->entries;
-    h->entries = GC_MALLOC(h->count*entry_size_padded);
-    if (old_entries) memcpy(h->entries, old_entries, (h->count-1)*entry_size_padded);
     void *entry = h->entries + (index1-1)*entry_size_padded;
     memcpy(entry, key, value_offset);
+    if (value && value_size > 0)
+        memcpy(entry + value_offset, value, entry_size_padded - value_offset);
+
     sss_hashmap_set_bucket(h, key_hash, key_cmp, entry, entry_size_padded, index1);
 
-    if (value)
-        memcpy(entry + value_offset, value, entry_size_padded - value_offset);
     return entry + value_offset;
 }
 
@@ -237,7 +250,7 @@ void sss_hashmap_remove(sss_hashmap_t *h, hash_fn_t key_hash, cmp_fn_t key_cmp, 
     if (!h || h->capacity == 0) return;
 
     if (h->copy_on_write)
-        copy_on_write(h, entry_size_padded);
+        copy_on_write(h, entry_size_padded, NULL, NULL);
 
     // If unspecified, pop a random key:
     if (!key)
