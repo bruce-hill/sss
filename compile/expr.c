@@ -292,6 +292,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         int64_t num_values = length(values);
         if (num_values != len)
             compiler_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
+        
+        if (!env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = true;
+        }
 
         gcc_func_t *func = gcc_block_func(*block);
         typedef struct {
@@ -956,6 +961,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *self_val = NULL;
         sss_type_t *self_t = NULL;
 
+        if (!env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = true;
+        }
+
         if (call->extern_return_type) {
             sss_type_t *ret_t = parse_type_ast(env, call->extern_return_type);
             gcc_type_t *gcc_ret_t = sss_type_to_gcc(env, ret_t);
@@ -1197,9 +1207,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ptr->is_optional)
                 compiler_err(env, ast, "This field access is unsafe because the value may be nil");
 
-            if (ptr->pointed->tag == ArrayType)
+            if (ptr->pointed->tag == ArrayType && env->should_mark_cow)
                 mark_array_cow(env, block, obj);
-            else if (ptr->pointed->tag == TableType)
+            else if (ptr->pointed->tag == TableType && env->should_mark_cow)
                 mark_table_cow(env, block, obj);
 
             obj = gcc_rval(gcc_rvalue_dereference(obj, loc));
@@ -1372,9 +1382,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, ast, "The value being indexed here is a pointer, you must use [] instead of [index]");
             sss_type_t *t = get_type(env, ast); // Check this is a pointer type
             gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
-            if (t->tag == ArrayType)
+            if (t->tag == ArrayType && env->should_mark_cow)
                 mark_array_cow(env, block, obj);
-            else if (t->tag == TableType)
+            else if (t->tag == TableType && env->should_mark_cow)
                 mark_table_cow(env, block, obj);
             return gcc_rval(gcc_rvalue_dereference(obj, loc));
         }
@@ -1556,6 +1566,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "There is no nil value for %T", t);
     }
     case Not: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         auto value = Match(ast, Not)->value;
         sss_type_t *t = get_type(env, value);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
@@ -1588,6 +1602,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Equal: case NotEqual:
     case Less: case LessEqual: case Greater: case GreaterEqual: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         // Unsafe! This is a hack to avoid duplicate code, based on the assumption that each of these types
         // has the same struct layout:
         ast_t *lhs = ast->__data.Less.lhs,
@@ -1624,6 +1642,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                               gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
     }
     case Negative: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         ast_t *value = Match(ast, Negative)->value;
         sss_type_t *t = get_type(env, value);
         if (!is_numeric(t))
@@ -1633,6 +1655,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_unary_op(env->ctx, loc, GCC_UNOP_MINUS, gcc_t, rval);
     }
     case And: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         ast_t *lhs = Match(ast, And)->lhs,
               *rhs = Match(ast, And)->rhs;
         sss_type_t *t = get_type(env, ast);
@@ -1679,6 +1705,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(result);
     }
     case Or: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         ast_t *lhs = Match(ast, Or)->lhs,
               *rhs = Match(ast, Or)->rhs;
         sss_type_t *t = get_type(env, ast);
@@ -1724,16 +1754,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         *block = done;
         return gcc_rval(result);
     }
-    case Xor: {
-        return math_binop(env, block, ast);
-    }
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case OrUpdate: case AndUpdate: case XorUpdate: {
         return math_update(env, block, ast);
     }
-    case Add: case Subtract: case Divide: case Multiply: case LeftShift: case RightShift: {
+    case Add: case Subtract: case Divide: case Multiply: case LeftShift: case RightShift: case Xor: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         return math_binop(env, block, ast);
     }
     case Concatenate: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         auto concat = Match(ast, Concatenate);
         (void)get_type(env, ast);
         ast_t *lhs_loop = WrapAST(concat->lhs, For, .iter=concat->lhs,
@@ -1770,6 +1805,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Modulus: case Modulus1: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         // UNSAFE: this works because the two tags have the same layout:
         ast_t *lhs = ast->__data.Modulus.lhs, *rhs = ast->__data.Modulus.rhs;
         // END UNSAFE
@@ -1811,6 +1850,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Power: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         ast_t *base = Match(ast, Power)->lhs, *exponent = Match(ast, Power)->rhs;
         sss_type_t *t = get_type(env, ast);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
@@ -1958,6 +2001,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Pass: return NULL;
     case Min: case Max: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         ast_t *lhs_ast, *rhs_ast, *key;
         gcc_comparison_e cmp;
         if (ast->tag == Min) {
@@ -2029,6 +2076,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_rval(result);
     }
     case Mix: {
+        if (env->should_mark_cow) {
+            env = fresh_scope(env);
+            env->should_mark_cow = false;
+        }
         auto mix = Match(ast, Mix);
         sss_type_t *mix_t = get_type(env, mix->key);
         if (!is_numeric(mix_t))

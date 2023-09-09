@@ -274,8 +274,11 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
                 gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_LENGTH_FIELD)),
                            SUB(array_len, offset));
             }
-            gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
-                       gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
+            // Set COW flag:
+            if (env->should_mark_cow) {
+                gcc_assign(*block, loc, gcc_lvalue_access_field(slice, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
+                           gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
+            }
 
             return gcc_rval(slice);
 #undef SUB
@@ -295,9 +298,11 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             index_val,
             gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, get_item_type(arr_t)))),
         array_gcc_t));
-    // Set COW field:
-    gcc_assign(*block, loc, gcc_lvalue_access_field(slice_var, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
-               gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
+    // Set COW flag:
+    if (env->should_mark_cow) {
+        gcc_assign(*block, loc, gcc_lvalue_access_field(slice_var, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
+                   gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
+    }
     return gcc_rval(slice_var);
 }
 

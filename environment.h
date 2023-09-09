@@ -62,7 +62,7 @@ typedef struct env_s {
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     defer_t *deferred;
-    bool tail_calls:1, is_deferred:1;
+    bool tail_calls:1, is_deferred:1, should_mark_cow:1;
 } env_t;
 
 typedef struct {
