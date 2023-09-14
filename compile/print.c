@@ -511,7 +511,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     }
     case FunctionType: {
         APPEND_COLOR_LITERAL(&block, "\x1b[36m");
-        APPEND_LITERAL(block, type_to_string(t));
+        APPEND_LITERAL(block, type_to_string_concise(t));
         APPEND_COLOR_LITERAL(&block, "\x1b[m");
         gcc_return(block, NULL, gcc_rval(cord));
         break;
