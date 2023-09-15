@@ -82,7 +82,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            CORD c = "{";
+            CORD c = "struct(";
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
                 const char *fname = struct_->field_names ? LIST_ITEM(struct_->field_names, i) : NULL;
@@ -95,7 +95,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                 CORD fstr = type_to_cord(ft, expanded, flags);
                 c = CORD_cat(c, fstr);
             }
-            c = CORD_cat(c, "}");
+            c = CORD_cat(c, ")");
             if (struct_->units)
                 CORD_sprintf(&c, "%r<%s>", c, struct_->units);
             return c;
