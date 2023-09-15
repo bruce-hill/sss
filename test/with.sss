@@ -1,5 +1,5 @@
 
-struct MyFile{name:Str}
+type MyFile := struct(name:Str)
     func open(name:Str)->MyFile
         say "Opening file '$name'"
         return MyFile{name}

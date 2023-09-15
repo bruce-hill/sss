@@ -1,6 +1,6 @@
 !link -lpthread
 
-alias Mutex::@Memory
+type Mutex := @Memory
     func new()->Mutex
         mutex := extern GC_malloc(40u64):Mutex
         pthread_mutex_init := extern pthread_mutex_init:(Mutex,?Memory)->Int32
@@ -28,11 +28,11 @@ alias Mutex::@Memory
         if extern pthread_mutex_unlock(mutex):CError != CError.SUCCESS
             fail "Mutex failed to lock!"
 
-struct MutexLock{mutex:Mutex}
+type MutexLock := struct(mutex:Mutex)
     func close(lock:MutexLock)
         lock.mutex.unlock()
 
-alias Condition::@Memory
+type Condition := @Memory
     func new()->Condition
         cond := extern GC_malloc(48u64):Condition
         if extern pthread_cond_init(cond, !Memory):CError != CError.SUCCESS

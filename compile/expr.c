@@ -504,18 +504,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         foreach (using->used, used, _) {
             sss_type_t *t = get_type(env, *used);
             NEW_LIST(const char*, fields);
-            while (t->tag == PointerType) {
-                if (Match(t, PointerType)->is_optional)
-                    compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
-                t = Match(t, PointerType)->pointed;
-            }
-            switch (t->tag) {
-            case StructType:
-                fields = Match(t, StructType)->field_names;
-                break;
-            default:
-                compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
-                break;
+            for (;;) {
+                if (t->tag == PointerType) {
+                    if (Match(t, PointerType)->is_optional)
+                        compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
+                    t = Match(t, PointerType)->pointed;
+                } else if (t->tag == VariantType) {
+                    t = Match(t, VariantType)->variant_of;
+                } else if (t->tag == StructType) {
+                    fields = Match(t, StructType)->field_names;
+                    break;
+                } else {
+                    compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
+                }
             }
             foreach (fields, field, _) {
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
@@ -807,30 +808,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                            .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
-    case StructDef: case TaggedUnionDef: case VariantDef: {
-        sss_type_t *t;
-        List(ast_t*) members;
-        if (ast->tag == StructDef) {
-            auto struct_def = Match(ast, StructDef);
-            members = struct_def->definitions;
-            binding_t *b = get_binding(env, struct_def->name);
-            if (!b) compiler_err(env, ast, "I couldn't find the type for the struct named '%s'", struct_def->name);
-            t = Match(b->type, TypeType)->type;
-        } else if (ast->tag == TaggedUnionDef) {
-            auto tu_def = Match(ast, TaggedUnionDef);
-            members = tu_def->definitions;
-            binding_t *b = get_binding(env, tu_def->name);
-            if (!b) compiler_err(env, ast, "I couldn't find the type for the tagged union named '%s'", tu_def->name);
-            t = Match(b->type, TypeType)->type;
-        } else if (ast->tag == VariantDef) {
-            auto def = Match(ast, VariantDef);
-            members = def->body ? Match(def->body, Block)->statements : LIST(ast_t*);
-            t = Type(VariantType, .filename=sss_get_file_pos(ast->file, ast->start),
-                     .name=def->name, .variant_of=parse_type_ast(env, def->variant_of));
-        } else {
-            errx(1, "Unreachable");
-        }
+    case TypeDef: {
+        binding_t *b = get_binding(env, Match(ast, TypeDef)->name);
+        sss_type_t *t = Match(b->type, TypeType)->type;
         env = get_type_env(env, t);
+        List(ast_t*) members = Match(ast, TypeDef)->definitions;
         foreach (members, member, _) {
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
@@ -1217,6 +1199,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             goto get_field;
         }
         case VariantType: {
+            if (Match(fielded_t, VariantType)->variant_of->tag == TaggedUnionType) {
+                // Accessing foo.Tag shouldn't return the constructor, it should do a checked access
+                auto tagged = Match(Match(fielded_t, VariantType)->variant_of, TaggedUnionType);
+                for (int64_t i = 0; i < length(tagged->members); i++) {
+                    auto member = ith(tagged->members, i);
+                    if (streq(access->field, member.name)) {
+                        fielded_t = Match(fielded_t, VariantType)->variant_of;
+                        goto get_field;
+                    }
+                }
+            }
+            binding_t *binding = get_from_namespace(env, fielded_t, access->field);
+            if (binding)
+                return binding->rval;
             fielded_t = Match(fielded_t, VariantType)->variant_of;
             goto get_field;
         }
@@ -1436,8 +1432,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *container_t = get_type(env, in->container);
 
         sss_type_t *container_value_t = container_t;
-        while (container_value_t->tag == PointerType)
-            container_value_t = Match(container_value_t, PointerType)->pointed;
+        for (;;) {
+            if (container_value_t->tag == PointerType)
+                container_value_t = Match(container_value_t, PointerType)->pointed;
+            else if (container_value_t->tag == VariantType)
+                container_value_t = Match(container_value_t, VariantType)->variant_of;
+            else break;
+        }
 
         gcc_rvalue_t *ret;
         if (container_value_t->tag == TableType) {
@@ -1450,7 +1451,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
         } else if (container_value_t->tag == ArrayType) {
             ret = array_contains(env, block, in->container, in->member);
-        } else if (member_t->tag == TaggedUnionType && type_eq(member_t, container_t)) {
+        } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
@@ -1465,7 +1466,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else if (container_value_t->tag == RangeType) {
             ret = range_contains(env, block, in->container, in->member);
         } else {
-            compiler_err(env, ast, "'in' membership testing is only supported for Arrays and Tables, not %T", container_t);
+            compiler_err(env, ast, "'in' membership testing is only supported for Arrays, Tables and Enums, not %T", container_t);
         }
         if (ast->tag == NotIn)
             ret = gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), ret);
@@ -1494,8 +1495,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (convert_b)
             return gcc_callx(env->ctx, loc, convert_b->func, val);
 
-        if (src_t->tag == TaggedUnionType && cast_t->tag == IntType) {
-            auto tagged = Match(src_t, TaggedUnionType);
+        if (base_variant(src_t)->tag == TaggedUnionType && cast_t->tag == IntType) {
+            auto tagged = Match(base_variant(src_t), TaggedUnionType);
             int64_t max_tag = 0;
             foreach (tagged->members, member, _) {
                 if (member->tag_value > max_tag)
@@ -1515,9 +1516,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_cast(env->ctx, loc, tag, sss_type_to_gcc(env, cast_t));
         }
 
-        if (cast_t->tag == TaggedUnionType) {
+        if (base_variant(cast_t)->tag == TaggedUnionType) {
             const char *tag_name = NULL;
-            auto members = Match(cast_t, TaggedUnionType)->members;
+            auto members = Match(base_variant(cast_t), TaggedUnionType)->members;
             foreach (members, member, _) {
                 if (!member->type || member->type->tag != StructType) continue;
                 auto struct_ = Match(member->type, StructType);
@@ -1530,8 +1531,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             if (tag_name) {
                 binding_t *b = get_from_namespace(env, cast_t, tag_name);
-                if (!b) compiler_err(env, ast, "I couldn't find the %T constructor for the tag %s in the namespace %p",
-                                     cast_t, tag_name, get_namespace(env, cast_t));
+                if (!b) compiler_err(env, ast, "I couldn't find the %T constructor for the tag %s",
+                                     cast_t, tag_name);
                 return gcc_callx(env->ctx, loc, b->func, val);
             }
           failed_tagged_union_cast:;
@@ -1580,13 +1581,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
         } else if (t->tag == PointerType && Match(t, PointerType)->is_optional) {
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
-        } else if (t->tag == TaggedUnionType) {
+        } else if (base_variant(t)->tag == TaggedUnionType) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
             gcc_type_t *tag_gcc_t = get_tag_type(env, t);
             int64_t all_tags = 0;
-            auto members = Match(t, TaggedUnionType)->members;
+            auto members = Match(base_variant(t), TaggedUnionType)->members;
             for (int64_t i = 0; i < length(members); i++) {
                 if (ith(members, i).type && length(Match(ith(members, i).type, StructType)->field_types) > 0)
                     compiler_err(env, ast, "%T tagged union values can't be negated because some tags have data attached to them.", t);

@@ -42,8 +42,8 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     }
     case Var: {
         const char *name = Match(pattern, Var)->name;
-        if (t->tag == TaggedUnionType) {
-            auto tu_t = Match(t, TaggedUnionType);
+        if (base_variant(t)->tag == TaggedUnionType) {
+            auto tu_t = Match(base_variant(t), TaggedUnionType);
             foreach (tu_t->members, member, _) {
                 if (streq(member->name, name)) {
                     gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
@@ -84,7 +84,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     }
     case Struct: {
         auto pat_struct = Match(pattern, Struct);
-        if (t->tag != StructType) {
+        if (base_variant(t)->tag != StructType) {
             compiler_err(env, pattern, "This is a struct pattern, but you're attempting to match it against a non-struct value with type %T", t);
         } else if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
@@ -93,12 +93,12 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             pat_t = Match(pat_t, TypeType)->type;
             if (!type_eq(t, pat_t))
                 compiler_err(env, pattern, "This pattern is a %T, but you're attempting to match it against a value with type %T", pat_t, t);
-        } else if (!streq(Match(t, StructType)->units, pat_struct->units)) {
+        } else if (!streq(Match(base_variant(t), StructType)->units, pat_struct->units)) {
             compiler_err(env, pattern, "The units of this pattern: <%s> don't match the units of the value being matched: <%s>",
-                         Match(t, StructType)->units, pat_struct->units);
+                         Match(base_variant(t), StructType)->units, pat_struct->units);
         }
 
-        auto struct_info = Match(t, StructType);
+        auto struct_info = Match(base_variant(t), StructType);
         gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
 
         gcc_jump(*block, loc, outcomes.match_block);
@@ -125,11 +125,12 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             goto compare_values;
 
         const char *fn_name = Match(call->fn, Var)->name;
-        if (t->tag != TaggedUnionType)
+        sss_type_t *base_t = base_variant(t);
+        if (base_t->tag != TaggedUnionType)
             goto compare_values;
 
         // Tagged Union Constructor:
-        auto tu_t = Match(t, TaggedUnionType);
+        auto tu_t = Match(base_t, TaggedUnionType);
         int64_t tag_index = -1;
         for (int64_t i = 0; i < LIST_LEN(tu_t->members); i++) {
             if (streq(ith(tu_t->members, i).name, fn_name)) {
@@ -145,10 +146,10 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         if (!member.type)
             compiler_err(env, pattern, "This tagged union member doesn't have any value");
 
-        gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
+        gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
 
-        gcc_type_t *tag_gcc_t = get_tag_type(env, t);
-        gcc_type_t *union_gcc_t = get_union_type(env, t);
+        gcc_type_t *tag_gcc_t = get_tag_type(env, base_t);
+        gcc_type_t *union_gcc_t = get_union_type(env, base_t);
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);
 

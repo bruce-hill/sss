@@ -1,10 +1,10 @@
 // Defines a DSL for shell commands and a way to run them safely
 
 // Opaque value:
-alias _POpenFile::Memory
+type _POpenFile := Memory
 
-alias Sh::Str
-    func run(sh:Sh)->{output:Str,status:Int32}
+type Sh := Str
+    func run(sh:Sh)->struct(output:Str,status:Int32)
         f := extern popen((bitcast sh as Str).c_string(), &`r):?_POpenFile or return {output="", status=-1i32}
         output := extern sss_readfile(&f, Int64.max):Str
         status := extern pclose(f):Int32

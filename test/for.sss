@@ -17,10 +17,7 @@ func doop(xs:[Str])
 xs := ["one","two","three"]
 doop(xs)
 
-struct IntStack {
-    i:Int
-    next:?IntStack
-}
+type IntStack := struct(i:Int, next:?IntStack)
 
 stack := !IntStack
 for i in 1..10

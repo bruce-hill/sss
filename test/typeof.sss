@@ -1,10 +1,7 @@
-struct Vec {
-    x:Num
-    y:Num
-}
+type Vec := struct(x:Num, y:Num)
 
 >>> v := Vec{0.,0.}
 >>> typeof v
-=== Vec{x:Num,y:Num}
+=== Vec
 >>> typeof (typeof v)
-=== Type(Vec{x:Num,y:Num})
+=== Type(Vec)

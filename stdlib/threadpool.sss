@@ -1,7 +1,7 @@
 use ./mutex_queue.sss
 use ./threads.sss
 
-struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, next_request_id=0}
+type Pool := struct(input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, next_request_id=0)
     func new(workers=10)->Pool
         input := @Queue{}
         output := @Queue{}
@@ -9,11 +9,11 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
 
     func spawn(input:@Queue, output:@Queue)->Thread
         func main_loop(v:?Memory)->?Memory
-            ctx := bitcast v as @{input:@Queue, output:@Queue}
+            ctx := bitcast v as @struct(input:@Queue, output:@Queue)
 
             fail unless extern pthread_setcanceltype(0i32, !Int32):CError == CError.SUCCESS
             repeat
-                request := bitcast ctx.input.dequeue() as @{id:Int, fn:(?Memory)->?Memory, arg:?Memory}
+                request := bitcast ctx.input.dequeue() as @struct(id:Int, fn:(?Memory)->?Memory, arg:?Memory)
                 result := request.fn(request.arg)
                 ctx.output.enqueue(@{request.id, result})
             return !Memory
@@ -28,7 +28,7 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
     func run(p:&Pool, fn:(?Memory)->?Memory, arg=!Memory)->?Memory
         id := p.give(fn, arg)
         repeat
-            result := bitcast p.output.dequeue() as @{id:Int, value:?Memory}
+            result := bitcast p.output.dequeue() as @struct(id:Int, value:?Memory)
             if result.id == id
                 return result.value
             else
@@ -44,9 +44,9 @@ struct Pool{input,output:@Queue, workers:@[Thread], completed={:Int=>?Memory}, n
         p.input.enqueue(@{id, fn, arg})
         return id
 
-    func take(p:&Pool)-> enum PoolResult := Result(id:Int, value:?Memory) | Empty
+    func take(p:&Pool)-> enum(Result(id:Int, value:?Memory) | Empty)
         if p.output.try_dequeue() matches Value(?result)
-            result := (bitcast result as @{id:Int, value:?Memory})
+            result := (bitcast result as @struct(id:Int, value:?Memory))
             return Result(id=result.id, value=result.value)
         else if p.completed.length > 0
             id := p.completed.keys[1]

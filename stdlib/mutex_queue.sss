@@ -1,6 +1,6 @@
 use ./mutex.sss
 
-struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mutex=Mutex.new()}
+type Queue := struct(head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mutex=Mutex.new())
     func new(; inline)->@Queue
         return @Queue{}
 
@@ -8,7 +8,7 @@ struct Queue{head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), tail_mute
         with q.head_mutex.lock()
             (&q.head).insert(value)
 
-    func try_dequeue(q:&Queue)-> enum DequeueResult := Empty | Value(data:?Memory)
+    func try_dequeue(q:&Queue)-> enum(Empty | Value(data:?Memory))
         with q.tail_mutex.lock()
             while q.tail.length == 0
                 with q.head_mutex.lock()

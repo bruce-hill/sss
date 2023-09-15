@@ -101,12 +101,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto struct_ = Match(ast, TypeStruct);
         NEW_LIST(const char*, member_names);
         NEW_LIST(sss_type_t*, member_types);
-        sss_type_t *t = Type(StructType, .filename=sss_get_file_pos(ast->file, ast->start),
-                             .name=struct_->name, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
-        if (struct_->name) {
-            env = fresh_scope(env);
-            hset(env->bindings, struct_->name, new(binding_t, .type=Type(TypeType, .type=t)));
-        }
+        sss_type_t *t = Type(StructType, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
         for (int64_t i = 0, len = length(struct_->members.types); i < len; i++) {
             const char *member_name = ith(struct_->members.names, i);
             APPEND(member_names, member_name);
@@ -129,7 +124,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         NEW_LIST(sss_tagged_union_member_t, members);
         for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
             args_t args = ith(tu->tag_args, i);
-            sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .name=ith(tu->tag_names, i), .members=args));
+            sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .members=args));
             if (member_t && has_stack_memory(member_t))
                 compiler_err(env, ast, "Tagged unions can't hold stack memory because the tagged union may outlive the stack frame.");
             sss_tagged_union_member_t member = {
@@ -139,8 +134,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             APPEND_STRUCT(members, member);
         }
-        return Type(TaggedUnionType, .filename=sss_get_file_pos(ast->file, ast->start),
-                    .name=tu->name, .tag_bits=tu->tag_bits, .members=members);
+        return Type(TaggedUnionType, .tag_bits=tu->tag_bits, .members=members);
     }
     case TypeTypeAST: {
         auto t = Match(ast, TypeTypeAST);
@@ -155,15 +149,16 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
     sss_type_t *iter_t = get_type(env, iter);
     for (;;) {
         if (iter_t->tag == PointerType) iter_t = Match(iter_t, PointerType)->pointed;
-        else if (iter_t->tag == VariantType) iter_t = Match(iter_t, VariantType)->variant_of;
+        // else if (iter_t->tag == VariantType) iter_t = Match(iter_t, VariantType)->variant_of;
         else break;
     }
-    switch (iter_t->tag) {
-    case ArrayType: return Match(iter_t, ArrayType)->item_type;
-    case TableType: return table_entry_type(iter_t);
+    sss_type_t *base_t = base_variant(iter_t);
+    switch (base_t->tag) {
+    case ArrayType: return Match(base_t, ArrayType)->item_type;
+    case TableType: return table_entry_type(base_t);
     case RangeType: return INT_TYPE;
     case StructType: {
-        auto struct_ = Match(iter_t, StructType);
+        auto struct_ = Match(base_t, StructType);
         for (int64_t i = 0; i < length(struct_->field_names); i++) {
             if (streq(ith(struct_->field_names, i), "next")
                 && type_eq(ith(struct_->field_types, i), Type(PointerType, .pointed=iter_t, .is_optional=true)))
@@ -171,7 +166,7 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
         }
         compiler_err(env, iter, "I don't know how to iterate over %T structs that don't have a .next member", iter_t);
     }
-    case GeneratorType: return Match(iter_t, GeneratorType)->generated;
+    case GeneratorType: return Match(base_t, GeneratorType)->generated;
     default:
         compiler_err(env, iter, "I don't know how to iterate over %T values like this", iter_t);
         break;
@@ -234,19 +229,128 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
                 compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
         }
         return with_units(t, units);
-    } else if (is_numeric(lhs_t) && (rhs_t->tag == StructType || rhs_t->tag == ArrayType)) {
+    } else if (is_numeric(lhs_t) && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType)) {
         if (streq(units, "%")) units = NULL;
         return with_units(rhs_t, units);
-    } else if (is_numeric(rhs_t) && (lhs_t->tag == StructType || lhs_t->tag == ArrayType)) {
+    } else if (is_numeric(rhs_t) && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType)) {
         if (streq(units, "%")) units = NULL;
         return with_units(lhs_t, units);
-    } else if (lhs_t->tag == BoolType && (rhs_t->tag == StructType || rhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+    } else if (lhs_t->tag == BoolType && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
         return rhs_t;
-    } else if (rhs_t->tag == BoolType && (lhs_t->tag == StructType || lhs_t->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+    } else if (rhs_t->tag == BoolType && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
         return lhs_t;
     } else {
         compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
     }
+}
+
+sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
+{
+    sss_type_t *original_t = t;
+    for (;;) {
+        if (t->tag == PointerType) t = Match(t, PointerType)->pointed;
+        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+        else break;
+    }
+
+    switch (t->tag) {
+    case StructType: {
+        auto struct_t = Match(t, StructType);
+        for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
+            const char *struct_field = LIST_ITEM(struct_t->field_names, i);
+            if (!struct_field) struct_field = heap_strf("_%ld", i+1);
+            if (streq(struct_field, field_name)) {
+                sss_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
+                if (struct_t->units)
+                    field_t = with_units(field_t, unit_derive(struct_t->units, NULL, env->derived_units));
+
+                return field_t;
+            }
+        }
+        goto class_lookup;
+    }
+    case TaggedUnionType: {
+        auto tagged = Match(t, TaggedUnionType);
+        foreach (tagged->members, member, _) {
+            if (streq(field_name, member->name))
+                return member->type;
+        }
+        goto class_lookup;
+    }
+    case TypeType: {
+        binding_t *binding = get_from_namespace(env, Match(t, TypeType)->type, field_name);
+        if (binding)
+            return binding->type;
+        goto class_lookup;
+    }
+    case ArrayType: {
+        if (streq(field_name, "length"))
+            return INT_TYPE;
+
+        auto array = Match(t, ArrayType);
+        sss_type_t *item_t = array->item_type;
+
+        // TODO: support other things like pointers
+        if (base_variant(item_t)->tag == StructType) {
+            // vecs.x ==> [v.x for v in vecs]
+            auto struct_ = Match(base_variant(item_t), StructType);
+            for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
+                const char *struct_field = LIST_ITEM(struct_->field_names, i);
+                if (!struct_field) struct_field = heap_strf("_%ld", i+1);
+                if (streq(struct_field, field_name)) {
+                    return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
+                }
+            }
+        }
+        goto class_lookup;
+    }
+    case RangeType: {
+        if (streq(field_name, "first") || streq(field_name, "last") || streq(field_name, "step") || streq(field_name, "length"))
+            return INT_TYPE;
+        goto class_lookup;
+    }
+    case TableType: {
+        if (streq(field_name, "length"))
+            return INT_TYPE;
+        else if (streq(field_name, "default"))
+            return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_immutable=true);
+        else if (streq(field_name, "fallback"))
+            return Type(PointerType, .pointed=t, .is_optional=true, .is_immutable=true);
+        else if (streq(field_name, "keys"))
+            return Type(ArrayType, .item_type=Match(t, TableType)->key_type);
+        else if (streq(field_name, "values"))
+            return Type(ArrayType, .item_type=Match(t, TableType)->value_type);
+
+        goto class_lookup;
+    }
+    default: break;
+    }
+
+  class_lookup:;
+    t = original_t;
+    for (;;) {
+        if (streq(field_name, "__hash"))
+            (void)get_hash_func(env, t); 
+        else if (streq(field_name, "__compare"))
+            (void)get_compare_func(env, t); 
+        else if (streq(field_name, "__cord"))
+            (void)get_cord_func(env, t); 
+
+        binding_t *b;
+        if (t->tag == ArrayType)
+            b = get_array_method(env, t, field_name);
+        else if (t->tag == TableType)
+            b = get_table_method(env, t, field_name);
+        else
+            b = get_from_namespace(env, t, field_name);
+
+        if (b) return b->type;
+
+        if (t->tag == PointerType) t = Match(t, PointerType)->pointed;
+        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+        else break;
+    }
+    return NULL;
 }
 
 static sss_type_t *generate(sss_type_t *t)
@@ -259,6 +363,9 @@ static sss_type_t *generate(sss_type_t *t)
 
 static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
 {
+    while (t->tag == VariantType)
+        t = Match(t, VariantType)->variant_of;
+
     switch (pattern->tag) {
     case Wildcard: {
         const char *name = Match(pattern, Wildcard)->name;
@@ -285,15 +392,13 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         return;
     }
     case Struct: {
+        if (t->tag != StructType)
+            return;
         auto struct_type = Match(t, StructType);
         auto pat_struct = Match(pattern, Struct);
-        if (t->tag != StructType) {
-            return;
-        } else if (pat_struct->type) {
+        if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
             if (!type_eq(t, pat_t)) return;
-        } else if (struct_type->name) {
-            return;
         } else if (!streq(struct_type->units, pat_struct->units)) {
             return;
         }
@@ -491,7 +596,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
-        sss_type_t *t = Type(StructType, .name=NULL, .field_names=LIST(const char*, "key", "value"),
+        sss_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
                             .field_types=LIST(sss_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
         sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
         if (memoized) {
@@ -504,121 +609,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         sss_type_t *fielded_t = get_type(env, access->fielded);
-        if (streq(access->field, "__hash"))
-            (void)get_hash_func(env, fielded_t); 
-        else if (streq(access->field, "__compare"))
-            (void)get_compare_func(env, fielded_t); 
-        else if (streq(access->field, "__cord"))
-            (void)get_cord_func(env, fielded_t); 
-        bool is_optional = (fielded_t->tag == PointerType) ? Match(fielded_t, PointerType)->is_optional : false;
-
-        sss_type_t *value_t = fielded_t;
-        for (;;) {
-            if (value_t->tag == PointerType) value_t = Match(value_t, PointerType)->pointed;
-            else if (value_t->tag == VariantType) value_t = Match(value_t, VariantType)->variant_of;
-            else break;
-        }
-
-        switch (value_t->tag) {
-        case StructType: {
-            auto struct_t = Match(value_t, StructType);
-            for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
-                const char *field_name = LIST_ITEM(struct_t->field_names, i);
-                if (!field_name) field_name = heap_strf("_%ld", i+1);
-                if (streq(field_name, access->field)) {
-                    if (is_optional)
-                        compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
-
-                    sss_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
-                    if (struct_t->units)
-                        field_t = with_units(field_t, unit_derive(struct_t->units, NULL, env->derived_units));
-                    return field_t;
-                }
-            }
-            goto class_lookup;
-        }
-        case TaggedUnionType: {
-            auto tagged = Match(value_t, TaggedUnionType);
-            foreach (tagged->members, member, _) {
-                if (streq(access->field, member->name)) {
-                    if (member->type)
-                        return member->type;
-                    else
-                        compiler_err(env, ast, "This tagged union type doesn't have a value for '%s'", member->name);
-                }
-            }
-            goto class_lookup;
-        }
-        case TypeType: {
-            binding_t *type_binding = get_ast_binding(env, access->fielded);
-            if (!type_binding || type_binding->type->tag != TypeType)
-                compiler_err(env, access->fielded, "Something went wrong with looking up this type");
-            binding_t *binding = get_from_namespace(env, Match(type_binding->type, TypeType)->type, access->field);
-            if (binding)
-                return binding->type;
-            else
-                compiler_err(env, ast, "I can't find anything called %s on the type %T", access->field, Match(type_binding->type, TypeType)->type);
-        }
-        case ArrayType: {
-            if (streq(access->field, "length"))
-                return INT_TYPE;
-
-            auto array = Match(value_t, ArrayType);
-            sss_type_t *item_t = array->item_type;
-
-            // TODO: support other things like pointers
-            if (item_t->tag == StructType) {
-                // vecs.x ==> [v.x for v in vecs]
-                auto struct_ = Match(item_t, StructType);
-                for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
-                    const char *field_name = LIST_ITEM(struct_->field_names, i);
-                    if (!field_name) field_name = heap_strf("_%ld", i+1);
-                    if (streq(field_name, access->field)) {
-                        if (is_optional)
-                            compiler_err(env, access->fielded, "This value may be nil, so accessing members on it is unsafe.");
-                        return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
-                    }
-                }
-            }
-            binding_t *binding = get_array_method(env, fielded_t, access->field);
-            if (!binding)
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
-            return binding->type;
-        }
-        case RangeType: {
-            if (streq(access->field, "first") || streq(access->field, "last") || streq(access->field, "step") || streq(access->field, "length"))
-                return INT_TYPE;
-            goto class_lookup;
-        }
-        case TableType: {
-            if (streq(access->field, "length"))
-                return INT_TYPE;
-            else if (streq(access->field, "default"))
-                return Type(PointerType, .pointed=Match(value_t, TableType)->value_type, .is_optional=true, .is_immutable=true);
-            else if (streq(access->field, "fallback"))
-                return Type(PointerType, .pointed=value_t, .is_optional=true, .is_immutable=true);
-            else if (streq(access->field, "keys"))
-                return Type(ArrayType, .item_type=Match(value_t, TableType)->key_type);
-            else if (streq(access->field, "values"))
-                return Type(ArrayType, .item_type=Match(value_t, TableType)->value_type);
-
-            binding_t *binding = get_table_method(env, fielded_t, access->field);
-            if (!binding)
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
-
-            goto class_lookup;
-        }
-        default: {
-          class_lookup:;
-            binding_t *binding = get_from_namespace(env, fielded_t, access->field);
-            if (!binding)
-                binding = get_from_namespace(env, value_t, access->field);
-            if (binding)
-                return binding->type;
-            else
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on type %T", access->field, fielded_t);
-        }
-        }
+        sss_type_t *field_t = get_field_type(env, fielded_t, access->field);
+        if (!field_t)
+            compiler_err(env, ast, "I can't find anything called %s on the type %T", access->field, fielded_t);
+        return field_t;
     }
     case Index: {
         auto indexing = Match(ast, Index);
@@ -688,7 +682,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
         case AndUpdate: case OrUpdate: case XorUpdate:
-        case Assign: case Predeclare: case Declare: case FunctionDef: case StructDef:
+        case Assign: case Predeclare: case Declare: case FunctionDef: case TypeDef:
             return Type(VoidType);
         default: break;
         }
@@ -895,13 +889,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case Not: {
         sss_type_t *t = get_type(env, Match(ast, Not)->value);
-        if (t->tag == TaggedUnionType)
+        if (base_variant(t)->tag == TaggedUnionType)
             return t;
-        else if (t->tag == BoolType || is_integral(t))
+        else if (base_variant(t)->tag == BoolType || is_integral(t))
             return t;
-        else if (t->tag == PointerType && Match(t, PointerType)->is_optional)
+        else if (base_variant(t)->tag == PointerType && Match(base_variant(t), PointerType)->is_optional)
             return Type(BoolType);
-        compiler_err(env, ast, "I only know what `not` means for Bools and integers, but this is a %T", t); 
+        compiler_err(env, ast, "I only know what `not` means for Bools, Ints, and Enums, but this is a %T", t); 
     }
 
     case Equal: case NotEqual: {
@@ -986,7 +980,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
     }
 
-    case StructDef: case TaggedUnionDef: case UnitDef: case ConvertDef: {
+    case TypeDef: case UnitDef: case ConvertDef: {
         return Type(VoidType);
     }
 
@@ -1006,7 +1000,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 APPEND(field_types, field_type);
             }
 
-            sss_type_t *t = Type(StructType, .name=NULL, .field_names=field_names, .field_types=field_types,
+            sss_type_t *t = Type(StructType, .field_names=field_names, .field_types=field_types,
                                  .units=unit_derive(struct_->units, NULL, env->derived_units));
             sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
             if (memoized) {
@@ -1127,18 +1121,19 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         foreach (using->used, used, _) {
             sss_type_t *t = get_type(env, *used);
             NEW_LIST(const char*, fields);
-            while (t->tag == PointerType) {
-                if (Match(t, PointerType)->is_optional)
-                    compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
-                t = Match(t, PointerType)->pointed;
-            }
-            switch (t->tag) {
-            case StructType:
-                fields = Match(t, StructType)->field_names;
-                break;
-            default:
-                compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
-                break;
+            for (;;) {
+                if (t->tag == PointerType) {
+                    if (Match(t, PointerType)->is_optional)
+                        compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
+                    t = Match(t, PointerType)->pointed;
+                } else if (t->tag == VariantType) {
+                    t = Match(t, VariantType)->variant_of;
+                } else if (t->tag == StructType) {
+                    fields = Match(t, StructType)->field_names;
+                    break;
+                } else {
+                    compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
+                }
             }
             foreach (fields, field, _) {
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
@@ -1151,7 +1146,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto variant = Match(ast, Variant);
         return parse_type_ast(env, variant->type);
     }
-    case Extend: case VariantDef: return Type(VoidType);
+    case Extend: return Type(VoidType);
     default: break;
     }
     compiler_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));
@@ -1161,7 +1156,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case Assign: case Predeclare: case Declare: case FunctionDef: case StructDef: case Use:
+    case Assign: case Predeclare: case Declare: case FunctionDef: case TypeDef: case Use:
         return true;
     default: break;
     }

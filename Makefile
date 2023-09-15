@@ -1,6 +1,6 @@
 CC=gcc
 PREFIX=/usr/local
-VERSION=0.11.0
+VERSION=0.12.0
 CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 # MAKEFLAGS := --jobs=$(shell nproc) --output-sync=target

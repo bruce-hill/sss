@@ -1,6 +1,6 @@
 // Tests for the functionality of the 'using' block
 
-struct Vec{x,y:Num}
+type Vec := struct(x,y:Num)
     func len(v:Vec)->Num using v 
         return (x*x + y*y).sqrt()
 

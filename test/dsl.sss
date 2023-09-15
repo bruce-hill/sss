@@ -1,5 +1,5 @@
 
-alias JSON::Str
+type JSON := Str
     convert j:JSON as Str
         return bitcast j as Str
     convert str:Str as JSON
@@ -25,7 +25,7 @@ alias JSON::Str
 >>> ptr
 === &JSON::"[true]"
 
-alias SQL::Str
+type SQL := Str
     convert str:Str as SQL
         return bitcast "\x1b[0;35m'$(str.replace("'","\x1b[34;1m''\x1b[0;35m"))'\x1b[m" as SQL
 
@@ -41,7 +41,7 @@ age := 10
 s := SQL::"SELECT * FROM students WHERE name = $name AND age > $age"
 say (bitcast s as Str)
 
-alias Quoted::Str
+type Quoted := Str
     convert s:Str as Quoted
         return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as Quoted
 
@@ -49,7 +49,7 @@ str := "one two"
 str2 := 'with "quotes" in it'
 say (bitcast Quoted::$[my strings are $str and $(str2)!] as Str)
 
-alias HTML::Str
+type HTML := Str
     convert s:Str as HTML
         s = s.replace("&", "\x1b[34;1m&amp;\x1b[0;35m")
              .replace("<", "\x1b[34;1m&lt;\x1b[0;35m")

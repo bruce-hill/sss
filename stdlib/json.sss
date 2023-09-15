@@ -1,12 +1,12 @@
-enum Object :=
-    | Map(map:{Str=>Object})
+type Object := enum(
+      Map(map:{Str=>Object})
     | List(list:[Object])
     | String(s:Str)
     | Number(n:Num)
     | Boolean(b:Bool)
     | Null
     | Invalid(invalid:JSON)
-
+)
     convert j:Object as JSON
         if j matches Map(?table)
             return JSON::[`{,
@@ -33,7 +33,7 @@ enum Object :=
         else
             fail
 
-alias JSON::Str
+type JSON := Str
     convert js:JSON as Str
         return bitcast js as Str
 
@@ -45,17 +45,11 @@ alias JSON::Str
             else
                 return no
 
-        func match_chars(js:&JSON, chars:JSON; inline)->JSON
-            rest := js.trimmed(chars, trim_right=no)
-            defer js[] = rest
-            matched := js[][..(js.length - rest.length)]
-            return matched
-
         func skip_spaces(js:&JSON; inline)
-            js[] = js.trimmed(JSON::" \n\r\t", trim_right=no)
+            js[] = bitcast js.trimmed(JSON::" \n\r\t", trim_right=no) as JSON
 
         func match_str(js:&JSON)->Object
-            unless match(js, JSON::$("))
+            unless match(js, JSON::'"')
                 return Object.Invalid(js[])
             content := js[]
             for i,c in js[]
@@ -159,8 +153,8 @@ if IS_MAIN_PROGRAM
     >>> Object.String(${"Quotes" and \backslashes}) as JSON
     === JSON::"\"\\\"Quotes\\\" and \\backslashes\""
     >>> JSON::$|{"x": true}| as Object
-    === Object.Map(map={"x"=>Object.Boolean(b=yes)})
+    === Map(map={"x"=>Boolean(b=yes)})
     >>> JSON::$|[1,2]| as Object
-    === Object.List(list=[Object.Number(n=1), Object.Number(n=2)])
+    === List(list=[Number(n=1), Number(n=2)])
     >>> x := Object.Map({"x"=> Object.String("hello")})
     >>> x.Map.map["x"].String

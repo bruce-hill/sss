@@ -68,7 +68,7 @@ sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, List
                                       .field_defaults=LIST(ast_t*));
         }
     }
-    sss_type_t *t = Type(TaggedUnionType, .filename="<builtin>", .name=name, .tag_bits=tag_bits, .members=members);
+    sss_type_t *t = Type(VariantType, .filename="<builtin>", .name=name, .variant_of=Type(TaggedUnionType, .tag_bits=tag_bits, .members=members));
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     hset(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));
     populate_tagged_union_constructors(env, t);
@@ -459,11 +459,11 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
     load_method(env, str_ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_t,0));
     load_method(env, str_ns, "from_c_string", "from_pointer", str_t, ARG("str",c_str,0));
-    sss_hashmap_t *ns2 = get_namespace(env, c_str);
-    assert(ns2 == get_namespace(env, c_str));
-    load_method(env, ns2, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
-    sss_hashmap_t *ns3 = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
-    load_method(env, ns3, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
+    sss_hashmap_t *c_str_ns = get_namespace(env, c_str);
+    assert(c_str_ns == get_namespace(env, c_str));
+    load_method(env, c_str_ns, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
+    sss_hashmap_t *c_str_ptr_ns = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
+    load_method(env, c_str_ptr_ns, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
 
     sss_type_t *say_type = Type(
         FunctionType,

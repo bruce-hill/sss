@@ -3,7 +3,7 @@ val := 123
 func plain_func()->Int
     return 456
 
-struct Struct{x:Int}
+type Struct := struct(x:Int)
     func method(s:Struct)->Int
         return s.x+1
 

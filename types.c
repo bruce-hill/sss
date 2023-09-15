@@ -82,26 +82,10 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            const char *name = ((flags & FILENAMES) && struct_->name) ? heap_strf("%s:%s", struct_->filename, struct_->name) : struct_->name;
-            if (name && (!expanded || hget(expanded, name, char*))) {
-                if (!struct_->units)
-                    return name;
-                CORD c;
-                CORD_sprintf(&c, "%s<%s>", name, struct_->units);
-                return c;
-            }
-            if (name && expanded)
-                hset(expanded, name, name);
-            CORD c = NULL;
-            if (name)
-                c = CORD_cat(c, name);
-
-            if (!(flags & EXPAND_ARGS)) expanded = NULL;
-
-            c = CORD_cat(c, "{");
+            CORD c = "{";
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
-                const char* fname = LIST_ITEM(struct_->field_names, i);
+                const char *fname = struct_->field_names ? LIST_ITEM(struct_->field_names, i) : NULL;
                 if (i > 0)
                     c = CORD_cat(c, ",");
 
@@ -130,18 +114,10 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         }
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            const char *name = ((flags & FILENAMES) && tagged->name) ? heap_strf("%s:%s", tagged->filename, tagged->name) : tagged->name;
-            if (tagged->name && (!expanded || (name && hget(expanded, name, char*))))
-                return name;
-
-            if (name && expanded)
-                hset(expanded, name, name);
 
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
 
-            CORD c = CORD_cat("enum ", name);
-            c = CORD_cat(c, " := ");
-
+            CORD c = "enum(";
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, "|");
@@ -153,7 +129,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                     auto struct_ = Match(member.type, StructType);
                     for (int64_t j = 0; j < LIST_LEN(struct_->field_types); j++) {
                         sss_type_t *ft = LIST_ITEM(struct_->field_types, j);
-                        const char* fname = LIST_ITEM(struct_->field_names, j);
+                        const char *fname = struct_->field_names ? LIST_ITEM(struct_->field_names, j) : NULL;
                         if (j > 0)
                             c = CORD_cat(c, ",");
 
@@ -169,6 +145,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                 if (!(i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value))
                     CORD_sprintf(&c, "%r=%ld", c, member.tag_value);
             }
+            c = CORD_cat(c, ")");
             return c;
         }
         case ModuleType: {
@@ -179,13 +156,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         case VariantType: {
             auto variant = Match(t, VariantType);
             const char *name = (flags & FILENAMES) ? heap_strf("%s:%s", variant->filename, variant->name) : variant->name;
-            if (!expanded || hget(expanded, name, char*))
-                return name;
-            if (expanded)
-                hset(expanded, name, name);
-            CORD c;
-            CORD_sprintf(&c, "%s::%r", name, type_to_cord(variant->variant_of, expanded, flags));
-            return c;
+            return name;
         }
         default: {
             CORD c;
@@ -322,7 +293,7 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
-        return Type(StructType, .filename=s->filename, .name=s->name, .field_names=s->field_names, .field_types=s->field_types, .units=units);
+        return Type(StructType, .field_names=s->field_names, .field_types=s->field_types, .units=units);
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
@@ -342,19 +313,19 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
 
 bool is_integral(sss_type_t *t)
 {
-    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+    t = base_variant(t);
     return t->tag == IntType || t->tag == CharType || t->tag == CStringCharType;
 }
 
 bool is_floating_point(sss_type_t *t)
 {
-    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+    t = base_variant(t);
     return t->tag == NumType;
 }
 
 bool is_numeric(sss_type_t *t)
 {
-    while (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
+    t = base_variant(t);
     return t->tag == IntType || t->tag == NumType;
 }
 
@@ -535,9 +506,9 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType))))
         return true;
 
-    if (actual->tag == StructType && needed->tag == StructType) {
+    if (actual->tag == StructType && base_variant(needed)->tag == StructType) {
         auto actual_struct = Match(actual, StructType);
-        auto needed_struct = Match(needed, StructType);
+        auto needed_struct = Match(base_variant(needed), StructType);
         // TODO: allow promoting with uninitialized or extraneous values?
         if (LIST_LEN(actual_struct->field_types) != LIST_LEN(needed_struct->field_types))
             return false;
@@ -587,13 +558,6 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            const char *name = struct_->name ? heap_strf("%s:%s", struct_->filename, struct_->name) : NULL;
-            if (name && hget(seen, name, sss_type_t*))
-                return true;
-
-            if (name)
-                hset(seen, name, t);
-
             for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
                 sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
                 if (_can_have_cycles(ft, seen))
@@ -605,13 +569,6 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
         case GeneratorType: return _can_have_cycles(Match(t, GeneratorType)->generated, seen);
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            const char *name = tagged->name ? heap_strf("%s:%s", tagged->filename, tagged->name) : NULL;
-            if (name && hget(seen, name, sss_type_t*))
-                return true;
-
-            if (name)
-                hset(seen, name, t);
-
             for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
                 auto member = LIST_ITEM(tagged->members, i);
                 if (member.type && _can_have_cycles(member.type, seen))
@@ -619,7 +576,13 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
             }
             return false;
         }
-        case VariantType: return _can_have_cycles(Match(t, VariantType)->variant_of, seen);
+        case VariantType: {
+            const char *name = Match(t, VariantType)->name;
+            if (name && hget(seen, name, sss_type_t*))
+                return true;
+            hset(seen, name, t);
+            return _can_have_cycles(Match(t, VariantType)->variant_of, seen);
+        }
         default: return false;
     }
 }
@@ -643,6 +606,13 @@ sss_type_t *table_entry_type(sss_type_t *table_t)
         hset(&cache, type_to_string(t), t);
         return t;
     }
+}
+
+sss_type_t *base_variant(sss_type_t *t)
+{
+    while (t->tag == VariantType)
+        t = Match(t, VariantType)->variant_of;
+    return t;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

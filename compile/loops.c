@@ -109,7 +109,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     gcc_rvalue_t *original_pointer = NULL;
     if (iter_t->tag == PointerType) {
         auto ptr = Match(iter_t, PointerType);
-        if (ptr->pointed->tag == StructType) {
+        if (base_variant(ptr->pointed)->tag == StructType) {
             if (ptr->is_optional) {
                 gcc_rvalue_t *is_nil = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, iter_rval, gcc_null(env->ctx, gcc_iter_t));
                 gcc_block_t *continued = gcc_new_block(func, fresh("nonnil"));
@@ -117,14 +117,8 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
                 *block = continued;
             }
 
-            // Arrays and Tables get flagged for copy-on-write when iterating
-            if (ptr->pointed->tag == ArrayType)
-                mark_array_cow(env, block, iter_rval);
-            else if (ptr->pointed->tag == TableType)
-                gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, get_function(env, "sss_hashmap_mark_cow"), iter_rval));
-
             iter_rval = gcc_rval(gcc_rvalue_dereference(iter_rval, NULL));
-            iter_t = Match(iter_t, PointerType)->pointed;
+            iter_t = ptr->pointed;
             gcc_iter_t = sss_type_to_gcc(env, iter_t);
         } else {
             compiler_err(env, iter, "This value is a %T pointer. You must dereference the pointer with %#W[] to access the underlying value to iterate over it.",
@@ -144,11 +138,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     gcc_lvalue_t *item_shadow;
     sss_type_t *item_t;
-    switch (iter_t->tag) {
+    switch (base_variant(iter_t)->tag) {
     case ArrayType: {
         // item_ptr = array->items
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
-        item_t = Match(iter_t, ArrayType)->item_type;
+        item_t = Match(base_variant(iter_t), ArrayType)->item_type;
         gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
         gcc_assign(*block, NULL, item_ptr,
@@ -308,7 +302,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         break;
     }
     case StructType: {
-        auto struct_ = Match(iter_t, StructType);
+        auto struct_ = Match(base_variant(iter_t), StructType);
         int64_t field_index;
         for (field_index = 0; field_index < length(struct_->field_names); field_index++) {
             if (streq(ith(struct_->field_names, field_index), "next")

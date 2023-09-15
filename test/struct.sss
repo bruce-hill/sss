@@ -1,4 +1,4 @@
-struct Vec {x,y:Num}
+type Vec := struct(x,y:Num)
     func len(v:Vec)->Num
         hypot := extern hypot:(Num,Num)->Num
         return hypot(v.x, v.y)
@@ -17,10 +17,7 @@ say "$:v; $:(v+100) $:(100+v) $:(v-100) $:(100-v) $:(100*v) $:(v*100) $:(100/v) 
 
 say "$:(Vec{1.,1.} == Vec{1.,1.})"
 
-struct Nested {
-    n:Int
-    v1,v2:Vec
-}
+type Nested := struct(n:Int, v1,v2:Vec)
 
 n := Nested{10, Vec{1,2},Vec{3,4}}
 say "$n"
@@ -29,10 +26,7 @@ say "$:(n+n) $:(100*n)"
 
 // Recursive struct
 say "Recursive struct test:"
-struct Tree {
-    value:Int
-    left,right:?Tree
-}
+type Tree := struct(value:Int, left,right:?Tree)
 
 >>> l := @Tree{6}
 >>> t := @Tree{5, left=l}

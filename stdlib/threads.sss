@@ -1,9 +1,9 @@
 !link -lpthread
 
-alias Thread::Int
+type Thread := Int
     func create(fn:(?Memory)->?Memory, arg:?Memory)->Thread
         thread := Thread::0
-        enum CreateResult := Success=0 | InsufficientResources=11 | InvalidSettings=22
+        type CreateResult := enum(Success=0 | InsufficientResources=11 | InvalidSettings=22)
         if status := extern GC_pthread_create(&thread, !Memory, fn, arg):CreateResult matches Success
             return thread
         else
@@ -11,7 +11,7 @@ alias Thread::Int
 
     func join(t:Thread, _=!Memory)->?Memory
         ret := !Memory
-        enum JoinResult := Success(value:?Memory) | NoPermissions=1 | Deadlock=35 | Invalid=22 | NotFound=3
+        type JoinResult := enum(Success(value:?Memory) | NoPermissions=1 | Deadlock=35 | Invalid=22 | NotFound=3)
         if status := extern GC_pthread_join(t, &ret):JoinResult matches Success
             return ret
         else

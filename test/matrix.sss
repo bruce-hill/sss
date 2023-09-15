@@ -6,7 +6,7 @@ func dot(a:[Num],b:[Num])->Num
         sum += ai*bi
     return sum
 
-struct Mat2D {rows,cols:Int, data:[Num]}
+type Mat2D := struct(rows,cols:Int, data:[Num])
     func from_nested(data:[[Num]])->Mat2D
         fail unless row.length == data[1].length for row in data[2..]
         return Mat2D{data.length, data[1].length, [x for x in row for row in data]}

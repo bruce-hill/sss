@@ -2,7 +2,7 @@
 
 !link -lunistring
 
-struct CodePoint{n:Int32}
+type CodePoint := struct(n:Int32)
     func from_char(c:Char)->CodePoint
         return CodePoint{c as Int32}
 
@@ -105,8 +105,8 @@ struct CodePoint{n:Int32}
     is_regional_indicator := extern uc_is_property_regional_indicator:(CodePoint)->Bool
 
 // Opaque struct:
-struct uninorm_t{}
-alias UTF8::Str
+type uninorm_t := struct()
+type UTF8 := Str
     convert str:Str as UTF8
         u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
         err := u8_check(str.c_string(), str.length)
@@ -159,12 +159,12 @@ alias UTF8::Str
         ret := [CodePoint{0i32} for _ in 1..u.multibyte_length()]
         len := ret.length
         u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
-        _ := u8_to_u32(u.c_string(), u.length, (bitcast ret as {data:@CodePoint,length:Int32,stride:Int16,capacity:Int16}).data, &len)
+        _ := u8_to_u32(u.c_string(), u.length, (bitcast ret as struct(data:@CodePoint,length:Int32,stride:Int16,capacity:Int16)).data, &len)
         return ret
 
     func from_codepoints(codepoints:[CodePoint])->UTF8
         u32_to_u8 := extern u32_to_u8:(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
-        data_ptr := (bitcast codepoints as {data:?CodePoint,length:Int32,stride:Int16,capacity:Int16}).data or return UTF8::""
+        data_ptr := (bitcast codepoints as struct(data:?CodePoint,length:Int32,stride:Int16,capacity:Int16)).data or return UTF8::""
         len := @0
         buf := u32_to_u8(data_ptr, codepoints.length, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
         defer (extern free:(@CStringChar)->Void)(buf)

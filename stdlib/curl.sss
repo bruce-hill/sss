@@ -1,7 +1,7 @@
 // Wrapper for libcurl
 !link -lcurl
 
-enum ResultCode :=
+type ResultCode := enum(
     OK = 0 |
     UNSUPPORTED_PROTOCOL | FAILED_INIT | URL_MALFORMAT | NOT_BUILT_IN |
     COULDNT_RESOLVE_PROXY | COULDNT_RESOLVE_HOST | COULDNT_CONNECT |
@@ -28,11 +28,12 @@ enum ResultCode :=
     RTSP_SESSION_ERROR | FTP_BAD_FILE_LIST | CHUNK_FAILED | NO_CONNECTION_AVAILABLE |
     SSL_PINNEDPUBKEYNOTMATCH | SSL_INVALIDCERTSTATUS | HTTP2_STREAM | RECURSIVE_API_CALL |
     AUTH_ERROR | HTTP3 | QUIC_CONNECT_ERROR | PROXY | SSL_CLIENTCERT | UNRECOVERABLE_POLL
+)
 
-enum NetRC := Ignored=0 | Optional=1 | Required=2
+type NetRC := enum(Ignored=0 | Optional=1 | Required=2)
 
-enum Header :=
-    | WRITEDATA(data:?Memory)=10001
+type Header := enum(
+      WRITEDATA(data:?Memory)=10001
     | URL(url:@CStringChar)=10002
     | PORT(port:Int64)=3
     | PROXY(proxy:@CStringChar)=10004
@@ -320,16 +321,17 @@ enum Header :=
     | WS_OPTIONS=320
     | CA_CACHE_TIMEOUT=321
     | QUICK_EXIT=322
+)
 
-alias _CURL::Memory
+type _CURL := Memory
 
 func _write(data:@Char, size:Int64, nmemb:Int64, buf:@Str)->Int64
     buf ++= (bitcast {data,(size * nmemb) as Int32,1i16,0i16} as Str)
     return size*nmemb
 
-enum Result := Success(response:Str) | Failure(code:ResultCode)
+type Result := enum(Success(response:Str) | Failure(code:ResultCode))
 
-alias _CurlSList::Memory
+type _CurlSList := Memory
 
 func _curl(headers:[Header])->ResultCode
     curl := (extern curl_easy_init():?_CURL) or fail "Couldn't initialize CURL!"

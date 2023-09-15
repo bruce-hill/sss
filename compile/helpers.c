@@ -131,7 +131,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
 
 gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
 {
-    auto tagged = Match(t, TaggedUnionType);
+    auto tagged = Match(base_variant(t), TaggedUnionType);
     switch (tagged->tag_bits) {
     case 64: return gcc_type(env->ctx, INT64);
     case 32: return gcc_type(env->ctx, INT32);
@@ -143,10 +143,11 @@ gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
 
 gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 {
+    t = base_variant(t);
     static sss_hashmap_t cache = {0};
     gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
     if (gcc_t) return gcc_t;
-    auto tagged = Match(t, TaggedUnionType);
+    auto tagged = Match(base_variant(t), TaggedUnionType);
     auto fields = LIST(gcc_field_t*);
     foreach (tagged->members, member, _) {
         if (member->type && hget(&opaque_structs, type_to_string(member->type), gcc_type_t*))
@@ -167,8 +168,13 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
     static sss_hashmap_t cache = {0};
     t = with_units(t, NULL);
-    gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
+    const char *cache_key = type_to_string(t);
+    gcc_type_t *gcc_t = hget(&cache, cache_key, gcc_type_t*);
     if (gcc_t) return gcc_t;
+
+    const char *name = NULL;
+
+  // proceed_with_name:;
 
     switch (t->tag) {
     case IntType: {
@@ -269,7 +275,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         const char *t_str = type_to_string(t);
         gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
         if (opaque) return opaque;
-        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, struct_t->name ? struct_t->name : "Tuple");
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, t_str, gcc_t);
         hset(&opaque_structs, t_str, gcc_t);
@@ -282,7 +288,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
                              t, t);
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
             assert(gcc_ft);
-            const char *field_name = ith(struct_t->field_names, i);
+            const char *field_name = struct_t->field_names ? ith(struct_t->field_names, i) : NULL;
             if (!field_name) field_name = heap_strf("%_ld", i);
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, field_name);
             append(fields, field);
@@ -293,11 +299,10 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         break;
     }
     case TaggedUnionType: {
-        auto tagged = Match(t, TaggedUnionType);
         const char *t_str = type_to_string(t);
         gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
         if (opaque) return opaque;
-        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, tagged->name ? tagged->name : "TaggedUnion");
+        gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "TaggedUnion");
         gcc_t = gcc_struct_as_type(gcc_struct);
         hset(&cache, t_str, gcc_t);
         hset(&opaque_structs, t_str, gcc_t);
@@ -324,8 +329,10 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         break;
     }
     case VariantType: {
-        gcc_t = sss_type_to_gcc(env, Match(t, VariantType)->variant_of);
-        break;
+        return sss_type_to_gcc(env, Match(t, VariantType)->variant_of);
+        // name = Match(t, VariantType)->name;
+        // t = Match(t, VariantType)->variant_of;
+        // goto proceed_with_name;
     }
     default: {
       unknown_gcc_type:
@@ -333,7 +340,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     }
 
-    hset(&cache, type_to_string(t), gcc_t);
+    hset(&cache, cache_key, gcc_t);
     return gcc_t;
 }
 
@@ -363,11 +370,11 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
     } else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType)))) {
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
-    } else if (actual->tag == StructType && needed->tag == StructType) { // Struct promotion
+    } else if (actual->tag == StructType && base_variant(needed)->tag == StructType) { // Struct promotion
         gcc_type_t *actual_gcc_t = sss_type_to_gcc(env, actual);
         gcc_type_t *needed_gcc_t = sss_type_to_gcc(env, needed);
         auto actual_field_types = Match(actual, StructType)->field_types;
-        auto needed_field_types = Match(needed, StructType)->field_types;
+        auto needed_field_types = Match(base_variant(needed), StructType)->field_types;
         if (LIST_LEN(needed_field_types) == 0)
             return true;
         NEW_LIST(gcc_field_t*, needed_fields);
@@ -431,20 +438,18 @@ bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         sss_type_t *fielded_t = get_type(env, access->fielded);
-        if (fielded_t->tag == PointerType) {
-            auto ptr = Match(fielded_t, PointerType);
-          dereference_again:
-            if (ptr->is_optional)
-                return false;
-            fielded_t = ptr->pointed;
+        if (fielded_t->tag != PointerType && !can_be_lvalue(env, access->fielded, allow_slices))
+            return false;
+        for (;;) {
             if (fielded_t->tag == PointerType) {
-                ptr = Match(fielded_t, PointerType);
-                goto dereference_again;
-            }
-        } else {
-            if (!can_be_lvalue(env, access->fielded, allow_slices))
-                return false;
-        } 
+                auto ptr = Match(fielded_t, PointerType);
+                if (ptr->is_optional)
+                    return false;
+                fielded_t = ptr->pointed;
+            } else if (fielded_t->tag == VariantType) {
+                fielded_t = Match(fielded_t, VariantType)->variant_of;
+            } else break;
+        }
 
         if (fielded_t->tag == StructType) {
             auto fielded_struct = Match(fielded_t, StructType);
@@ -547,17 +552,18 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             fielded_lval = get_lvalue(env, block, access->fielded, allow_slices);
         } 
 
-        if (fielded_t->tag == StructType) {
-            auto fielded_struct = Match(fielded_t, StructType);
+        sss_type_t *base_t = base_variant(fielded_t);
+        if (base_t->tag == StructType) {
+            auto fielded_struct = Match(base_t, StructType);
             for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
                 if (streq(ith(fielded_struct->field_names, i), access->field)) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, i);
                     return gcc_lvalue_access_field(fielded_lval, loc, field);
                 }
             }
             compiler_err(env, ast, "The struct %T doesn't have a field called '%s'", fielded_t, access->field);
-        } else if (fielded_t->tag == ArrayType) { 
+        } else if (base_t->tag == ArrayType) { 
             // arr.x => [item.x for x in arr]
             if (!allow_slices)
                 compiler_err(env, ast, "I can't use array slices as assignment targets");
@@ -568,8 +574,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             gcc_lvalue_t *slice = gcc_local(func, loc, sss_type_to_gcc(env, get_type(env, ast)), "_slice");
             gcc_assign(*block, loc, slice, slice_val);
             return slice;
-        } else if (fielded_t->tag == TableType) {
-            sss_type_t *table_t = fielded_t;
+        } else if (base_t->tag == TableType) {
+            sss_type_t *table_t = base_t;
             if (streq(access->field, "default")) {
                 // if (get_type(env, access->fielded)->tag != PointerType)
                 //     compiler_err(env, ast, "The .default field can't be assigned to on a local value-typed variable."); 
@@ -585,20 +591,20 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             } else {
                 compiler_err(env, ast, "The only fields that can be mutated on a table are '.default' and '.fallback', not '.%s'", access->field);
             }
-        } else if (fielded_t->tag == TaggedUnionType) {
-            auto tagged = Match(fielded_t, TaggedUnionType);
+        } else if (base_t->tag == TaggedUnionType) {
+            auto tagged = Match(base_t, TaggedUnionType);
             for (int64_t i = 0; i < length(tagged->members); i++) {
                 auto member = ith(tagged->members, i);
                 if (!streq(access->field, member.name)) continue;
 
-                gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
                 gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
                 gcc_rvalue_t *tag = gcc_rval(gcc_lvalue_access_field(fielded_lval, NULL, tag_field));
                 gcc_func_t *func = gcc_block_func(*block);
                 gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
                             *right_tag = gcc_new_block(func, fresh("right_tag"));
 
-                gcc_type_t *tag_gcc_t = get_tag_type(env, fielded_t);
+                gcc_type_t *tag_gcc_t = get_tag_type(env, base_t);
                 gcc_rvalue_t *correct_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);
@@ -609,7 +615,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 if (*block) gcc_jump(*block, loc, *block);
 
                 *block = right_tag;
-                gcc_type_t *gcc_union_t = get_union_type(env, fielded_t);
+                gcc_type_t *gcc_union_t = get_union_type(env, base_t);
                 return gcc_lvalue_access_field(gcc_lvalue_access_field(fielded_lval, NULL, gcc_get_field(tagged_struct, 1)), loc,
                                                gcc_get_union_field(gcc_union_t, i));
             }

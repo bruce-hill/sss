@@ -71,14 +71,12 @@ struct sss_type_s {
             sss_type_t *generated;
         } GeneratorType;
         struct {
-            const char *name, *filename;
             List(const char*) field_names;
             List(sss_type_t*) field_types;
             List(ast_t*) field_defaults;
             const char* units;
         } StructType;
         struct {
-            const char *name, *filename;
             List(sss_tagged_union_member_t) members;
             unsigned short int tag_bits;
         } TaggedUnionType;
@@ -120,5 +118,6 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed);
 bool can_leave_uninitialized(sss_type_t *t);
 bool can_have_cycles(sss_type_t *t);
 sss_type_t *table_entry_type(sss_type_t *table_t);
+sss_type_t *base_variant(sss_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

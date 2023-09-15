@@ -1,6 +1,6 @@
 
 // Log the non-cached calls to this function:
-calls := @[:{Int,Int}]
+calls := @[:struct(_1:Int,_2:Int)]
 func pow(base:Int, exponent:Int; cached)->Int
     calls.insert({base, exponent})
     fail if exponent < 0

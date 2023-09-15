@@ -37,60 +37,17 @@ static void write_to_api_file(FILE *f, const char *prefix, ast_t *ast)
                 write_to_api_file(f, prefix, decl->value);
             break;
         }
-        case StructDef: {
-            auto def = Match(ast, StructDef);
+        case TypeDef: {
+            auto def = Match(ast, TypeDef);
             if (def->name[0] == '_') break;
-            fprintf(f, "%s%s; %s; struct{", prefix, def->name, get_unique_id());
-            auto fields = def->fields;
-            for (int64_t i = 0; i < LIST_LEN(fields.types); i++) {
-                const char *name = LIST_ITEM(fields.names, i);
-                ast_t *type = LIST_ITEM(fields.types, i);
-                ast_t *val = LIST_ITEM(fields.defaults, i);
-                if (i > 0) fprintf(f, ", ");
-                fprintf(f, "%s", name);
-                if (type) fprintf(f, ":%#W", type);
-                if (val) fprintf(f, "=%#W", val);
-            }
-            fprintf(f, "}\n");
+            fprintf(f, "%s%s; %s; %#W\n", def->type);
             LIST_FOR(def->definitions, child, _)
                 write_to_api_file(f, heap_strf("%s%s.", prefix, def->name), *child);
-            break;
-        }
-        case TaggedUnionDef: {
-            auto def = Match(ast, TaggedUnionDef);
-            if (def->name[0] == '_') break;
-            fprintf(f, "%s%s; %s; enum(", prefix, def->name, get_unique_id());
-            for (int64_t i = 0; i < LIST_LEN(def->tag_names); i++) {
-                if (i > 0) fprintf(f, " | ");
-                const char *tag_name = LIST_ITEM(def->tag_names, i);
-                auto tag_args = LIST_ITEM(def->tag_args, i);
-                fprintf(f, "%s(", tag_name);
-                for (int64_t j = 0; j < LIST_LEN(tag_args.types); j++) {
-                    if (j > 0) fprintf(f, ", ");
-                    const char *arg_name = LIST_ITEM(tag_args.names, j);
-                    ast_t *arg_type = LIST_ITEM(tag_args.types, j);
-                    fprintf(f, "%s:%#W", arg_name, arg_type);
-                }
-                int64_t tag_val = LIST_ITEM(def->tag_values, i);
-                fprintf(f, ")=%ld", tag_val);
-            }
-            fprintf(f, ")\n");
-
-            LIST_FOR(def->definitions, child, _)
-                write_to_api_file(f, heap_strf("%s%s.", prefix, def->name), *child);
-
             break;
         }
         case ConvertDef: {
             auto def = Match(ast, ConvertDef);
             fprintf(f, "%sconvert; %s; %#W as %#W\n", prefix, get_unique_id(), def->source_type, def->target_type);
-            break;
-        }
-        case VariantDef: {
-            auto def = Match(ast, VariantDef);
-            if (def->name[0] == '_') break;
-            fprintf(f, "%s%s; %s; alias(%#W)\n", prefix, def->name, get_unique_id(), def->variant_of);
-            write_to_api_file(f, heap_strf("%s%s.", prefix, def->name), def->body);
             break;
         }
         case FunctionDef: {

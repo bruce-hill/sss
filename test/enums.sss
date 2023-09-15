@@ -1,7 +1,7 @@
-enum Foo := A | B | C | D
+type Foo := enum(A | B | C | D)
 
-say "$(Foo.A)"
-fail unless "$(Foo.A)" == "Foo.A"
+>>> "$(Foo.A)"
+=== "A"
 
 for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     if x matches A
@@ -11,10 +11,12 @@ for x in [Foo.A, Foo.B, Foo.C, Foo.D]
     else
         say "$x matches something else"
 
-enum Baz := Text(text:Str)
+type Baz := enum(
+      Text(text:Str)
     | Integer(i:Int)
     | Vec2(x,y:Num)
     | Nil
+)
 
 bazzes := [Baz.Text("hi"), Baz.Integer(5), Baz.Vec2(2.4, 4), Baz.Nil]
 
@@ -27,28 +29,28 @@ for b in bazzes
         say "nil"
 
 // Flags:
-enum Flags := None=0 | A=1 | B=2 | C=4 | D=8
+type Flags := enum(None=0 | A=1 | B=2 | C=4 | D=8)
 >>> abc := Flags.A + Flags.B + Flags.C
 >>> abc
-=== Flags.A+B+C
+=== A+B+C
 >>> abc + Flags.A
-=== Flags.A+B+C
+=== A+B+C
 >>> Flags.B in abc
 === yes
 >>> Flags.D in abc
 === no
 >>> abc - Flags.B
-=== Flags.A+C
+=== A+C
 >>> not (Flags.A or Flags.B)
-=== Flags.C+D
+=== C+D
 >>> (Flags.A+Flags.B) xor Flags.B
-=== Flags.A
+=== A
 
 // Test for accessing type scopes:
 func doop(b:Baz)->Baz
     return Nil
 >>> doop(Text("hi"))
-=== Baz.Nil
-struct HasBaz{x:Int, b:Baz}
+=== Nil
+type HasBaz := struct(x:Int, b:Baz)
 >>> HasBaz{Integer(3), x=9}
-=== HasBaz{x=9, b=Baz.Integer(i=3)}
+=== HasBaz{x=9, b=Integer(i=3)}

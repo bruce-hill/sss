@@ -38,13 +38,15 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         t = Type(PointerType, .pointed=Match(t, PointerType)->pointed, .is_optional=true, .is_stack=Match(t, PointerType)->is_stack);
 
     // Memoize:
-    binding_t *b = get_from_namespace(env, t, "__cord");
+    const char *units = type_units(t);
+    const char *func_name = units && units[0] ? heap_strf("__cord<%s>", units) : "__cord";
+    binding_t *b = get_from_namespace(env, t, func_name);
     if (b) return b->func;
 
     // Reuse same function for all Type types:
     if (t->tag == TypeType && Match(t, TypeType)->type) {
         gcc_func_t *func = get_cord_func(env, Type(TypeType));
-        hset(get_namespace(env, t), "__cord", get_from_namespace(env, Type(TypeType), "__cord"));
+        hset(get_namespace(env, t), func_name, get_from_namespace(env, Type(TypeType), func_name));
         return func;
     }
 
@@ -56,14 +58,14 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         gcc_new_param(env->ctx, NULL, void_ptr_t, "recursion"),
         gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, BOOL), "color"),
     };
-    const char* sym_name = fresh("__cord");
+    const char *sym_name = fresh( func_name);
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, STRING), sym_name, 3, params, 0);
     sss_type_t *fn_t = Type(FunctionType,
                            .arg_types=LIST(sss_type_t*, t, Type(PointerType, .pointed=Type(MemoryType)), Type(BoolType)),
                            .arg_names=LIST(const char*, "obj", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(PointerType, .pointed=Type(MemoryType)));
     sss_hashmap_t *ns = get_namespace(env, t);
-    hset(ns, "__cord", new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
+    hset(ns, func_name, new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("to_cord"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("to_cord() for type: ", type_to_typeof_string(t))));
@@ -192,8 +194,6 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
         auto tagged = Match(t, TaggedUnionType);
         APPEND_COLOR_LITERAL(&block, "\x1b[0;1;36m");
-        if (tagged->name)
-            APPEND_LITERAL(block, heap_strf("%s.", tagged->name));
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
         gcc_type_t *tag_gcc_t = get_tag_type(env, t);
         gcc_lvalue_t *tag_var = gcc_local(func, NULL, tag_gcc_t, "_tag");
@@ -227,7 +227,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
                         APPEND_LITERAL(rest_of_tag_block, ", ");
                     }
 
-                    const char* name = ith(field_names, i);
+                    const char *name = field_names ? ith(field_names, i) : NULL;
                     if (name && !streq(name, heap_strf("_%lu", i+1))) {
                         APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
                         APPEND_LITERAL(rest_of_tag_block, name);
@@ -247,6 +247,8 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
 
                 APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[0;1;36m");
                 APPEND_LITERAL(rest_of_tag_block, ")");
+                APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
+            } else {
                 APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
             }
             gcc_jump(rest_of_tag_block, NULL, done);
@@ -455,10 +457,6 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
 
 #define ADD_INT(a, b) gcc_binary_op(env->ctx, NULL, GCC_BINOP_PLUS, int_t, a, b)
 
-        if (struct_t->name) {
-            APPEND_COLOR_LITERAL(&block, "\x1b[0;1m");
-            APPEND_LITERAL(block, struct_t->name);
-        }
         APPEND_COLOR_LITERAL(&block, "\x1b[m");
         APPEND_LITERAL(block, "{");
         
@@ -469,7 +467,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
                 APPEND_LITERAL(block, ", ");
             }
 
-            const char* name = ith(struct_t->field_names, i);
+            const char *name = struct_t->field_names ? ith(struct_t->field_names, i) : NULL;
             if (name && !streq(name, heap_strf("_%lu", i+1))) {
                 APPEND_COLOR_LITERAL(&block, "\x1b[m");
                 APPEND_LITERAL(block, name);
@@ -519,7 +517,10 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     case VariantType: {
         auto variant = Match(t, VariantType);
         APPEND_COLOR_LITERAL(&block, "\x1b[36m");
-        APPEND_LITERAL(block, heap_strf("%s::", variant->name));
+        if (variant->variant_of->tag == StructType)
+            APPEND_LITERAL(block, variant->name);
+        else if (variant->variant_of->tag != TaggedUnionType)
+            APPEND_LITERAL(block, heap_strf("%s::", variant->name));
         APPEND_COLOR_LITERAL(&block, "\x1b[m");
         gcc_func_t *cord_fn = get_cord_func(env, variant->variant_of);
         assert(cord_fn);

@@ -1,6 +1,6 @@
 !link -llfds
 
-alias Entry::@Memory
+type Entry := @Memory
     func new(value=!Memory)->Entry
         e := extern GC_malloc(24u64):Entry
         e.set_value(value)
@@ -12,9 +12,9 @@ alias Entry::@Memory
     func set_value(e:Entry, value:?Memory)
         (bitcast ((bitcast e as UInt)+16u64) as @?Memory)[] = value
 
-enum DequeueResult := Empty | Value(data:?Memory)
+type DequeueResult := enum(Empty | Value(data:?Memory))
 
-alias Queue::@Memory
+type Queue := @Memory
     func new()->Queue
         q := extern GC_malloc(768u64):Queue
         dummy := Entry.new()

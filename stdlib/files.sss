@@ -2,19 +2,19 @@
 
 time := use time.sss
 
-struct FileInfo{
+type FileInfo := struct(
     device, rdevice, inode, mode, links, user, group:Int64
     size,block_size:Int64<bytes>
     block_count:Int64
     accessed, modified, moved:time.Timestamp
-}
+)
 
-enum Result := Failure(message:Str) | Success
+type Result := enum(Failure(message:Str) | Success)
 
 // Opaque value:
-alias _CFile::Memory
+type _CFile := Memory
 
-struct File{raw_c_file:?_CFile}
+type File := struct(raw_c_file:?_CFile)
     func line(f:@File)->Str
         return extern get_line(f.raw_c_file or fail "File has already been closed"):Str
 
@@ -53,13 +53,13 @@ stdin := @File{extern stdin:@_CFile}
 stdout := @File{extern stdout:@_CFile}
 stderr := @File{extern stderr:@_CFile}
 
-enum OpenResult := Failure(message:Str) | Success(file:@File)
+type OpenResult := enum(Failure(message:Str) | Success(file:@File))
 
-enum FileMode := Read=0 | Write=1 | ReadWrite=2
+type FileMode := enum(Read=0 | Write=1 | ReadWrite=2)
 open := extern sss_fopen:(path:Str,mode="r")->OpenResult
 temporary := extern sss_tmpfile:()->@File
 
-enum TempDirResult := Failure(message:Str) | Success(path:Str)
+type TempDirResult := enum(Failure(message:Str) | Success(path:Str))
 
 func temp_directory(template="/tmp/dir.XXXXXX")->TempDirResult
     path := [c for c in template]
@@ -93,15 +93,15 @@ func spoof(text:Str)->@File
     f.rewind()
     return f
 
-alias Glob::Str
+type Glob := Str
     func expand(g:Glob)->[Str]
-        struct glob_t{
+        type glob_t := struct(
             gl_pathc:Int64
             gl_pathv:?@CStringChar
             gl_offs:Int64
             gl_flags:Int32
-        }
-        enum GlobResult := SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3
+        )
+        type GlobResult := enum(SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3)
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
         result := extern glob((bitcast g as Str).c_string(), flags, !Memory, &globbuf):GlobResult

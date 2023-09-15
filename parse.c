@@ -46,7 +46,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
+    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "type", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_mix_", "_min_", "_max_",
@@ -94,10 +94,9 @@ static PARSER(parse_statement);
 static PARSER(parse_block);
 static PARSER(parse_opt_indented_block);
 static PARSER(parse_var);
-static PARSER(parse_struct_def);
+static PARSER(parse_type_def);
 static PARSER(parse_func_def);
-static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag);
-static PARSER(parse_alias_def);
+static PARSER(parse_enum_type);
 static PARSER(parse_unit_def);
 static PARSER(parse_def);
 static PARSER(parse_convert_def);
@@ -488,32 +487,13 @@ PARSER(parse_table_type) {
 
 PARSER(parse_struct_type) {
     const char *start = pos;
-    const char *name = get_id(&pos);
-    if (!match(&pos, "{")) return NULL;
-    NEW_LIST(const char*, member_names);
-    NEW_LIST(ast_t*, member_types);
-    for (int i = 1; ; i++) {
-        whitespace(&pos);
-        if (*pos == '}')
-            break;
-        const char *field_start = pos;
-        const char *field_name = get_id(&pos);
-        whitespace(&pos);
-        if (match(&pos, ":")) {
-            whitespace(&pos);
-        } else {
-            field_name = NULL;
-            pos = field_start;
-        }
-        ast_t *t = expect_ast(ctx, field_start, &pos, _parse_type, "I couldn't parse the type for this field");
-        APPEND(member_names, field_name);
-        APPEND(member_types, t);
-        whitespace(&pos);
-        if (!match(&pos, ",")) break;
-    }
+    if (!match(&pos, "struct")) return NULL;
+    spaces(&pos);
+    if (!match(&pos, "(")) return NULL;
+    args_t args = parse_args(ctx, &pos, false);
     whitespace(&pos);
-    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this tuple type");
-    return NewAST(ctx->file, start, pos, TypeStruct, .name=name, .members=(args_t){.names=member_names, .types=member_types});
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this struct type");
+    return NewAST(ctx->file, start, pos, TypeStruct, .members=args);
 }
 
 static unsigned short int get_tag_bits(List(int64_t) tag_values)
@@ -599,7 +579,7 @@ PARSER(_parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
     bool success = (false
-        || (type=parse_enum(ctx, pos, TypeTaggedUnion))
+        || (type=parse_enum_type(ctx, pos))
         || (type=parse_pointer_type(ctx, pos))
         || (type=parse_type_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
@@ -1868,9 +1848,7 @@ PARSER(parse_assignment) {
 PARSER(parse_def) {
     ast_t *stmt = NULL;
     (void)((stmt=parse_func_def(ctx, pos))
-        || (stmt=parse_struct_def(ctx, pos))
-        || (stmt=parse_enum(ctx, pos, TaggedUnionDef))
-        || (stmt=parse_alias_def(ctx, pos))
+        || (stmt=parse_type_def(ctx, pos))
         || (stmt=parse_unit_def(ctx, pos))
         || (stmt=parse_convert_def(ctx, pos)));
     return stmt;
@@ -2001,47 +1979,37 @@ static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, si
     return definitions;
 }
 
-PARSER(parse_struct_def) {
-    // Struct def: def Foo{...}
+PARSER(parse_type_def) {
+    // type Foo := Type... \n body...
     const char *start = pos;
-    if (!match_word(&pos, "struct")) return NULL;
+    if (!match_word(&pos, "type")) return NULL;
+
+    size_t starting_indent = sss_get_indent(ctx->file, pos);
 
     const char *name = get_id(&pos);
     if (!name) return NULL;
-
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
     spaces(&pos);
 
-    if (!match(&pos, "{")) return NULL;
-    args_t fields = parse_args(ctx, &pos, false);
-    whitespace(&pos);
-    expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
-
+    if (!match(&pos, ":=")) return NULL;
+    ast_t *type_ast = expect_ast(ctx, start, &pos, _parse_type, "I expected a type after this ':='");
     List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
-    return NewAST(ctx->file, start, pos, StructDef, .name=name, .fields=fields, .definitions=definitions);
+    return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .definitions=definitions);
 }
 
-static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
-    assert(tag == TaggedUnionDef || tag == TypeTaggedUnion);
+PARSER(parse_enum_type) {
     // tagged union: enum Foo := a|b(x:Int,y:Int)=5|...
     const char *start = pos;
 
     if (!match_word(&pos, "enum")) return NULL;
-    const char *name = get_id(&pos);
-    if (!name) return NULL;
     spaces(&pos);
-    if (!match(&pos, ":=")) return NULL;
+    if (!match(&pos, "(")) return NULL;
 
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
     NEW_LIST(const char*, tag_names);
     NEW_LIST(int64_t, tag_values);
     NEW_LIST(args_t, tag_args);
     int64_t next_value = 0;
 
-    size_t (*ws)(const char **) = (tag == TaggedUnionDef) ? whitespace : spaces;
-    ws(&pos);
-    if (match(&pos, "|"))
-        ws(&pos);
+    whitespace(&pos);
     unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
@@ -2071,9 +2039,9 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
         spaces(&pos);
         args_t args;
         if (match(&pos, "(")) {
-            ws(&pos);
+            whitespace(&pos);
             args = parse_args(ctx, &pos, false);
-            ws(&pos);
+            whitespace(&pos);
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         } else {
             args = (args_t){LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
@@ -2097,11 +2065,11 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
 
       carry_on:
         const char *next_pos = pos;
-        ws(&next_pos);
+        whitespace(&next_pos);
         if (match(&next_pos, ";")) {
-            ws(&next_pos);
+            whitespace(&next_pos);
             if (match_word(&next_pos, "bits") && (spaces(&next_pos), match(&next_pos, "="))) {
-                ws(&next_pos);
+                whitespace(&next_pos);
                 char *after = NULL;
                 const char *bits_start = next_pos;
                 tag_bits = strtol(next_pos, &after, 10);
@@ -2110,13 +2078,13 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
                 if (tag_bits < get_tag_bits(tag_values))
                     parser_err(ctx, bits_start, after, "This isn't enough bits to hold the largest tag value");
                 next_pos = after;
-                ws(&next_pos);
+                whitespace(&next_pos);
                 match(&next_pos, "|");
                 pos = next_pos;
                 break;
             }
         } else if (match(&next_pos, "|")) {
-            ws(&next_pos);
+            whitespace(&next_pos);
         } else {
             break;
         }
@@ -2126,11 +2094,12 @@ static ast_t *parse_enum(parse_ctx_t *ctx, const char *pos, ast_tag_e tag) {
 
     if (tag_bits == 0)
         tag_bits = get_tag_bits(tag_values);
-    List(ast_t*) definitions = (tag == TaggedUnionDef) ? parse_def_definitions(ctx, &pos, starting_indent) : LIST(ast_t*);
-    ast_t *ast = NewAST(ctx->file, start, pos, TaggedUnionDef, .name=name, .tag_names=tag_names, .tag_values=tag_values,
-                        .tag_bits=tag_bits, .tag_args=tag_args, .definitions=definitions);
-    ast->tag = tag;
-    return ast;
+
+    whitespace(&pos);
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this enum definition");
+
+    return NewAST(ctx->file, start, pos, TypeTaggedUnion, .tag_names=tag_names, .tag_values=tag_values,
+                        .tag_bits=tag_bits, .tag_args=tag_args);
 }
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
@@ -2224,21 +2193,6 @@ PARSER(parse_func_def) {
     return NewAST(ctx->file, start, pos, FunctionDef,
                   .name=name, .args=args, .ret_type=ret_type, .body=body, .cache=cache_ast,
                   .is_inline=is_inline);
-}
-
-PARSER(parse_alias_def) {
-    // alias Variant::T
-    const char *start = pos;
-    if (!match_word(&pos, "alias")) return NULL;
-
-    const char* name = get_id(&pos);
-    if (!name) return NULL;
-
-    spaces(&pos);
-    if (!match(&pos, "::")) return NULL;
-    ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
-    ast_t *body = optional_ast(ctx, &pos, parse_opt_indented_block); 
-    return NewAST(ctx->file, start, pos, VariantDef, .name=name, .variant_of=source_type, .body=body);
 }
 
 PARSER(parse_convert_def) {

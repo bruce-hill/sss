@@ -1,4 +1,4 @@
-struct SqrRet {n:Num}
+type SqrRet := struct(n:Num)
 func sqr_optional(n:Num)->?SqrRet
     if n < 0.
         return !SqrRet

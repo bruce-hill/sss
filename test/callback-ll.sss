@@ -1,20 +1,20 @@
-struct CallbackList {fn:(Num)->Void, next:?CallbackList}
+type CallbackList := struct(fn:(Num)->Void, next:?CallbackList)
 
-struct NumberValue {_value:Num, _callbacks:?CallbackList}
-    func set(self:@NumberValue, value:Num)
-        self._value = value
-        for cb in self._callbacks
-            fn := cb.fn
-            fn(value)
+// type NumberValue := {_value:Num, _callbacks:?CallbackList}
+//     func set(self:@NumberValue, value:Num)
+//         self._value = value
+//         for cb in self._callbacks
+//             fn := cb.fn
+//             fn(value)
 
-    func get(self:@NumberValue)->Num
-        return self._value
+//     func get(self:@NumberValue)->Num
+//         return self._value
 
-    func on_changed(self:@NumberValue, callback:((Num)->Void))->((Num)->Void)
-        self._callbacks = @CallbackList{callback, next=self._callbacks}
-        return callback
+//     func on_changed(self:@NumberValue, callback:((Num)->Void))-> ((Num)->Void)
+//         self._callbacks = @CallbackList{callback, next=self._callbacks}
+//         return callback
 
-n := @NumberValue{1.5}
-_ := n.on_changed(func(n:Num) say "callback 1: Changed to $n")
-_ := n.on_changed(func(n:Num) say "callback 2: Changed to $n")
-n.set(5.3)
+// n := @NumberValue{1.5}
+// _ := n.on_changed(func(n:Num) say "callback 1: Changed to $n")
+// _ := n.on_changed(func(n:Num) say "callback 2: Changed to $n")
+// n.set(5.3)

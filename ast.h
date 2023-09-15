@@ -44,10 +44,11 @@ typedef enum {
     TypeFunction, TypePointer,
     TypeMeasure, TypeTypeAST,
     Cast, Bitcast,
-    Struct, StructDef,
-    TaggedUnionDef, TypeTaggedUnion, TaggedUnionField,
+    Struct,
+    TypeTaggedUnion, TaggedUnionField,
+    TypeDef,
     Index, FieldAccess,
-    UnitDef, ConvertDef, VariantDef,
+    UnitDef, ConvertDef,
     Reduction,
     DocTest,
     Defer,
@@ -213,7 +214,6 @@ struct ast_s {
             ast_t *key_type, *value_type;
         } TypeTable;
         struct {
-            const char *name;
             args_t members;
         } TypeStruct;
         struct {
@@ -240,22 +240,20 @@ struct ast_s {
             const char *units;
         } Struct;
         struct {
-            const char *name;
-            args_t fields;
-            List(ast_t*) definitions;
-        } StructDef;
-        struct {
-            const char *name;
             List(const char*) tag_names;
             List(int64_t) tag_values;
             List(args_t) tag_args;
-            List(ast_t*) definitions;
             unsigned short int tag_bits;
-        } TaggedUnionDef, TypeTaggedUnion;
+        } TypeTaggedUnion;
         struct {
             const char *name;
             ast_t *value;
         } TaggedUnionField;
+        struct {
+            const char *name;
+            ast_t *type;
+            List(ast_t*) definitions;
+        } TypeDef;
         struct {
             ast_t *indexed, *index;
             bool unchecked;
@@ -271,11 +269,6 @@ struct ast_s {
             const char *var;
             ast_t *source_type, *target_type, *body;
         } ConvertDef;
-        struct {
-            const char *name;
-            ast_t *variant_of;
-            ast_t *body;
-        } VariantDef;
         struct {
             ast_t *iter, *combination, *fallback;
         } Reduction;
