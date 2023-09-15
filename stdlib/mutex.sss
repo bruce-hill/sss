@@ -12,7 +12,7 @@ type Mutex := @Memory
 
     func lock(mutex:Mutex)->MutexLock
         if extern pthread_mutex_lock(mutex):CError != CError.SUCCESS
-            fail "Mutex failed to lock!"
+            fail "Mutex failed to lock: $(extern last_err():Str)"
         return MutexLock{mutex}
     
     // enum MutexLockResult := AcquiredLock(lock:MutexLock) | Busy
