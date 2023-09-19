@@ -667,7 +667,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (call->extern_return_type)
             return parse_type_ast(env, call->extern_return_type);
         sss_type_t *fn_type_t = get_type(env, call->fn);
-        if (fn_type_t->tag != FunctionType) {
+        if (fn_type_t->tag == TypeType) {
+            binding_t *b = get_from_namespace(env, Match(fn_type_t, TypeType)->type, "new");
+            if (b && b->type->tag == FunctionType)
+                fn_type_t = b->type;
+            else
+                return Match(fn_type_t, TypeType)->type;
+        } else if (fn_type_t->tag != FunctionType) {
             compiler_err(env, call->fn, "You're calling a value of type %T and not a function", fn_type_t);
         }
         auto fn_type = Match(fn_type_t, FunctionType);

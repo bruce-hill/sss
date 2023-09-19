@@ -206,6 +206,86 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
+static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *t, List(ast_t*) args)
+{
+    t = base_variant(t);
+    if (t->tag != StructType)
+        compiler_err(env, ast, "%T is not a valid struct type", t);
+
+    gcc_loc_t *loc = ast_loc(env, ast);
+    auto struct_type = Match(t, StructType);
+    if (length(struct_type->field_names) == 0) {
+        // GCC doesn't allow empty constructors for empty structs, but for
+        // some reason, it's perfectly fine to just declare an empty struct
+        // variable and use that as an rvalue.
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+        gcc_lvalue_t *lval = gcc_local(gcc_block_func(*block), loc, gcc_t, "_empty_singleton");
+        return gcc_rval(lval);
+    }
+    if (length(args) > length(struct_type->field_names))
+        compiler_err(env, ast, "I expected this %T literal to only have %ld fields, but you provided %ld fields.",
+                     t, length(struct_type->field_names), length(args));
+
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+    size_t num_fields = gcc_field_count(gcc_struct);
+    if (!(num_fields == (size_t)length(struct_type->field_names)))
+        compiler_err(env, ast, "Something went wrong with this struct!");
+
+    List(arg_info_t) arg_infos = bind_arguments(env, args, struct_type->field_names,
+                                                struct_type->field_types, struct_type->field_defaults);
+
+    env_t *default_env = file_scope(env); // TODO: use scope from struct def
+    gcc_func_t *func = gcc_block_func(*block);
+    // Evaluate args in order and stash in temp variables:
+    gcc_rvalue_t *field_rvals[num_fields] = {};
+    foreach (arg_infos, arg, _) {
+        gcc_rvalue_t *rval;
+        if (arg->ast) {
+            ast_t *arg_ast = arg->ast;
+            env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
+            demote_int_literals(&arg_ast, arg->type);
+            sss_type_t *actual_t = get_type(arg_env, arg_ast);
+            rval = compile_expr(arg_env, block, arg_ast);
+            if (!promote(arg_env, actual_t, &rval, arg->type))
+                compiler_err(arg_env, arg_ast, "This struct expected this field to have type %T, but this value is a %T", arg->type, actual_t);
+
+            if (arg->ast->tag != Var) {
+                gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(arg_env, arg->type), arg->name ? arg->name : fresh("arg"));
+                gcc_assign(*block, loc, tmp, rval);
+                rval = gcc_rval(tmp);
+            }
+        } else if (arg->type->tag == PointerType && Match(arg->type, PointerType)->is_optional) {
+            rval = gcc_null(env->ctx, sss_type_to_gcc(env, arg->type));
+        } else if (!can_leave_uninitialized(arg->type)) {
+            compiler_err(env, ast, "The required field '%s' (%T) was not provided", arg->name, arg->type);
+        } else {
+            rval = NULL;
+        }
+
+        field_rvals[arg->position] = rval;
+        if (rval && arg->name)
+            hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
+    }
+
+    // Filter for only the populated fields (those not uninitialized):
+    gcc_field_t *fields[num_fields] = {};
+    gcc_rvalue_t *populated_rvals[num_fields] = {};
+    int64_t num_populated = 0;
+    for (int64_t i = 0; i < (int64_t)num_fields; i++) {
+        gcc_rvalue_t *rval = field_rvals[i];
+        if (rval) {
+            fields[num_populated] = gcc_get_field(gcc_struct, i);
+            populated_rvals[num_populated] = rval;
+            ++num_populated;
+        }
+    }
+
+    gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_populated, fields, populated_rvals);
+    assert(rval);
+    return rval;
+}
+
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -850,89 +930,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             t = get_type(env, ast);
         }
 
-        while (t->tag == VariantType)
-            t = Match(t, VariantType)->variant_of;
-
-        if (t->tag != StructType)
-            compiler_err(env, ast, "This is not a valid struct type");
-
-        auto struct_type = Match(t, StructType);
-        if (length(struct_type->field_names) == 0) {
-            // GCC doesn't allow empty constructors for empty structs, but for
-            // some reason, it's perfectly fine to just declare an empty struct
-            // variable and use that as an rvalue.
-            gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-            gcc_lvalue_t *lval = gcc_local(gcc_block_func(*block), loc, gcc_t, "_empty_singleton");
-            return gcc_rval(lval);
-        }
-        if (length(struct_->members) > length(struct_type->field_names))
-            compiler_err(env, ast, "I expected this %T literal to only have %ld fields, but you provided %ld fields.",
-                  t, length(struct_type->field_names), length(struct_->members));
-
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-        size_t num_fields = gcc_field_count(gcc_struct);
-        if (!(num_fields == (size_t)length(struct_type->field_names)))
-            compiler_err(env, ast, "Something went wrong with this struct!");
-
-        List(arg_info_t) arg_infos = bind_arguments(env, struct_->members, struct_type->field_names,
-                                                    struct_type->field_types, struct_type->field_defaults);
-
-        env_t *default_env = file_scope(env); // TODO: use scope from struct def
-        gcc_func_t *func = gcc_block_func(*block);
-        // Evaluate args in order and stash in temp variables:
-        gcc_rvalue_t *field_rvals[num_fields] = {};
-        foreach (arg_infos, arg, _) {
-            gcc_rvalue_t *rval;
-            if (arg->ast) {
-                ast_t *arg_ast = arg->ast;
-                env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
-                demote_int_literals(&arg_ast, arg->type);
-                sss_type_t *actual_t = get_type(arg_env, arg_ast);
-                rval = compile_expr(arg_env, block, arg_ast);
-                if (!promote(arg_env, actual_t, &rval, arg->type))
-                    compiler_err(arg_env, arg_ast, "This struct expected this field to have type %T, but this value is a %T", arg->type, actual_t);
-
-                if (arg->ast->tag != Var) {
-                    gcc_lvalue_t *tmp = gcc_local(func, loc, sss_type_to_gcc(arg_env, arg->type), arg->name ? arg->name : fresh("arg"));
-                    gcc_assign(*block, loc, tmp, rval);
-                    rval = gcc_rval(tmp);
-                }
-            } else if (arg->type->tag == PointerType && Match(arg->type, PointerType)->is_optional) {
-                rval = gcc_null(env->ctx, sss_type_to_gcc(env, arg->type));
-            } else if (!can_leave_uninitialized(arg->type)) {
-                compiler_err(env, ast, "The required field '%s' (%T) was not provided", arg->name, arg->type);
-            } else {
-                rval = NULL;
-            }
-
-            field_rvals[arg->position] = rval;
-            if (rval && arg->name)
-                hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
-        }
-
-        // Filter for only the populated fields (those not uninitialized):
-        gcc_field_t *fields[num_fields] = {};
-        gcc_rvalue_t *populated_rvals[num_fields] = {};
-        int64_t num_populated = 0;
-        for (int64_t i = 0; i < (int64_t)num_fields; i++) {
-            gcc_rvalue_t *rval = field_rvals[i];
-            if (rval) {
-                fields[num_populated] = gcc_get_field(gcc_struct, i);
-                sss_type_t *ft = ith(struct_type->field_types, i);
-                if (unit_scaling != 1.0 && is_floating_point(ft)) {
-                    gcc_type_t *f_gcc_t = sss_type_to_gcc(env, ft);
-                    rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, f_gcc_t,
-                                         rval, gcc_rvalue_from_double(env->ctx, f_gcc_t, unit_scaling));
-                }
-                populated_rvals[num_populated] = rval;
-                ++num_populated;
-            }
-        }
-
-        gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_populated, fields, populated_rvals);
-        assert(rval);
-        return rval;
+        return compile_struct(env, block, ast, t, struct_->members);
     }
     case FunctionCall: {
         auto call = Match(ast, FunctionCall);
@@ -971,8 +969,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         fn_sss_t = get_type(env, call->fn);
-        if (fn_sss_t->tag != FunctionType)
+        if (fn_sss_t->tag == TypeType) {
+            binding_t *b = get_from_namespace(env, Match(fn_sss_t, TypeType)->type, "new");
+            if (b && b->type->tag == FunctionType) {
+                fn_sss_t = b->type;
+                fn = b->func;
+                goto got_function;
+            }
+            return compile_struct(env, block, ast, Match(fn_sss_t, TypeType)->type, call->args);
+        } else if (fn_sss_t->tag != FunctionType) {
             compiler_err(env, call->fn, "This is not a callable function (it's a %T)", fn_sss_t);
+        }
+
         if (call->fn->tag == FieldAccess) { // method call (foo.method())
             auto access = Match(call->fn, FieldAccess);
             self_ast = access->fielded;
