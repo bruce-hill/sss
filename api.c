@@ -40,7 +40,7 @@ static void write_to_api_file(FILE *f, const char *prefix, ast_t *ast)
         case TypeDef: {
             auto def = Match(ast, TypeDef);
             if (def->name[0] == '_') break;
-            fprintf(f, "%s%s; %s; %#W\n", def->type);
+            fprintf(f, "%s%s; %s; Type(%#W)\n", prefix, def->name, get_unique_id(), def->type);
             LIST_FOR(def->definitions, child, _)
                 write_to_api_file(f, heap_strf("%s%s.", prefix, def->name), *child);
             break;
