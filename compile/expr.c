@@ -405,8 +405,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
               carry_on:
                 if (Match(table_t, PointerType)->is_optional)
                     compiler_err(env, *lhs, "This table pointer might be nil, so it's not safe to dereference it");
-                else if (Match(table_t, PointerType)->is_immutable)
-                    compiler_err(env, *lhs, "This table is not mutable, so you can't assign keys to it");
+                else if (Match(table_t, PointerType)->is_readonly)
+                    compiler_err(env, *lhs, "This is a read-only reference to a table and it can't be used to modify the table points to");
 
                 // Check for indirect references like @@@t[x]
                 if (Match(table_t, PointerType)->pointed->tag == PointerType) {

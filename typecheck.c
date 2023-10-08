@@ -65,7 +65,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         sss_type_t *pointed_t = parse_type_ast(env, ptr->pointed);
         if (pointed_t->tag == VoidType)
             compiler_err(env, ast, "Void pointers are not supported in SSS. You probably meant '!Memory'");
-        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack, .is_immutable=ptr->is_immutable);
+        return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack, .is_readonly=ptr->is_readonly);
     }
     case TypeMeasure: {
         auto measure = Match(ast, TypeMeasure);
@@ -313,9 +313,9 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
         if (streq(field_name, "length"))
             return INT_TYPE;
         else if (streq(field_name, "default"))
-            return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_immutable=true);
+            return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_readonly=true);
         else if (streq(field_name, "fallback"))
-            return Type(PointerType, .pointed=t, .is_optional=true, .is_immutable=true);
+            return Type(PointerType, .pointed=t, .is_optional=true, .is_readonly=true);
         else if (streq(field_name, "keys"))
             return Type(ArrayType, .item_type=Match(t, TableType)->key_type);
         else if (streq(field_name, "values"))
@@ -791,7 +791,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             auto rhs_ptr = Match(rhs_t, PointerType);
             if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
                 return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional,
-                            .is_immutable=lhs_ptr->is_immutable || rhs_ptr->is_immutable);
+                            .is_readonly=lhs_ptr->is_readonly || rhs_ptr->is_readonly);
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         }
@@ -819,12 +819,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (lhs_t->tag == PointerType) {
             auto lhs_ptr = Match(lhs_t, PointerType);
             if (rhs_t->tag == AbortType) {
-                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false, .is_immutable=lhs_ptr->is_immutable);
+                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false, .is_readonly=lhs_ptr->is_readonly);
             } else if (rhs_t->tag == PointerType) {
                 auto rhs_ptr = Match(rhs_t, PointerType);
                 if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
                     return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional,
-                                .is_immutable=lhs_ptr->is_immutable || rhs_ptr->is_immutable);
+                                .is_readonly=lhs_ptr->is_readonly || rhs_ptr->is_readonly);
             }
         } else {
             return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);

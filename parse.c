@@ -541,9 +541,13 @@ PARSER(parse_pointer_type) {
         is_stack = true;
     else
         return NULL;
+
+    spaces(&pos);
+    bool is_readonly = match(&pos, "(read-only)");
+    spaces(&pos);
     ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
                              "I couldn't parse a pointer type after this point");
-    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack);
+    return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack, .is_readonly=is_readonly);
 }
 
 PARSER(parse_type_type) {

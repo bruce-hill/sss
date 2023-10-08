@@ -59,9 +59,14 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         }
         goto compare_values;
     }
-    case HeapAllocate: {
+    case HeapAllocate: case StackReference: {
         if (t->tag != PointerType)
             compiler_err(env, pattern, "This is a pointer pattern, but you're attempting to match it against a non-pointer value with type %T", t);
+
+        if (pattern->tag == HeapAllocate && Match(t, PointerType)->is_stack)
+            compiler_err(env, pattern, "This is a pointer to heap memory, but you're attempting to match it against a stack pointer. Use '&' instead.");
+        else if (pattern->tag == StackReference && !Match(t, PointerType)->is_stack)
+            compiler_err(env, pattern, "This is a pointer to stack memory, but you're attempting to match it against a heap pointer. Use '@' instead.");
 
         if (Match(t, PointerType)->is_optional) {
             gcc_rvalue_t *is_nonnull = gcc_comparison(
@@ -73,7 +78,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         }
         *block = NULL;
         gcc_rvalue_t *data_val = gcc_rval(gcc_rvalue_dereference(val, loc));
-        ast_t *pointed = Match(pattern, HeapAllocate)->value;
+        ast_t *pointed = pattern->tag == HeapAllocate ? Match(pattern, HeapAllocate)->value : Match(pattern, StackReference)->value;
         auto submatch_outcomes = perform_conditional_match(env, &outcomes.match_block, Match(t, PointerType)->pointed, data_val, pointed);
         gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);
         return (match_outcomes_t){

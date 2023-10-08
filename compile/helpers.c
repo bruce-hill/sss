@@ -537,13 +537,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
           dereference_again:
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing a field on this value could result in trying to dereference a nil value, since the type is optional");
-            if (ptr->is_immutable)
-                compiler_err(env, ast, "This value is immutable and can't be assigned to");
+            if (ptr->is_readonly)
+                compiler_err(env, ast, "This pointer is read-only and it can't be used to modify the data it points to");
             fielded_lval = gcc_rvalue_dereference(ptr_rval, loc);
             fielded_t = ptr->pointed;
             if (fielded_t->tag == PointerType) {
-                if (Match(fielded_t, PointerType)->is_immutable)
-                    compiler_err(env, ast, "This value is immutable and can't be assigned to");
+                if (Match(fielded_t, PointerType)->is_readonly)
+                    compiler_err(env, ast, "This pointer is read-only and it can't be used to modify the data it points to");
                 ptr_rval = gcc_rval(fielded_lval);
                 ptr = Match(fielded_t, PointerType);
                 goto dereference_again;
@@ -629,8 +629,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
 
         sss_type_t *indexed_t = get_type(env, indexing->indexed);
         if (!indexing->index && indexed_t->tag == PointerType) {
-            if (Match(indexed_t, PointerType)->is_immutable)
-                compiler_err(env, ast, "This value is immutable and can't be assigned to");
+            if (Match(indexed_t, PointerType)->is_readonly)
+                compiler_err(env, ast, "This pointer is read-only and it can't be used to modify the data it points to");
             gcc_rvalue_t *rval = compile_expr(env, block, indexing->indexed);
             return gcc_rvalue_dereference(rval, loc);
         }
@@ -651,8 +651,8 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             auto ptr = Match(pointed_type, PointerType);
             if (ptr->is_optional)
                 compiler_err(env, ast, "Accessing an index on this value could result in trying to dereference a nil value, since the type is optional");
-            if (ptr->is_immutable)
-                compiler_err(env, ast, "This value is immutable and can't be assigned to");
+            if (ptr->is_readonly)
+                compiler_err(env, ast, "This pointer is read-only and it can't be used to modify the data it points to");
             pointed_type = ptr->pointed;
         }
 

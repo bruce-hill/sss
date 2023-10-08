@@ -103,7 +103,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         case PointerType: {
             auto ptr = Match(t, PointerType);
             CORD sigil = ptr->is_stack ? "&" : (ptr->is_optional ? "?" : "@");
-            if (ptr->is_immutable) sigil = CORD_cat(sigil, "!");
+            if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
             return CORD_cat(sigil, type_to_cord(ptr->pointed, expanded, flags));
         }
         case GeneratorType: {
@@ -480,8 +480,8 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         else if (actual_ptr->is_optional && !needed_ptr->is_optional)
             // Can't use !Foo for a function that wants @Foo
             return false;
-        else if (actual_ptr->is_immutable && !needed_ptr->is_immutable)
-            // Can't use pointer to immutable data when we need a pointer to mutable data
+        else if (actual_ptr->is_readonly && !needed_ptr->is_readonly)
+            // Can't use pointer to readonly data when we need a pointer that can write to the data
             return false;
         else
             return true;

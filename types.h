@@ -65,7 +65,7 @@ struct sss_type_s {
         } FunctionType;
         struct {
             sss_type_t *pointed;
-            bool is_optional:1, is_stack:1, is_immutable:1;
+            bool is_optional:1, is_stack:1, is_readonly:1;
         } PointerType;
         struct {
             sss_type_t *generated;
