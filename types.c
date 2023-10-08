@@ -60,7 +60,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
             return c;
         }
         case FunctionType: {
-            CORD c = "(";
+            CORD c = "func(";
             auto fn = Match(t, FunctionType);
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
             for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {

@@ -3,10 +3,10 @@
 type Mutex := @Memory
     func new()->Mutex
         mutex := extern GC_malloc(40u64):Mutex
-        pthread_mutex_init := extern pthread_mutex_init:(Mutex,?Memory)->Int32
+        pthread_mutex_init := extern pthread_mutex_init:func(Mutex,?Memory)->Int32
         if extern pthread_mutex_init(mutex, !Memory):CError != CError.SUCCESS
             fail "Mutex failed to initialize"
-        cleanup := extern pthread_mutex_destroy:(Mutex,?Memory)->Void
+        cleanup := extern pthread_mutex_destroy:func(Mutex,?Memory)->Void
         extern GC_register_finalizer(mutex, cleanup, !Memory, !Memory, !Memory)
         return mutex
 
@@ -38,7 +38,7 @@ type Condition := @Memory
         if extern pthread_cond_init(cond, !Memory):CError != CError.SUCCESS
             fail "Condition failed to initialize"
 
-        cleanup := extern pthread_cond_destroy:(Condition,?Memory)->Void
+        cleanup := extern pthread_cond_destroy:func(Condition,?Memory)->Void
         extern GC_register_finalizer(cond, cleanup, !Memory, !Memory, !Memory)
         return cond
 
@@ -52,7 +52,7 @@ type Condition := @Memory
             fail "Failed to signal condition has changed"
         
     func wait_for_change(cond:Condition, mutex:Mutex)
-        // wait := extern pthread_cond_timedwait:(Condition,Mutex,&{UInt,UInt})->Int32
+        // wait := extern pthread_cond_timedwait:func(Condition,Mutex,&{UInt,UInt})->Int32
         if extern pthread_cond_wait(cond, mutex):CError != CError.SUCCESS
             fail "Failed to wait for condition change"
         // while wait(cond, mutex, &{0u64, 100u64}) != 0i32

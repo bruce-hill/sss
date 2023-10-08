@@ -19,7 +19,7 @@ type Queue := @Memory
         q := extern GC_malloc(768u64):Queue
         dummy := Entry.new()
         extern lfds711_queue_umm_init_valid_on_current_logical_core(q, dummy, !Memory)
-        cleanup := extern lfds711_queue_umm_cleanup:(Queue,?Memory)->Void
+        cleanup := extern lfds711_queue_umm_cleanup:func(Queue,?Memory)->Void
         extern GC_register_finalizer(q, cleanup, !Memory, !Memory, !Memory)
         return q
     

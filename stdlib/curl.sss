@@ -42,8 +42,8 @@ type Header := enum(
     | RANGE(range:@CStringChar)=10007
     | READDATA(data:?Memory)=10009
     | ERRORBUFFER(buf:@Char)=10010
-    | WRITEFUNCTION(fn:(@Char,Int64,Int64,?Memory)->Int64)=20011
-    | READFUNCTION(fn:(@Char,Int64,Int64,?Memory)->Int64)=20012
+    | WRITEFUNCTION(fn:func(@Char,Int64,Int64,?Memory)->Int64)=20011
+    | READFUNCTION(fn:func(@Char,Int64,Int64,?Memory)->Int64)=20012
     | TIMEOUT(timeout:Int64)=13
     | INFILESIZE(size:Int64)=14
     | POSTFIELDS(fields:@CStringChar)=10015
@@ -169,7 +169,7 @@ type Header := enum(
     | OPENSOCKETDATA=10164
     | COPYPOSTFIELDS=10165
     | PROXY_TRANSFER_MODE=166
-    | SEEKFUNCTION(fn:(?Memory,Int64,Int32)->Int32)=20167
+    | SEEKFUNCTION(fn:func(?Memory,Int64,Int32)->Int32)=20167
     | SEEKDATA(data:?Memory)=10168
     | CRLFILE=10169
     | ISSUERCERT=10170
@@ -361,7 +361,7 @@ func get(url:Str, headers=[:Header])->Result
     buf := &""
     code := _curl(headers ++ [
         Header.URL(url),
-        Header.WRITEFUNCTION(bitcast _write as (@Char,Int64,Int64,?Memory)->Int64),
+        Header.WRITEFUNCTION(bitcast _write as func(@Char,Int64,Int64,?Memory)->Int64),
         Header.WRITEDATA(bitcast buf as ?Memory),
     ])
 

@@ -512,6 +512,8 @@ static unsigned short int get_tag_bits(List(int64_t) tag_values)
 
 PARSER(parse_func_type) {
     const char *start = pos;
+    if (!match_word(&pos, "func")) return NULL;
+    spaces(&pos);
     if (!match(&pos, "(")) return NULL;
     args_t args = parse_args(ctx, &pos, true);
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function type");

@@ -1,7 +1,7 @@
 !link -lpthread
 
 type Thread := Int
-    func create(fn:(?Memory)->?Memory, arg:?Memory)->Thread
+    func create(fn:func(?Memory)->?Memory, arg:?Memory)->Thread
         thread := Thread::0
         type CreateResult := enum(Success=0 | InsufficientResources=11 | InvalidSettings=22)
         if status := extern GC_pthread_create(&thread, !Memory, fn, arg):CreateResult matches Success
@@ -21,7 +21,7 @@ type Thread := Int
         if extern GC_pthread_cancel(t):CError != CError.SUCCESS
             fail "Failed to cancel thread"
 
-    self := extern pthread_self:()->Thread
+    self := extern pthread_self:func()->Thread
         
 
 create := Thread.create

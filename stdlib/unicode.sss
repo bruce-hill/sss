@@ -6,109 +6,109 @@ type CodePoint := struct(n:Int32)
     func from_char(c:Char)->CodePoint
         return CodePoint{c as Int32}
 
-    toupper := extern uc_toupper:(CodePoint)->CodePoint
-    tolower := extern uc_tolower:(CodePoint)->CodePoint
-    totitle := extern uc_totitle:(CodePoint)->CodePoint
+    toupper := extern uc_toupper:func(CodePoint)->CodePoint
+    tolower := extern uc_tolower:func(CodePoint)->CodePoint
+    totitle := extern uc_totitle:func(CodePoint)->CodePoint
             
-    is_white_space := extern uc_is_property_white_space:(CodePoint)->Bool
-    is_alphabetic := extern uc_is_property_alphabetic:(CodePoint)->Bool
-    is_other_alphabetic := extern uc_is_property_other_alphabetic:(CodePoint)->Bool
-    is_not_a_character := extern uc_is_property_not_a_character:(CodePoint)->Bool
-    is_default_ignorable_code_point := extern uc_is_property_default_ignorable_code_point:(CodePoint)->Bool
-    is_other_default_ignorable_code_point := extern uc_is_property_other_default_ignorable_code_point:(CodePoint)->Bool
-    is_deprecated := extern uc_is_property_deprecated:(CodePoint)->Bool
-    is_logical_order_exception := extern uc_is_property_logical_order_exception:(CodePoint)->Bool
-    is_variation_selector := extern uc_is_property_variation_selector:(CodePoint)->Bool
-    is_private_use := extern uc_is_property_private_use:(CodePoint)->Bool
-    is_unassigned_code_value := extern uc_is_property_unassigned_code_value:(CodePoint)->Bool
-    is_uppercase := extern uc_is_property_uppercase:(CodePoint)->Bool
-    is_other_uppercase := extern uc_is_property_other_uppercase:(CodePoint)->Bool
-    is_lowercase := extern uc_is_property_lowercase:(CodePoint)->Bool
-    is_other_lowercase := extern uc_is_property_other_lowercase:(CodePoint)->Bool
-    is_titlecase := extern uc_is_property_titlecase:(CodePoint)->Bool
-    is_cased := extern uc_is_property_cased:(CodePoint)->Bool
-    is_case_ignorable := extern uc_is_property_case_ignorable:(CodePoint)->Bool
-    changes_when_lowercased := extern uc_is_property_changes_when_lowercased:(CodePoint)->Bool
-    changes_when_uppercased := extern uc_is_property_changes_when_uppercased:(CodePoint)->Bool
-    changes_when_titlecased := extern uc_is_property_changes_when_titlecased:(CodePoint)->Bool
-    changes_when_casefolded := extern uc_is_property_changes_when_casefolded:(CodePoint)->Bool
-    changes_when_casemapped := extern uc_is_property_changes_when_casemapped:(CodePoint)->Bool
-    is_soft_dotted := extern uc_is_property_soft_dotted:(CodePoint)->Bool
-    is_id_start := extern uc_is_property_id_start:(CodePoint)->Bool
-    is_other_id_start := extern uc_is_property_other_id_start:(CodePoint)->Bool
-    is_id_continue := extern uc_is_property_id_continue:(CodePoint)->Bool
-    is_other_id_continue := extern uc_is_property_other_id_continue:(CodePoint)->Bool
-    is_xid_start := extern uc_is_property_xid_start:(CodePoint)->Bool
-    is_xid_continue := extern uc_is_property_xid_continue:(CodePoint)->Bool
-    is_pattern_white_space := extern uc_is_property_pattern_white_space:(CodePoint)->Bool
-    is_pattern_syntax := extern uc_is_property_pattern_syntax:(CodePoint)->Bool
-    is_join_control := extern uc_is_property_join_control:(CodePoint)->Bool
-    is_grapheme_base := extern uc_is_property_grapheme_base:(CodePoint)->Bool
-    is_grapheme_extend := extern uc_is_property_grapheme_extend:(CodePoint)->Bool
-    is_other_grapheme_extend := extern uc_is_property_other_grapheme_extend:(CodePoint)->Bool
-    is_grapheme_link := extern uc_is_property_grapheme_link:(CodePoint)->Bool
-    is_bidi_control := extern uc_is_property_bidi_control:(CodePoint)->Bool
-    is_bidi_left_to_right := extern uc_is_property_bidi_left_to_right:(CodePoint)->Bool
-    is_bidi_hebrew_right_to_left := extern uc_is_property_bidi_hebrew_right_to_left:(CodePoint)->Bool
-    is_bidi_arabic_right_to_left := extern uc_is_property_bidi_arabic_right_to_left:(CodePoint)->Bool
-    is_bidi_european_digit := extern uc_is_property_bidi_european_digit:(CodePoint)->Bool
-    is_bidi_eur_num_separator := extern uc_is_property_bidi_eur_num_separator:(CodePoint)->Bool
-    is_bidi_eur_num_terminator := extern uc_is_property_bidi_eur_num_terminator:(CodePoint)->Bool
-    is_bidi_arabic_digit := extern uc_is_property_bidi_arabic_digit:(CodePoint)->Bool
-    is_bidi_common_separator := extern uc_is_property_bidi_common_separator:(CodePoint)->Bool
-    is_bidi_block_separator := extern uc_is_property_bidi_block_separator:(CodePoint)->Bool
-    is_bidi_segment_separator := extern uc_is_property_bidi_segment_separator:(CodePoint)->Bool
-    is_bidi_whitespace := extern uc_is_property_bidi_whitespace:(CodePoint)->Bool
-    is_bidi_non_spacing_mark := extern uc_is_property_bidi_non_spacing_mark:(CodePoint)->Bool
-    is_bidi_boundary_neutral := extern uc_is_property_bidi_boundary_neutral:(CodePoint)->Bool
-    is_bidi_pdf := extern uc_is_property_bidi_pdf:(CodePoint)->Bool
-    is_bidi_embedding_or_override := extern uc_is_property_bidi_embedding_or_override:(CodePoint)->Bool
-    is_bidi_other_neutral := extern uc_is_property_bidi_other_neutral:(CodePoint)->Bool
-    is_hex_digit := extern uc_is_property_hex_digit:(CodePoint)->Bool
-    is_ascii_hex_digit := extern uc_is_property_ascii_hex_digit:(CodePoint)->Bool
-    is_ideographic := extern uc_is_property_ideographic:(CodePoint)->Bool
-    is_unified_ideograph := extern uc_is_property_unified_ideograph:(CodePoint)->Bool
-    is_radical := extern uc_is_property_radical:(CodePoint)->Bool
-    is_ids_binary_operator := extern uc_is_property_ids_binary_operator:(CodePoint)->Bool
-    is_ids_trinary_operator := extern uc_is_property_ids_trinary_operator:(CodePoint)->Bool
-    is_emoji := extern uc_is_property_emoji:(CodePoint)->Bool
-    is_emoji_presentation := extern uc_is_property_emoji_presentation:(CodePoint)->Bool
-    is_emoji_modifier := extern uc_is_property_emoji_modifier:(CodePoint)->Bool
-    is_emoji_modifier_base := extern uc_is_property_emoji_modifier_base:(CodePoint)->Bool
-    is_emoji_component := extern uc_is_property_emoji_component:(CodePoint)->Bool
-    is_extended_pictographic := extern uc_is_property_extended_pictographic:(CodePoint)->Bool
-    is_zero_width := extern uc_is_property_zero_width:(CodePoint)->Bool
-    is_space := extern uc_is_property_space:(CodePoint)->Bool
-    is_non_break := extern uc_is_property_non_break:(CodePoint)->Bool
-    is_iso_control := extern uc_is_property_iso_control:(CodePoint)->Bool
-    is_format_control := extern uc_is_property_format_control:(CodePoint)->Bool
-    is_dash := extern uc_is_property_dash:(CodePoint)->Bool
-    is_hyphen := extern uc_is_property_hyphen:(CodePoint)->Bool
-    is_punctuation := extern uc_is_property_punctuation:(CodePoint)->Bool
-    is_line_separator := extern uc_is_property_line_separator:(CodePoint)->Bool
-    is_paragraph_separator := extern uc_is_property_paragraph_separator:(CodePoint)->Bool
-    is_quotation_mark := extern uc_is_property_quotation_mark:(CodePoint)->Bool
-    is_sentence_terminal := extern uc_is_property_sentence_terminal:(CodePoint)->Bool
-    is_terminal_punctuation := extern uc_is_property_terminal_punctuation:(CodePoint)->Bool
-    is_currency_symbol := extern uc_is_property_currency_symbol:(CodePoint)->Bool
-    is_math := extern uc_is_property_math:(CodePoint)->Bool
-    is_other_math := extern uc_is_property_other_math:(CodePoint)->Bool
-    is_paired_punctuation := extern uc_is_property_paired_punctuation:(CodePoint)->Bool
-    is_left_of_pair := extern uc_is_property_left_of_pair:(CodePoint)->Bool
-    is_combining := extern uc_is_property_combining:(CodePoint)->Bool
-    is_composite := extern uc_is_property_composite:(CodePoint)->Bool
-    is_decimal_digit := extern uc_is_property_decimal_digit:(CodePoint)->Bool
-    is_numeric := extern uc_is_property_numeric:(CodePoint)->Bool
-    is_diacritic := extern uc_is_property_diacritic:(CodePoint)->Bool
-    is_extender := extern uc_is_property_extender:(CodePoint)->Bool
-    is_ignorable_control := extern uc_is_property_ignorable_control:(CodePoint)->Bool
-    is_regional_indicator := extern uc_is_property_regional_indicator:(CodePoint)->Bool
+    is_white_space := extern uc_is_property_white_space:func(CodePoint)->Bool
+    is_alphabetic := extern uc_is_property_alphabetic:func(CodePoint)->Bool
+    is_other_alphabetic := extern uc_is_property_other_alphabetic:func(CodePoint)->Bool
+    is_not_a_character := extern uc_is_property_not_a_character:func(CodePoint)->Bool
+    is_default_ignorable_code_point := extern uc_is_property_default_ignorable_code_point:func(CodePoint)->Bool
+    is_other_default_ignorable_code_point := extern uc_is_property_other_default_ignorable_code_point:func(CodePoint)->Bool
+    is_deprecated := extern uc_is_property_deprecated:func(CodePoint)->Bool
+    is_logical_order_exception := extern uc_is_property_logical_order_exception:func(CodePoint)->Bool
+    is_variation_selector := extern uc_is_property_variation_selector:func(CodePoint)->Bool
+    is_private_use := extern uc_is_property_private_use:func(CodePoint)->Bool
+    is_unassigned_code_value := extern uc_is_property_unassigned_code_value:func(CodePoint)->Bool
+    is_uppercase := extern uc_is_property_uppercase:func(CodePoint)->Bool
+    is_other_uppercase := extern uc_is_property_other_uppercase:func(CodePoint)->Bool
+    is_lowercase := extern uc_is_property_lowercase:func(CodePoint)->Bool
+    is_other_lowercase := extern uc_is_property_other_lowercase:func(CodePoint)->Bool
+    is_titlecase := extern uc_is_property_titlecase:func(CodePoint)->Bool
+    is_cased := extern uc_is_property_cased:func(CodePoint)->Bool
+    is_case_ignorable := extern uc_is_property_case_ignorable:func(CodePoint)->Bool
+    changes_when_lowercased := extern uc_is_property_changes_when_lowercased:func(CodePoint)->Bool
+    changes_when_uppercased := extern uc_is_property_changes_when_uppercased:func(CodePoint)->Bool
+    changes_when_titlecased := extern uc_is_property_changes_when_titlecased:func(CodePoint)->Bool
+    changes_when_casefolded := extern uc_is_property_changes_when_casefolded:func(CodePoint)->Bool
+    changes_when_casemapped := extern uc_is_property_changes_when_casemapped:func(CodePoint)->Bool
+    is_soft_dotted := extern uc_is_property_soft_dotted:func(CodePoint)->Bool
+    is_id_start := extern uc_is_property_id_start:func(CodePoint)->Bool
+    is_other_id_start := extern uc_is_property_other_id_start:func(CodePoint)->Bool
+    is_id_continue := extern uc_is_property_id_continue:func(CodePoint)->Bool
+    is_other_id_continue := extern uc_is_property_other_id_continue:func(CodePoint)->Bool
+    is_xid_start := extern uc_is_property_xid_start:func(CodePoint)->Bool
+    is_xid_continue := extern uc_is_property_xid_continue:func(CodePoint)->Bool
+    is_pattern_white_space := extern uc_is_property_pattern_white_space:func(CodePoint)->Bool
+    is_pattern_syntax := extern uc_is_property_pattern_syntax:func(CodePoint)->Bool
+    is_join_control := extern uc_is_property_join_control:func(CodePoint)->Bool
+    is_grapheme_base := extern uc_is_property_grapheme_base:func(CodePoint)->Bool
+    is_grapheme_extend := extern uc_is_property_grapheme_extend:func(CodePoint)->Bool
+    is_other_grapheme_extend := extern uc_is_property_other_grapheme_extend:func(CodePoint)->Bool
+    is_grapheme_link := extern uc_is_property_grapheme_link:func(CodePoint)->Bool
+    is_bidi_control := extern uc_is_property_bidi_control:func(CodePoint)->Bool
+    is_bidi_left_to_right := extern uc_is_property_bidi_left_to_right:func(CodePoint)->Bool
+    is_bidi_hebrew_right_to_left := extern uc_is_property_bidi_hebrew_right_to_left:func(CodePoint)->Bool
+    is_bidi_arabic_right_to_left := extern uc_is_property_bidi_arabic_right_to_left:func(CodePoint)->Bool
+    is_bidi_european_digit := extern uc_is_property_bidi_european_digit:func(CodePoint)->Bool
+    is_bidi_eur_num_separator := extern uc_is_property_bidi_eur_num_separator:func(CodePoint)->Bool
+    is_bidi_eur_num_terminator := extern uc_is_property_bidi_eur_num_terminator:func(CodePoint)->Bool
+    is_bidi_arabic_digit := extern uc_is_property_bidi_arabic_digit:func(CodePoint)->Bool
+    is_bidi_common_separator := extern uc_is_property_bidi_common_separator:func(CodePoint)->Bool
+    is_bidi_block_separator := extern uc_is_property_bidi_block_separator:func(CodePoint)->Bool
+    is_bidi_segment_separator := extern uc_is_property_bidi_segment_separator:func(CodePoint)->Bool
+    is_bidi_whitespace := extern uc_is_property_bidi_whitespace:func(CodePoint)->Bool
+    is_bidi_non_spacing_mark := extern uc_is_property_bidi_non_spacing_mark:func(CodePoint)->Bool
+    is_bidi_boundary_neutral := extern uc_is_property_bidi_boundary_neutral:func(CodePoint)->Bool
+    is_bidi_pdf := extern uc_is_property_bidi_pdf:func(CodePoint)->Bool
+    is_bidi_embedding_or_override := extern uc_is_property_bidi_embedding_or_override:func(CodePoint)->Bool
+    is_bidi_other_neutral := extern uc_is_property_bidi_other_neutral:func(CodePoint)->Bool
+    is_hex_digit := extern uc_is_property_hex_digit:func(CodePoint)->Bool
+    is_ascii_hex_digit := extern uc_is_property_ascii_hex_digit:func(CodePoint)->Bool
+    is_ideographic := extern uc_is_property_ideographic:func(CodePoint)->Bool
+    is_unified_ideograph := extern uc_is_property_unified_ideograph:func(CodePoint)->Bool
+    is_radical := extern uc_is_property_radical:func(CodePoint)->Bool
+    is_ids_binary_operator := extern uc_is_property_ids_binary_operator:func(CodePoint)->Bool
+    is_ids_trinary_operator := extern uc_is_property_ids_trinary_operator:func(CodePoint)->Bool
+    is_emoji := extern uc_is_property_emoji:func(CodePoint)->Bool
+    is_emoji_presentation := extern uc_is_property_emoji_presentation:func(CodePoint)->Bool
+    is_emoji_modifier := extern uc_is_property_emoji_modifier:func(CodePoint)->Bool
+    is_emoji_modifier_base := extern uc_is_property_emoji_modifier_base:func(CodePoint)->Bool
+    is_emoji_component := extern uc_is_property_emoji_component:func(CodePoint)->Bool
+    is_extended_pictographic := extern uc_is_property_extended_pictographic:func(CodePoint)->Bool
+    is_zero_width := extern uc_is_property_zero_width:func(CodePoint)->Bool
+    is_space := extern uc_is_property_space:func(CodePoint)->Bool
+    is_non_break := extern uc_is_property_non_break:func(CodePoint)->Bool
+    is_iso_control := extern uc_is_property_iso_control:func(CodePoint)->Bool
+    is_format_control := extern uc_is_property_format_control:func(CodePoint)->Bool
+    is_dash := extern uc_is_property_dash:func(CodePoint)->Bool
+    is_hyphen := extern uc_is_property_hyphen:func(CodePoint)->Bool
+    is_punctuation := extern uc_is_property_punctuation:func(CodePoint)->Bool
+    is_line_separator := extern uc_is_property_line_separator:func(CodePoint)->Bool
+    is_paragraph_separator := extern uc_is_property_paragraph_separator:func(CodePoint)->Bool
+    is_quotation_mark := extern uc_is_property_quotation_mark:func(CodePoint)->Bool
+    is_sentence_terminal := extern uc_is_property_sentence_terminal:func(CodePoint)->Bool
+    is_terminal_punctuation := extern uc_is_property_terminal_punctuation:func(CodePoint)->Bool
+    is_currency_symbol := extern uc_is_property_currency_symbol:func(CodePoint)->Bool
+    is_math := extern uc_is_property_math:func(CodePoint)->Bool
+    is_other_math := extern uc_is_property_other_math:func(CodePoint)->Bool
+    is_paired_punctuation := extern uc_is_property_paired_punctuation:func(CodePoint)->Bool
+    is_left_of_pair := extern uc_is_property_left_of_pair:func(CodePoint)->Bool
+    is_combining := extern uc_is_property_combining:func(CodePoint)->Bool
+    is_composite := extern uc_is_property_composite:func(CodePoint)->Bool
+    is_decimal_digit := extern uc_is_property_decimal_digit:func(CodePoint)->Bool
+    is_numeric := extern uc_is_property_numeric:func(CodePoint)->Bool
+    is_diacritic := extern uc_is_property_diacritic:func(CodePoint)->Bool
+    is_extender := extern uc_is_property_extender:func(CodePoint)->Bool
+    is_ignorable_control := extern uc_is_property_ignorable_control:func(CodePoint)->Bool
+    is_regional_indicator := extern uc_is_property_regional_indicator:func(CodePoint)->Bool
 
 // Opaque struct:
 type uninorm_t := struct()
 type UTF8 := Str
     convert str:Str as UTF8
-        u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
+        u8_check := extern u8_check:func(@CStringChar,Int64)->?CStringChar
         err := u8_check(str.c_string(), str.length)
         fail "Invalid UTF8!" unless err == !CStringChar
         return bitcast str as UTF8
@@ -120,37 +120,37 @@ type UTF8 := Str
         return (bitcast u as Str).c_string()
 
     func is_valid_utf8(u:UTF8)->Bool
-        u8_check := extern u8_check:(@CStringChar,Int64)->?CStringChar
+        u8_check := extern u8_check:func(@CStringChar,Int64)->?CStringChar
         err := u8_check(u.c_string(), u.length)
         return err == !CStringChar
 
     func normalized(u:UTF8)->UTF8
         len := 0
-        u8_normalize := (extern u8_normalize:(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
+        u8_normalize := (extern u8_normalize:func(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
         buf := u8_normalize((extern &uninorm_nfd:uninorm_t), u.c_string(), u.length, !CStringChar, &len) or fail "Couldn't normalize string: $u"
-        defer (extern free:(@CStringChar)->Void)(buf)
-        gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
-        memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
+        defer (extern free:func(@CStringChar)->Void)(buf)
+        gc_alloc := extern GC_malloc_atomic:func(Int64)->@CStringChar
+        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int64)->@CStringChar
         data := memcpy(gc_alloc(len+1), buf, len+1)
         return bitcast ({data=data, length=(len as Int32), stride=1i16, capacity=0i16}) as UTF8
 
     func compare_utf8(s1, s2:UTF8)->Int32
-        u8_normcmp := extern u8_normcmp:(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
+        u8_normcmp := extern u8_normcmp:func(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
         ret := 0i32
         _ := u8_normcmp(s1.c_string(), s1.length, s2.c_string(), s2.length, (extern &uninorm_nfd:uninorm_t), &ret)
         return ret
 
     func multibyte_length(u:UTF8)->Int64
-        return (extern u8_mbsnlen:(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
+        return (extern u8_mbsnlen:func(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
 
     func width(u:UTF8)->Int64
-        setlocale := extern setlocale:(Int32,?CStringChar)->@CStringChar
-        return (extern u8_width:(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), u.length, setlocale(0i32,!CStringChar))
+        setlocale := extern setlocale:func(Int32,?CStringChar)->@CStringChar
+        return (extern u8_width:func(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), u.length, setlocale(0i32,!CStringChar))
 
     func first_codepoint(u:UTF8)->CodePoint
-        len := (extern u8_mblen:(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
+        len := (extern u8_mblen:func(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
         ret := 0i32
-        u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,&Int32,&Int64)->?Int32
+        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int64,&Int32,&Int64)->?Int32
         first_len := 1
         _ := u8_to_u32(u[1..len].c_string(), len, &ret, &first_len)
         return CodePoint{ret}
@@ -158,35 +158,35 @@ type UTF8 := Str
     func codepoints(u:UTF8)->[CodePoint]
         ret := [CodePoint{0i32} for _ in 1..u.multibyte_length()]
         len := ret.length
-        u8_to_u32 := extern u8_to_u32:(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
+        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
         _ := u8_to_u32(u.c_string(), u.length, (bitcast ret as struct(data:@CodePoint,length:Int32,stride:Int16,capacity:Int16)).data, &len)
         return ret
 
     func from_codepoints(codepoints:[CodePoint])->UTF8
-        u32_to_u8 := extern u32_to_u8:(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
+        u32_to_u8 := extern u32_to_u8:func(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
         data_ptr := (bitcast codepoints as struct(data:?CodePoint,length:Int32,stride:Int16,capacity:Int16)).data or return UTF8::""
         len := @0
         buf := u32_to_u8(data_ptr, codepoints.length, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
-        defer (extern free:(@CStringChar)->Void)(buf)
-        gc_alloc := extern GC_malloc_atomic:(Int64)->@CStringChar
-        memcpy := extern memcpy:(@CStringChar,@CStringChar,Int64)->@CStringChar
+        defer (extern free:func(@CStringChar)->Void)(buf)
+        gc_alloc := extern GC_malloc_atomic:func(Int64)->@CStringChar
+        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int64)->@CStringChar
         data := memcpy(gc_alloc(len[] + 1), buf, len[] + 1)
         return bitcast ({data=data, length=(len[] as Int32), stride=1i16, capacity=0i16}) as UTF8
 
     func uppercased(str:UTF8)->UTF8
-        toupper := extern uc_toupper:(CodePoint)->CodePoint
+        toupper := extern uc_toupper:func(CodePoint)->CodePoint
         return UTF8.from_codepoints([toupper(c) for c in str.codepoints()])
 
     func lowercased(str:UTF8)->UTF8
-        tolower := extern uc_tolower:(CodePoint)->CodePoint
+        tolower := extern uc_tolower:func(CodePoint)->CodePoint
         return UTF8.from_codepoints([tolower(c) for c in str.codepoints()])
 
     func titlecased(str:UTF8)->UTF8
         points := str.codepoints()
         prev_alpha := no
-        is_alphabetic := extern uc_is_property_alphabetic:(CodePoint)->Bool
-        tolower := extern uc_tolower:(CodePoint)->CodePoint
-        totitle := extern uc_totitle:(CodePoint)->CodePoint
+        is_alphabetic := extern uc_is_property_alphabetic:func(CodePoint)->Bool
+        tolower := extern uc_tolower:func(CodePoint)->CodePoint
+        totitle := extern uc_totitle:func(CodePoint)->CodePoint
         return UTF8.from_codepoints([
             for c in points
                 if prev_alpha

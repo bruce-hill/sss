@@ -13,7 +13,7 @@ type Pool := struct(input,output:@Queue, workers:@[Thread], completed={:Int=>?Me
 
             fail unless extern pthread_setcanceltype(0i32, !Int32):CError == CError.SUCCESS
             repeat
-                request := bitcast ctx.input.dequeue() as @struct(id:Int, fn:(?Memory)->?Memory, arg:?Memory)
+                request := bitcast ctx.input.dequeue() as @struct(id:Int, fn:func(?Memory)->?Memory, arg:?Memory)
                 result := request.fn(request.arg)
                 ctx.output.enqueue(@{request.id, result})
             return !Memory
@@ -25,7 +25,7 @@ type Pool := struct(input,output:@Queue, workers:@[Thread], completed={:Int=>?Me
         p.next_request_id += 1
         return id
 
-    func run(p:&Pool, fn:(?Memory)->?Memory, arg=!Memory)->?Memory
+    func run(p:&Pool, fn:func(?Memory)->?Memory, arg=!Memory)->?Memory
         id := p.give(fn, arg)
         repeat
             result := bitcast p.output.dequeue() as @struct(id:Int, value:?Memory)
@@ -39,7 +39,7 @@ type Pool := struct(input,output:@Queue, workers:@[Thread], completed={:Int=>?Me
                     return completed
         fail
 
-    func give(p:&Pool, fn:(?Memory)->?Memory, arg=!Memory)->Int
+    func give(p:&Pool, fn:func(?Memory)->?Memory, arg=!Memory)->Int
         id := p.get_next_request_id()
         p.input.enqueue(@{id, fn, arg})
         return id

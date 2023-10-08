@@ -28,7 +28,7 @@ type File := struct(raw_c_file:?_CFile)
         file := f.raw_c_file or fail "File has already been closed"
         return extern sss_fstat(file):FileInfo
 
-    read := extern sss_readfile:(f:@File,bytes=Int64.max)->Str
+    read := extern sss_readfile:func(f:@File,bytes=Int64.max)->Str
 
     func write(f:@File, text:Str)->Result
         file := f.raw_c_file or fail "File has already been closed"
@@ -56,8 +56,8 @@ stderr := @File{extern stderr:@_CFile}
 type OpenResult := enum(Failure(message:Str) | Success(file:@File))
 
 type FileMode := enum(Read=0 | Write=1 | ReadWrite=2)
-open := extern sss_fopen:(path:Str,mode="r")->OpenResult
-temporary := extern sss_tmpfile:()->@File
+open := extern sss_fopen:func(path:Str,mode="r")->OpenResult
+temporary := extern sss_tmpfile:func()->@File
 
 type TempDirResult := enum(Failure(message:Str) | Success(path:Str))
 
@@ -73,19 +73,19 @@ func move(path:Str, dest:Str)->Result
     if extern rename(path.c_string(), dest):CError matches SUCCESS
         return Success
     else
-        return Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:func()->Str)())
 
 func remove(path:Str)->Result
     if extern unlink(path.c_string()):CError matches SUCCESS
         return Success
     else
-        return Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:func()->Str)())
 
 func remove_dir(path:Str)->Result
     if extern rmdir(path.c_string()):CError matches SUCCESS
         return Success
     else
-        return Failure((extern last_err:()->Str)())
+        return Failure((extern last_err:func()->Str)())
 
 func spoof(text:Str)->@File
     f := extern sss_tmpfile():@File

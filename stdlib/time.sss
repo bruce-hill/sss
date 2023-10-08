@@ -1,7 +1,7 @@
 // A small library for representing timestamps and getting the current time
 
 type Timestamp := struct(seconds, nanoseconds:Int64)
-    format := (extern sss_time_format:(timestamp:Timestamp,format="%c")->Str)
+    format := (extern sss_time_format:func(timestamp:Timestamp,format="%c")->Str)
 
     func now()->Timestamp
         t := Timestamp{}

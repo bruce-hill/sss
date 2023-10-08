@@ -1,4 +1,4 @@
-type CallbackList := struct(fn:(Num)->Void, next:?CallbackList)
+type CallbackList := struct(fn:func(Num)->Void, next:?CallbackList)
 
 // type NumberValue := {_value:Num, _callbacks:?CallbackList}
 //     func set(self:@NumberValue, value:Num)
