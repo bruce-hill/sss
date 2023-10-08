@@ -415,8 +415,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     goto carry_on;
                 }
                 target.table_type = value_type(table_t);
-                target.key = gcc_local(func, loc, sss_type_to_gcc(env, Match(target.table_type, TableType)->key_type), "key");
-                gcc_assign(*block, loc, target.key, compile_expr(env, block, Match(*lhs, Index)->index));
+                sss_type_t *key_t = Match(target.table_type, TableType)->key_type;
+                target.key = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "key");
+                gcc_rvalue_t *key_val = compile_expr(env, block, Match(*lhs, Index)->index);
+                sss_type_t *actual_key_t = get_type(env, Match(*lhs, Index)->index);
+                if (!promote(env, actual_key_t, &key_val, key_t))
+                    compiler_err(env, Match(*lhs, Index)->index, "This key has type %T, but to work in this table, it needs type %T", actual_key_t, key_t);
+                gcc_assign(*block, loc, target.key, key_val);
             } else {
                 target.is_table = false;
                 target.lval = get_lvalue(env, block, *lhs, false);
