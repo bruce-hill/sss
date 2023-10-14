@@ -96,7 +96,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
         if (strncmp(cwd, filename, cwd_len) == 0 && filename[cwd_len] == '/')
             relative_filename = &filename[cwd_len+1];
     }
-    return new(sss_file_t, .filename=filename, .relative_filename=relative_filename, .text=copy, .lines=lines);
+    return new(sss_file_t, .filename=filename, .relative_filename=relative_filename, .text=copy, .len=file_size, .lines=lines);
 }
 
 //

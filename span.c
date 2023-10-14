@@ -27,6 +27,16 @@ static int fputc_column(FILE *out, char c, char print_char, int *column)
 int fprint_span(FILE *out, sss_file_t *file, const char *start, const char *end, const char *hl_color, size_t context_lines, bool use_color)
 {
     if (!file) return 0;
+
+    // Handle spans that come from multiple files:
+    if (start < file->text || start > file->text + file->len)
+        start = end;
+    if (end < file->text || end > file->text + file->len)
+        end = start;
+    // Just in case neither end of the span came from this file:
+    if (end < file->text || end > file->text + file->len)
+        start = end = file->text;
+
     const char *lineno_fmt, *normal_color, *empty_marker;
     bool print_carets = false;
     int printed = 0;

@@ -17,6 +17,7 @@ typedef struct {
 typedef struct {
     const char *filename, *relative_filename;
     const char *text;
+    size_t len;
     List(sss_line_t) lines;
 } sss_file_t;
 
