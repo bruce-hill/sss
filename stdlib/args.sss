@@ -22,7 +22,7 @@ type Spec := struct(flag_infos:{Str=>struct(canonical:Str, needs_value:Bool)}, p
             if needs_value then flag = flag[..(flag.length-1)]
             arg_aliases := flag.split("| -=")
             skip if arg_aliases.length < 1
-            longest := |(if x.length > y.length then x else y)| arg_aliases
+            longest := (_max_.length) arg_aliases
             for arg_alias in arg_aliases
                 flag_infos[arg_alias] = {longest, needs_value}
         return Spec{flag_infos[], positional_args}

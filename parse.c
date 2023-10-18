@@ -823,7 +823,7 @@ PARSER(parse_ellipsis) {
 
 PARSER(parse_reduction) {
     const char *start = pos;
-    if (!match(&pos, "|")) return NULL;
+    if (!match(&pos, "(")) return NULL;
 
     spaces(&pos);
     const char *combo_start = pos;
@@ -843,26 +843,25 @@ PARSER(parse_reduction) {
         if (key->tag == Var) key = NULL;
         else pos = key->end;
         combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Min={
-                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"),
+                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"),
                              .key=key});
     } else if (binop == Mix) {
         ast_t *key = expect_ast(ctx, start, &pos, parse_expr, "I expected an amount to mix by");
         if (!match_word(&pos, "of"))
             parser_err(ctx, pos, pos, "I expected the word 'of' here");
-        combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y"), .key=key);
+        combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"), .key=key);
     } else if (binop != Unknown) {
         combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Add={
-                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y")});
+                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0")});
     } else {
-        combination = expect_ast(ctx, start, &pos, parse_extended_expr,
-                                 "I expected to find an expression here for how to merge two values");
+        return NULL;
     }
 
     spaces(&pos);
-    expect_closing(ctx, &pos, "|", "I wasn't able to parse the rest of this reduction");
+    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this reduction");
 
     ast_t *iter = optional_ast(ctx, &pos, parse_extended_expr);
     if (!iter) return NULL;

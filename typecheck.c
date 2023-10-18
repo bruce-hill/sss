@@ -1096,8 +1096,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         env = fresh_scope(env);
         auto reduction = Match(ast, Reduction);
         sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        hset(env->bindings, "x", new(binding_t, .type=item_type));
-        hset(env->bindings, "y", new(binding_t, .type=item_type));
+        hset(env->bindings, "x.0", new(binding_t, .type=item_type));
+        hset(env->bindings, "y.0", new(binding_t, .type=item_type));
         sss_type_t *combo_t = get_type(env, reduction->combination);
         if (!can_promote(item_type, combo_t))
             compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",

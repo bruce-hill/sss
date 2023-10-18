@@ -1786,11 +1786,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto concat = Match(ast, Concatenate);
         (void)get_type(env, ast);
         ast_t *lhs_loop = WrapAST(concat->lhs, For, .iter=concat->lhs,
-                                  .value=WrapAST(concat->lhs, Var, .name="x"),
-                                  .body=WrapAST(concat->lhs, Var, .name="x"));
+                                  .value=WrapAST(concat->lhs, Var, .name="x.0"),
+                                  .body=WrapAST(concat->lhs, Var, .name="x.0"));
         ast_t *rhs_loop = WrapAST(concat->rhs, For, .iter=concat->rhs,
-                                  .value=WrapAST(concat->rhs, Var, .name="x"),
-                                  .body=WrapAST(concat->rhs, Var, .name="x"));
+                                  .value=WrapAST(concat->rhs, Var, .name="x.0"),
+                                  .body=WrapAST(concat->rhs, Var, .name="x.0"));
         ast_t *concat_ast = WrapAST(ast, Array, .items=LIST(ast_t*, lhs_loop, rhs_loop));
         return compile_expr(env, block, concat_ast);
     }
@@ -2121,9 +2121,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         env = fresh_scope(env);
 
-        ast_t *accum_var = WrapAST(ast, Var, .name="x");
+        ast_t *accum_var = WrapAST(ast, Var, .name="x.0");
         hset(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
-        ast_t *incoming_var = WrapAST(ast, Var, .name="y");
+        ast_t *incoming_var = WrapAST(ast, Var, .name="y.0");
 
         ast_t *index, *value, *iter, *first, *between, *empty;
         if (reduction->iter->tag == For) {
