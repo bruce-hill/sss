@@ -134,10 +134,10 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     struct stat file_stat;  
     stat(f->filename, &file_stat);  
-    const char *load_fn_name = heap_strf("load_%d", file_stat.st_ino);
+    const char *load_name = heap_strf("load_%.*s_%ld", (int)strcspn(basename(f->filename), "."), basename(f->filename), file_stat.st_ino);
     sss_type_t *ret_type = get_file_type(env, f->filename);
     gcc_type_t *ret_gcc_type = sss_type_to_gcc(env, ret_type);
-    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, ret_gcc_type, load_fn_name, 0, NULL, 0);
+    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, ret_gcc_type, load_name, 0, NULL, 0);
     gcc_block_t *check_loaded_block = gcc_new_block(load_func, fresh("check_if_loaded")),
                 *do_loading_block = gcc_new_block(load_func, fresh("do_loading")),
                 *finished_loading_block = gcc_new_block(load_func, fresh("finished_loading"));

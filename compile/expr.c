@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <err.h>
 #include <gc/cord.h>
+#include <glob.h>
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
@@ -2311,10 +2312,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         int64_t sss_inode = (int64_t)sss_stat.st_ino; 
 
-        sss_type_t *t = get_file_type(env, sss_path);
-
         // TODO: compile .o file if it doesn't exist or is older than .sss file
-        const char *obj_path = heap_strf("%.*s.o", strlen(sss_path)-4, sss_path);
+        const char *obj_path = heap_strf("%.*s.%ld.o", strlen(sss_path)-4, sss_path, sss_inode);
         struct stat obj_stat;
         bool needs_compiling = (stat(obj_path, &obj_stat) == -1);
         if (!needs_compiling)
@@ -2323,10 +2322,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                  && obj_stat.st_mtim.tv_nsec < sss_stat.st_mtim.tv_nsec);
 
         if (needs_compiling) {
+            // Clear out obj file(s) from previous inodes:
+            glob_t globbuf;
+            const char *obj_glob = heap_strf("%.*s.*.o", strlen(sss_path)-4, sss_path);
+            if (glob(obj_glob, 0, NULL, &globbuf) == 0) {
+                for (size_t i = 0; i < globbuf.gl_pathc; i++) {
+                    if (streq(globbuf.gl_pathv[i], obj_path))
+                        continue;
+                    printf("Removing %s\n", globbuf.gl_pathv[i]);
+                    unlink(globbuf.gl_pathv[i]);
+                }
+            }
+            globfree(&globbuf);
+
             pid_t child = fork();
             if (!child) {
                 extern const char *PROGRAM_PATH;
-                execlp(PROGRAM_PATH, "sss", "-c", sss_path, "-o", obj_path);
+                execlp(PROGRAM_PATH, PROGRAM_PATH, "-c", sss_path, "-o", obj_path);
             }
             int status = 0;
             waitpid(child, &status, 0);
@@ -2335,8 +2347,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         gcc_jit_context_add_driver_option(env->ctx, obj_path);
 
+        sss_type_t *t = get_file_type(env, sss_path);
+        const char *load_name = heap_strf("load_%.*s_%ld", (int)strcspn(basename(sss_path), "."), basename(sss_path), sss_inode);
         gcc_func_t *load_func = gcc_new_func(
-            env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, t), heap_strf("load_%ld", sss_inode), 0, NULL, 0);
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, t), load_name, 0, NULL, 0);
 
         return gcc_callx(env->ctx, NULL, load_func);
     }

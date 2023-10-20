@@ -6,6 +6,7 @@
 #include <printf.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -46,10 +47,12 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
     } else {
         binary_name = CORD_from_char_star(argv[i]);
         size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
-        if (i == CORD_NOT_FOUND)
-            binary_name = CORD_cat(binary_name, ".o");
-        else
-            binary_name = CORD_cat(CORD_substr(binary_name, 0, i), ".o");
+        if (i != CORD_NOT_FOUND)
+            CORD_substr(binary_name, 0, i);
+
+        struct stat info;
+        assert(stat(f->filename, &info) != -1);
+        CORD_sprintf(&binary_name, "%r.%ld.o", binary_name, info.st_ino);
     }
 
     if (CORD_ncmp(binary_name, 0, "/", 0, 1) != 0
