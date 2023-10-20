@@ -47,6 +47,7 @@ typedef struct {
     sss_hashmap_t type_namespaces; // sss_type_t* -> name -> binding_t*
     sss_hashmap_t def_types; // ast_t* -> binding_t*
     sss_hashmap_t ast_functions; // ast_t* -> func_context_t*
+    sss_hashmap_t module_types; // inode -> sss_type_t*
 } global_env_t;
 
 typedef struct env_s {

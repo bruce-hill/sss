@@ -8,6 +8,9 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "../args.h"
 #include "../ast.h"
@@ -897,7 +900,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *b = get_binding(env, Match(ast, TypeDef)->name);
         sss_type_t *t = Match(b->type, TypeType)->type;
         env = get_type_env(env, t);
+
         List(ast_t*) members = Match(ast, TypeDef)->definitions;
+
+        foreach (members, stmt, _)
+            predeclare_def_types(env, *stmt, true);
+        foreach (members, stmt, _)
+            populate_def_members(env, *stmt);
+        foreach (members, stmt, _)
+            predeclare_def_funcs(env, *stmt);
+
+        defer_t *prev_deferred = env->deferred;
+
+        NEW_LIST(const char*, field_names);
+        NEW_LIST(sss_type_t*, field_types);
+        NEW_LIST(gcc_rvalue_t*, field_values);
         foreach (members, member, _) {
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
@@ -912,11 +929,41 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                      new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
+                APPEND(field_names, Match(decl->var, Var)->name);
+                APPEND(field_types, t);
+                APPEND(field_values, gcc_rval(lval));
+            } else if ((*member)->tag == TypeDef) {
+                auto def = Match(*member, TypeDef);
+                sss_type_t *ft = get_namespace_type(env, def->definitions);
+                APPEND(field_names, def->name);
+                APPEND(field_types, ft);
+                gcc_rvalue_t *rval = compile_expr(env, block, *member);
+                APPEND(field_values, rval);
+            } else if ((*member)->tag == FunctionDef) {
+                auto def = Match(*member, FunctionDef);
+                compile_statement(env, block, *member);
+                binding_t *b = get_binding(env, def->name);
+                APPEND(field_names, def->name);
+                APPEND(field_types, b->type);
+                APPEND(field_values, b->rval);
             } else {
                 compile_statement(env, block, *member);
             }
         }
-        return NULL;
+
+        insert_defers(env, block, prev_deferred);
+
+        gcc_func_t *func = gcc_block_func(*block);
+        sss_type_t *expr_t = Type(StructType, .field_names=field_names, .field_types=field_types);
+        gcc_type_t *expr_gcc_t = sss_type_to_gcc(env, expr_t);
+        gcc_lvalue_t *var = gcc_local(func, loc, expr_gcc_t, fresh("type_value"));
+        gcc_field_t *fields[LIST_LEN(field_types)];
+        for (int i = 0; i < LIST_LEN(field_types); i++)
+            fields[i] = gcc_get_field(gcc_type_if_struct(expr_gcc_t), i);
+        if (LIST_LEN(field_types) > 0)
+            gcc_assign(*block, loc, var, gcc_struct_constructor(
+                    env->ctx, loc, expr_gcc_t, LIST_LEN(field_types), fields, field_values[0]));
+        return gcc_rval(var);
     }
     case Struct: {
         auto struct_ = Match(ast, Struct);
@@ -1000,7 +1047,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
             switch (value_type->tag) {
-            case ModuleType: goto non_method_fncall;
             case TypeType: {
                 sss_type_t *fielded_type = Match(value_type, TypeType)->type;
                 binding_t *binding = get_from_namespace(env, fielded_type, access->field);
@@ -2256,7 +2302,43 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
     }
     case Use: {
-        return gcc_callx(env->ctx, NULL, prepare_use(env, ast));
+        const char *path = Match(ast, Use)->path;
+
+        struct stat sss_stat;
+        const char *sss_path = strlen(path) > 4 && streq(path + strlen(path) - 4, ".sss") ? path : heap_strf("%s.sss", path);
+        if (stat(sss_path, &sss_stat) == -1)
+            compiler_err(env, ast, "I can't find the file %s", sss_path);
+
+        int64_t sss_inode = (int64_t)sss_stat.st_ino; 
+
+        sss_type_t *t = get_file_type(env, sss_path);
+
+        // TODO: compile .o file if it doesn't exist or is older than .sss file
+        const char *obj_path = heap_strf("%.*s.o", strlen(sss_path)-4, sss_path);
+        struct stat obj_stat;
+        bool needs_compiling = (stat(obj_path, &obj_stat) == -1);
+        if (!needs_compiling)
+            needs_compiling = (obj_stat.st_mtim.tv_sec < sss_stat.st_mtim.tv_sec) ||
+                (obj_stat.st_mtim.tv_sec == sss_stat.st_mtim.tv_sec
+                 && obj_stat.st_mtim.tv_nsec < sss_stat.st_mtim.tv_nsec);
+
+        if (needs_compiling) {
+            pid_t child = fork();
+            if (!child) {
+                extern const char *PROGRAM_PATH;
+                execlp(PROGRAM_PATH, "sss", "-c", sss_path, "-o", obj_path);
+            }
+            int status = 0;
+            waitpid(child, &status, 0);
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+                _exit(1);
+        }
+        gcc_jit_context_add_driver_option(env->ctx, obj_path);
+
+        gcc_func_t *load_func = gcc_new_func(
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, t), heap_strf("load_%ld", sss_inode), 0, NULL, 0);
+
+        return gcc_callx(env->ctx, NULL, load_func);
     }
     case LinkerDirective: {
         auto directives = Match(ast, LinkerDirective)->directives;

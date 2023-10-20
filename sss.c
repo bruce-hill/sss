@@ -19,6 +19,8 @@
 static bool verbose = false;
 static bool tail_calls = false;
 
+const char *PROGRAM_PATH = "sss";
+
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
 int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
@@ -34,9 +36,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
     gcc_jit_result *result;
-    main_func_t run = compile_file(ctx, NULL, f, ast, tail_calls, &result);
-    if (!run)
-        errx(1, "run func is NULL");
+    compile_object_file(ctx, NULL, f, ast, tail_calls, &result);
 
     CORD binary_name;
     int i = 0;
@@ -49,7 +49,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
         if (i == CORD_NOT_FOUND)
             binary_name = CORD_cat(binary_name, ".o");
         else
-            binary_name = CORD_substr(binary_name, 0, i);
+            binary_name = CORD_cat(CORD_substr(binary_name, 0, i), ".o");
     }
 
     if (CORD_ncmp(binary_name, 0, "/", 0, 1) != 0
@@ -58,7 +58,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
         binary_name = CORD_cat("./", binary_name);
 
     binary_name = CORD_to_char_star(binary_name);
-    gcc_jit_context_compile_to_file(ctx, GCC_OUTPUT_KIND_EXECUTABLE, binary_name);
+    gcc_jit_context_compile_to_file(ctx, GCC_OUTPUT_KIND_OBJECT_FILE, binary_name);
     printf("\x1b[0;1;32mSuccessfully compiled \x1b[33m%s\x1b[32m -> \x1b[37m%s\x1b[m\n", f->relative_filename, binary_name);
     gcc_jit_result_release(result);
 
@@ -303,6 +303,7 @@ int run_repl(gcc_jit_context *ctx)
 
 int main(int argc, char *argv[])
 {
+    PROGRAM_PATH = argv[0];
 
 #ifdef __OpenBSD__
     unveil("/include", "r");

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "args.h"
 #include "ast.h"
@@ -695,10 +696,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         env = fresh_scope(env);
 
-        // Handle 'use' imports
-        foreach (block->statements, stmt, _) {
-            populate_uses(env, *stmt);
-        }
         // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
         foreach (block->statements, stmt, _) {
             predeclare_def_types(env, *stmt, false);
@@ -752,7 +749,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Use: {
         const char *path = Match(ast, Use)->path;
-        return Type(ModuleType, .path=path);
+        return get_file_type(env, path);
     }
     case Return: case Fail: case Stop: case Skip: {
         return Type(AbortType);
@@ -1319,6 +1316,76 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
     }
     return heap_strf("I can't prove that every %s case in this 'when' block is handled by an 'is' clause. Please add a wildcard clause like: 'else ...'",
                      type_to_string(t));
+}
+
+sss_type_t *get_namespace_type(env_t *env, List(ast_t*) statements)
+{
+    env = fresh_scope(env);
+
+    // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
+    foreach (statements, stmt, _) {
+        predeclare_def_types(env, *stmt, false);
+    }
+    // Populate struct fields:
+    foreach (statements, stmt, _) {
+        populate_def_members(env, *stmt);
+    }
+    // Function defs are visible in the entire block (allowing corecursive funcs)
+    foreach (statements, stmt, _) {
+        predeclare_def_funcs(env, *stmt);
+    }
+
+    NEW_LIST(const char*, field_names);
+    NEW_LIST(sss_type_t*, field_types);
+    for (int64_t i = 0, len = LIST_LEN(statements); i < len; i++) {
+        ast_t *stmt = LIST_ITEM(statements, i);
+        switch (stmt->tag) {
+        case Declare: {
+            auto decl = Match(stmt, Declare);
+            sss_type_t *t = get_type(env, decl->value);
+            hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+            APPEND(field_names, Match(decl->var, Var)->name);
+            APPEND(field_types, t);
+            break;
+        }
+        case TypeDef: {
+            auto def = Match(stmt, TypeDef);
+            APPEND(field_names, def->name);
+            sss_type_t *t = get_namespace_type(env, def->definitions);
+            APPEND(field_types, t);
+            break;
+        }
+        case FunctionDef: {
+            auto def = Match(stmt, FunctionDef);
+            APPEND(field_names, def->name);
+            sss_type_t *t = get_binding(env, def->name)->type;
+            APPEND(field_types, t);
+            break;
+        }
+        default:
+            // TODO: bind structs/tagged unions in block typechecking
+            break;
+        }
+    }
+    return Type(StructType, .field_names=field_names, .field_types=field_types);
+}
+
+sss_type_t *get_file_type(env_t *env, const char *path)
+{
+    struct stat file_info;
+    const char *sss_path = strlen(path) > 4 && streq(path + strlen(path) - 4, ".sss") ? path : heap_strf("%s.sss", path);
+    if (stat(sss_path, &file_info) == -1)
+        compiler_err(env, NULL, "I can't find the file %s", sss_path);
+
+    int64_t inode = (int64_t)file_info.st_ino; 
+    sss_type_t *type = hget(&env->global->module_types, inode, sss_type_t*);
+    if (type) return type;
+
+    sss_file_t *f = sss_load_file(sss_path);
+    ast_t *ast = parse_file(f, env->on_err);
+    type = Type(VariantType, .name=heap_strf("Module_%ld", inode), .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
+    hset(&env->global->module_types, inode, type);
+    return type;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

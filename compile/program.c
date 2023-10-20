@@ -5,6 +5,7 @@
 #include <libgccjit.h>
 #include <limits.h>
 #include <stdint.h>
+#include <sys/stat.h>
 
 #include "../ast.h"
 #include "../environment.h"
@@ -87,8 +88,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_eval(main_block, NULL, gcc_callx(ctx, NULL, srand48_func, gcc_callx(ctx, NULL, arc4_rng)));
 
     // Run the program:
-    gcc_rvalue_t *val = compile_expr(env, &main_block, WrapAST(ast, Use, .path=f->filename, .file=f, .main_program=true));
-    gcc_eval(main_block, NULL, val);
+    compile_statement(env, &main_block, ast);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
     // Actually compile the functions:
@@ -104,6 +104,74 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     // Extract the generated code from "result".   
     main_func_t main_fn = (main_func_t)gcc_jit_result_get_code(*result, "main");
     return main_fn;
+}
+
+void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
+{
+    env_t *env = new_environment(ctx, on_err, f, tail_calls);
+
+    // Externals:
+    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
+    sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
+    gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
+
+    // Set up `PROGRAM_NAME`
+    gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_string_t, "PROGRAM_NAME");
+    hset(&env->global->bindings, "PROGRAM_NAME",
+         new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
+
+    // Set up `ARGS`
+    gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
+    gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, args_gcc_t, "ARGS");
+    hset(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
+
+    // Set up `USE_COLOR`
+    // gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(ctx, BOOL), "USE_COLOR");
+    // hset(&env->global->bindings, "USE_COLOR",
+    //      new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
+    hset(&env->global->bindings, "USE_COLOR",
+         new(binding_t, .rval=gcc_rvalue_bool(ctx, true), .type=Type(BoolType), .visible_in_closures=true));
+
+    struct stat file_stat;  
+    stat(f->filename, &file_stat);  
+    const char *load_fn_name = heap_strf("load_%d", file_stat.st_ino);
+    sss_type_t *ret_type = get_file_type(env, f->filename);
+    gcc_type_t *ret_gcc_type = sss_type_to_gcc(env, ret_type);
+    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, ret_gcc_type, load_fn_name, 0, NULL, 0);
+    gcc_block_t *check_loaded_block = gcc_new_block(load_func, fresh("check_if_loaded")),
+                *do_loading_block = gcc_new_block(load_func, fresh("do_loading")),
+                *finished_loading_block = gcc_new_block(load_func, fresh("finished_loading"));
+
+    // static is_loaded = false; if (is_loaded) return; is_loaded = true; module = load...; return module
+    gcc_lvalue_t *is_loaded = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(env->ctx, BOOL), fresh("module_was_loaded"));
+    gcc_jit_global_set_initializer_rvalue(is_loaded, gcc_rvalue_bool(env->ctx, false));
+    gcc_jump_condition(check_loaded_block, NULL, gcc_rval(is_loaded), finished_loading_block, do_loading_block);
+    gcc_assign(do_loading_block, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
+
+    // Load the module:
+    sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
+    gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ret_gcc_type, fresh("module"));
+    binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
+    hset(env->bindings, "Module", b);
+    env_t *type_env = get_type_env(env, t);
+    type_env->bindings->fallback = env->bindings;
+
+    ast_t *module_ast = WrapAST(ast, TypeDef, .name="Module", .type=WrapAST(ast, Var, "Void"), .definitions=Match(ast, Block)->statements);
+    gcc_rvalue_t *val = compile_expr(env, &do_loading_block, module_ast);
+    gcc_assign(do_loading_block, NULL, module_var, val);
+    gcc_jump(do_loading_block, NULL, finished_loading_block);
+
+    gcc_return(finished_loading_block, NULL, gcc_rval(module_var));
+
+    // Actually compile the functions:
+    for (uint32_t i = 1; i <= env->global->ast_functions.count; i++) {
+        auto entry = hnth(&env->global->ast_functions, i, ast_t*, func_context_t*);
+        compile_function(&entry->value->env, entry->value->func, entry->key);
+    }
+
+    *result = gcc_compile(ctx);
+    if (*result == NULL)
+        compiler_err(env, ast, "Compilation failed");
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
