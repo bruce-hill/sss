@@ -1270,7 +1270,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 }
             }
             binding_t *binding = get_from_namespace(env, fielded_t, access->field);
-            if (binding)
+            if (binding && binding->rval)
                 return binding->rval;
             fielded_t = Match(fielded_t, VariantType)->variant_of;
             goto get_field;
