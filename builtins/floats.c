@@ -38,7 +38,7 @@ static double Num_mod(double num, double modulus) {
 Type Num_type = {
     .name="Num",
     .cord=CordMethod(Function, (void*)Num_cord),
-    .compare=CompareMethod(Data, sizeof(double)),
+    .order=OrderingMethod(Data, sizeof(double)),
     .hash=HashMethod(Data, sizeof(double)),
     .bindings=(NamespaceBinding[]){
         {"mod", "func(n:Num, modulus:Num) Num", Num_mod},
@@ -100,7 +100,7 @@ static float Num32_random(void) {
 Type Num32_type = {
     .name="Num32",
     .cord=CordMethod(Function, (void*)Num32_cord),
-    .compare=CompareMethod(Data, sizeof(float)),
+    .order=OrderingMethod(Data, sizeof(float)),
     .hash=HashMethod(Data, sizeof(float)),
     .bindings=(NamespaceBinding[]){
         {"mod", "func(n:Num32, modulus:Num32) Num32", Num32_mod},

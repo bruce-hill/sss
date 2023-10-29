@@ -32,7 +32,7 @@ static int Memory_hash(void *p) {
 Type Memory_type = {
     .name=STRING("Memory"),
     .cord=CordMethod(Function, (void*)Memory_cord),
-    .compare=CompareMethod(Function, (void*)Memory_compare),
+    .order=OrderingMethod(Function, (void*)Memory_compare),
     .hash=HashMethod(Function, (void*)Memory_hash),
 };
 

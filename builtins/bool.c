@@ -9,9 +9,6 @@
 #include <err.h>
 
 #include "types.h"
-#include "cording.h"
-#include "comparing.h"
-#include "hashing.h"
 #include "../SipHash/halfsiphash.h"
 
 extern const void *SSS_HASH_VECTOR;
@@ -27,7 +24,7 @@ static CORD Bool_cord(bool *b, bool colorize)
 Type Bool_type = {
     .name=STRING("Bool"),
     .cord=CordMethod(Function, (void*)Bool_cord),
-    .compare=CompareMethod(Data, sizeof(bool)),
+    .order=OrderingMethod(Data, sizeof(bool)),
     .hash=HashMethod(Data, sizeof(bool)),
 };
 

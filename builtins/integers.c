@@ -7,9 +7,6 @@
 #include "../SipHash/halfsiphash.h"
 #include "types.h"
 #include "string.h"
-#include "cording.h"
-#include "hashing.h"
-#include "comparing.h"
 
 extern const void *SSS_HASH_VECTOR;
 
@@ -51,7 +48,7 @@ extern const void *SSS_HASH_VECTOR;
     Type KindOfInt##_type = { \
         .name=STRING(#KindOfInt), \
         .cord=CordMethod(Function, (void*)KindOfInt ## _cord), \
-        .compare=CompareMethod(Data, sizeof(c_type)), \
+        .order=OrderingMethod(Data, sizeof(c_type)), \
         .hash=HashMethod(Data, sizeof(c_type)), \
         .bindings=(NamespaceBinding[]){ \
             {"format", "func(i:"#KindOfInt", digits=1) Str", KindOfInt##_format}, \

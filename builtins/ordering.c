@@ -7,24 +7,23 @@
 
 #include "table.h"
 #include "string.h"
-#include "comparing.h"
 
 #ifndef auto
 #define auto __auto_type
 #endif
 
-int32_t generic_compare(const void *x, const void *y, Comparable *what)
+int32_t generic_compare(const void *x, const void *y, const Type *type)
 {
-    switch (what->tag) {
-        case CompareFunction:
-            return what->__data.CompareFunction.fn(x, y);
-        case CompareData:
-            return memcmp(x, y, what->__data.CompareData.size);
-        case CompareArray: {
+    switch (type->order.tag) {
+        case OrderingFunction:
+            return type->order.__data.OrderingFunction.fn(x, y);
+        case OrderingData:
+            return memcmp(x, y, type->order.__data.OrderingData.size);
+        case OrderingArray: {
             string_t *sx = (string_t*)x, *sy = (string_t*)y;
-            auto item = what->__data.CompareArray.item;
-            if (item->tag == CompareData) {
-                size_t item_size = item->__data.CompareData.size;
+            auto item = type->info.__data.ArrayInfo.item;
+            if (item->order.tag == OrderingData) {
+                size_t item_size = item->order.__data.OrderingData.size;
                 for (int32_t i = 0, len = MIN(sx->length, sy->length); i < len; i++) {
                     int32_t cmp = (int32_t)memcmp(&sx->data[sx->stride*i], &sy->data[sy->stride*i], item_size);
                     if (cmp != 0) return cmp;
@@ -37,8 +36,8 @@ int32_t generic_compare(const void *x, const void *y, Comparable *what)
             }
             return (sx->length > sy->length) - (sx->length < sy->length);
         }
-        case CompareTable: {
-            auto table = what->__data.CompareTable;
+        case OrderingTable: {
+            auto table = type->info.__data.TableInfo;
             table_t *t_x = (table_t*)x, *t_y = (table_t*)y;
 
             size_t x_size = table.entry_size * t_x->count,
@@ -53,8 +52,8 @@ int32_t generic_compare(const void *x, const void *y, Comparable *what)
             qsort_r(y_keys, t_y->count, table.entry_size, (void*)generic_compare, table.key);
 
             for (uint32_t i = 0; i < MIN(t_x->count, t_y->count); i++) {
-                void *key_x = t_x->entries + i*table.entry_size;
-                void *key_y = t_y->entries + i*table.entry_size;
+                void *key_x = x_keys + i*table.entry_size;
+                void *key_y = y_keys + i*table.entry_size;
                 int cmp = generic_compare(key_x, key_y, table.key);
                 if (cmp != 0) return cmp;
 

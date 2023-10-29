@@ -16,8 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comparing.h"
-#include "hashing.h"
 #include "table.h"
 #include "types.h"
 
@@ -29,9 +27,9 @@
 
 // Helper accessors for type functions/values:
 #define HASH(k) (generic_hash((k), type->hash.__data.HashTable.key))
-#define COMPARE(x, y) (generic_compare((x), (y), type->compare.__data.CompareTable.key))
-#define ENTRY_SIZE (type->compare.__data.CompareTable.entry_size)
-#define VALUE_OFFSET (type->compare.__data.CompareTable.value_offset)
+#define COMPARE(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
+#define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
+#define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
 
 static inline void hshow(table_t *t)
 {
@@ -304,6 +302,38 @@ void table_remove(Type *type, table_t *t, const void *key)
     hshow(t);
 }
 
+bool table_equals(Type *type, table_t *x, table_t *y)
+{
+    if (x->count != y->count)
+        return false;
+    
+    if ((x->default_value != NULL) != (y->default_value != NULL))
+        return false;
+    
+    if ((x->fallback != NULL) != (y->fallback != NULL))
+        return false;
+
+    Type *value_type = type->info.__data.TableInfo.value;
+    for (uint32_t i = 1; i <= x->count; i++) {
+        void *x_key = x->entries + (i-1)*ENTRY_SIZE;
+        void *y_value = table_get_raw(type, y, x_key);
+        if (!y_value) return false;
+        void *x_value = x_key + VALUE_OFFSET;
+        if (!table_equals(value_type, x_value, y_value))
+            return false;
+    }
+
+    if (x->default_value && y->default_value
+        && !generic_equals(value_type, x->default_value, y->default_value))
+        return false;
+
+    if (x->fallback && y->fallback
+        && !generic_equals(type, x->fallback, y->fallback))
+        return false;
+    
+    return true;
+}
+
 void table_clear(table_t *t)
 {
     memset(t, 0, sizeof(table_t));
@@ -343,9 +373,10 @@ Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_off
 {
     return (Type){
         .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
-        .compare=CompareMethod(Table, .key=&key->compare, .value=&value->compare, .entry_size=entry_size, .value_offset=value_offset),
-        .hash=HashMethod(Table, .key=&key->hash, .value=&value->hash, .entry_size=entry_size, .value_offset=value_offset),
-        .cord=CordMethod(Table, .key=&key->cord, .value=&value->cord, .entry_size=entry_size, .value_offset=value_offset),
+        .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
+        .order=OrderingMethod(Table),
+        .hash=HashMethod(Table),
+        .cord=CordMethod(Table),
         .bindings=(NamespaceBinding[]){
             {"get", heap_strf("func(t:{%s=>%s}, key:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s}), value_offset=sizeof %s) Void",
                               key->name, value->name, key->name, key->name, key->name, key->name, value->name, value->name), table_get},
@@ -358,6 +389,7 @@ Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_off
             {"remove", heap_strf("func(t:@{%s=>%s}, key:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s})) Void",
                                  key->name, value->name, key->name, key->name, key->name, key->name, value->name), table_remove},
             {"clear", heap_strf("func(t:@{%s=>%s}) Void", key->name, value->name), table_clear},
+            {"equals", heap_strf("func(x,y:{%s=>%s}) Bool", key->name, value->name), table_equals},
             {NULL, NULL, NULL},
         },
     };

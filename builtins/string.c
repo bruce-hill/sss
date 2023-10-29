@@ -437,7 +437,7 @@ Type Str_type = {
     .name="Str",
     .cord=CordMethod(Function, (void*)Str_cord),
     .hash=HashMethod(Function, (void*)Str_hash),
-    .compare=CompareMethod(Function, (void*)Str_compare),
+    .order=OrderingMethod(Function, (void*)Str_compare),
     .bindings=(NamespaceBinding[]){
         {"uppercased", "func(str:Str) Str", uppercased},
         {"lowercased", "func(str:Str) Str", lowercased},
@@ -476,7 +476,7 @@ Type CString_type = {
     .name="CString",
     .cord=CordMethod(Function, (void*)CString_cord),
     .hash=HashMethod(Function, (void*)CString_hash),
-    .compare=CompareMethod(Function, (void*)strcmp),
+    .order=OrderingMethod(Function, (void*)strcmp),
     .bindings=(NamespaceBinding[]){
         {"string", "func(str:CString) Str", from_c_string},
         {"from_string", "func(str:Str) CString", c_string},

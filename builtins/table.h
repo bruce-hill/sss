@@ -28,3 +28,4 @@ void *table_nth(Type *type, table_t *t, uint32_t n);
 void *table_set(Type *type, table_t *t, const void *key, const void *value);
 void table_remove(Type *type, table_t *t, const void *key);
 void table_clear(table_t *t);
+bool table_equals(Type *type, table_t *x, table_t *y);

@@ -8,9 +8,6 @@
 #include <sys/param.h>
 #include <err.h>
 
-#include "comparing.h"
-#include "cording.h"
-#include "hashing.h"
 #include "string.h"
 #include "types.h"
 
@@ -65,7 +62,7 @@ typedef bool (*char_pred_t)(char);
 Type Char_type = {
     .name=STRING("Char"),
     .cord=CordMethod(Function, (void*)Char_cord),
-    .compare=CompareMethod(Data, sizeof(char)),
+    .order=OrderingMethod(Data, sizeof(char)),
     .hash=HashMethod(Data, sizeof(char)),
     .bindings=(NamespaceBinding[]){
         {"uppercased", "func(c:Char) Char", toupper},

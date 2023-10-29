@@ -50,7 +50,7 @@ static int Range_compare(range_t *x, range_t *y) {
 Type Range_type = {
     .name="Range",
     .cord=CordMethod(Function, (void*)Range_cord),
-    .compare=CompareMethod(Function, (void*)Range_compare),
+    .order=OrderingMethod(Function, (void*)Range_compare),
     .hash=HashMethod(Data, sizeof(range_t)),
 };
 

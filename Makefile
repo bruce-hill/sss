@@ -33,8 +33,8 @@ HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h co
 OBJFILES=$(CFILES:.c=.o)
 
 BUILTIN_CFILES=builtins/integers.c builtins/floats.c builtins/char.c builtins/string.c builtins/bool.c builtins/range.c builtins/memory.c \
-							 builtins/functions.c builtins/array.c builtins/table.c builtins/cording.c builtins/hashing.c builtins/comparing.c \
-							 builtins/builtins.c
+							 builtins/functions.c builtins/array.c builtins/table.c builtins/cording.c builtins/hashing.c builtins/ordering.c \
+							 builtins/equality.c builtins/builtins.c
 BUILTIN_OBJFILES=$(BUILTIN_CFILES:.c=.o)
 
 all: builtins.so sss $(LIBFILE) sss.1

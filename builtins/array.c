@@ -15,9 +15,6 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-const char *Array_typestring = "struct(__name:Str, __cord:func(c:@Memory, colorize=no) @Char, __compare:func(x:@Memory, y:@Memory) Int32, "
-    "__hash:func(c:@Memory) Int32)";
-
 static void Array_cow(array_t *arr, size_t item_size)
 {
     char *copy = arr->atomic ? GC_MALLOC_ATOMIC(arr->length * item_size) : GC_MALLOC(arr->length * item_size);
@@ -46,7 +43,7 @@ static void Array_flatten(array_t *arr, size_t item_size)
     arr->free = 0;
 }
 
-static void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size)
+void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size)
 {
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
@@ -70,7 +67,7 @@ static void Array_insert(array_t *arr, void *item, int64_t index, size_t item_si
     memcpy((char*)arr->data + (index-1)*item_size, item, item_size);
 }
 
-static void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
+void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
 {
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
@@ -95,7 +92,7 @@ static void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, siz
         memcpy((char*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
 }
 
-static void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
+void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 {
     if (index < 1 || index > (int64_t)arr->length || count < 1) return;
 
@@ -124,14 +121,14 @@ static void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item
     arr->length -= count;
 }
 
-static void Array_sort(array_t *arr, Comparable *item_compare, size_t item_size)
+void Array_sort(Type *type, array_t *arr, size_t item_size)
 {
     if (arr->free < 0 || (size_t)arr->stride != item_size)
         Array_flatten(arr, item_size);
-    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, item_compare);
+    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, type->info.__data.ArrayInfo.item);
 }
 
-static void Array_shuffle(array_t *arr, size_t item_size)
+void Array_shuffle(array_t *arr, size_t item_size)
 {
     if (arr->free < 0 || (size_t)arr->stride != item_size)
         Array_flatten(arr, item_size);
@@ -145,7 +142,7 @@ static void Array_shuffle(array_t *arr, size_t item_size)
     }
 }
 
-static array_t Array_join(array_t pieces, array_t glue, size_t item_size)
+array_t Array_join(array_t pieces, array_t glue, size_t item_size)
 {
     if (pieces.length == 0) return (array_t){.stride=item_size};
 
@@ -168,7 +165,7 @@ static array_t Array_join(array_t pieces, array_t glue, size_t item_size)
     return (array_t){.data = data, .length = length, .stride = item_size};
 }
 
-static void Array_clear(array_t *array)
+void Array_clear(array_t *array)
 {
     *array = (array_t){.data=0, .length=0};
 }
@@ -200,9 +197,10 @@ Type make_array_type(Type *item_type)
 {
     return (Type){
         .name=STRING(heap_strf("[%s]", item_type->name)),
-        .compare=CompareMethod(Array, &item_type->compare),
-        .hash=HashMethod(Array, &item_type->hash),
-        .cord=CordMethod(Array, &item_type->cord),
+        .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
+        .order=OrderingMethod(Array),
+        .hash=HashMethod(Array),
+        .cord=CordMethod(Array),
         .bindings=(NamespaceBinding[]){
             {"cow", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_cow},
             {"flatten", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_flatten},
