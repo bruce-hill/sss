@@ -32,7 +32,15 @@ CFILES=api.c span.c files.c parse.c ast.c environment.c args.c types.c typecheck
 HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libsss/list.h libsss/string.h libsss/hashmap.h
 OBJFILES=$(CFILES:.c=.o)
 
-all: sss $(LIBFILE) sss.1
+BUILTIN_CFILES=builtins/integers.c builtins/floats.c builtins/char.c builtins/string.c builtins/bool.c builtins/range.c builtins/memory.c \
+							 builtins/functions.c builtins/array.c builtins/table.c builtins/cording.c builtins/hashing.c builtins/comparing.c \
+							 builtins/builtins.c
+BUILTIN_OBJFILES=$(BUILTIN_CFILES:.c=.o)
+
+all: builtins.so sss $(LIBFILE) sss.1
+
+builtins.so: $(BUILTIN_OBJFILES)
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,builtins.so -fvisibility=hidden -shared -o $@
 
 $(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss/base64.o SipHash/halfsiphash.o files.o span.o
 	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -fvisibility=hidden -shared -o $@
