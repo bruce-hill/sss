@@ -41,7 +41,7 @@ static inline void hshow(table_t *t)
     hdebug("}\n");
 }
 
-static void copy_on_write(Type *type, table_t *t, hash_bucket_t *original_buckets, char *original_entries)
+static void copy_on_write(const Type *type, table_t *t, hash_bucket_t *original_buckets, char *original_entries)
 {
     if (t->entries && t->entries == original_entries)
         t->entries = memcpy(GC_MALLOC((t->count+1)*ENTRY_SIZE), t->entries, (t->count+1)*ENTRY_SIZE);
@@ -51,7 +51,7 @@ static void copy_on_write(Type *type, table_t *t, hash_bucket_t *original_bucket
 }
 
 // Return address of value or NULL
-void *table_get_raw(Type *type, table_t *t, const void *key)
+void *table_get_raw(const Type *type, table_t *t, const void *key)
 {
     if (!t || !key || !t->buckets) return NULL;
 
@@ -68,7 +68,7 @@ void *table_get_raw(Type *type, table_t *t, const void *key)
     return NULL;
 }
 
-void *table_get(Type *type, table_t *t, const void *key)
+void *table_get(const Type *type, table_t *t, const void *key)
 {
     for (table_t *iter = t; iter; iter = iter->fallback) {
         void *ret = table_get_raw(type, iter, key);
@@ -80,7 +80,7 @@ void *table_get(Type *type, table_t *t, const void *key)
     return NULL;
 }
 
-static void table_set_bucket(Type *type, table_t *t, const void *entry, int32_t index1)
+static void table_set_bucket(const Type *type, table_t *t, const void *entry, int32_t index1)
 {
     hshow(t);
     const void *key = entry;
@@ -134,7 +134,7 @@ static void table_set_bucket(Type *type, table_t *t, const void *entry, int32_t 
     hshow(t);
 }
 
-static void hashmap_resize(Type *type, table_t *t, uint32_t new_capacity)
+static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
 {
     hdebug("About to resize from %u to %u\n", t->capacity, new_capacity);
     hshow(t);
@@ -158,7 +158,7 @@ static void hashmap_resize(Type *type, table_t *t, uint32_t new_capacity)
 }
 
 // Return address of value
-void *table_set(Type *type, table_t *t, const void *key, const void *value)
+void *table_set(const Type *type, table_t *t, const void *key, const void *value)
 {
     hdebug("Raw hash of key being set: %u\n", key_hash(key));
     if (!t || !key) return NULL;
@@ -219,7 +219,7 @@ void *table_set(Type *type, table_t *t, const void *key, const void *value)
     return entry + VALUE_OFFSET;
 }
 
-void table_remove(Type *type, table_t *t, const void *key)
+void table_remove(const Type *type, table_t *t, const void *key)
 {
     if (!t || !t->buckets) return;
 
@@ -302,7 +302,7 @@ void table_remove(Type *type, table_t *t, const void *key)
     hshow(t);
 }
 
-bool table_equals(Type *type, table_t *x, table_t *y)
+bool table_equals(const Type *type, table_t *x, table_t *y)
 {
     if (x->count != y->count)
         return false;
@@ -313,7 +313,7 @@ bool table_equals(Type *type, table_t *x, table_t *y)
     if ((x->fallback != NULL) != (y->fallback != NULL))
         return false;
 
-    Type *value_type = type->info.__data.TableInfo.value;
+    const Type *value_type = type->info.__data.TableInfo.value;
     for (uint32_t i = 1; i <= x->count; i++) {
         void *x_key = x->entries + (i-1)*ENTRY_SIZE;
         void *y_value = table_get_raw(type, y, x_key);
@@ -339,7 +339,7 @@ void table_clear(table_t *t)
     memset(t, 0, sizeof(table_t));
 }
 
-void *table_nth(Type *type, table_t *t, uint32_t n)
+void *table_nth(const Type *type, table_t *t, uint32_t n)
 {
     assert(n >= 1 && n <= t->count);
     if (n < 1 || n > t->count) return NULL;
