@@ -27,7 +27,7 @@
 
 // Helper accessors for type functions/values:
 #define HASH(k) (generic_hash((k), type->hash.__data.HashTable.key))
-#define COMPARE(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
+#define EQUAL(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
 #define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
 #define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
 
@@ -60,7 +60,7 @@ void *table_get_raw(Type *type, table_t *t, const void *key)
     hdebug("Getting with initial probe at %u\n", hash);
     for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1 - 1) {
         char *entry = t->entries + ENTRY_SIZE*(t->buckets[i].index1-1);
-        if (COMPARE(entry, key) == 0)
+        if (!EQUAL(entry, key))
             return entry + VALUE_OFFSET;
         if (t->buckets[i].next1 == 0)
             break;
@@ -115,7 +115,7 @@ static void table_set_bucket(Type *type, table_t *t, const void *entry, int32_t 
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
         for (;;) {
-            assert(COMPARE(t->entries + (bucket->index1-1)*ENTRY_SIZE, key) != 0);
+            assert(EQUAL(t->entries + (bucket->index1-1)*ENTRY_SIZE, key));
             if (bucket->next1 == 0) {
                 // End of chain
                 break;
@@ -248,7 +248,7 @@ void table_remove(Type *type, table_t *t, const void *key)
     uint32_t hash = HASH(key) % CAPACITY(t);
     hash_bucket_t *bucket, *prev = NULL;
     for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1 - 1) {
-        if (COMPARE(t->entries + ENTRY_SIZE*(t->buckets[i].index1-1), key) == 0) {
+        if (EQUAL(t->entries + ENTRY_SIZE*(t->buckets[i].index1-1), key)) {
             bucket = &t->buckets[i];
             hdebug("Found key to delete\n");
             goto found_it;
@@ -375,21 +375,20 @@ Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_off
         .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
         .order=OrderingMethod(Table),
+        .equality=EqualityMethod(Function, (void*)table_equals),
         .hash=HashMethod(Table),
         .cord=CordMethod(Table),
         .bindings=(NamespaceBinding[]){
-            {"get", heap_strf("func(t:{%s=>%s}, key:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s}), value_offset=sizeof %s) Void",
-                              key->name, value->name, key->name, key->name, key->name, key->name, value->name, value->name), table_get},
-            {"get_raw", heap_strf("func(t:{%s=>%s}, key:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s}), value_offset=sizeof %s) Void",
-                                  key->name, value->name, key->name, key->name, key->name, key->name, value->name, value->name), table_get_raw},
-            {"nth", heap_strf("func(t:{%s=>%s}, n:UInt32, entry_size=(sizeof {k:%s, v:%s})) Void",
-                              key->name, value->name, key->name, key->name, key->name, key->name, value->name), table_remove},
-            {"set", heap_strf("func(t:{%s=>%s}, key:%s, value:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s}), value_offset=sizeof %s) @%s",
-                              key->name, value->name, key->name, value->name, key->name, key->name, key->name, value->name, value->name, value->name), table_set},
-            {"remove", heap_strf("func(t:@{%s=>%s}, key:%s, hashable:(typeof %s).hash, comparable:(typeof %s).compare, entry_size=(sizeof {k:%s, v:%s})) Void",
-                                 key->name, value->name, key->name, key->name, key->name, key->name, value->name), table_remove},
+            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get},
+            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get_raw},
+            {"nth", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
+                              key->name, value->name, key->name, value->name), table_nth},
+            {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
+                              key->name, value->name, key->name, value->name, value->name), table_set},
+            {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
+                                 key->name, value->name, key->name), table_remove},
+            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key->name, value->name), table_equals},
             {"clear", heap_strf("func(t:@{%s=>%s}) Void", key->name, value->name), table_clear},
-            {"equals", heap_strf("func(x,y:{%s=>%s}) Bool", key->name, value->name), table_equals},
             {NULL, NULL, NULL},
         },
     };
