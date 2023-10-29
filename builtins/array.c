@@ -17,7 +17,7 @@ extern const void *SSS_HASH_VECTOR;
 
 // Replace the array's .data pointer with a new pointer to a copy of the
 // data that is compacted and has a stride of exactly `item_size`
-static void Array_compact(array_t *arr, size_t item_size)
+void Array_compact(array_t *arr, size_t item_size)
 {
     void *copy = NULL;
     if (arr->length > 0) {
@@ -216,7 +216,7 @@ Type make_array_type(Type *item_type)
             {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_type->name), Array_remove},
             {"sort", heap_strf("func(arr:@[%s], item_compare=(typeof(%s)).compare, item_size=sizeof(arr[1])) Void", item_type->name), Array_sort},
             {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_shuffle},
-            {"join", heap_strf("func(pieces:[%s], glue:[%s], item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_join},
+            {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_join},
             {"clear", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_clear},
             {NULL, NULL, NULL},
         },

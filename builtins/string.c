@@ -9,6 +9,7 @@
 
 #include "../SipHash/halfsiphash.h"
 #include "types.h"
+#include "array.h"
 #include "string.h"
 
 #define CLAMP(x, lo, hi) MIN(hi, MAX(x,lo))
@@ -455,6 +456,17 @@ Type Str_type = {
         {"replace", "func(str:Str, target:Str, replacement:Str, limit=Int.max) Str", replace},
         {"quoted", "func(str:Str) Str", quoted},
         {"split", "func(str:Str, split_chars:[Char]) [Str]", split},
+
+        // Array methods:
+        {"compact", "func(str:@Str, item_size=1) Void", Array_compact},
+        {"insert", "func(str:@Str, item:Char, index=#str, item_size=1) Void", Array_insert},
+        {"insert_all", "func(str:@Str, items:[Str], index=#str, item_size=1) Void", Array_insert_all},
+        {"remove", "func(str:@Str, index=#str, count=1, item_size=1) Void", Array_remove},
+        {"sort", "func(str:@Str, item_compare=Char.compare, item_size=1) Void", Array_sort},
+        {"shuffle", "func(str:@Str, item_size=1) Void", Array_shuffle},
+        {"join", "func(pieces:[Str], glue:Str, item_size=1) Void", Array_join},
+        {"clear", "func(str:@Str) Void", Array_clear},
+        {NULL, NULL, NULL},
     },
 };
 
@@ -480,6 +492,7 @@ Type CString_type = {
     .bindings=(NamespaceBinding[]){
         {"string", "func(str:CString) Str", from_c_string},
         {"from_string", "func(str:Str) CString", c_string},
+        {NULL, NULL, NULL},
     },
 };
 
