@@ -1,7 +1,7 @@
 CC=gcc
 PREFIX=/usr/local
 VERSION=0.12.1
-CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv
+CFLAGS=-std=c11 -Werror -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -fPIC -ftrapv -fvisibility=hidden
 LDFLAGS=-Wl,-rpath '-Wl,$$ORIGIN'
 # MAKEFLAGS := --jobs=$(shell nproc) --output-sync=target
 CWARN=-Wall -Wextra -Wno-format
@@ -40,10 +40,10 @@ BUILTIN_OBJFILES=$(BUILTIN_CFILES:.c=.o)
 all: builtins.so sss $(LIBFILE) sss.1
 
 builtins.so: $(BUILTIN_OBJFILES)
-	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,builtins.so -fvisibility=hidden -shared -o $@
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,builtins.so -shared -o $@
 
 $(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss/base64.o SipHash/halfsiphash.o files.o span.o
-	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -fvisibility=hidden -shared -o $@
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
 sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
@@ -58,7 +58,7 @@ tags: $(CFILES) $(HFILES) sss.c
 	ctags $^
 
 clean:
-	rm -f sss $(OBJFILES) sss[0-9]+* libsss.so.*
+	rm -f sss $(OBJFILES) $(BUILTIN_OBJFILES) sss[0-9]+* libsss.so.* builtins.so
 
 sss.1: sss.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@

@@ -20,7 +20,7 @@ extern void *table_get_raw(const Type *type, table_t *t, const void *key);
 extern void *table_nth(const Type *type, table_t *t, uint32_t n);
 extern void *table_set(const Type *type, table_t *t, const void *key, const void *value);
 
-NamespaceBinding *load()
+__attribute__ ((visibility ("default"))) NamespaceBinding *load()
 {
     NamespaceBinding builtins_namespace[] = {
         {"Bool", "Type", &Bool_type},
