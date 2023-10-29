@@ -9,7 +9,7 @@
 typedef struct {
     void *data;
     unsigned long int length:42;
-    unsigned short int free:4, cow:1, atomic:1;
+    unsigned short int free:4, copy_on_write:1, atomic:1;
     short int stride:16;
 } array_t;
 

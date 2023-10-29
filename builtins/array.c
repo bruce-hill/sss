@@ -15,32 +15,28 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static void Array_cow(array_t *arr, size_t item_size)
+// Replace the array's .data pointer with a new pointer to a copy of the
+// data that is compacted and has a stride of exactly `item_size`
+static void Array_compact(array_t *arr, size_t item_size)
 {
-    char *copy = arr->atomic ? GC_MALLOC_ATOMIC(arr->length * item_size) : GC_MALLOC(arr->length * item_size);
-    if ((size_t)arr->stride == item_size) {
-        memcpy(copy, arr->data, arr->length * item_size);
-    } else {
-        for (unsigned long i = 0; i < arr->length; i++)
-            memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
+    void *copy = NULL;
+    if (arr->length > 0) {
+        copy = arr->atomic ? GC_MALLOC_ATOMIC(arr->length * item_size) : GC_MALLOC(arr->length * item_size);
+        if ((size_t)arr->stride == item_size) {
+            memcpy(copy, arr->data, arr->length * item_size);
+        } else {
+            for (unsigned long i = 0; i < arr->length; i++)
+                memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
+        }
     }
-    arr->stride = item_size;
-    arr->data = copy;
-    arr->free = 0;
-}
-
-static void Array_flatten(array_t *arr, size_t item_size)
-{
-    char *copy = arr->atomic ? GC_MALLOC_ATOMIC(arr->length * item_size) : GC_MALLOC(arr->length * item_size);
-    if ((size_t)arr->stride == item_size) {
-        memcpy(copy, arr->data, arr->length * item_size);
-    } else {
-        for (unsigned long i = 0; i < arr->length; i++)
-            memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
-    }
-    arr->stride = item_size;
-    arr->data = copy;
-    arr->free = 0;
+    *arr = (array_t){
+        .data=copy,
+        .length=arr->length,
+        .stride=item_size,
+        .free=0,
+        .atomic=arr->atomic,
+        .copy_on_write=0,
+    };
 }
 
 void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size)
@@ -53,18 +49,23 @@ void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size)
         arr->free = 1;
     } else if (arr->free < 1 || (size_t)arr->stride != item_size) {
         arr->free = 6;
-        char *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
+        void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int64_t i = 0; i < index-1; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
         for (int64_t i = index-1; i < (int64_t)arr->length; i++)
             memcpy(copy + (i+1)*item_size, arr->data + arr->stride*i, item_size);
         arr->data = copy;
-    } else if (index != arr->length+1) {
-        memmove((char*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index)*item_size);
+        arr->copy_on_write = 0;
+    } else {
+        if (arr->copy_on_write)
+            Array_compact(arr, item_size);
+
+        if (index != arr->length+1)
+            memmove((void*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index)*item_size);
     }
     --arr->free;
     ++arr->length;
-    memcpy((char*)arr->data + (index-1)*item_size, item, item_size);
+    memcpy((void*)arr->data + (index-1)*item_size, item, item_size);
 }
 
 void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
@@ -77,19 +78,24 @@ void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t ite
         arr->free = to_insert.length;
     } else if ((int64_t)arr->free < (int64_t)to_insert.length || (size_t)arr->stride != item_size) {
         arr->free = to_insert.length;
-        char *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
+        void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int64_t i = 0; i < index-1; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
         for (int64_t i = index-1; i < (int64_t)arr->length; i++)
             memcpy(copy + (i+to_insert.length)*item_size, arr->data + arr->stride*i, item_size);
         arr->data = copy;
-    } else if (index != arr->length+1) {
-        memmove((char*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index + to_insert.length-1)*item_size);
+        arr->copy_on_write = 0;
+    } else {
+        if (arr->copy_on_write)
+            Array_compact(arr, item_size);
+
+        if (index != arr->length+1)
+            memmove((void*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index + to_insert.length-1)*item_size);
     }
     arr->free -= to_insert.length;
     arr->length += to_insert.length;
     for (unsigned long i = 0; i < to_insert.length; i++)
-        memcpy((char*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
+        memcpy((void*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
 }
 
 void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
@@ -104,8 +110,8 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     if (index + count > arr->length) {
         if (arr->free >= 0)
             arr->free += count;
-    } else if (arr->free < 0 || (size_t)arr->stride != item_size) { // Copy on write
-        char *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length-1) * item_size) : GC_MALLOC((arr->length-1) * item_size);
+    } else if (arr->copy_on_write || (size_t)arr->stride != item_size) {
+        void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length-1) * item_size) : GC_MALLOC((arr->length-1) * item_size);
         for (int64_t src = 1, dest = 1; src <= (int64_t)arr->length; src++) {
             if (src < index || src >= index + count) {
                 memcpy(copy + (dest - 1)*item_size, arr->data + arr->stride*(src - 1), item_size);
@@ -114,8 +120,9 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
         }
         arr->data = copy;
         arr->free = 0;
+        arr->copy_on_write = 0;
     } else {
-        memmove((char*)arr->data + (index-1)*item_size, arr->data + (index-1 + count)*item_size, (arr->length - index + count - 1)*item_size);
+        memmove((void*)arr->data + (index-1)*item_size, arr->data + (index-1 + count)*item_size, (arr->length - index + count - 1)*item_size);
         arr->free += count;
     }
     arr->length -= count;
@@ -123,22 +130,23 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 
 void Array_sort(Type *type, array_t *arr, size_t item_size)
 {
-    if (arr->free < 0 || (size_t)arr->stride != item_size)
-        Array_flatten(arr, item_size);
+    if (arr->copy_on_write || (size_t)arr->stride != item_size)
+        Array_compact(arr, item_size);
+
     qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, type->info.__data.ArrayInfo.item);
 }
 
 void Array_shuffle(array_t *arr, size_t item_size)
 {
-    if (arr->free < 0 || (size_t)arr->stride != item_size)
-        Array_flatten(arr, item_size);
+    if (arr->copy_on_write || (size_t)arr->stride != item_size)
+        Array_compact(arr, item_size);
 
     char tmp[item_size];
     for (unsigned long i = arr->length-1; i > 1; i--) {
         int32_t j = arc4random_uniform(i+1);
         memcpy(tmp, arr->data + i*item_size, item_size);
-        memcpy((char*)arr->data + i*item_size, arr->data + j*item_size, item_size);
-        memcpy((char*)arr->data + j*item_size, tmp, item_size);
+        memcpy((void*)arr->data + i*item_size, arr->data + j*item_size, item_size);
+        memcpy((void*)arr->data + j*item_size, tmp, item_size);
     }
 }
 
@@ -151,8 +159,8 @@ array_t Array_join(array_t pieces, array_t glue, size_t item_size)
         if (i > 0) length += glue.length;
         length += ((array_t*)(pieces.data + i*pieces.stride))->length;
     }
-    char *data = pieces.atomic ? GC_MALLOC_ATOMIC((size_t)length*item_size) : GC_MALLOC((size_t)length*item_size);
-    char *ptr = data;
+    void *data = pieces.atomic ? GC_MALLOC_ATOMIC((size_t)length*item_size) : GC_MALLOC((size_t)length*item_size);
+    void *ptr = data;
     for (unsigned long i = 0; i < pieces.length; i++) {
         if (i > 0) {
             for (unsigned long j = 0; j < glue.length; j++)
@@ -202,8 +210,7 @@ Type make_array_type(Type *item_type)
         .hash=HashMethod(Array),
         .cord=CordMethod(Array),
         .bindings=(NamespaceBinding[]){
-            {"cow", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_cow},
-            {"flatten", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_flatten},
+            {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_compact},
             {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_type->name, item_type->name), Array_insert},
             {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_insert_all},
             {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_type->name), Array_remove},

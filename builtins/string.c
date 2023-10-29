@@ -20,7 +20,7 @@ typedef struct {
     int32_t index;
 } find_result_t;
 
-static string_t flattened(string_t str)
+static string_t compacted(string_t str)
 {
     if (str.stride == 1) return str;
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
@@ -343,9 +343,9 @@ static find_result_t find(string_t str, string_t pat)
 
 static string_t replace(string_t text, string_t pat, string_t replacement, int64_t limit)
 {
-    text = flattened(text);
-    pat = flattened(pat);
-    replacement = flattened(replacement);
+    text = compacted(text);
+    pat = compacted(pat);
+    replacement = compacted(replacement);
     char *buf;
     size_t size;
     FILE *mem = open_memstream(&buf, &size);
