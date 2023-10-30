@@ -214,7 +214,7 @@ Type make_array_type(Type *item_type)
             {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_type->name, item_type->name), Array_insert},
             {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_insert_all},
             {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_type->name), Array_remove},
-            {"sort", heap_strf("func(arr:@[%s], item_compare=(typeof(%s)).compare, item_size=sizeof(arr[1])) Void", item_type->name), Array_sort},
+            {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_type->name, item_type->name), Array_sort},
             {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_shuffle},
             {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_join},
             {"clear", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_clear},
