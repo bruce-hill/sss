@@ -15,7 +15,7 @@ typedef struct {
 void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size);
 void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size);
 void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size);
-void Array_sort(Type *type, array_t *arr, size_t item_size);
+void Array_sort(array_t *arr, size_t item_size, Type *item_type);
 void Array_shuffle(array_t *arr, size_t item_size);
 array_t Array_join(array_t pieces, array_t glue, size_t item_size);
 void Array_clear(array_t *array);

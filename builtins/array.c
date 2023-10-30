@@ -128,12 +128,12 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     arr->length -= count;
 }
 
-void Array_sort(Type *type, array_t *arr, size_t item_size)
+void Array_sort(array_t *arr, size_t item_size, Type *item_type)
 {
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
-    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, type->info.__data.ArrayInfo.item);
+    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, item_type);
 }
 
 void Array_shuffle(array_t *arr, size_t item_size)
