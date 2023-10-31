@@ -55,7 +55,7 @@ static void copy_on_write(const Type *type, table_t *t, hash_bucket_t *original_
 }
 
 // Return address of value or NULL
-void *table_get_raw(const Type *type, const table_t *t, const void *key)
+void *Table_get_raw(const Type *type, const table_t *t, const void *key)
 {
     if (!t || !key || !t->buckets) return NULL;
 
@@ -72,10 +72,10 @@ void *table_get_raw(const Type *type, const table_t *t, const void *key)
     return NULL;
 }
 
-void *table_get(const Type *type, const table_t *t, const void *key)
+void *Table_get(const Type *type, const table_t *t, const void *key)
 {
     for (const table_t *iter = t; iter; iter = iter->fallback) {
-        void *ret = table_get_raw(type, iter, key);
+        void *ret = Table_get_raw(type, iter, key);
         if (ret) return ret;
     }
     for (const table_t *iter = t; iter; iter = iter->fallback) {
@@ -84,7 +84,7 @@ void *table_get(const Type *type, const table_t *t, const void *key)
     return NULL;
 }
 
-static void table_set_bucket(const Type *type, table_t *t, const void *entry, int32_t index1)
+static void Table_set_bucket(const Type *type, table_t *t, const void *entry, int32_t index1)
 {
     hshow(t);
     const void *key = entry;
@@ -150,7 +150,7 @@ static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
     // Rehash:
     for (uint32_t i = 1; i <= t->count; i++) {
         hdebug("Rehashing %u\n", i);
-        table_set_bucket(type, t, t->entries + ENTRY_SIZE*(i-1), i);
+        Table_set_bucket(type, t, t->entries + ENTRY_SIZE*(i-1), i);
     }
 
     char *new_entries = GC_MALLOC(new_capacity*ENTRY_SIZE);
@@ -162,7 +162,7 @@ static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
 }
 
 // Return address of value
-void *table_set(const Type *type, table_t *t, const void *key, const void *value)
+void *Table_set(const Type *type, table_t *t, const void *key, const void *value)
 {
     hdebug("Raw hash of key being set: %u\n", key_hash(key));
     if (!t || !key) return NULL;
@@ -175,7 +175,7 @@ void *table_set(const Type *type, table_t *t, const void *key, const void *value
         hashmap_resize(type, t, 4);
 
     size_t value_size = ENTRY_SIZE - VALUE_OFFSET;
-    void *value_home = table_get_raw(type, t, key);
+    void *value_home = Table_get_raw(type, t, key);
     if (value_home) { // Update existing slot
         if (t->copy_on_write) {
             // Ensure that `value_home` is still inside t->entries, even if COW occurs
@@ -201,7 +201,7 @@ void *table_set(const Type *type, table_t *t, const void *key, const void *value
 
     if (!value && value_size > 0) {
         for (table_t *iter = t->fallback; iter; iter = iter->fallback) {
-            value = table_get_raw(type, iter, key);
+            value = Table_get_raw(type, iter, key);
             if (value) break;
         }
         for (table_t *iter = t; !value && iter; iter = iter->fallback) {
@@ -218,12 +218,12 @@ void *table_set(const Type *type, table_t *t, const void *key, const void *value
     if (value && value_size > 0)
         memcpy(entry + VALUE_OFFSET, value, ENTRY_SIZE - VALUE_OFFSET);
 
-    table_set_bucket(type, t, entry, index1);
+    Table_set_bucket(type, t, entry, index1);
 
     return entry + VALUE_OFFSET;
 }
 
-void table_remove(const Type *type, table_t *t, const void *key)
+void Table_remove(const Type *type, table_t *t, const void *key)
 {
     if (!t || !t->buckets) return;
 
@@ -306,19 +306,19 @@ void table_remove(const Type *type, table_t *t, const void *key)
     hshow(t);
 }
 
-void *table_nth(const Type *type, const table_t *t, uint32_t n)
+void *Table_nth(const Type *type, const table_t *t, uint32_t n)
 {
     assert(n >= 1 && n <= t->count);
     if (n < 1 || n > t->count) return NULL;
     return t->entries + (n-1)*ENTRY_SIZE;
 }
 
-void table_clear(table_t *t)
+void Table_clear(table_t *t)
 {
     memset(t, 0, sizeof(table_t));
 }
 
-bool table_equals(const Type *type, const table_t *x, const table_t *y)
+bool Table_equals(const Type *type, const table_t *x, const table_t *y)
 {
     if (x->count != y->count)
         return false;
@@ -332,10 +332,10 @@ bool table_equals(const Type *type, const table_t *x, const table_t *y)
     const Type *value_type = type->info.__data.TableInfo.value;
     for (uint32_t i = 1; i <= x->count; i++) {
         void *x_key = x->entries + (i-1)*ENTRY_SIZE;
-        void *y_value = table_get_raw(type, y, x_key);
+        void *y_value = Table_get_raw(type, y, x_key);
         if (!y_value) return false;
         void *x_value = x_key + VALUE_OFFSET;
-        if (!table_equals(value_type, x_value, y_value))
+        if (!Table_equals(value_type, x_value, y_value))
             return false;
     }
 
@@ -350,7 +350,7 @@ bool table_equals(const Type *type, const table_t *x, const table_t *y)
     return true;
 }
 
-int32_t table_compare(const table_t *x, const table_t *y, const Type *type)
+int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
 {
     __auto_type table = type->info.__data.TableInfo;
     size_t x_size = table.entry_size * x->count,
@@ -378,7 +378,7 @@ int32_t table_compare(const table_t *x, const table_t *y, const Type *type)
     return (x->count > y->count) - (x->count < y->count);
 }
 
-uint32_t table_hash(const Type *type, const table_t *t)
+uint32_t Table_hash(const Type *type, const table_t *t)
 {
     // Table hashes are computed as:
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
@@ -412,7 +412,7 @@ uint32_t table_hash(const Type *type, const table_t *t)
     return hash;
 }
 
-CORD table_cord(const Type *type, const table_t *t, bool colorize)
+CORD Table_cord(const Type *type, const table_t *t, bool colorize)
 {
     __auto_type table = type->info.__data.TableInfo;
     size_t value_offset = table.value_offset;
@@ -420,7 +420,7 @@ CORD table_cord(const Type *type, const table_t *t, bool colorize)
     for (uint32_t i = 1; i <= t->count; i++) {
         if (i > 1)
             c = CORD_cat(c, ", ");
-        void *entry = table_nth(type, t, i);
+        void *entry = Table_nth(type, t, i);
         c = CORD_cat(c, generic_cord(table.key, entry, colorize));
         c = CORD_cat(c, "=>");
         c = CORD_cat(c, generic_cord(table.value, entry + value_offset, colorize));
@@ -468,21 +468,21 @@ Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_off
     return (Type){
         .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
-        .order=OrderingMethod(Function, (void*)table_compare),
-        .equality=EqualityMethod(Function, (void*)table_equals),
-        .hash=HashMethod(Function, (void*)table_hash),
-        .cord=CordMethod(Function, (void*)table_cord),
+        .order=OrderingMethod(Function, (void*)Table_compare),
+        .equality=EqualityMethod(Function, (void*)Table_equals),
+        .hash=HashMethod(Function, (void*)Table_hash),
+        .cord=CordMethod(Function, (void*)Table_cord),
         .bindings=(NamespaceBinding[]){
-            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get},
-            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get_raw},
+            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), Table_get},
+            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), Table_get_raw},
             {"nth", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
-                              key->name, value->name, key->name, value->name), table_nth},
+                              key->name, value->name, key->name, value->name), Table_nth},
             {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
-                              key->name, value->name, key->name, value->name, value->name), table_set},
+                              key->name, value->name, key->name, value->name, value->name), Table_set},
             {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
-                                 key->name, value->name, key->name), table_remove},
-            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key->name, value->name), table_equals},
-            {"clear", heap_strf("func(t:@{%s=>%s}) Void", key->name, value->name), table_clear},
+                                 key->name, value->name, key->name), Table_remove},
+            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key->name, value->name), Table_equals},
+            {"clear", heap_strf("func(t:@{%s=>%s}) Void", key->name, value->name), Table_clear},
             {NULL, NULL, NULL},
         },
     };

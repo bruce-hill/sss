@@ -22,10 +22,10 @@ typedef struct table_s {
     bool copy_on_write;
 } table_t;
 
-void *table_get(const Type *type, const table_t *t, const void *key);
-void *table_get_raw(const Type *type, const table_t *t, const void *key);
-void *table_nth(const Type *type, const table_t *t, uint32_t n);
-void *table_set(const Type *type, table_t *t, const void *key, const void *value);
-void table_remove(const Type *type, table_t *t, const void *key);
-void table_clear(table_t *t);
-bool table_equals(const Type *type, const table_t *x, const table_t *y);
+void *Table_get(const Type *type, const table_t *t, const void *key);
+void *Table_get_raw(const Type *type, const table_t *t, const void *key);
+void *Table_nth(const Type *type, const table_t *t, uint32_t n);
+void *Table_set(const Type *type, table_t *t, const void *key, const void *value);
+void Table_remove(const Type *type, table_t *t, const void *key);
+void Table_clear(table_t *t);
+bool Table_equals(const Type *type, const table_t *x, const table_t *y);

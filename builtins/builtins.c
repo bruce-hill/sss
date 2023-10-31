@@ -15,10 +15,6 @@ extern Type Bool_type, Char_type,
        Range_type, Memory_type;
 extern Type (*make_array_type)(Type*);
 extern Type (*make_table_type)(Type*, Type*, size_t, size_t);
-extern void *table_get(const Type *type, const table_t *t, const void *key);
-extern void *table_get_raw(const Type *type, const table_t *t, const void *key);
-extern void *table_nth(const Type *type, const table_t *t, uint32_t n);
-extern void *table_set(const Type *type, table_t *t, const void *key, const void *value);
 
 __attribute__ ((visibility ("default"))) NamespaceBinding *load()
 {
@@ -40,12 +36,7 @@ __attribute__ ((visibility ("default"))) NamespaceBinding *load()
         {"Range", "Type", &Range_type},
         {"Memory", "Type", &Memory_type},
         {"make_array_type", "func(item_type:Type) Type", make_array_type},
-
         {"make_table_type", "func(key_type:Type, value_type:Type, entry_size:UInt, value_offset:UInt) Type", make_table_type},
-        {"table_get", "func(table_type:Type, table:@Memory, key:@Memory) ?Memory", table_get},
-        {"table_get_raw", "func(table_type:Type, table:@Memory, key:@Memory) ?Memory", table_get_raw},
-        {"table_nth", "func(table_type:Type, table:@Memory, index:UInt32) ?Memory", table_nth},
-        {"table_set", "func(table_type:Type, table:@Memory, key:@Memory, value:?Memory) ?Memory", table_set},
 
         {"say", "func(text:Str, end=\"\\n\") Void", say},
         {"fail", "func(fmt:Str) Abort", say},
