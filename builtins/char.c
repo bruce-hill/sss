@@ -11,7 +11,8 @@
 #include "string.h"
 #include "types.h"
 
-static CORD Char_cord(char *c, bool colorize) {
+static CORD Char_cord(const Type *type, const char *c, bool colorize) {
+    (void)type;
     CORD cord = 0;
     switch (*c) {
     case '\a': return "\\a";

@@ -6,7 +6,7 @@
 #include <sys/param.h>
 
 #include "table.h"
-#include "string.h"
+#include "array.h"
 
 #ifndef auto
 #define auto __auto_type
@@ -16,26 +16,9 @@ int32_t generic_compare(const void *x, const void *y, const Type *type)
 {
     switch (type->order.tag) {
         case OrderingFunction:
-            return type->order.__data.OrderingFunction.fn(x, y);
+            return type->order.__data.OrderingFunction.fn(x, y, type);
         case OrderingData:
             return memcmp(x, y, type->order.__data.OrderingData.size);
-        case OrderingArray: {
-            string_t *sx = (string_t*)x, *sy = (string_t*)y;
-            auto item = type->info.__data.ArrayInfo.item;
-            if (item->order.tag == OrderingData) {
-                size_t item_size = item->order.__data.OrderingData.size;
-                for (int32_t i = 0, len = MIN(sx->length, sy->length); i < len; i++) {
-                    int32_t cmp = (int32_t)memcmp(&sx->data[sx->stride*i], &sy->data[sy->stride*i], item_size);
-                    if (cmp != 0) return cmp;
-                }
-            } else {
-                for (int32_t i = 0, len = MIN(sx->length, sy->length); i < len; i++) {
-                    int32_t cmp = generic_compare(&sx->data[sx->stride*i], &sy->data[sy->stride*i], item);
-                    if (cmp != 0) return cmp;
-                }
-            }
-            return (sx->length > sy->length) - (sx->length < sy->length);
-        }
         case OrderingTable: {
             auto table = type->info.__data.TableInfo;
             table_t *t_x = (table_t*)x, *t_y = (table_t*)y;

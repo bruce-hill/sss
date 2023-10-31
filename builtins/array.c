@@ -39,7 +39,7 @@ void Array_compact(array_t *arr, size_t item_size)
     };
 }
 
-void Array_insert(array_t *arr, void *item, int64_t index, size_t item_size)
+void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
 {
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
@@ -128,12 +128,12 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     arr->length -= count;
 }
 
-void Array_sort(array_t *arr, size_t item_size, Type *item_type)
+void Array_sort(array_t *arr, size_t item_size, const Type *item_type)
 {
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
-    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, item_type);
+    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, (void*)item_type);
 }
 
 void Array_shuffle(array_t *arr, size_t item_size)
@@ -178,6 +178,47 @@ void Array_clear(array_t *array)
     *array = (array_t){.data=0, .length=0};
 }
 
+int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
+{
+    // Early out for arrays with the same data, e.g. two copies of the same array:
+    if (x->data == y->data && x->stride == y->stride)
+        return (x->length > y->length) - (x->length < y->length);
+
+    Type *item = type->info.__data.ArrayInfo.item;
+    if (item->order.tag == OrderingData) {
+        size_t item_size = item->order.__data.OrderingData.size;
+        if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
+            int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
+            if (cmp != 0) return cmp;
+        } else {
+            for (int32_t i = 0, len = MIN(x->length, y->length); i < len; i++) {
+                int32_t cmp = (int32_t)memcmp(x->data+ x->stride*i, y->data + y->stride*i, item_size);
+                if (cmp != 0) return cmp;
+            }
+        }
+    } else {
+        for (int32_t i = 0, len = MIN(x->length, y->length); i < len; i++) {
+            int32_t cmp = generic_compare(x->data + x->stride*i, y->data + y->stride*i, item);
+            if (cmp != 0) return cmp;
+        }
+    }
+    return (x->length > y->length) - (x->length < y->length);
+}
+
+CORD Array_cord(const Type *type, const array_t *arr, bool colorize)
+{
+    Type *item_type = type->info.__data.ArrayInfo.item;
+    CORD c = "[";
+    for (unsigned long i = 0; i < arr->length; i++) {
+        if (i > 0)
+            c = CORD_cat(c, ", ");
+        CORD item_cord = generic_cord(item_type, arr->data + i*arr->stride, colorize);
+        c = CORD_cat(c, item_cord);
+    }
+    c = CORD_cat(c, "]");
+    return c;
+}
+
 static inline char *heap_strn(const char *str, size_t len)
 {
     if (!str) return NULL;
@@ -206,7 +247,7 @@ Type make_array_type(Type *item_type)
     return (Type){
         .name=STRING(heap_strf("[%s]", item_type->name)),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
-        .order=OrderingMethod(Array),
+        .order=OrderingMethod(Function, (void*)Array_compare),
         .hash=HashMethod(Array),
         .cord=CordMethod(Array),
         .bindings=(NamespaceBinding[]){

@@ -13,7 +13,8 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Memory_cord(void *p, bool colorize) {
+static CORD Memory_cord(const Type *type, const void *p, bool colorize) {
+    (void)type;
     CORD cord;
     CORD_sprintf(&cord, colorize ? "\x1b[0;34;1mMemory<%p>\x1b[m" : "Memory<%p>", p);
     return cord;

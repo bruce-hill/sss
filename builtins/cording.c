@@ -25,7 +25,7 @@ CORD generic_cord(const Type *type, const void *obj, bool colorize)
         return c;
     }
     case CordFunction:
-        return type->cord.__data.CordFunction.fn(obj, colorize);
+        return type->cord.__data.CordFunction.fn(type, obj, colorize);
     case CordNamed: {
         auto named = type->info.__data.NamedInfo;
         return CORD_cat(named.name, generic_cord(named.base, obj, colorize));
@@ -36,19 +36,6 @@ CORD generic_cord(const Type *type, const void *obj, bool colorize)
         if (ptr == NULL)
             return ptr_info.null_str;
         return CORD_cat(ptr_info.sigil, generic_cord(type->info.__data.PointerInfo.pointed, ptr, colorize));
-    }
-    case CordArray: {
-        Type *item_type = type->info.__data.ArrayInfo.item;
-        CORD c = "[";
-        string_t *s = (string_t*)obj;
-        for (unsigned long i = 0; i < s->length; i++) {
-            if (i > 0)
-                c = CORD_cat(c, ", ");
-            CORD item_cord = generic_cord(item_type, &s->data[i*s->stride], colorize);
-            c = CORD_cat(c, item_cord);
-        }
-        c = CORD_cat(c, "]");
-        return c;
     }
     case CordTable: {
         auto table = type->info.__data.TableInfo;

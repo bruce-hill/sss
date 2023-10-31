@@ -49,17 +49,16 @@ typedef struct Equality {
 #define EqualityMethod(compare_tag, ...) ((Equality){.tag=Equality##compare_tag, .__data.Equality##compare_tag={__VA_ARGS__}})
 
 typedef struct Cording {
-    enum { CordNotImplemented, CordFunction, CordNamed, CordPointer, CordArray, CordTable } tag;
+    enum { CordNotImplemented, CordFunction, CordNamed, CordPointer, CordTable } tag;
     union {
         struct {} CordNotImplemented;
         struct {
-            CORD (*fn)(const void*, bool);
+            CORD (*fn)(const struct Type*, const void*, bool);
         } CordFunction;
         struct {} CordNamed;
         struct {
             const char *sigil, *null_str;
         } CordPointer;
-        struct {} CordArray;
         struct {} CordTable;
     } __data;
 } Cording;
@@ -89,15 +88,14 @@ typedef struct Hashing {
 #define HashMethod(hash_tag, ...) ((Hashing){.tag=Hash##hash_tag, .__data.Hash##hash_tag={__VA_ARGS__}})
 
 typedef struct Ordering {
-    enum { OrderingFunction, OrderingData, OrderingArray, OrderingTable } tag;
+    enum { OrderingFunction, OrderingData, OrderingTable } tag;
     union {
         struct {
-            int32_t (*fn)(const void*, const void*);
+            int32_t (*fn)(const void*, const void*, const struct Type*);
         } OrderingFunction;
         struct {
             size_t size;
         } OrderingData;
-        struct {} OrderingArray;
         struct {} OrderingTable;
     } __data;
 } Ordering;

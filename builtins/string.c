@@ -30,8 +30,9 @@ static string_t compacted(string_t str)
     return (string_t){.data=buf, .length=str.length, .stride=1};
 }
 
-static CORD Str_cord(string_t *s, bool colorize)
+static CORD Str_cord(const Type *type, const string_t *s, bool colorize)
 {
+    (void)type;
     char *data = s->data;
     // Note: it's important to have unicode strings not get broken up with
     // escapes, otherwise they won't print right.
@@ -470,10 +471,10 @@ Type Str_type = {
     },
 };
 
-static CORD CString_cord(char **s, bool colorize)
+static CORD CString_cord(const Type *type, const char **s, bool colorize)
 {
-    string_t str = {.data=*s, .length=strlen(*s), .stride=1};
-    return Str_cord(&str, colorize);
+    string_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
+    return Str_cord(type, &str, colorize);
 }
 
 static uint32_t CString_hash(char **s)
