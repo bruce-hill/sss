@@ -477,7 +477,7 @@ static CORD CString_cord(const Type *type, const char **s, bool colorize)
     return Str_cord(type, &str, colorize);
 }
 
-static uint32_t CString_hash(char **s)
+static uint32_t CString_hash(const char **s)
 {
     if (!*s) return 0;
     uint32_t hash;
@@ -485,11 +485,17 @@ static uint32_t CString_hash(char **s)
     return hash;
 }
 
+static uint32_t CString_compare(const char **x, const char **y, const Type *type)
+{
+    (void)type;
+    return strcmp(*x, *y);
+}
+
 Type CString_type = {
     .name="CString",
     .cord=CordMethod(Function, (void*)CString_cord),
     .hash=HashMethod(Function, (void*)CString_hash),
-    .order=OrderingMethod(Function, (void*)strcmp),
+    .order=OrderingMethod(Function, (void*)CString_compare),
     .bindings=(NamespaceBinding[]){
         {"string", "func(str:CString) Str", from_c_string},
         {"from_string", "func(str:Str) CString", c_string},
