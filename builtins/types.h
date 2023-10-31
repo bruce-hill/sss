@@ -66,7 +66,7 @@ typedef struct Cording {
 #define CordMethod(cord_tag, ...) ((Cording){.tag=Cord##cord_tag, .__data.Cord##cord_tag={__VA_ARGS__}})
 
 typedef struct Hashing {
-    enum { HashNotImplemented, HashFunction, HashData, HashArray, HashTable } tag;
+    enum { HashNotImplemented, HashFunction, HashData, HashTable } tag;
     union {
         struct {} HashNotImplemented;
         struct {
@@ -75,9 +75,6 @@ typedef struct Hashing {
         struct {
             size_t size;
         } HashData;
-        struct {
-            struct Hashing *item;
-        } HashArray;
         struct {
             size_t entry_size, value_offset;
             struct Hashing *key, *value;

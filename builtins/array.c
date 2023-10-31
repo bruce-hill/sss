@@ -219,6 +219,51 @@ CORD Array_cord(const Type *type, const array_t *arr, bool colorize)
     return c;
 }
 
+uint32_t Array_hash(const Type *type, const array_t *arr)
+{
+    // Array hash is calculated as a rolling, compacting hash of the length of the array, followed by
+    // the hashes of its items (or the items themselves if they're small plain data)
+    // In other words, it reads in a chunk of items or item hashes, then when it fills up the chunk,
+    // hashes it down to a single item to start the next chunk. This repeats until the end, when it
+    // hashes the last chunk down to a uint32_t.
+    Type *item = type->info.__data.ArrayInfo.item;
+    if (item->hash.tag == HashData) {
+        size_t item_size = item->hash.__data.HashData.size;
+        uint8_t hash_batch[4 + 8*item_size];
+        uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
+        unsigned long length = arr->length;
+        memcpy((p += sizeof(void*)), &length, sizeof(length));
+        for (unsigned long i = 0; i < arr->length; i++) {
+            if (p >= end) {
+                uint32_t chunk_hash;
+                halfsiphash(&hash_batch, sizeof(hash_batch), SSS_HASH_VECTOR, (uint8_t*)&chunk_hash, sizeof(chunk_hash));
+                p = hash_batch;
+                *(uint32_t*)p = chunk_hash;
+                p += sizeof(uint32_t);
+            }
+            memcpy((p += item_size), arr->data + i*arr->stride, item->hash.__data.HashData.size);
+        }
+        uint32_t hash;
+        halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+        return hash;
+    } else {
+        uint32_t hash_batch[16] = {(uint32_t)arr->length};
+        uint32_t *p = &hash_batch[1], *end = hash_batch + sizeof(hash_batch)/sizeof(hash_batch[0]);
+        for (unsigned long i = 0; i < arr->length; i++) {
+            if (p >= end) {
+                uint64_t chunk_hash;
+                halfsiphash(&hash_batch, sizeof(hash_batch), SSS_HASH_VECTOR, (uint8_t*)&chunk_hash, sizeof(chunk_hash));
+                p = hash_batch;
+                *(p++) = chunk_hash;
+            }
+            *(p++) = generic_hash(item, arr->data + i*arr->stride);
+        }
+        uint32_t hash;
+        halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+        return hash;
+    }
+}
+
 static inline char *heap_strn(const char *str, size_t len)
 {
     if (!str) return NULL;
@@ -248,8 +293,8 @@ Type make_array_type(Type *item_type)
         .name=STRING(heap_strf("[%s]", item_type->name)),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
         .order=OrderingMethod(Function, (void*)Array_compare),
-        .hash=HashMethod(Array),
-        .cord=CordMethod(Array),
+        .hash=HashMethod(Function, (void*)Array_hash),
+        .cord=CordMethod(Function, (void*)Array_cord),
         .bindings=(NamespaceBinding[]){
             {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_compact},
             {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_type->name, item_type->name), Array_insert},
