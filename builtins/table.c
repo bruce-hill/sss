@@ -15,7 +15,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
 
+#include "../SipHash/halfsiphash.h"
 #include "table.h"
 #include "types.h"
 
@@ -26,12 +28,14 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(k) (generic_hash((k), type->hash.__data.HashTable.key))
+#define HASH(k) (generic_hash(type->info.__data.TableInfo.key, (k)))
 #define EQUAL(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
 #define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
 #define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
 
-static inline void hshow(table_t *t)
+extern const void *SSS_HASH_VECTOR;
+
+static inline void hshow(const table_t *t)
 {
     hdebug("{");
     for (uint32_t i = 1; i <= CAPACITY(t); i++) {
@@ -51,7 +55,7 @@ static void copy_on_write(const Type *type, table_t *t, hash_bucket_t *original_
 }
 
 // Return address of value or NULL
-void *table_get_raw(const Type *type, table_t *t, const void *key)
+void *table_get_raw(const Type *type, const table_t *t, const void *key)
 {
     if (!t || !key || !t->buckets) return NULL;
 
@@ -68,13 +72,13 @@ void *table_get_raw(const Type *type, table_t *t, const void *key)
     return NULL;
 }
 
-void *table_get(const Type *type, table_t *t, const void *key)
+void *table_get(const Type *type, const table_t *t, const void *key)
 {
-    for (table_t *iter = t; iter; iter = iter->fallback) {
+    for (const table_t *iter = t; iter; iter = iter->fallback) {
         void *ret = table_get_raw(type, iter, key);
         if (ret) return ret;
     }
-    for (table_t *iter = t; iter; iter = iter->fallback) {
+    for (const table_t *iter = t; iter; iter = iter->fallback) {
         if (iter->default_value) return iter->default_value;
     }
     return NULL;
@@ -302,7 +306,19 @@ void table_remove(const Type *type, table_t *t, const void *key)
     hshow(t);
 }
 
-bool table_equals(const Type *type, table_t *x, table_t *y)
+void *table_nth(const Type *type, const table_t *t, uint32_t n)
+{
+    assert(n >= 1 && n <= t->count);
+    if (n < 1 || n > t->count) return NULL;
+    return t->entries + (n-1)*ENTRY_SIZE;
+}
+
+void table_clear(table_t *t)
+{
+    memset(t, 0, sizeof(table_t));
+}
+
+bool table_equals(const Type *type, const table_t *x, const table_t *y)
 {
     if (x->count != y->count)
         return false;
@@ -334,16 +350,94 @@ bool table_equals(const Type *type, table_t *x, table_t *y)
     return true;
 }
 
-void table_clear(table_t *t)
+int32_t table_compare(const table_t *x, const table_t *y, const Type *type)
 {
-    memset(t, 0, sizeof(table_t));
+    __auto_type table = type->info.__data.TableInfo;
+    size_t x_size = table.entry_size * x->count,
+           y_size = table.entry_size * y->count;
+    void *x_keys, *y_keys;
+    x_keys = x_size <= 128 ? alloca(x_size) : GC_MALLOC(x_size);
+    y_keys = y_size <= 128 ? alloca(y_size) : GC_MALLOC(y_size);
+    memcpy(x_keys, x->entries, table.entry_size * x->count);
+    memcpy(y_keys, y->entries, table.entry_size * y->count);
+
+    qsort_r(x_keys, x->count, table.entry_size, (void*)generic_compare, table.key);
+    qsort_r(y_keys, y->count, table.entry_size, (void*)generic_compare, table.key);
+
+    for (uint32_t i = 0; i < MIN(x->count, y->count); i++) {
+        void *key_x = x_keys + i*table.entry_size;
+        void *key_y = y_keys + i*table.entry_size;
+        int cmp = generic_compare(key_x, key_y, table.key);
+        if (cmp != 0) return cmp;
+
+        void *value_x = key_x + table.value_offset;
+        void *value_y = key_y + table.value_offset;
+        cmp = generic_compare(value_x, value_y, table.key);
+        if (cmp != 0) return cmp;
+    }
+    return (x->count > y->count) - (x->count < y->count);
 }
 
-void *table_nth(const Type *type, table_t *t, uint32_t n)
+uint32_t table_hash(const Type *type, const table_t *t)
 {
-    assert(n >= 1 && n <= t->count);
-    if (n < 1 || n > t->count) return NULL;
-    return t->entries + (n-1)*ENTRY_SIZE;
+    // Table hashes are computed as:
+    // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
+    // Where fallback and default hash to zero if absent
+    __auto_type table = type->info.__data.TableInfo;
+    size_t entry_size = table.entry_size;
+    size_t value_offset = table.value_offset;
+
+    uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
+    for (uint32_t i = 0; i < t->count; i++) {
+        void *entry = t->entries + i*entry_size;
+        key_hashes ^= generic_hash(entry, table.key);
+        value_hashes ^= generic_hash(entry + value_offset, table.value);
+    }
+
+    if (t->fallback)
+        fallback_hash = generic_hash(type, t->fallback);
+
+    if (t->default_value)
+        default_hash = generic_hash(table.value, t->default_value);
+
+    uint32_t components[] = {
+        t->count,
+        key_hashes,
+        value_hashes,
+        fallback_hash,
+        default_hash,
+    };
+    uint32_t hash;
+    halfsiphash(components, sizeof(components), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+    return hash;
+}
+
+CORD table_cord(const Type *type, const table_t *t, bool colorize)
+{
+    __auto_type table = type->info.__data.TableInfo;
+    size_t value_offset = table.value_offset;
+    CORD c = "{";
+    for (uint32_t i = 1; i <= t->count; i++) {
+        if (i > 1)
+            c = CORD_cat(c, ", ");
+        void *entry = table_nth(type, t, i);
+        c = CORD_cat(c, generic_cord(table.key, entry, colorize));
+        c = CORD_cat(c, "=>");
+        c = CORD_cat(c, generic_cord(table.value, entry + value_offset, colorize));
+    }
+
+    if (t->fallback) {
+        c = CORD_cat(c, "; fallback=");
+        c = CORD_cat(c, generic_cord(type, t->fallback, colorize));
+    }
+
+    if (t->default_value) {
+        c = CORD_cat(c, "; default=");
+        c = CORD_cat(c, generic_cord(table.value, t->default_value, colorize));
+    }
+
+    c = CORD_cat(c, "}");
+    return c;
 }
 
 static inline char *heap_strn(const char *str, size_t len)
@@ -374,10 +468,10 @@ Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_off
     return (Type){
         .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
-        .order=OrderingMethod(Table),
+        .order=OrderingMethod(Function, (void*)table_compare),
         .equality=EqualityMethod(Function, (void*)table_equals),
-        .hash=HashMethod(Table),
-        .cord=CordMethod(Table),
+        .hash=HashMethod(Function, (void*)table_hash),
+        .cord=CordMethod(Function, (void*)table_cord),
         .bindings=(NamespaceBinding[]){
             {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get},
             {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), table_get_raw},

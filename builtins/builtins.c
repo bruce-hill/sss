@@ -15,9 +15,9 @@ extern Type Bool_type, Char_type,
        Range_type, Memory_type;
 extern Type (*make_array_type)(Type*);
 extern Type (*make_table_type)(Type*, Type*, size_t, size_t);
-extern void *table_get(const Type *type, table_t *t, const void *key);
-extern void *table_get_raw(const Type *type, table_t *t, const void *key);
-extern void *table_nth(const Type *type, table_t *t, uint32_t n);
+extern void *table_get(const Type *type, const table_t *t, const void *key);
+extern void *table_get_raw(const Type *type, const table_t *t, const void *key);
+extern void *table_nth(const Type *type, const table_t *t, uint32_t n);
 extern void *table_set(const Type *type, table_t *t, const void *key, const void *value);
 
 __attribute__ ((visibility ("default"))) NamespaceBinding *load()

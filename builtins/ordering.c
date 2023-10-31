@@ -19,34 +19,6 @@ int32_t generic_compare(const void *x, const void *y, const Type *type)
             return type->order.__data.OrderingFunction.fn(x, y, type);
         case OrderingData:
             return memcmp(x, y, type->order.__data.OrderingData.size);
-        case OrderingTable: {
-            auto table = type->info.__data.TableInfo;
-            table_t *t_x = (table_t*)x, *t_y = (table_t*)y;
-
-            size_t x_size = table.entry_size * t_x->count,
-                   y_size = table.entry_size * t_y->count;
-            void *x_keys, *y_keys;
-            x_keys = x_size <= 128 ? alloca(x_size) : GC_MALLOC(x_size);
-            y_keys = y_size <= 128 ? alloca(y_size) : GC_MALLOC(y_size);
-            memcpy(x_keys, t_x->entries, table.entry_size * t_x->count);
-            memcpy(y_keys, t_y->entries, table.entry_size * t_y->count);
-
-            qsort_r(x_keys, t_x->count, table.entry_size, (void*)generic_compare, table.key);
-            qsort_r(y_keys, t_y->count, table.entry_size, (void*)generic_compare, table.key);
-
-            for (uint32_t i = 0; i < MIN(t_x->count, t_y->count); i++) {
-                void *key_x = x_keys + i*table.entry_size;
-                void *key_y = y_keys + i*table.entry_size;
-                int cmp = generic_compare(key_x, key_y, table.key);
-                if (cmp != 0) return cmp;
-
-                void *value_x = key_x + table.value_offset;
-                void *value_y = key_y + table.value_offset;
-                cmp = generic_compare(value_x, value_y, table.key);
-                if (cmp != 0) return cmp;
-            }
-            return (t_x->count > t_y->count) - (t_x->count < t_y->count);
-        }
     }
     return 0;
 }
