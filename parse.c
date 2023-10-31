@@ -381,7 +381,12 @@ PARSER(parse_parens) {
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
     whitespace(&pos);
-    ast_t *expr = optional_ast(ctx, &pos, parse_extended_expr);
+    ast_t *expr;
+    if (match(&pos, ":")) {
+        expr = optional_ast(ctx, &pos, _parse_type);
+    } else {
+        expr = optional_ast(ctx, &pos, parse_extended_expr);
+    }
     if (!expr) return NULL;
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this expression");
 

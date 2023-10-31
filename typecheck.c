@@ -761,7 +761,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Bitcast: {
         return parse_type_ast(env, Match(ast, Bitcast)->type);
     }
-    case TypeArray: case TypePointer: case TypeFunction: {
+    case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
+    case TypeMeasure: case TypeTypeAST: case TypeTaggedUnion: {
         return Type(TypeType, .type=parse_type_ast(env, ast));
     }
     case Negative: {

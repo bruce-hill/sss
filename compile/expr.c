@@ -2354,6 +2354,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         return gcc_callx(env->ctx, NULL, load_func);
     }
+    case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
+    case TypeMeasure: case TypeTypeAST: case TypeTaggedUnion: {
+        sss_type_t *t = parse_type_ast(env, ast);
+        const char *str = type_to_string(t);
+        return gcc_str(env->ctx, str);
+    }
     case LinkerDirective: {
         auto directives = Match(ast, LinkerDirective)->directives;
         foreach (directives, d, _)
