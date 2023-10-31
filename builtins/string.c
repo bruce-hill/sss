@@ -481,7 +481,7 @@ static uint32_t CString_hash(const char **s)
 {
     if (!*s) return 0;
     uint32_t hash;
-    halfsiphash(*s, strlen(*s), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+    halfsiphash(*s, strlen(*s)+1, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
     return hash;
 }
 
