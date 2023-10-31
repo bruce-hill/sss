@@ -21,4 +21,14 @@ array_t Array_join(array_t pieces, array_t glue, size_t item_size);
 void Array_clear(array_t *array);
 void Array_compact(array_t *arr, size_t item_size);
 
+#define ARRAY_OF(t) (array_t*)
+#define EMPTY_ARRAY ((array_t){.data=0})
+#define ARRAY(x, ...) ((array_t)({\
+    .data=memcpy(GC_MALLOC(sizeof(((typeof x)[]){x, __VA_ARGS__})), ((typeof x)[]){x, __VA_ARGS__}, \
+                 sizeof(((typeof x)[]){x, __VA_ARGS__})), \
+    .length=(sizeof(((typeof x)[]){x, __VA_ARGS__})) / sizeof(x), \
+    .stride=sizeof(x)})
+#define ith(arr, i) ((arr).data + i*(arr).stride)
+#define append(arr, obj) Array_insert((arr), ((typeof obj)[]){obj}, (arr)->length+1, sizeof(obj))
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
