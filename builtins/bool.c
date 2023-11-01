@@ -1,6 +1,7 @@
 
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -24,6 +25,8 @@ static CORD Bool_cord(const Type *type, const bool *b, bool colorize)
 
 Type Bool_type = {
     .name=STRING("Bool"),
+    .size=sizeof(bool),
+    .align=alignof(bool),
     .cord=CordMethod(Function, (void*)Bool_cord),
     .order=OrderingMethod(Data, sizeof(bool)),
     .hash=HashMethod(Data, sizeof(bool)),

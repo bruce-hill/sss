@@ -1,5 +1,6 @@
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -48,6 +49,8 @@ extern const void *SSS_HASH_VECTOR;
     static c_type KindOfInt##_min = min_val, KindOfInt##_max = max_val; \
     Type KindOfInt##_type = { \
         .name=STRING(#KindOfInt), \
+        .size=sizeof(c_type), \
+        .align=alignof(c_type), \
         .cord=CordMethod(Function, (void*)KindOfInt ## _cord), \
         .order=OrderingMethod(Data, sizeof(c_type)), \
         .hash=HashMethod(Data, sizeof(c_type)), \

@@ -96,6 +96,7 @@ typedef struct Ordering {
 typedef struct Type {
     string_t name;
     TypeInfo info;
+    size_t size, align;
     Equality equality;
     Ordering order;
     Hashing hash;

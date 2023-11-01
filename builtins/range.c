@@ -1,6 +1,7 @@
 
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -50,6 +51,8 @@ static int Range_compare(range_t *x, range_t *y) {
 
 Type Range_type = {
     .name="Range",
+    .size=sizeof(range_t),
+    .align=alignof(range_t),
     .cord=CordMethod(Function, (void*)Range_cord),
     .order=OrderingMethod(Function, (void*)Range_compare),
     .hash=HashMethod(Data, sizeof(range_t)),

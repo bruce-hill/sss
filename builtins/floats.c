@@ -4,6 +4,7 @@
 #include <gc.h>
 #include <gc/cord.h>
 #include <math.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -38,6 +39,8 @@ static double Num_mod(double num, double modulus) {
 #define CONST(name, c_name) {#name, "Num", (double[]){c_name}}
 Type Num_type = {
     .name="Num",
+    .size=sizeof(double),
+    .align=alignof(double),
     .cord=CordMethod(Function, (void*)Num_cord),
     .order=OrderingMethod(Data, sizeof(double)),
     .hash=HashMethod(Data, sizeof(double)),
@@ -100,6 +103,8 @@ static float Num32_random(void) {
 #define CONST(name, c_name) {#name, "Num32", (float[]){c_name}}
 Type Num32_type = {
     .name="Num32",
+    .size=sizeof(float),
+    .align=alignof(float),
     .cord=CordMethod(Function, (void*)Num32_cord),
     .order=OrderingMethod(Data, sizeof(float)),
     .hash=HashMethod(Data, sizeof(float)),

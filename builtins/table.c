@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <gc.h>
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -463,11 +464,22 @@ static inline char *heap_strf(const char *fmt, ...)
     return ret;
 }
 
-Type make_table_type(Type *key, Type *value, size_t entry_size, size_t value_offset)
+Type make_table_type(Type *key, Type *value)
 {
+    size_t entry_size = key->size;
+    if (key->align > 1 && entry_size % key->align)
+        entry_size += key->align - (entry_size % key->align); // padding
+    size_t value_offset = entry_size;
+    entry_size += key->size;
+    size_t max_align = MAX(key->align, value->align);
+    if (max_align > 1 && entry_size % max_align)
+        entry_size += max_align - (entry_size % max_align); // padding
+
     return (Type){
         .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
+        .size=sizeof(table_t),
+        .align=alignof(table_t),
         .order=OrderingMethod(Function, (void*)Table_compare),
         .equality=EqualityMethod(Function, (void*)Table_equals),
         .hash=HashMethod(Function, (void*)Table_hash),

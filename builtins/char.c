@@ -1,6 +1,7 @@
 
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -62,6 +63,8 @@ BOOLIFY(isblank)
 typedef bool (*char_pred_t)(char);
 Type Char_type = {
     .name=STRING("Char"),
+    .size=sizeof(char),
+    .align=alignof(char),
     .cord=CordMethod(Function, (void*)Char_cord),
     .order=OrderingMethod(Data, sizeof(char)),
     .hash=HashMethod(Data, sizeof(char)),

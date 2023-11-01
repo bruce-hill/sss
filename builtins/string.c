@@ -1,5 +1,6 @@
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -493,6 +494,8 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
 
 Type CString_type = {
     .name="CString",
+    .size=sizeof(string_t),
+    .align=alignof(string_t),
     .cord=CordMethod(Function, (void*)CString_cord),
     .hash=HashMethod(Function, (void*)CString_hash),
     .order=OrderingMethod(Function, (void*)CString_compare),

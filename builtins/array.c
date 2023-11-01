@@ -1,12 +1,13 @@
 
+#include <ctype.h>
+#include <err.h>
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <ctype.h>
 #include <sys/param.h>
-#include <err.h>
 
 #include "array.h"
 #include "types.h"
@@ -128,8 +129,13 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     arr->length -= count;
 }
 
-void Array_sort(array_t *arr, size_t item_size, const Type *item_type)
+void Array_sort(const Type *type, array_t *arr)
 {
+    const Type *item_type = type->info.__data.ArrayInfo.item;
+    size_t item_size = item_type->size;
+    if (item_type->align > 1 && item_size % item_type->align)
+        item_size += item_type->align - (item_size % item_type->align); // padding
+
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
@@ -292,6 +298,8 @@ Type make_array_type(Type *item_type)
     return (Type){
         .name=STRING(heap_strf("[%s]", item_type->name)),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
+        .size=sizeof(array_t),
+        .align=alignof(array_t),
         .order=OrderingMethod(Function, (void*)Array_compare),
         .hash=HashMethod(Function, (void*)Array_hash),
         .cord=CordMethod(Function, (void*)Array_cord),
