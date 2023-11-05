@@ -94,7 +94,7 @@ typedef struct Ordering {
 #define OrderingMethod(compare_tag, ...) ((Ordering){.tag=Ordering##compare_tag, .__data.Ordering##compare_tag={__VA_ARGS__}})
 
 typedef struct Type {
-    string_t name;
+    String_t name;
     TypeInfo info;
     size_t size, align;
     Equality equality;

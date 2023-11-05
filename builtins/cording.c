@@ -7,8 +7,6 @@
 
 #include "../SipHash/halfsiphash.h"
 #include "../files.h"
-#include "../span.h"
-#include "../libsss/hashmap.h"
 #include "string.h"
 #include "types.h"
 

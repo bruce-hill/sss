@@ -5,7 +5,7 @@
 #include <libgccjit.h>
 
 #include "files.h"
-#include "libsss/list.h"
+#include "builtins/array.h"
 #include "compile/libgccjit_abbrev.h"
 #include "util.h"
 
@@ -66,9 +66,9 @@ typedef enum {
 typedef struct ast_s ast_t;
 
 typedef struct {
-    List(const char*) names;
-    List(ast_t*) types;
-    List(ast_t*) defaults;
+    ARRAY_OF(const char*) names;
+    ARRAY_OF(ast_t*) types;
+    ARRAY_OF(ast_t*) defaults;
 } args_t;
 
 struct ast_s {
@@ -108,7 +108,7 @@ struct ast_s {
             const char *str;
         } StringLiteral;
         struct {
-            List(ast_t*) children;
+            ARRAY_OF(ast_t*) children;
         } StringJoin;
         struct {
             ast_t *value;
@@ -122,8 +122,8 @@ struct ast_s {
             bool is_global;
         } Declare;
         struct {
-            List(ast_t*) targets;
-            List(ast_t*) values;
+            ARRAY_OF(ast_t*) targets;
+            ARRAY_OF(ast_t*) values;
         } Assign; 
         struct {
             ast_t *lhs, *rhs;
@@ -140,11 +140,11 @@ struct ast_s {
         } Not, Negative, TypeOf, SizeOf, HeapAllocate, StackReference;
         struct {
             ast_t *type;
-            List(ast_t*) items;
+            ARRAY_OF(ast_t*) items;
         } Array;
         struct {
             ast_t *key_type, *value_type, *fallback, *default_value;
-            List(ast_t*) entries;
+            ARRAY_OF(ast_t*) entries;
         } Table;
         struct {
             ast_t *key, *value;
@@ -163,7 +163,7 @@ struct ast_s {
         } Lambda;
         struct {
             ast_t *fn;
-            List(ast_t*) args;
+            ARRAY_OF(ast_t*) args;
             ast_t *extern_return_type;
         } FunctionCall;
         struct {
@@ -171,7 +171,7 @@ struct ast_s {
             ast_t *arg;
         } KeywordArg;
         struct {
-            List(ast_t*) statements;
+            ARRAY_OF(ast_t*) statements;
             // Whether to keep using the existing scope instead of creating a new one:
             bool keep_scope;
         } Block;
@@ -190,8 +190,8 @@ struct ast_s {
         } Repeat;
         struct {
             ast_t *subject;
-            List(ast_t*) patterns;
-            List(ast_t*) blocks;
+            ARRAY_OF(ast_t*) patterns;
+            ARRAY_OF(ast_t*) blocks;
         } If;
         struct {
             const char *target;
@@ -237,13 +237,13 @@ struct ast_s {
         } Cast, Bitcast;
         struct {
             ast_t *type;
-            List(ast_t *) members;
+            ARRAY_OF(ast_t *) members;
             const char *units;
         } Struct;
         struct {
-            List(const char*) tag_names;
-            List(int64_t) tag_values;
-            List(args_t) tag_args;
+            ARRAY_OF(const char*) tag_names;
+            ARRAY_OF(int64_t) tag_values;
+            ARRAY_OF(args_t) tag_args;
             unsigned short int tag_bits;
         } TypeTaggedUnion;
         struct {
@@ -253,7 +253,7 @@ struct ast_s {
         struct {
             const char *name;
             ast_t *type;
-            List(ast_t*) definitions;
+            ARRAY_OF(ast_t*) definitions;
         } TypeDef;
         struct {
             ast_t *indexed, *index;
@@ -296,13 +296,13 @@ struct ast_s {
             ast_t *member, *container;
         } In, NotIn;
         struct {
-            List(const char*) directives;
+            ARRAY_OF(const char*) directives;
         } LinkerDirective;
         struct {
             ast_t *type, *value;
         } Variant;
         struct {
-            List(ast_t*) used;
+            ARRAY_OF(ast_t*) used;
             ast_t *body;
         } Using;
     } __data;

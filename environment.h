@@ -8,8 +8,8 @@
 #include "ast.h"
 #include "files.h"
 #include "compile/libgccjit_abbrev.h"
-#include "libsss/hashmap.h"
-#include "libsss/list.h"
+#include "builtins/table.h"
+#include "builtins/array.h"
 #include "types.h"
 #include "units.h"
 
@@ -24,7 +24,7 @@ typedef struct defer_s {
 typedef struct loop_label_s {
     struct loop_label_s *enclosing;
     gcc_block_t *skip_label, *stop_label;
-    List(const char*) names;
+    ARRAY_OF(const char*) names;
     defer_t *deferred;
 } loop_label_t;
 
@@ -42,12 +42,12 @@ typedef struct {
 } binding_t;
 
 typedef struct {
-    sss_hashmap_t bindings; // name -> binding_t*
-    sss_hashmap_t funcs; // name -> func
-    sss_hashmap_t type_namespaces; // sss_type_t* -> name -> binding_t*
-    sss_hashmap_t def_types; // ast_t* -> binding_t*
-    sss_hashmap_t ast_functions; // ast_t* -> func_context_t*
-    sss_hashmap_t module_types; // inode -> sss_type_t*
+    table_t bindings; // name -> binding_t*
+    table_t funcs; // name -> func
+    table_t type_namespaces; // sss_type_t* -> name -> binding_t*
+    table_t def_types; // ast_t* -> binding_t*
+    table_t ast_functions; // ast_t* -> func_context_t*
+    table_t module_types; // inode -> sss_type_t*
 } global_env_t;
 
 typedef struct env_s {
@@ -55,8 +55,8 @@ typedef struct env_s {
     gcc_ctx_t *ctx;
     sss_file_t *file;
     jmp_buf *on_err;
-    sss_hashmap_t *file_bindings; // name -> binding_t*
-    sss_hashmap_t *bindings; // name -> binding_t
+    table_t *file_bindings; // name -> binding_t*
+    table_t *bindings; // name -> binding_t
     sss_type_t *return_type;
     loop_label_t *loop_label;
     derived_units_t *derived_units;
@@ -83,9 +83,9 @@ binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
 env_t *get_type_env(env_t *env, sss_type_t *t);
-sss_hashmap_t *get_namespace(env_t *env, sss_type_t *t);
+table_t *get_namespace(env_t *env, sss_type_t *t);
 binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name);
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value);
-const char *spellcheck(sss_hashmap_t *ns, const char *word);
+const char *spellcheck(table_t *ns, const char *word);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -11,7 +11,6 @@
 #include "../args.h"
 #include "../ast.h"
 #include "../parse.h"
-#include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../units.h"
@@ -35,7 +34,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     case Wildcard: {
         const char *name = Match(pattern, Wildcard)->name;
         if (name)
-            hset(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
+            Table_sets(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
         return outcomes;
@@ -109,7 +108,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
 
-        List(arg_info_t) arg_infos = bind_arguments(
+        auto arg_infos = bind_arguments(
             env, pat_struct->members, struct_info->field_names, struct_info->field_types, struct_info->field_defaults);
 
         foreach (arg_infos, arg_info, _) {
@@ -137,7 +136,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         // Tagged Union Constructor:
         auto tu_t = Match(base_t, TaggedUnionType);
         int64_t tag_index = -1;
-        for (int64_t i = 0; i < LIST_LEN(tu_t->members); i++) {
+        for (int64_t i = 0; i < LENGTH(tu_t->members); i++) {
             if (streq(ith(tu_t->members, i).name, fn_name)) {
                 tag_index = i;
                 goto found_tag;

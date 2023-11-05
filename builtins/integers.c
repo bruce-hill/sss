@@ -22,25 +22,25 @@ extern const void *SSS_HASH_VECTOR;
         if (colorize) CORD_sprintf(&c, "\x1b[35m%r\x1b[m", c); \
         return c; \
     } \
-    static string_t KindOfInt ## _format(c_type i, int64_t digits) { \
+    static String_t KindOfInt ## _format(c_type i, int64_t digits) { \
         int len = snprintf(NULL, 0, "%0*" fmt, (int)digits, i); \
         char *str = GC_MALLOC_ATOMIC(len + 1); \
         snprintf(str, len+1, "%0*" fmt, (int)digits, i); \
-        return (string_t){.data=str, .length=len, .stride=1}; \
+        return (String_t){.data=str, .length=len, .stride=1}; \
     } \
-    static string_t KindOfInt ## _hex(c_type i, int64_t digits, bool uppercase, bool prefix) { \
+    static String_t KindOfInt ## _hex(c_type i, int64_t digits, bool uppercase, bool prefix) { \
         const char *hex_fmt = uppercase ? (prefix ? "0x%0.*lX" : "%0.*lX") : (prefix ? "0x%0.*lx" : "%0.*lx"); \
         int len = snprintf(NULL, 0, hex_fmt, (int)digits, (uint64_t)i); \
         char *str = GC_MALLOC_ATOMIC(len + 1); \
         snprintf(str, len+1, hex_fmt, (int)digits, (uint64_t)i); \
-        return (string_t){.data=str, .length=len, .stride=1}; \
+        return (String_t){.data=str, .length=len, .stride=1}; \
     } \
-    static string_t KindOfInt ## _octal(c_type i, int64_t digits, bool uppercase, bool prefix) { \
+    static String_t KindOfInt ## _octal(c_type i, int64_t digits, bool uppercase, bool prefix) { \
         const char *octal_fmt = uppercase ? (prefix ? "0x%0.*lO" : "%0.*lO") : (prefix ? "0x%0.*lo" : "%0.*lo"); \
         int len = snprintf(NULL, 0, octal_fmt, (int)digits, (uint64_t)i); \
         char *str = GC_MALLOC_ATOMIC(len + 1); \
         snprintf(str, len+1, octal_fmt, (int)digits, (uint64_t)i); \
-        return (string_t){.data=str, .length=len, .stride=1}; \
+        return (String_t){.data=str, .length=len, .stride=1}; \
     } \
     static c_type KindOfInt ## _random(c_type min, c_type max) { \
         uint32_t r = arc4random_uniform((uint32_t)(max - min)); \

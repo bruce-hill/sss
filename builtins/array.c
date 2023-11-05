@@ -295,8 +295,9 @@ static inline char *heap_strf(const char *fmt, ...)
 
 Type make_array_type(Type *item_type)
 {
+    const char *item_name = item_type->name.data;
     return (Type){
-        .name=STRING(heap_strf("[%s]", item_type->name)),
+        .name=STRING(heap_strf("[%s]", item_name)),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
         .size=sizeof(array_t),
         .align=alignof(array_t),
@@ -304,14 +305,14 @@ Type make_array_type(Type *item_type)
         .hash=HashMethod(Function, (void*)Array_hash),
         .cord=CordMethod(Function, (void*)Array_cord),
         .bindings=(NamespaceBinding[]){
-            {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_compact},
-            {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_type->name, item_type->name), Array_insert},
-            {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_insert_all},
-            {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_type->name), Array_remove},
-            {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_type->name, item_type->name), Array_sort},
-            {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_type->name), Array_shuffle},
-            {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_type->name, item_type->name), Array_join},
-            {"clear", heap_strf("func(arr:@[%s]) Void", item_type->name), Array_clear},
+            {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_compact},
+            {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_name, item_name), Array_insert},
+            {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_name, item_name), Array_insert_all},
+            {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_name), Array_remove},
+            {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_name, item_name), Array_sort},
+            {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_shuffle},
+            {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_name, item_name), Array_join},
+            {"clear", heap_strf("func(arr:@[%s]) Void", item_name), Array_clear},
             {NULL, NULL, NULL},
         },
     };

@@ -138,9 +138,9 @@ static binding_t *define_table_remove_method(env_t *env, sss_type_t *t)
 
     gcc_return_void(block, NULL);
     binding_t *b = new(binding_t, .func=func,
-        .type=Type(FunctionType, .arg_names=LIST(const char*, "table", "key"),
-                   .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), key_t),
-                   .arg_defaults=LIST(ast_t*, NULL, NULL),
+        .type=Type(FunctionType, .arg_names=ARRAY((const char*)"table", "key"),
+                   .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true), key_t),
+                   .arg_defaults=ARRAY((ast_t*)NULL, NULL),
                    .ret=Type(VoidType)));
     set_in_namespace(env, t, "remove", b);
     return b;
@@ -290,7 +290,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
             gcc_block_t *entry_done = gcc_new_block(func, fresh("entry_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = LIST(const char*, "[]"),
+                .names = ARRAY((const char*)"[]"),
                 .skip_label = entry_done,
                 .stop_label = table_done,
             };

@@ -9,7 +9,8 @@
 #include "../ast.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
-#include "../libsss/hashmap.h"
+#include "../builtins/array.h"
+#include "../builtins/table.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
@@ -27,7 +28,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(MemoryType), .is_optional=true);
     if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
         gcc_func_t *func = get_hash_func(env, void_ptr_t);
-        hset(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));
+        Table_sets(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));
         return func;
     }
 
@@ -37,9 +38,9 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     gcc_param_t *params[] = {gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(gcc_t), fresh("obj"))};
     const char* sym_name = fresh("hash");
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
-    sss_type_t *fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t)),
-                           .arg_names=LIST(const char*, "obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
-    hset(get_namespace(env, t), "__hash",
+    sss_type_t *fn_t = Type(FunctionType, .arg_types=ARRAY(Type(PointerType, .pointed=t)),
+                           .arg_names=ARRAY((const char*)"obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
+    Table_sets(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
     gcc_comment(block, NULL, heap_strf("Implementation of hash(%s)", type_to_string(t)));
@@ -64,9 +65,9 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
 
       need_to_handle_arrays_or_tables:;
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
-        NEW_LIST(sss_type_t*, hash_members);
-        NEW_LIST(gcc_rvalue_t*, values);
-        for (int64_t i = 0; i < length(struct_type->field_types); i++) {
+        auto hash_members = EMPTY_ARRAY(sss_type_t*);
+        auto values = EMPTY_ARRAY(gcc_rvalue_t*);
+        for (int64_t i = 0; i < LENGTH(struct_type->field_types); i++) {
             sss_type_t *ftype = ith(struct_type->field_types, i);
             if (ftype->tag == ArrayType || ftype->tag == TableType) {
                 append(hash_members, Type(IntType, .bits=32, .is_unsigned=true));
@@ -86,7 +87,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         gcc_lvalue_t *safe_tup = gcc_local(func, NULL, safe_tup_gcc_t, "_to_hash");
         gcc_assign(block, NULL, safe_tup, gcc_struct_constructor(env->ctx, NULL, safe_tup_gcc_t, 0, NULL, NULL));
 
-        for (int64_t i = 0; i < length(values); i++)
+        for (int64_t i = 0; i < LENGTH(values); i++)
             gcc_assign(block, NULL, gcc_lvalue_access_field(safe_tup, NULL, gcc_get_field(safe_tup_struct, i)),
                        ith(values, i));
 
@@ -97,7 +98,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
         bool any_values = false;
-        for (int64_t i = 0, len = length(tagged->members); i < len; i++)
+        for (int64_t i = 0, len = LENGTH(tagged->members); i < len; i++)
             any_values = any_values || ith(tagged->members, i).type != NULL;
         if (!any_values)
             goto memory_hash;
@@ -121,9 +122,9 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
         gcc_rvalue_t *tag = gcc_rval(gcc_rvalue_dereference_field(obj_ptr, NULL, tag_field));
         gcc_assign(block, NULL, info, gcc_struct_constructor(env->ctx, NULL, info_t, 1, &info_fields[0], &tag));
 
-        NEW_LIST(gcc_case_t*, cases);
+        auto cases = EMPTY_ARRAY(gcc_case_t*);
         gcc_block_t *done = gcc_new_block(func, fresh("done"));
-        for (int64_t i = 0, len = length(tagged->members); i < len; i++) {
+        for (int64_t i = 0, len = LENGTH(tagged->members); i < len; i++) {
             auto member = ith(tagged->members, i);
             if (!member.type) continue;
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
@@ -138,9 +139,9 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
 
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
-            APPEND(cases, case_);
+            append(cases, case_);
         }
-        gcc_switch(block, NULL, tag, done, length(cases), cases[0]);
+        gcc_switch(block, NULL, tag, done, LENGTH(cases), cases[0]);
 
         block = done;
 

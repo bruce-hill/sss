@@ -1,6 +1,7 @@
 
 #include <gc.h>
 #include <gc/cord.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -32,6 +33,8 @@ static int Memory_hash(void *p) {
 
 Type Memory_type = {
     .name=STRING("Memory"),
+    .size=sizeof(void*),
+    .align=alignof(void*),
     .cord=CordMethod(Function, (void*)Memory_cord),
     .order=OrderingMethod(Function, (void*)Memory_compare),
     .hash=HashMethod(Function, (void*)Memory_hash),

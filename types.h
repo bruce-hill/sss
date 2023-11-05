@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 #include "ast.h"
-#include "libsss/list.h"
+#include "builtins/array.h"
 #include "units.h"
 
 typedef const struct sss_type_s sss_type_t;
@@ -57,9 +57,9 @@ struct sss_type_s {
             sss_type_t *key_type, *value_type;
         } TableType;
         struct {
-            List(const char*) arg_names;
-            List(sss_type_t*) arg_types;
-            List(ast_t*) arg_defaults;
+            ARRAY_OF(const char*) arg_names;
+            ARRAY_OF(sss_type_t*) arg_types;
+            ARRAY_OF(ast_t*) arg_defaults;
             sss_type_t *ret;
             void *env;
         } FunctionType;
@@ -71,13 +71,13 @@ struct sss_type_s {
             sss_type_t *generated;
         } GeneratorType;
         struct {
-            List(const char*) field_names;
-            List(sss_type_t*) field_types;
-            List(ast_t*) field_defaults;
+            ARRAY_OF(const char*) field_names;
+            ARRAY_OF(sss_type_t*) field_types;
+            ARRAY_OF(ast_t*) field_defaults;
             const char* units;
         } StructType;
         struct {
-            List(sss_tagged_union_member_t) members;
+            ARRAY_OF(sss_tagged_union_member_t) members;
             unsigned short int tag_bits;
         } TaggedUnionType;
         struct {

@@ -1,7 +1,7 @@
 // Logic for handling sss_type_t types
 #include <gc/cord.h>
 
-#include "libsss/hashmap.h"
+#include "builtins/table.h"
 #include "types.h"
 #include "util.h"
 
@@ -12,7 +12,7 @@ typedef enum {
     EXPAND_ARGS = 1 << 2,
 } stringify_flags_e;
 
-static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags_e flags) {
+static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e flags) {
     switch (t->tag) {
         case UnknownType: return "???";
         case AbortType: return "Abort";
@@ -63,18 +63,18 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
             CORD c = "func(";
             auto fn = Match(t, FunctionType);
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
-            for (int64_t i = 0; i < LIST_LEN(fn->arg_types); i++) {
+            for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ", ");
-                if ((flags & ARG_NAMES) && fn->arg_names) c = CORD_cat(c, LIST_ITEM(fn->arg_names, i));
+                if ((flags & ARG_NAMES) && fn->arg_names) c = CORD_cat(c, ith(fn->arg_names, i));
                 if ((flags & ARG_NAMES) && fn->arg_defaults) {
-                    ast_t *def = LIST_ITEM(fn->arg_defaults, i);
+                    ast_t *def = ith(fn->arg_defaults, i);
                     if (def) {
                         CORD_sprintf(&c, "%r=%#W", c, def);
                         continue;
                     }
                 }
                 if ((flags & ARG_NAMES) && fn->arg_names) c = CORD_cat(c, ":");
-                c = CORD_cat(c, type_to_cord(LIST_ITEM(fn->arg_types, i), expanded, flags));
+                c = CORD_cat(c, type_to_cord(ith(fn->arg_types, i), expanded, flags));
             }
             c = CORD_cat(c, ")->");
             c = CORD_cat(c, type_to_cord(fn->ret, expanded, flags));
@@ -83,9 +83,9 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
         case StructType: {
             auto struct_ = Match(t, StructType);
             CORD c = "struct(";
-            for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
-                sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
-                const char *fname = struct_->field_names ? LIST_ITEM(struct_->field_names, i) : NULL;
+            for (int64_t i = 0; i < LENGTH(struct_->field_types); i++) {
+                sss_type_t *ft = ith(struct_->field_types, i);
+                const char *fname = struct_->field_names ? ith(struct_->field_names, i) : NULL;
                 if (i > 0)
                     c = CORD_cat(c, ",");
 
@@ -118,18 +118,18 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
 
             CORD c = "enum(";
-            for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
+            for (int64_t i = 0, len = LENGTH(tagged->members); i < len; i++) {
                 if (i > 0)
                     c = CORD_cat(c, "|");
-                auto member = LIST_ITEM(tagged->members, i);
+                auto member = ith(tagged->members, i);
                 // name, tag_value, type
                 c = CORD_cat(c, member.name);
                 if (member.type) {
                     c = CORD_cat(c, "(");
                     auto struct_ = Match(member.type, StructType);
-                    for (int64_t j = 0; j < LIST_LEN(struct_->field_types); j++) {
-                        sss_type_t *ft = LIST_ITEM(struct_->field_types, j);
-                        const char *fname = struct_->field_names ? LIST_ITEM(struct_->field_names, j) : NULL;
+                    for (int64_t j = 0; j < LENGTH(struct_->field_types); j++) {
+                        sss_type_t *ft = ith(struct_->field_types, j);
+                        const char *fname = struct_->field_names ? ith(struct_->field_names, j) : NULL;
                         if (j > 0)
                             c = CORD_cat(c, ",");
 
@@ -142,7 +142,7 @@ static CORD type_to_cord(sss_type_t *t, sss_hashmap_t *expanded, stringify_flags
                     c = CORD_cat(c, ")");
                 }
 
-                if (!(i == 0 ? member.tag_value == 0 : member.tag_value == 1 + LIST_ITEM(tagged->members, i-1).tag_value))
+                if (!(i == 0 ? member.tag_value == 0 : member.tag_value == 1 + ith(tagged->members, i-1).tag_value))
                     CORD_sprintf(&c, "%r=%ld", c, member.tag_value);
             }
             c = CORD_cat(c, ")");
@@ -178,7 +178,7 @@ int printf_pointer_size(const struct printf_info *info, size_t n, int argtypes[n
 int printf_type(FILE *stream, const struct printf_info *info, const void *const args[])
 {
     sss_type_t *t = *(sss_type_t**)args[0];
-    sss_hashmap_t expanded = {0};
+    table_t expanded = {0};
     stringify_flags_e flags = info->alt ? ARG_NAMES : DEFAULT;
     CORD c = type_to_cord(t, &expanded, flags);
     if (!info->alt || (info->width > 0 && CORD_len(c) > (size_t)info->width))
@@ -204,12 +204,12 @@ const char* type_to_string_concise(sss_type_t *t) {
 }
 
 const char* type_to_string(sss_type_t *t) {
-    sss_hashmap_t expanded = {0};
+    table_t expanded = {0};
     return CORD_to_char_star(type_to_cord(t, &expanded, FILENAMES | EXPAND_ARGS));
 }
 
 const char* type_to_typeof_string(sss_type_t *t) {
-    sss_hashmap_t expanded = {0};
+    table_t expanded = {0};
     return CORD_to_char_star(type_to_cord(t, &expanded, DEFAULT));
 }
 
@@ -396,16 +396,16 @@ bool is_orderable(sss_type_t *t)
     case PointerType: case FunctionType: case TableType: return false;
     case StructType: {
         auto subtypes = Match(t, StructType)->field_types;
-        for (int64_t i = 0; i < LIST_LEN(subtypes); i++) {
-            if (!is_orderable(LIST_ITEM(subtypes, i)))
+        for (int64_t i = 0; i < LENGTH(subtypes); i++) {
+            if (!is_orderable(ith(subtypes, i)))
                 return false;
         }
         return true;
     }
     case TaggedUnionType: {
         auto members = Match(t, TaggedUnionType)->members;
-        for (int64_t i = 0; i < LIST_LEN(members); i++) {
-            auto member = LIST_ITEM(members, i);
+        for (int64_t i = 0; i < LENGTH(members); i++) {
+            auto member = ith(members, i);
             if (member.type && !is_orderable(member.type))
                 return false;
         }
@@ -424,16 +424,16 @@ bool has_heap_memory(sss_type_t *t)
     case GeneratorType: return has_heap_memory(Match(t, GeneratorType)->generated);
     case StructType: {
         auto field_types = Match(t, StructType)->field_types;
-        for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
-            if (has_heap_memory(LIST_ITEM(field_types, i)))
+        for (int64_t i = 0; i < LENGTH(field_types); i++) {
+            if (has_heap_memory(ith(field_types, i)))
                 return true;
         }
         return false;
     }
     case TaggedUnionType: {
         auto members = Match(t, TaggedUnionType)->members;
-        for (int64_t i = 0; i < LIST_LEN(members); i++) {
-            auto member = LIST_ITEM(members, i);
+        for (int64_t i = 0; i < LENGTH(members); i++) {
+            auto member = ith(members, i);
             if (member.type && has_heap_memory(member.type))
                 return true;
         }
@@ -491,10 +491,10 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     if (needed->tag == FunctionType && actual->tag == FunctionType) {
         auto needed_fn = Match(needed, FunctionType);
         auto actual_fn = Match(actual, FunctionType);
-        if (LIST_LEN(needed_fn->arg_types) != LIST_LEN(actual_fn->arg_types) || !type_eq(needed_fn->ret, actual_fn->ret))
+        if (LENGTH(needed_fn->arg_types) != LENGTH(actual_fn->arg_types) || !type_eq(needed_fn->ret, actual_fn->ret))
             return false;
-        for (int64_t i = 0, len = LIST_LEN(needed_fn->arg_types); i < len; i++) {
-            if (!type_eq(LIST_ITEM(actual_fn->arg_types, i), LIST_ITEM(needed_fn->arg_types, i)))
+        for (int64_t i = 0, len = LENGTH(needed_fn->arg_types); i < len; i++) {
+            if (!type_eq(ith(actual_fn->arg_types, i), ith(needed_fn->arg_types, i)))
                 return false;
         }
         return true;
@@ -510,11 +510,11 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         auto actual_struct = Match(actual, StructType);
         auto needed_struct = Match(base_variant(needed), StructType);
         // TODO: allow promoting with uninitialized or extraneous values?
-        if (LIST_LEN(actual_struct->field_types) != LIST_LEN(needed_struct->field_types))
+        if (LENGTH(actual_struct->field_types) != LENGTH(needed_struct->field_types))
             return false;
-        for (int64_t i = 0; i < LIST_LEN(actual_struct->field_types); i++) {
+        for (int64_t i = 0; i < LENGTH(actual_struct->field_types); i++) {
             // TODO: check field names??
-            if (!can_promote(LIST_ITEM(actual_struct->field_types, i), LIST_ITEM(needed_struct->field_types, i)))
+            if (!can_promote(ith(actual_struct->field_types, i), ith(needed_struct->field_types, i)))
                 return false;
         }
         return true;
@@ -531,14 +531,14 @@ bool can_leave_uninitialized(sss_type_t *t)
         return true;
     case StructType: {
         auto struct_ = Match(t, StructType);
-        for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++)
-            if (!can_leave_uninitialized(LIST_ITEM(struct_->field_types, i)))
+        for (int64_t i = 0; i < LENGTH(struct_->field_types); i++)
+            if (!can_leave_uninitialized(ith(struct_->field_types, i)))
                 return false;
         return true;
     }
     case TaggedUnionType: {
         auto members = Match(t, TaggedUnionType)->members;
-        LIST_FOR (members, member, _) {
+        foreach (members, member, _) {
             if (member->type && !can_leave_uninitialized(member->type))
                 return false;
         }
@@ -548,7 +548,7 @@ bool can_leave_uninitialized(sss_type_t *t)
     }
 }
 
-static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
+static bool _can_have_cycles(sss_type_t *t, table_t *seen)
 {
     switch (t->tag) {
         case ArrayType: return _can_have_cycles(Match(t, ArrayType)->item_type, seen);
@@ -558,8 +558,8 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
         }
         case StructType: {
             auto struct_ = Match(t, StructType);
-            for (int64_t i = 0; i < LIST_LEN(struct_->field_types); i++) {
-                sss_type_t *ft = LIST_ITEM(struct_->field_types, i);
+            for (int64_t i = 0; i < LENGTH(struct_->field_types); i++) {
+                sss_type_t *ft = ith(struct_->field_types, i);
                 if (_can_have_cycles(ft, seen))
                     return true;
             }
@@ -569,8 +569,8 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
         case GeneratorType: return _can_have_cycles(Match(t, GeneratorType)->generated, seen);
         case TaggedUnionType: {
             auto tagged = Match(t, TaggedUnionType);
-            for (int64_t i = 0, len = LIST_LEN(tagged->members); i < len; i++) {
-                auto member = LIST_ITEM(tagged->members, i);
+            for (int64_t i = 0, len = LENGTH(tagged->members); i < len; i++) {
+                auto member = ith(tagged->members, i);
                 if (member.type && _can_have_cycles(member.type, seen))
                     return true;
             }
@@ -578,9 +578,9 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
         }
         case VariantType: {
             const char *name = Match(t, VariantType)->name;
-            if (name && hget(seen, name, sss_type_t*))
+            if (name && Table_gets(seen, name))
                 return true;
-            hset(seen, name, t);
+            Table_sets(seen, name, t);
             return _can_have_cycles(Match(t, VariantType)->variant_of, seen);
         }
         default: return false;
@@ -589,21 +589,21 @@ static bool _can_have_cycles(sss_type_t *t, sss_hashmap_t *seen)
 
 bool can_have_cycles(sss_type_t *t)
 {
-    sss_hashmap_t seen = {0};
+    table_t seen = {0};
     return _can_have_cycles(t, &seen);
 }
 
-sss_type_t *table_entry_type(sss_type_t *table_t)
+sss_type_t *table_entry_type(sss_type_t *table_type)
 {
-    static sss_hashmap_t cache = {0};
-    sss_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                        .field_types=LIST(sss_type_t*, Match(table_t, TableType)->key_type,
-                                          Match(table_t, TableType)->value_type));
-    sss_type_t *cached = hget(&cache, type_to_string(t), sss_type_t*);
+    static table_t cache = {0};
+    sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
+                        .field_types=ARRAY((sss_type_t*)Match(table_type, TableType)->key_type,
+                                           Match(table_type, TableType)->value_type));
+    sss_type_t *cached = Table_gets(&cache, type_to_string(t));
     if (cached) {
         return cached;
     } else {
-        hset(&cache, type_to_string(t), t);
+        Table_sets(&cache, type_to_string(t), t);
         return t;
     }
 }

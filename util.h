@@ -5,12 +5,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "libsss/utils.h"
+#include "builtins/functions.h"
 
 #define streq(a, b) (((a) == NULL && (b) == NULL) || (((a) == NULL) == ((b) == NULL) && strcmp(a, b) == 0))
 #define new(t, ...) ((t*)memcpy(GC_MALLOC(sizeof(t)), &(t){__VA_ARGS__}, sizeof(t)))
 #define grow(arr, new_size) ((typeof (arr))GC_REALLOC(arr, (sizeof(arr[0]))*(new_size)))
-#define Match(x, _tag) ((x)->tag == _tag ? &(x)->__data._tag : (fail(__FILE__ ":%d This was supposed to be a " # _tag "\n", __LINE__), &(x)->__data._tag))
+#define Match(x, _tag) ((x)->tag == _tag ? &(x)->__data._tag : (builtin_fail(__FILE__ ":%d This was supposed to be a " # _tag "\n", __LINE__), &(x)->__data._tag))
 #define Tagged(t, _tag, ...) new(t, .tag=_tag, .__data._tag={__VA_ARGS__})
 
 #ifndef auto

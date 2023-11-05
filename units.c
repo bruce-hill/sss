@@ -6,7 +6,7 @@
 
 #include "units.h"
 #include "util.h"
-#include "libsss/list.h"
+#include "builtins/array.h"
 
 typedef struct {
     int exponent;
@@ -102,7 +102,7 @@ static Unit *make_unit(size_t len, component_t components[len])
 static Unit *unit_from_string(const char *str)
 {
     if (!str) str = "";
-    NEW_LIST(component_t, components);
+    auto components = EMPTY_ARRAY(component_t);
     bool in_denominator = false;
     for (const char *p = str; *p; ) {
         if (isalpha(*p) || *p == '_' || *p == '%') {
@@ -120,14 +120,14 @@ static Unit *unit_from_string(const char *str)
             if (in_denominator) exponent *= -1;
 
             component_t comp = {exponent, name};
-            list_append((list_t*)components, sizeof(component_t), &comp);
+            append(components, comp);
         } else {
             if (*p == '/')
                 in_denominator = true;
             ++p;
         }
     }
-    size_t len = LIST_LEN(components);
+    size_t len = LENGTH(components);
     return make_unit(len, components[0]);
 }
 

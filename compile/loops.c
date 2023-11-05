@@ -45,7 +45,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             ast_t *value = inner->value ? inner->value : for_->value;
             ast_t *first, *body, *between, *empty;
             if (for_->first) {
-                NEW_LIST(ast_t*, stmts);
+                auto stmts = EMPTY_ARRAY(ast_t*);
                 if (inner->index && for_->index)
                     append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
                 append(stmts, WrapAST(ast, Declare, for_->value, inner->first ? inner->first : inner->body));
@@ -56,7 +56,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             if (for_->body) {
-                NEW_LIST(ast_t*, stmts);
+                auto stmts = EMPTY_ARRAY(ast_t*);
                 if (inner->index && for_->index)
                     append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
                 if (!inner->body) compiler_err(env, ast, "I can't iterate over a loop that doesn't have a body");
@@ -68,7 +68,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             if (for_->between) {
-                NEW_LIST(ast_t*, stmts);
+                auto stmts = EMPTY_ARRAY(ast_t*);
                 if (inner->index && for_->index)
                     append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
                 append(stmts, WrapAST(ast, Declare, for_->value, inner->between ? inner->between : inner->body));
@@ -79,7 +79,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             if (for_->empty && inner->empty) {
-                empty = WrapAST(for_->empty, Block, LIST(ast_t*, inner->empty, for_->empty));
+                empty = WrapAST(for_->empty, Block, ARRAY(inner->empty, for_->empty));
             } else {
                 empty = inner->empty ? inner->empty : for_->empty;
             }
@@ -304,7 +304,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     case StructType: {
         auto struct_ = Match(base_variant(iter_t), StructType);
         int64_t field_index;
-        for (field_index = 0; field_index < length(struct_->field_names); field_index++) {
+        for (field_index = 0; field_index < LENGTH(struct_->field_names); field_index++) {
             if (streq(ith(struct_->field_names, field_index), "next")
                 && type_eq(ith(struct_->field_types, field_index), Type(PointerType, .pointed=iter_t, .is_optional=true))) {
                 // Bingo: found a obj->next : ?Obj
@@ -368,16 +368,16 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     env_t *loop_env = fresh_scope(env);
 
-    auto label_names = LIST(const char*, "for");
+    auto label_names = ARRAY((const char*)"for");
     if (for_->index) {
         append(label_names, Match(for_->index, Var)->name);
-        hset(loop_env->bindings, Match(for_->index, Var)->name,
-             new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
+        Table_sets(loop_env->bindings, Match(for_->index, Var)->name,
+                   new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {
         append(label_names, Match(for_->value, Var)->name);
-        hset(loop_env->bindings, Match(for_->value, Var)->name,
-             new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
+        Table_sets(loop_env->bindings, Match(for_->value, Var)->name,
+                   new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
     }
     loop_env->loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
@@ -449,7 +449,7 @@ void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, 
     env_t loop_env = *env;
     loop_env.loop_label = &(loop_label_t){
         .enclosing = env->loop_label,
-        .names = LIST(const char*, loop_name),
+        .names = ARRAY(loop_name),
         .skip_label = loop_top,
         .stop_label = loop_end,
         .deferred = env->deferred,

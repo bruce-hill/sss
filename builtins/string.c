@@ -22,16 +22,16 @@ typedef struct {
     int32_t index;
 } find_result_t;
 
-static string_t compacted(string_t str)
+static String_t compacted(String_t str)
 {
     if (str.stride == 1) return str;
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
     for (unsigned long i = 0; i < str.length; i++)
         buf[i] = str.data[i*str.stride];
-    return (string_t){.data=buf, .length=str.length, .stride=1};
+    return (String_t){.data=buf, .length=str.length, .stride=1};
 }
 
-static CORD Str_cord(const Type *type, const string_t *s, bool colorize)
+static CORD Str_cord(const Type *type, const String_t *s, bool colorize)
 {
     (void)type;
     char *data = s->data;
@@ -88,7 +88,7 @@ static CORD Str_cord(const Type *type, const string_t *s, bool colorize)
     }
 }
 
-static int Str_compare(string_t *x, string_t *y)
+static int Str_compare(String_t *x, String_t *y)
 {
     unsigned long length = x->length < y->length ? x->length : y->length;
     for (unsigned long i = 0; i < length; i++) {
@@ -99,7 +99,7 @@ static int Str_compare(string_t *x, string_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static int Str_hash(string_t *s)
+static int Str_hash(String_t *s)
 {
     const char *data;
     if (s->stride == -1) {
@@ -118,23 +118,23 @@ static int Str_hash(string_t *s)
     return hash;
 }
 
-static string_t uppercased(string_t s)
+static String_t uppercased(String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
         s2[i] = toupper(s.data[i*s.stride]);
-    return (string_t){.data=s2, .length=s.length, .stride=1};
+    return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static string_t lowercased(string_t s)
+static String_t lowercased(String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
         s2[i] = tolower(s.data[i*s.stride]);
-    return (string_t){.data=s2, .length=s.length, .stride=1};
+    return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static string_t capitalized(string_t s)
+static String_t capitalized(String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     unsigned long i;
@@ -149,10 +149,10 @@ static string_t capitalized(string_t s)
     }
     for (; i < s.length; i++)
         s2[i] = s.data[i*s.stride];
-    return (string_t){.data=s2, .length=s.length, .stride=1};
+    return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static string_t titlecased(string_t s)
+static String_t titlecased(String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     bool should_uppercase = true;
@@ -169,10 +169,10 @@ static string_t titlecased(string_t s)
             s2[i] = s.data[i*s.stride];
         }
     }
-    return (string_t){.data=s2, .length=s.length, .stride=1};
+    return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static bool starts_with(string_t s, string_t prefix)
+static bool starts_with(String_t s, String_t prefix)
 {
     if (s.length < prefix.length) return false;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -182,7 +182,7 @@ static bool starts_with(string_t s, string_t prefix)
     return true;
 }
 
-static bool ends_with(string_t s, string_t suffix)
+static bool ends_with(String_t s, String_t suffix)
 {
     if (s.length < suffix.length) return false;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -192,14 +192,14 @@ static bool ends_with(string_t s, string_t suffix)
     return true;
 }
 
-static string_t without_prefix(string_t s, string_t prefix)
+static String_t without_prefix(String_t s, String_t prefix)
 {
     if (s.length < prefix.length) return s;
     for (unsigned long i = 0; i < prefix.length; i++) {
         if (s.data[i*s.stride] != prefix.data[i*prefix.stride])
             return s;
     }
-    return (string_t){
+    return (String_t){
         .data=s.data + prefix.length*s.stride,
         .length=s.length - prefix.length,
         .stride=s.stride,
@@ -207,14 +207,14 @@ static string_t without_prefix(string_t s, string_t prefix)
     };
 }
 
-static string_t without_suffix(string_t s, string_t suffix)
+static String_t without_suffix(String_t s, String_t suffix)
 {
     if (s.length < suffix.length) return s;
     for (unsigned long i = 0; i < suffix.length; i++) {
         if (s.data[(s.length - suffix.length + i)*s.stride] != suffix.data[i*suffix.stride])
             return s;
     }
-    return (string_t){
+    return (String_t){
         .data=s.data,
         .length=s.length - suffix.length,
         .stride=s.stride,
@@ -222,7 +222,7 @@ static string_t without_suffix(string_t s, string_t suffix)
     };
 }
 
-static string_t trimmed(string_t s, string_t trim_chars, bool trim_left, bool trim_right)
+static String_t trimmed(String_t s, String_t trim_chars, bool trim_left, bool trim_right)
 {
     unsigned long length = s.length;
     unsigned long start = 0;
@@ -250,10 +250,10 @@ static string_t trimmed(string_t s, string_t trim_chars, bool trim_left, bool tr
         }
     }
   done_trimming_right:;
-    return (string_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
+    return (String_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
-static string_t slice(string_t s, int64_t _first, int64_t _stride, int64_t length)
+static String_t slice(String_t s, int64_t _first, int64_t _stride, int64_t length)
 {
     if (_stride > INT16_MAX || _stride < INT16_MIN)
         errx(1, "Invalid string slice stride: %ld", _stride);
@@ -261,10 +261,10 @@ static string_t slice(string_t s, int64_t _first, int64_t _stride, int64_t lengt
     unsigned long first = (unsigned long)CLAMP(_first-1, 0, (int64_t)s.length-1),
                   last = (unsigned long)CLAMP(_first + length - 1, 0, (int64_t)s.length-1);
     unsigned long slice_len = (last - first)/stride;
-    return (string_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
+    return (String_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
-static const char *c_string(string_t str)
+static const char *c_string(String_t str)
 {
     if (str.length == 0)
         return "";
@@ -282,17 +282,17 @@ static const char *c_string(string_t str)
     return buf;
 }
 
-static string_t from_c_string(const char *str)
+static String_t from_c_string(const char *str)
 {
     size_t length = str ? strlen(str) : 0;
-    if (length == 0) return (string_t){.length=0, .stride=0};
+    if (length == 0) return (String_t){.length=0, .stride=0};
     char *buf = GC_MALLOC_ATOMIC(length + 1);
     memcpy(buf, str, length+1);
     buf[length+1] = '\0';
-    return (string_t){.data=buf, .length=length, .stride=1};
+    return (String_t){.data=buf, .length=length, .stride=1};
 }
 
-static find_result_t find(string_t str, string_t pat)
+static find_result_t find(String_t str, String_t pat)
 {
     if (str.length < pat.length) return (find_result_t){.success=0};
     if (pat.length == 0) return (find_result_t){.success=1, .index=1};
@@ -344,7 +344,7 @@ static find_result_t find(string_t str, string_t pat)
     // return 0;
 }
 
-static string_t replace(string_t text, string_t pat, string_t replacement, int64_t limit)
+static String_t replace(String_t text, String_t pat, String_t replacement, int64_t limit)
 {
     text = compacted(text);
     pat = compacted(pat);
@@ -368,10 +368,10 @@ static string_t replace(string_t text, string_t pat, string_t replacement, int64
     memcpy(str, buf, size+1);
     fclose(mem);
     free(buf);
-    return (string_t){.data=str, .length=size, .stride=1};
+    return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static string_t quoted(string_t text, const char *dsl, bool colorize)
+static String_t quoted(String_t text, const char *dsl, bool colorize)
 {
     char *buf;
     size_t size;
@@ -407,13 +407,13 @@ static string_t quoted(string_t text, const char *dsl, bool colorize)
     memcpy(str, buf, size+1);
     fclose(mem);
     free(buf);
-    return (string_t){.data=str, .length=size, .stride=1};
+    return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static string_array_t split(string_t str, string_t split_chars)
+static String_Array_t split(String_t str, String_t split_chars)
 {
-    if (str.length == 0) return (string_array_t){.stride=sizeof(string_t)};
-    string_array_t strings = {.stride=sizeof(string_t)};
+    if (str.length == 0) return (String_Array_t){.stride=sizeof(String_t)};
+    String_Array_t strings = {.stride=sizeof(String_t)};
     size_t capacity = 0;
     bool separators[256] = {0};
     for (unsigned long i = 0; i < split_chars.length; i++)
@@ -426,8 +426,8 @@ static string_array_t split(string_t str, string_t split_chars)
             ++length;
             ++i;
         }
-        strings.data = GC_REALLOC(strings.data, sizeof(string_t)*(capacity += 1));
-        strings.data[strings.length++] = (string_t){
+        strings.data = GC_REALLOC(strings.data, sizeof(String_t)*(capacity += 1));
+        strings.data[strings.length++] = (String_t){
             .data=&str.data[str.stride*(i-length)],
             .length=length, 
             .stride=str.stride,
@@ -474,7 +474,7 @@ Type Str_type = {
 
 static CORD CString_cord(const Type *type, const char **s, bool colorize)
 {
-    string_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
+    String_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
     return Str_cord(type, &str, colorize);
 }
 
@@ -494,8 +494,8 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
 
 Type CString_type = {
     .name="CString",
-    .size=sizeof(string_t),
-    .align=alignof(string_t),
+    .size=sizeof(String_t),
+    .align=alignof(String_t),
     .cord=CordMethod(Function, (void*)CString_cord),
     .hash=HashMethod(Function, (void*)CString_hash),
     .order=OrderingMethod(Function, (void*)CString_compare),

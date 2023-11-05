@@ -12,9 +12,7 @@
 #include <signal.h>
 
 #include "ast.h"
-#include "span.h"
 #include "parse.h"
-#include "libsss/list.h"
 #include "units.h"
 
 typedef struct {
@@ -502,10 +500,10 @@ PARSER(parse_struct_type) {
     return NewAST(ctx->file, start, pos, TypeStruct, .members=args);
 }
 
-static unsigned short int get_tag_bits(List(int64_t) tag_values)
+static unsigned short int get_tag_bits(ARRAY_OF(int64_t) tag_values)
 {
     unsigned short int bits = 8;
-    LIST_FOR(tag_values, val, _) {
+    foreach (tag_values, val, _) {
         if (*val > INT32_MAX && bits < 64)
             bits = 64;
         else if (*val > INT16_MAX && bits < 32)
@@ -669,7 +667,7 @@ PARSER(parse_array) {
 
     whitespace(&pos);
 
-    NEW_LIST(ast_t*, items);
+    auto items = EMPTY_ARRAY(ast_t*);
     ast_t *item_type = NULL;
     if (match(&pos, ":")) {
         whitespace(&pos);
@@ -681,14 +679,14 @@ PARSER(parse_array) {
         ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
         if (!item) break;
         item = optional_suffix_condition(ctx, item, &pos, FakeAST(Skip));
-        APPEND(items, item);
+        append(items, item);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array");
 
-    if (!item_type && LIST_LEN(items) == 0)
+    if (!item_type && LENGTH(items) == 0)
         parser_err(ctx, start, pos, "Empty arrays must specify what type they would contain (e.g. [:Int])");
 
     return NewAST(ctx->file, start, pos, Array, .type=item_type, .items=items);
@@ -700,7 +698,7 @@ PARSER(parse_table) {
 
     whitespace(&pos);
 
-    NEW_LIST(ast_t*, entries);
+    auto entries = EMPTY_ARRAY(ast_t*);
     ast_t *key_type = NULL, *value_type = NULL;
     if (match(&pos, ":")) {
         whitespace(&pos);
@@ -735,12 +733,12 @@ PARSER(parse_table) {
         entry = optional_suffix_condition(ctx, entry, &pos, FakeAST(Skip));
         pos = entry->end;
 
-        APPEND(entries, entry);
+        append(entries, entry);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
     }
 
-    if (!key_type && !value_type && LIST_LEN(entries) == 0)
+    if (!key_type && !value_type && LENGTH(entries) == 0)
         return NULL;
 
     whitespace(&pos);
@@ -781,7 +779,7 @@ PARSER(parse_struct) {
     ast_t *type = optional_ast(ctx, &pos, parse_type_name);
     spaces(&pos);
     if (!match(&pos, "{")) return NULL;
-    NEW_LIST(ast_t*, members);
+    auto members = EMPTY_ARRAY(ast_t*);
     for (int i = 1; ; i++) {
         whitespace(&pos);
         const char *field_start = pos;
@@ -796,7 +794,7 @@ PARSER(parse_struct) {
         }
         ast_t *value = field_name ? expect_ast(ctx, field_start, &pos, parse_expr, "I couldn't parse the value for this field") : optional_ast(ctx, &pos, parse_expr);
         if (!value) break;
-        APPEND(members, NewAST(ctx->file, field_start, pos, KeywordArg, .name=field_name, .arg=value));
+        append(members, NewAST(ctx->file, field_start, pos, KeywordArg, .name=field_name, .arg=value));
         whitespace(&pos);
         match(&pos, ",");
     }
@@ -919,14 +917,14 @@ ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos,
     if (match_word(pos, "matches")) {
         pattern = expect_ast(ctx, *pos, pos, parse_expr, "I expected a pattern to match here");
         if (is_unless)
-            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Wildcard)),
-                          .blocks=LIST(ast_t*, else_ast, ast));
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=ARRAY(pattern, WrapAST(ast, Wildcard)),
+                          .blocks=ARRAY(else_ast, ast));
         else
-            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, WrapAST(ast, Wildcard)),
-                          .blocks=LIST(ast_t*, ast, else_ast));
+            return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=ARRAY(pattern, WrapAST(ast, Wildcard)),
+                          .blocks=ARRAY(ast, else_ast));
     } else {
-        return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=LIST(ast_t*, WrapAST(ast, Bool, .b=!is_unless), WrapAST(ast, Bool, .b=is_unless)),
-                      .blocks=LIST(ast_t*, ast, else_ast));
+        return NewAST(ctx->file, start, *pos, If, .subject=subj, .patterns=ARRAY(WrapAST(ast, Bool, .b=!is_unless), WrapAST(ast, Bool, .b=is_unless)),
+                      .blocks=ARRAY(ast, else_ast));
     }
 }
 
@@ -948,11 +946,11 @@ PARSER(parse_if) {
 
         if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
             ast_t *else_body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Wildcard)),
-                          .blocks=LIST(ast_t*, else_body, body));
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, FakeAST(Wildcard)),
+                          .blocks=ARRAY(else_body, body));
         } else {
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=LIST(ast_t*, pattern, FakeAST(Wildcard)),
-                          .blocks=LIST(ast_t*, FakeAST(Pass), body));
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, FakeAST(Wildcard)),
+                          .blocks=ARRAY(FakeAST(Pass), body));
         }
     }
 
@@ -963,23 +961,23 @@ PARSER(parse_if) {
     if (!subj) subj = expect_ast(ctx, start, &pos, parse_expr,
                                  "I expected to find an expression for this 'if'");
 
-    NEW_LIST(ast_t*, patterns);
-    NEW_LIST(ast_t*, blocks);
+    auto patterns = EMPTY_ARRAY(ast_t*);
+    auto blocks = EMPTY_ARRAY(ast_t*);
 
     const char *tmp = pos;
     if (!match_word(&tmp, "matches")) {
         match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if' statement"); 
-        APPEND(patterns, NewAST(ctx->file, pos, pos, Bool, .b=true));
-        APPEND(blocks, body);
+        append(patterns, NewAST(ctx->file, pos, pos, Bool, .b=true));
+        append(blocks, body);
 
         tmp = pos;
         whitespace(&tmp);
         if (sss_get_indent(ctx->file, tmp) == starting_indent && match_word(&tmp, "else")) {
             pos = tmp;
             ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            APPEND(patterns, NewAST(ctx->file, pos, pos, Wildcard));
-            APPEND(blocks, body);
+            append(patterns, NewAST(ctx->file, pos, pos, Wildcard));
+            append(blocks, body);
         }
         return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=patterns, .blocks=blocks);
     }
@@ -992,27 +990,27 @@ PARSER(parse_if) {
         if (match_word(&clause, "else")) {
             pos = clause;
             ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            APPEND(patterns, NewAST(ctx->file, clause, clause, Wildcard));
-            APPEND(blocks, body);
+            append(patterns, NewAST(ctx->file, clause, clause, Wildcard));
+            append(blocks, body);
             break;
         }
 
         if (!match_word(&clause, "matches")) break;
         pos = clause;
         ast_t *pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
-        List(ast_t*) clause_patterns = LIST(ast_t*, pattern);
+        auto clause_patterns = ARRAY(pattern);
         while (spaces(&pos), match(&pos, ";")) {
             spaces(&pos);
             pattern = expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here");
             if (!pattern) break;
-            APPEND(clause_patterns, pattern);
+            append(clause_patterns, pattern);
         }
 
         match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'if' clause"); 
-        for (int64_t i = 0, len = LIST_LEN(clause_patterns); i < len; i++) {
-            APPEND(patterns, LIST_ITEM(clause_patterns, i));
-            APPEND(blocks, body);
+        for (int64_t i = 0, len = LENGTH(clause_patterns); i < len; i++) {
+            append(patterns, ith(clause_patterns, i));
+            append(blocks, body);
         }
     }
 
@@ -1068,11 +1066,11 @@ PARSER(parse_using) {
     // using expr *[; expr] body
     const char *start = pos;
     if (!match_word(&pos, "using")) return NULL;
-    NEW_LIST(ast_t*, exprs);
+    auto exprs = EMPTY_ARRAY(ast_t*);
     for (;;) {
         ast_t *expr = optional_ast(ctx, &pos, parse_expr);
         if (!expr) break;
-        APPEND(exprs, expr);
+        append(exprs, expr);
         spaces(&pos);
         if (!match(&pos, ";")) break;
         whitespace(&pos);
@@ -1286,7 +1284,7 @@ PARSER(parse_string) {
     if (open == ':' || open == '>')
         spaces(&pos);
 
-    NEW_LIST(ast_t*, chunks);
+    auto chunks = EMPTY_ARRAY(ast_t*);
     if (*pos == '\r' || *pos == '\n') {
         char special[] = {'\n','\r',interp_char,escape_char,'\0'};
         size_t starting_indent = sss_get_indent(ctx->file, pos); 
@@ -1294,14 +1292,12 @@ PARSER(parse_string) {
         match(&pos, "\r");
         match(&pos, "\n");
         size_t first_line = sss_get_line_number(ctx->file, pos);
-        auto line = LIST_ITEM(ctx->file->lines, first_line-1);
-        size_t indented = line.indent;
-        for (size_t i = first_line; i < (size_t)LIST_LEN(ctx->file->lines); i++) {
-            auto line = LIST_ITEM(ctx->file->lines, i-1);
-            pos = ctx->file->text + line.offset;
+        size_t indented = sss_get_indent(ctx->file, pos);
+        for (size_t i = first_line; i < ctx->file->lines.length; i++) {
+            pos = sss_get_line(ctx->file, i-1);
             if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
                 ast_t *ast = NewAST(ctx->file, pos, pos, StringLiteral, .str="\n");
-                APPEND(chunks, ast);
+                append(chunks, ast);
                 continue;
             }
             if (!match_indentation(&pos, starting_indent))
@@ -1323,7 +1319,7 @@ PARSER(parse_string) {
 
                 if (len > 0) {
                     ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=heap_strn(pos, len));
-                    APPEND(chunks, chunk);
+                    append(chunks, chunk);
                 }
 
                 pos += len;
@@ -1332,23 +1328,23 @@ PARSER(parse_string) {
                     const char *start = pos;
                     const char* unescaped = unescape(&pos);
                     ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
-                    APPEND(chunks, chunk);
+                    append(chunks, chunk);
                     ++pos;
                 } else if (*pos == interp_char) {
                     ast_t *chunk = parse_interpolation(ctx, pos);
-                    APPEND(chunks, chunk);
+                    append(chunks, chunk);
                     pos = chunk->end;
                 }
             }
         }
       finished:;
         // Strip trailing newline:
-        if (LIST_LEN(chunks) > 0) {
-            ast_t *last_chunk = LIST_ITEM(chunks, LIST_LEN(chunks)-1);
+        if (LENGTH(chunks) > 0) {
+            ast_t *last_chunk = ith(chunks, LENGTH(chunks)-1);
             if (last_chunk->tag == StringLiteral) {
                 auto str = Match(last_chunk, StringLiteral);
                 const char* trimmed = heap_strn(str->str, strlen(str->str)-1);
-                chunks[0][LIST_LEN(chunks)-1] = NewAST(ctx->file, last_chunk->start, last_chunk->end-1, StringLiteral, .str=trimmed);
+                chunks[0][LENGTH(chunks)-1] = NewAST(ctx->file, last_chunk->start, last_chunk->end-1, StringLiteral, .str=trimmed);
             }
         }
     } else {
@@ -1359,19 +1355,19 @@ PARSER(parse_string) {
             size_t len = strcspn(pos, special);
             if (len > 0) {
                 ast_t *chunk = NewAST(ctx->file, pos, pos+len-1, StringLiteral, .str=heap_strn(pos, len));
-                APPEND(chunks, chunk);
+                append(chunks, chunk);
                 pos += len;
             }
 
             if (*pos == interp_char) {
                 ast_t *chunk = parse_interpolation(ctx, pos);
-                APPEND(chunks, chunk);
+                append(chunks, chunk);
                 pos = chunk->end;
             } else if (*pos == escape_char) {
                 const char *start = pos;
                 const char* unescaped = unescape(&pos);
                 ast_t *chunk = NewAST(ctx->file, start, pos, StringLiteral, .str=unescaped);
-                APPEND(chunks, chunk);
+                append(chunks, chunk);
             } else if (*pos == '\r' || *pos == '\n') {
                 if (open == ' ' || open == ':' || open == '>') goto string_finished;
                 parser_err(ctx, string_start, pos, "This line ended without closing the string");
@@ -1379,18 +1375,18 @@ PARSER(parse_string) {
                 --depth;
                 if (depth > 0) {
                     ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
-                    APPEND(chunks, chunk);
+                    append(chunks, chunk);
                 }
                 ++pos;
             } else if (*pos == open) {
                 ++depth;
                 ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
-                APPEND(chunks, chunk);
+                append(chunks, chunk);
                 ++pos;
             } else {
                 ast_t *chunk = NewAST(ctx->file, pos, pos+1, StringLiteral, .str=heap_strn(pos, 1));
                 ++pos;
-                APPEND(chunks, chunk);
+                append(chunks, chunk);
             }
         }
     }
@@ -1539,7 +1535,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     if (!fn) return NULL;
     const char *start = fn->start;
     const char *pos = fn->end;
-    NEW_LIST(ast_t*, args);
+    auto args = EMPTY_ARRAY(ast_t*);
 
     // No arguments fn()
     if (match(&pos, "(")) {
@@ -1564,7 +1560,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
         const char *arg_start = pos;
         const char* name = get_id(&pos);
         spaces(&pos);
-        if (LIST_LEN(args) == 0 && !needs_parens) {
+        if (LENGTH(args) == 0 && !needs_parens) {
             // Prevent matching infix ops:
             switch (*pos) {
             case '.':
@@ -1589,7 +1585,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
                 if (!arg) parser_err(ctx, arg_start, pos, "I couldn't parse this keyword argument value");
                 ast_t *kwarg = NewAST(ctx->file, arg_start, arg->end, KeywordArg,
                                       .name=name, .arg=arg);
-                APPEND(args, kwarg);
+                append(args, kwarg);
                 pos = kwarg->end;
                 goto got_arg;
             }
@@ -1598,7 +1594,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
 
         ast_t *arg = parse_expr(ctx, pos);
         if (!arg) break;
-        APPEND(args, arg);
+        append(args, arg);
         pos = arg->end;
 
       got_arg:
@@ -1614,7 +1610,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     if (needs_parens && !match(&pos, ")"))
         parser_err(ctx, paren_pos, pos, "This parenthesis is unclosed");
 
-    if (LIST_LEN(args) < 1)
+    if (LENGTH(args) < 1)
         return NULL;
 
   return_function:;
@@ -1673,9 +1669,9 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
 
     pos = term->end;
 
-    auto terms = LIST(ast_t*, term);
-    NEW_LIST(ast_tag_e, binops);
-    NEW_LIST(ast_t*, minmax_keys);
+    auto terms = ARRAY(term);
+    auto binops = EMPTY_ARRAY(ast_tag_e);
+    auto minmax_keys = EMPTY_ARRAY(ast_t*);
     for (;;) {
         spaces(&pos);
         ast_tag_e tag = match_binary_operator(&pos);
@@ -1709,35 +1705,35 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             whitespace(&next);
         ast_t *rhs = tag == Cast ? _parse_type(ctx, next) : parse_term(ctx, next);
         if (!rhs && tag == Range) {
-            ast_t *prev = LIST_ITEM(terms, LIST_LEN(terms)-1);
-            terms[0][LIST_LEN(terms)-1] = NewAST(ctx->file, next, next, Range, .first=prev);
+            ast_t *prev = ith(terms, LENGTH(terms)-1);
+            terms[0][LENGTH(terms)-1] = NewAST(ctx->file, next, next, Range, .first=prev);
             continue;
         }
         if (!rhs) break;
         pos = rhs->end;
-        APPEND(terms, rhs);
-        APPEND(binops, tag);
-        APPEND(minmax_keys, key);
+        append(terms, rhs);
+        append(binops, tag);
+        append(minmax_keys, key);
     }
 
     // Sort out the op precedence (everything is left-associative here)
-    while (LIST_LEN(terms) > 1) {
+    while (LENGTH(terms) > 1) {
         // Find tightest-binding op
         int tightest_op = 0;
-        for (int i = 1; i < LIST_LEN(binops); i++) {
-            if (op_tightness[LIST_ITEM(binops, i)]
-                < op_tightness[LIST_ITEM(binops, tightest_op)]) {
+        for (uint64_t i = 1; i < LENGTH(binops); i++) {
+            if (op_tightness[ith(binops, i)]
+                < op_tightness[ith(binops, tightest_op)]) {
                 tightest_op = i;
             }
         }
 
-        auto tag = LIST_ITEM(binops, tightest_op);
-        ast_t *key = LIST_ITEM(minmax_keys, tightest_op);
+        auto tag = ith(binops, tightest_op);
+        ast_t *key = ith(minmax_keys, tightest_op);
         // Bind two terms into one:
-        LIST_REMOVE(binops, tightest_op);
-        LIST_REMOVE(minmax_keys, tightest_op);
-        ast_t *lhs = LIST_ITEM(terms, tightest_op);
-        ast_t *rhs = LIST_ITEM(terms, tightest_op + 1);
+        remove(binops, tightest_op);
+        remove(minmax_keys, tightest_op);
+        ast_t *lhs = ith(terms, tightest_op);
+        ast_t *rhs = ith(terms, tightest_op + 1);
 
         ast_t *merged;
         if (tag == RANGE_STEP) {
@@ -1760,12 +1756,12 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             // End unsafe
         }
 
-        LIST_REMOVE(terms, tightest_op);
+        remove(terms, tightest_op);
         terms[0][tightest_op] = merged;
-        // assert(LIST_ITEM(terms, tightest_op) == merged);
+        // assert(ith(terms, tightest_op) == merged);
     }
 
-    ast_t *expr = LIST_ITEM(terms, 0);
+    ast_t *expr = ith(terms, 0);
     return expr;
 }
 
@@ -1827,27 +1823,27 @@ PARSER(parse_update) {
 
 PARSER(parse_assignment) {
     const char *start = pos;
-    NEW_LIST(ast_t*, targets);
+    auto targets = EMPTY_ARRAY(ast_t*);
     for (;;) {
         ast_t *lhs = optional_ast(ctx, &pos, parse_term);
         if (!lhs) break;
-        APPEND(targets, lhs);
+        append(targets, lhs);
         spaces(&pos);
         if (!match(&pos, ",")) break;
         whitespace(&pos);
     }
 
-    if (LIST_LEN(targets) == 0) return NULL;
+    if (LENGTH(targets) == 0) return NULL;
 
     spaces(&pos);
     if (!match(&pos, "=")) return NULL;
     if (match(&pos, "=")) return NULL; // == comparison
 
-    NEW_LIST(ast_t*, values);
+    auto values = EMPTY_ARRAY(ast_t*);
     for (;;) {
         ast_t *rhs = optional_ast(ctx, &pos, parse_extended_expr);
         if (!rhs) break;
-        APPEND(values, rhs);
+        append(values, rhs);
         spaces(&pos);
         if (!match(&pos, ",")) break;
         whitespace(&pos);
@@ -1938,7 +1934,7 @@ PARSER(parse_block) {
     size_t block_indent = sss_get_indent(ctx->file, pos);
     const char *start = pos;
     whitespace(&pos);
-    NEW_LIST(ast_t*, statements);
+    auto statements = EMPTY_ARRAY(ast_t*);
     while (*pos) {
         ast_t *stmt = optional_ast(ctx, &pos, parse_statement);
         if (!stmt) {
@@ -1947,7 +1943,7 @@ PARSER(parse_block) {
                 parser_err(ctx, pos, strchrnul(pos, '\n'), "I couldn't parse this line");
             break;
         }
-        APPEND(statements, stmt);
+        append(statements, stmt);
         whitespace(&pos);
         if (sss_get_indent(ctx->file, pos) != block_indent) {
             pos = stmt->end; // backtrack
@@ -1961,11 +1957,11 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, size_t starting_indent)
+static ARRAY_OF(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, size_t starting_indent)
 {
     const char *start = *pos;
     whitespace(pos);
-    NEW_LIST(ast_t*, definitions);
+    auto definitions = EMPTY_ARRAY(ast_t*);
     size_t indent = sss_get_indent(ctx->file, *pos);
     if (indent > starting_indent) {
         for (;;) {
@@ -1982,7 +1978,7 @@ static List(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, si
                     parser_err(ctx, next, strchrnul(next, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
                 break;
             }
-            APPEND(definitions, def);
+            append(definitions, def);
             *pos = next;
         }
     } else {
@@ -2004,7 +2000,7 @@ PARSER(parse_type_def) {
 
     if (!match(&pos, ":=")) return NULL;
     ast_t *type_ast = expect_ast(ctx, start, &pos, _parse_type, "I expected a type after this ':='");
-    List(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
+    ARRAY_OF(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
     return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .definitions=definitions);
 }
 
@@ -2016,9 +2012,9 @@ PARSER(parse_enum_type) {
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
 
-    NEW_LIST(const char*, tag_names);
-    NEW_LIST(int64_t, tag_values);
-    NEW_LIST(args_t, tag_args);
+    auto tag_names = EMPTY_ARRAY(const char*);
+    auto tag_values = EMPTY_ARRAY(int64_t);
+    auto tag_args = EMPTY_ARRAY(args_t);
     int64_t next_value = 0;
 
     whitespace(&pos);
@@ -2037,10 +2033,10 @@ PARSER(parse_enum_type) {
                     *(dest++) = *src;
             }
             *dest = '\0';
-            APPEND(tag_names, name);
-            APPEND(tag_values, next_value);
-            args_t args = (args_t){LIST(const char*, "value"), LIST(ast_t*, type_ast), LIST(ast_t*, NULL)};
-            APPEND_STRUCT(tag_args, args);
+            append(tag_names, name);
+            append(tag_values, next_value);
+            args_t args = (args_t){ARRAY((const char*)"value"), ARRAY(type_ast), ARRAY((ast_t*)NULL)};
+            append(tag_args, args);
             pos = type_ast->end;
             goto carry_on;
         }
@@ -2056,7 +2052,7 @@ PARSER(parse_enum_type) {
             whitespace(&pos);
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         } else {
-            args = (args_t){LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
+            args = (args_t){EMPTY_ARRAY(const char*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
         }
 
         spaces(&pos);
@@ -2066,14 +2062,14 @@ PARSER(parse_enum_type) {
         }
 
         // Check for duplicate values:
-        for (int64_t i = 0, len = LIST_LEN(tag_values); i < len; i++) {
-            if (LIST_ITEM(tag_values, i) == next_value)
+        for (int64_t i = 0, len = LENGTH(tag_values); i < len; i++) {
+            if (ith(tag_values, i) == next_value)
                 parser_err(ctx, tag_start, pos, "This tag value (%ld) is a duplicate of an earlier tag value", next_value);
         }
 
-        APPEND(tag_names, tag_name);
-        APPEND(tag_values, next_value);
-        APPEND_STRUCT(tag_args, args);
+        append(tag_names, tag_name);
+        append(tag_values, next_value);
+        append(tag_args, args);
 
       carry_on:
         const char *next_pos = pos;
@@ -2116,10 +2112,10 @@ PARSER(parse_enum_type) {
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
 {
-    args_t args = {LIST(const char*), LIST(ast_t*), LIST(ast_t*)};
+    args_t args = {EMPTY_ARRAY(const char*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
     for (;;) {
         const char *batch_start = *pos;
-        int64_t first = LIST_LEN(args.names);
+        int64_t first = LENGTH(args.names);
         ast_t *default_val = NULL;
         ast_t *type = NULL;
         for (;;) {
@@ -2129,34 +2125,34 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
             whitespace(pos);
             if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
                 default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");
-                APPEND(args.names, name);
+                append(args.names, name);
                 break;
             } else if (match(pos, ":")) {
                 type = expect_ast(ctx, *pos-1, pos, _parse_type, "I expected a type here");
-                APPEND(args.names, name);
+                append(args.names, name);
                 break;
             } else if (allow_unnamed) {
                 *pos = arg_start;
                 type = optional_ast(ctx, pos, _parse_type);
                 if (type)
-                    APPEND(args.names, NULL);
+                    append(args.names, NULL);
                 break;
             } else if (name) {
-                APPEND(args.names, name);
+                append(args.names, name);
                 spaces(pos);
                 if (!match(pos, ",")) break;
             } else {
                 break;
             }
         }
-        if (LIST_LEN(args.names) == first) break;
+        if (LENGTH(args.names) == first) break;
         if (!default_val && !type)
             parser_err(ctx, batch_start, *pos, "I expected a ':' and type, or '=' and a default value after this parameter (%s)",
-                       LIST_ITEM(args.names, first));
+                       ith(args.names, first));
 
-        for (int64_t i = first; i < LIST_LEN(args.names); i++) {
-            APPEND(args.defaults, default_val);
-            APPEND(args.types, type);
+        for (int64_t i = first; i < LENGTH(args.names); i++) {
+            append(args.defaults, default_val);
+            append(args.types, type);
         }
         whitespace(pos);
         match(pos, ",");
@@ -2336,14 +2332,14 @@ PARSER(parse_include) {
 PARSER(parse_linker) {
     const char *start = pos;
     if (!match_word(&pos, "!link")) return NULL;
-    NEW_LIST(const char*, directives);
+    auto directives = EMPTY_ARRAY(const char*);
     for (;;) {
         const char *p = pos;
         spaces(&p);
         size_t len = strcspn(p, " \t\r\n;");
         if (len < 1) break;
         char *directive = heap_strn(p, len);
-        APPEND(directives, directive);
+        append(directives, directive);
         pos = p + len;
     }
     return NewAST(ctx->file, start, pos, LinkerDirective, .directives=directives);
@@ -2352,12 +2348,12 @@ PARSER(parse_linker) {
 PARSER(parse_inline_block) {
     spaces(&pos);
     const char *start = pos;
-    NEW_LIST(ast_t*, statements);
+    auto statements = EMPTY_ARRAY(ast_t*);
     while (*pos) {
         spaces(&pos);
         ast_t *stmt = optional_ast(ctx, &pos, parse_statement);
         if (!stmt) break;
-        APPEND(statements, stmt);
+        append(statements, stmt);
         spaces(&pos);
         if (!match(&pos, ";")) break;
     }

@@ -7,31 +7,33 @@
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdalign.h>
 #include <stdint.h>
 
 #include "../ast.h"
-#include "compile.h"
-#include "libgccjit_abbrev.h"
-#include "../libsss/hashmap.h"
-#include "../span.h"
+#include "../builtins/array.h"
+#include "../builtins/table.h"
+#include "../builtins/range.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
+#include "compile.h"
+#include "libgccjit_abbrev.h"
 
-static sss_hashmap_t opaque_structs = {0};
+static table_t opaque_structs = {0};
 
 const char *fresh(const char *name)
 {
-    static sss_hashmap_t seen = {0};
+    static table_t seen = {0};
     char *tmp = (char*)heap_str(name);
     for (size_t i = 0; i < strlen(tmp); i++) {
         if (!isalpha(name[i]) && !isdigit(name[i]) && name[i] != '_')
             tmp[i] = '_';
     }
     name = (const char*)tmp;
-    int64_t count = hget(&seen, name, int64_t);
+    int64_t count = (int64_t)Table_gets(&seen, name);
     const char *ret = heap_strf("%s__%ld", name, count++);
-    hset(&seen, name, count+1);
+    Table_sets(&seen, name, (void*)(count+1));
     return ret;
 }
 
@@ -39,7 +41,7 @@ const char *fresh(const char *name)
 ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
 {
     switch (sss_t->tag) {
-    case ArrayType: return sizeof(void*);
+    case ArrayType: return alignof(array_t);
     case TableType: return sizeof(void*);
     case StructType: {
         ssize_t align = 0;
@@ -79,9 +81,9 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         return gcc_type_size(gcc_t);
 
     switch (sss_t->tag) {
-    case ArrayType: return sizeof (struct {void* items; int32_t len; int16_t stride, free;});
-    case TableType: return sizeof (sss_hashmap_t);
-    case RangeType: return sizeof (struct {int64_t first,step,last;});
+    case ArrayType: return sizeof (array_t);
+    case TableType: return sizeof (table_t);
+    case RangeType: return sizeof (range_t);
     case BoolType: return sizeof(bool);
     case TypeType: return sizeof(char*);
     case NumType: return Match(sss_t, NumType)->bits / 8;
@@ -144,13 +146,13 @@ gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
 gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 {
     t = base_variant(t);
-    static sss_hashmap_t cache = {0};
-    gcc_type_t *gcc_t = hget(&cache, type_to_string(t), gcc_type_t*);
+    static table_t cache = {0};
+    gcc_type_t *gcc_t = Table_gets(&cache, type_to_string(t));
     if (gcc_t) return gcc_t;
     auto tagged = Match(base_variant(t), TaggedUnionType);
-    auto fields = LIST(gcc_field_t*);
+    auto fields = EMPTY_ARRAY(gcc_field_t*);
     foreach (tagged->members, member, _) {
-        if (member->type && hget(&opaque_structs, type_to_string(member->type), gcc_type_t*))
+        if (member->type && Table_gets(&opaque_structs, type_to_string(member->type)))
             compiler_err(env, NULL, "The tagged union %T recursively contains itself, which could be infinitely large. If you want to reference other %T values, use a pointer or an array.",
                          t, t);
         gcc_type_t *gcc_ft = member->type ? sss_type_to_gcc(env, member->type)
@@ -158,18 +160,18 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
         gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, member->name);
         append(fields, field);
     }
-    gcc_type_t *union_gcc_t = gcc_union(env->ctx, NULL, "data_union", length(fields), fields[0]);
-    hset(&cache, type_to_string(t), union_gcc_t);
+    gcc_type_t *union_gcc_t = gcc_union(env->ctx, NULL, "data_union", LENGTH(fields), fields[0]);
+    Table_sets(&cache, type_to_string(t), union_gcc_t);
     return union_gcc_t;
 }
 
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
-    static sss_hashmap_t cache = {0};
+    static table_t cache = {0};
     t = with_units(t, NULL);
     const char *cache_key = type_to_string(t);
-    gcc_type_t *gcc_t = hget(&cache, cache_key, gcc_type_t*);
+    gcc_type_t *gcc_t = Table_gets(&cache, cache_key);
     if (gcc_t) return gcc_t;
 
     const char *name = NULL;
@@ -223,9 +225,11 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
         gcc_field_t *fields[] = {
             [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
-            [ARRAY_LENGTH_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "length"),
+            [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "LENGTH"),
+            [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
+            [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "copy_on_write"),
+            [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "atomic"),
             [ARRAY_STRIDE_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT16), "stride"),
-            [ARRAY_CAPACITY_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT16), "free"),
         };
         gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(array);
@@ -259,7 +263,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         break;
     }
     case FunctionType: {
-        NEW_LIST(gcc_type_t*, arg_types);
+        auto arg_types = EMPTY_ARRAY(gcc_type_t*);
         auto fn = Match(t, FunctionType);
         foreach (fn->arg_types, arg_t, _) {
             if ((*arg_t)->tag == VoidType)
@@ -267,23 +271,23 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
             append(arg_types, sss_type_to_gcc(env, *arg_t));
         }
         gcc_type_t *ret_type = sss_type_to_gcc(env, fn->ret);
-        gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, length(arg_types), arg_types[0], 0);
+        gcc_t = gcc_new_func_type(env->ctx, NULL, ret_type, LENGTH(arg_types), arg_types[0], 0);
         break;
     }
     case StructType: {
         auto struct_t = Match(t, StructType);
         const char *t_str = type_to_string(t);
-        gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
+        gcc_type_t *opaque = Table_gets(&opaque_structs, t_str);
         if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(&cache, t_str, gcc_t);
-        hset(&opaque_structs, t_str, gcc_t);
+        Table_sets(&cache, t_str, gcc_t);
+        Table_sets(&opaque_structs, t_str, gcc_t);
 
-        NEW_LIST(gcc_field_t*, fields);
-        for (int64_t i = 0; i < length(struct_t->field_types); i++) {
+        auto fields = EMPTY_ARRAY(gcc_field_t*);
+        for (int64_t i = 0; i < LENGTH(struct_t->field_types); i++) {
             sss_type_t *sss_ft = ith(struct_t->field_types, i);
-            if (hget(&opaque_structs, type_to_string(sss_ft), gcc_type_t*))
+            if (Table_gets(&opaque_structs, type_to_string(sss_ft)))
                 compiler_err(env, NULL, "The struct %T recursively contains itself, which would be infinitely large. If you want to reference other %T structs, use a pointer or an array.",
                              t, t);
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
@@ -293,24 +297,24 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
             gcc_field_t *field = gcc_new_field(env->ctx, NULL, gcc_ft, field_name);
             append(fields, field);
         }
-        gcc_set_fields(gcc_struct, NULL, length(fields), fields[0]);
+        gcc_set_fields(gcc_struct, NULL, LENGTH(fields), fields[0]);
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hremove(&opaque_structs, t_str, gcc_type_t*);
+        Table_removes(&opaque_structs, t_str);
         break;
     }
     case TaggedUnionType: {
         const char *t_str = type_to_string(t);
-        gcc_type_t *opaque = hget(&opaque_structs, t_str, gcc_type_t*);
+        gcc_type_t *opaque = Table_gets(&opaque_structs, t_str);
         if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "TaggedUnion");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        hset(&cache, t_str, gcc_t);
-        hset(&opaque_structs, t_str, gcc_t);
+        Table_sets(&cache, t_str, gcc_t);
+        Table_sets(&opaque_structs, t_str, gcc_t);
         gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
             gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
             gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
         });
-        hremove(&opaque_structs, t_str, gcc_type_t*);
+        Table_removes(&opaque_structs, t_str);
         break;
     }
     case TypeType: {
@@ -340,7 +344,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     }
 
-    hset(&cache, cache_key, gcc_t);
+    Table_sets(&cache, cache_key, gcc_t);
     return gcc_t;
 }
 
@@ -375,18 +379,18 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
         gcc_type_t *needed_gcc_t = sss_type_to_gcc(env, needed);
         auto actual_field_types = Match(actual, StructType)->field_types;
         auto needed_field_types = Match(base_variant(needed), StructType)->field_types;
-        if (LIST_LEN(needed_field_types) == 0)
+        if (LENGTH(needed_field_types) == 0)
             return true;
-        NEW_LIST(gcc_field_t*, needed_fields);
-        NEW_LIST(gcc_rvalue_t*, field_vals);
-        for (int64_t i = 0; i < LIST_LEN(actual_field_types); i++) {
-            APPEND(needed_fields, gcc_get_field(gcc_type_if_struct(needed_gcc_t), i));
+        auto needed_fields = EMPTY_ARRAY(gcc_field_t*);
+        auto field_vals = EMPTY_ARRAY(gcc_rvalue_t*);
+        for (int64_t i = 0; i < LENGTH(actual_field_types); i++) {
+            append(needed_fields, gcc_get_field(gcc_type_if_struct(needed_gcc_t), i));
             gcc_rvalue_t *field_val = gcc_rvalue_access_field(*val, NULL, gcc_get_field(gcc_type_if_struct(actual_gcc_t), i));
-            if (!promote(env, LIST_ITEM(actual_field_types, i), &field_val, LIST_ITEM(needed_field_types, i)))
+            if (!promote(env, ith(actual_field_types, i), &field_val, ith(needed_field_types, i)))
                 return false;
-            APPEND(field_vals, field_val);
+            append(field_vals, field_val);
         }
-        *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LIST_LEN(needed_fields), needed_fields[0], field_vals[0]);
+        *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LENGTH(needed_fields), needed_fields[0], field_vals[0]);
     } else if (!type_eq(actual, needed) || actual->tag == FunctionType) {
         *val = gcc_cast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
     }
@@ -453,7 +457,7 @@ bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
 
         if (fielded_t->tag == StructType) {
             auto fielded_struct = Match(fielded_t, StructType);
-            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+            for (int64_t i = 0, len = LENGTH(fielded_struct->field_names); i < len; i++) {
                 if (streq(ith(fielded_struct->field_names, i), access->field))
                     return true;
             }
@@ -465,7 +469,7 @@ bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
             return streq(access->field, "default") || streq(access->field, "fallback");
         } else if (fielded_t->tag == TaggedUnionType) {
             auto tagged = Match(fielded_t, TaggedUnionType);
-            for (int64_t i = 0; i < length(tagged->members); i++) {
+            for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
                 auto member = ith(tagged->members, i);
                 if (streq(access->field, member.name))
                     return true;
@@ -555,7 +559,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
         sss_type_t *base_t = base_variant(fielded_t);
         if (base_t->tag == StructType) {
             auto fielded_struct = Match(base_t, StructType);
-            for (int64_t i = 0, len = length(fielded_struct->field_names); i < len; i++) {
+            for (int64_t i = 0, len = LENGTH(fielded_struct->field_names); i < len; i++) {
                 if (streq(ith(fielded_struct->field_names, i), access->field)) {
                     gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, i);
@@ -593,7 +597,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             }
         } else if (base_t->tag == TaggedUnionType) {
             auto tagged = Match(base_t, TaggedUnionType);
-            for (int64_t i = 0; i < length(tagged->members); i++) {
+            for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
                 auto member = ith(tagged->members, i);
                 if (!streq(access->field, member.name)) continue;
 
@@ -745,7 +749,7 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
 
     gcc_rvalue_t *fmt_val = gcc_rval(fmt_var);
 
-    NEW_LIST(gcc_rvalue_t*, args);
+    auto args = EMPTY_ARRAY(gcc_rvalue_t*);
     append(args, fmt_val);
 
     va_list ap;
@@ -766,7 +770,7 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
                 continue;
             }
 
-            // Do sss_hashmap_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
+            // Do table_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
             sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
             gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
             gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
@@ -798,7 +802,7 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
     }
     va_end(ap);
 
-    gcc_rvalue_t *failure = gcc_jit_context_new_call(env->ctx, NULL, fail, LIST_LEN(args), args[0]);
+    gcc_rvalue_t *failure = gcc_jit_context_new_call(env->ctx, NULL, fail, LENGTH(args), args[0]);
     gcc_eval(*block, NULL, failure);
     gcc_jump(*block, NULL, *block);
     *block = NULL;

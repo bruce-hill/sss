@@ -11,11 +11,6 @@
 #include "../files.h"
 #include "libgccjit_abbrev.h"
 
-#define foreach LIST_FOR
-#define length LIST_LEN
-#define ith LIST_ITEM
-#define append APPEND
-
 #define gcc_type(ctx, t) gcc_get_type(ctx, GCC_T_ ## t)
 #define gcc_int64(ctx,i) gcc_rvalue_from_long(ctx, gcc_type(ctx, INT64), i)
 
@@ -34,8 +29,10 @@
 
 #define ARRAY_DATA_FIELD 0
 #define ARRAY_LENGTH_FIELD 1
-#define ARRAY_STRIDE_FIELD 2
-#define ARRAY_CAPACITY_FIELD 3
+#define ARRAY_CAPACITY_FIELD 2
+#define ARRAY_COW_FIELD 3
+#define ARRAY_ATOMIC_FIELD 4
+#define ARRAY_STRIDE_FIELD 5
 
 // ============================== helpers.c ==============================
 // Generate a fresh (unique) identifier
@@ -151,6 +148,9 @@ typedef struct {
     env_t *match_env;
 } match_outcomes_t;
 match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *val, ast_t *pattern);
-const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns);
+const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);
+
+// ============================== types.c ===============================
+gcc_rvalue_t *get_type_rvalue(env_t *env, sss_type_t *type);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

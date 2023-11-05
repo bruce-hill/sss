@@ -475,8 +475,10 @@ Type make_table_type(Type *key, Type *value)
     if (max_align > 1 && entry_size % max_align)
         entry_size += max_align - (entry_size % max_align); // padding
 
+    const char *key_name = key->name.data,
+          *value_name = value->name.data;
     return (Type){
-        .name=STRING(heap_strf("{%s=>%s}", key->name, value->name)),
+        .name=STRING(heap_strf("{%s=>%s}", key_name, value_name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
         .size=sizeof(table_t),
         .align=alignof(table_t),
@@ -485,19 +487,47 @@ Type make_table_type(Type *key, Type *value)
         .hash=HashMethod(Function, (void*)Table_hash),
         .cord=CordMethod(Function, (void*)Table_cord),
         .bindings=(NamespaceBinding[]){
-            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), Table_get},
-            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key->name, value->name, key->name, key->name), Table_get_raw},
+            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get},
+            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get_raw},
             {"nth", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
-                              key->name, value->name, key->name, value->name), Table_nth},
+                              key_name, value_name, key_name, value_name), Table_nth},
             {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
-                              key->name, value->name, key->name, value->name, value->name), Table_set},
+                              key_name, value_name, key_name, value_name, value_name), Table_set},
             {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
-                                 key->name, value->name, key->name), Table_remove},
-            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key->name, value->name), Table_equals},
-            {"clear", heap_strf("func(t:@{%s=>%s}) Void", key->name, value->name), Table_clear},
+                                 key_name, value_name, key_name), Table_remove},
+            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key_name, value_name), Table_equals},
+            {"clear", heap_strf("func(t:@{%s=>%s}) Void", key_name, value_name), Table_clear},
             {NULL, NULL, NULL},
         },
     };
 }
 
+Type CStringToVoidStarTable_type;
+
+void *Table_gets(const table_t *t, const char *key)
+{
+    void **ret = Table_get(&CStringToVoidStarTable_type, t, key);
+    return ret ? *ret : NULL;
+}
+
+void *Table_gets_raw(const table_t *t, const char *key)
+{
+    void **ret = Table_get_raw(&CStringToVoidStarTable_type, t, key);
+    return ret ? *ret : NULL;
+}
+
+void *Table_sets(table_t *t, const char *key, const void *value)
+{
+    return Table_set(&CStringToVoidStarTable_type, t, key, value);
+}
+
+void Table_removes(table_t *t, const char *key)
+{
+    return Table_remove(&CStringToVoidStarTable_type, t, key);
+}
+
+void *Table_nths(const table_t *t, uint32_t n)
+{
+    return Table_nth(&CStringToVoidStarTable_type, t, n);
+}
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

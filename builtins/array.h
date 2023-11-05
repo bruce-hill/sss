@@ -22,14 +22,22 @@ void Array_clear(array_t *array);
 void Array_compact(array_t *arr, size_t item_size);
 int32_t Array_compare(const array_t *x, const array_t *y, const Type *type);
 
-#define ARRAY_OF(t) (array_t*)
-#define EMPTY_ARRAY ((array_t){.data=0})
-#define ARRAY(x, ...) ((array_t)({\
-    .data=memcpy(GC_MALLOC(sizeof(((typeof x)[]){x, __VA_ARGS__})), ((typeof x)[]){x, __VA_ARGS__}, \
-                 sizeof(((typeof x)[]){x, __VA_ARGS__})), \
-    .length=(sizeof(((typeof x)[]){x, __VA_ARGS__})) / sizeof(x), \
-    .stride=sizeof(x)})
-#define ith(arr, i) ((arr).data + i*(arr).stride)
-#define append(arr, obj) Array_insert((arr), ((typeof obj)[]){obj}, (arr)->length+1, sizeof(obj))
+#ifndef new
+#define new(t, ...) ((t*)memcpy(GC_MALLOC(sizeof(t)), &(t){__VA_ARGS__}, sizeof(t)))
+#endif
+
+#define ARRAY_OF(t) t**
+#define EMPTY_ARRAY(t) (t**)new(array_t)
+#define LENGTH(arr) (((array_t*)(arr))->length)
+#define ARRAY(x, ...) (__typeof(x)**)new(array_t, \
+    .data=memcpy(GC_MALLOC(sizeof((__typeof(x)[]){x, __VA_ARGS__})), (__typeof(x)[]){x, __VA_ARGS__}, \
+                 sizeof((__typeof(x)[]){x, __VA_ARGS__})), \
+    .length=(sizeof((__typeof(x)[]){x, __VA_ARGS__})) / sizeof(x), \
+    .stride=sizeof(x))
+#define foreach(arr, var, end) for (__typeof(arr[0]) var = arr[0], end = ith_addr(arr, LENGTH(arr)+1); var != end; var = ((void*)var) + ((array_t*)(arr))->stride)
+#define ith_addr(arr, i) ((__typeof(arr[0]))(((array_t*)(arr))->data + i*((array_t*)(arr))->stride))
+#define ith(arr, i) (*ith_addr(arr,i))
+#define append(arr, obj) Array_insert((array_t*)(arr), (__typeof(obj)[]){obj}, ((array_t*)(arr))->length+1, sizeof(obj))
+#define remove(arr, i) Array_remove((array_t*)(arr), i, 1, sizeof(arr[0][0]))
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

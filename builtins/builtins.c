@@ -6,7 +6,9 @@
 #include "functions.h"
 #include "table.h"
 
+__attribute__ ((visibility ("default")))
 const char *SSS_HASH_VECTOR = "sss hash vector ----------------------------------------------";
+
 extern Type Bool_type, Char_type,
        Int_type, Int32_type, Int16_type, Int8_type,
        UInt_type, UInt32_type, UInt16_type, UInt8_type,
@@ -14,7 +16,6 @@ extern Type Bool_type, Char_type,
        Str_type, CString_type,
        Range_type, Memory_type;
 extern Type (*make_array_type)(Type*);
-extern Type (*make_table_type)(Type*, Type*);
 
 __attribute__ ((visibility ("default"))) NamespaceBinding *load()
 {
@@ -38,9 +39,9 @@ __attribute__ ((visibility ("default"))) NamespaceBinding *load()
         {"make_array_type", "func(item_type:Type) Type", &make_array_type},
         {"make_table_type", "func(key_type:Type, value_type:Type) Type", &make_table_type},
 
-        {"say", "func(text:Str, end=\"\\n\") Void", say},
-        {"fail", "func(fmt:Str) Abort", say},
-        {"last_error", "func() Str", last_err},
+        {"say", "func(text:Str, end=\"\\n\") Void", builtin_say},
+        {"fail", "func(fmt:Str) Abort", builtin_fail},
+        {"last_error", "func() Str", builtin_last_err},
         {NULL, NULL, NULL},
     };
     return builtins_namespace;

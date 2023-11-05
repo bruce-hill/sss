@@ -10,7 +10,7 @@
 #include "../ast.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
-#include "../libsss/hashmap.h"
+#include "../builtins/table.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
@@ -46,7 +46,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     // Reuse same function for all Type types:
     if (t->tag == TypeType && Match(t, TypeType)->type) {
         gcc_func_t *func = get_cord_func(env, Type(TypeType));
-        hset(get_namespace(env, t), func_name, get_from_namespace(env, Type(TypeType), func_name));
+        Table_sets(get_namespace(env, t), func_name, get_from_namespace(env, Type(TypeType), func_name));
         return func;
     }
 
@@ -61,11 +61,11 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     const char *sym_name = fresh( func_name);
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, gcc_type(env->ctx, STRING), sym_name, 3, params, 0);
     sss_type_t *fn_t = Type(FunctionType,
-                           .arg_types=LIST(sss_type_t*, t, Type(PointerType, .pointed=Type(MemoryType)), Type(BoolType)),
-                           .arg_names=LIST(const char*, "obj", "recursion", "color"),
+                           .arg_types=ARRAY(t, Type(PointerType, .pointed=Type(MemoryType)), Type(BoolType)),
+                           .arg_names=ARRAY((const char*)"obj", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(PointerType, .pointed=Type(MemoryType)));
-    sss_hashmap_t *ns = get_namespace(env, t);
-    hset(ns, func_name, new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
+    table_t *ns = get_namespace(env, t);
+    Table_sets(ns, func_name, new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("to_cord"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("to_cord() for type: ", type_to_typeof_string(t))));
@@ -99,7 +99,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     case CharType: case CStringCharType: {
         char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",
             ['\r']="\\r",['\v']="\\v",['"']="\\\"",['\\']="\\\\"};
-        NEW_LIST(gcc_case_t*, cases);
+        auto cases = EMPTY_ARRAY(gcc_case_t*);
 
         for (int i = 0; i < 128; i++) {
             char *escape_str = escapes[i];
@@ -111,7 +111,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
             APPEND_LITERAL(case_block, escape_str);
             APPEND_COLOR_LITERAL(&case_block, "\x1b[m");
             gcc_return(case_block, NULL, gcc_rval(cord));
-            APPEND(cases, case_);
+            append(cases, case_);
         }
 
         // Hex escape:
@@ -122,7 +122,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
                 env->ctx,
                 gcc_rvalue_from_long(env->ctx, gcc_t, intervals[i][0]),
                 gcc_rvalue_from_long(env->ctx, gcc_t, intervals[i][1]), hex_block);
-            APPEND(cases, hex_case);
+            append(cases, hex_case);
         }
 
         APPEND_COLOR_LITERAL(&hex_block, "\x1b[1;34m");
@@ -133,7 +133,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         gcc_return(hex_block, NULL, gcc_rval(cord));
 
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_switch(block, NULL, obj, default_block, length(cases), cases[0]);
+        gcc_switch(block, NULL, obj, default_block, LENGTH(cases), cases[0]);
 
         APPEND_COLOR_LITERAL(&default_block, "\x1b[35m");
         gcc_func_t *cord_cat_char_fn = get_function(env, "CORD_cat_char");
@@ -200,14 +200,14 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         gcc_assign(block, NULL, tag_var, tag);
         tag = gcc_rval(tag_var);
         gcc_type_t *union_gcc_t = get_union_type(env, t);
-        NEW_LIST(gcc_case_t*, cases);
+        auto cases = EMPTY_ARRAY(gcc_case_t*);
         bool any_values = false;
-        for (int64_t i = 0; i < length(tagged->members); i++) {
+        for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
             auto member = ith(tagged->members, i);
             gcc_block_t *tag_block = gcc_new_block(func, fresh(member.name));
             gcc_block_t *rest_of_tag_block = tag_block;
             APPEND_LITERAL(rest_of_tag_block, member.name);
-            if (member.type && member.type->tag == StructType && length(Match(member.type, StructType)->field_types) > 0) {
+            if (member.type && member.type->tag == StructType && LENGTH(Match(member.type, StructType)->field_types) > 0) {
                 any_values = true;
                 APPEND_LITERAL(rest_of_tag_block, "(");
                 APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
@@ -218,10 +218,10 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
 
                 gcc_rvalue_t *val = gcc_rvalue_access_field(data, NULL, union_field);
 
-                List(const char*) field_names = Match(member.type, StructType)->field_names;
-                List(sss_type_t*) field_types = Match(member.type, StructType)->field_types;
+                auto field_names = Match(member.type, StructType)->field_names;
+                auto field_types = Match(member.type, StructType)->field_types;
                 gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, member.type));
-                for (int64_t i = 0; i < length(field_names); i++) {
+                for (int64_t i = 0; i < LENGTH(field_names); i++) {
                     if (i > 0) {
                         APPEND_COLOR_LITERAL(&rest_of_tag_block, "\x1b[m");
                         APPEND_LITERAL(rest_of_tag_block, ", ");
@@ -254,7 +254,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
             gcc_jump(rest_of_tag_block, NULL, done);
             gcc_rvalue_t *rval = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
             gcc_case_t *case_ = gcc_new_case(env->ctx, rval, rval, tag_block);
-            APPEND(cases, case_);
+            append(cases, case_);
         }
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
         gcc_block_t *rest_of_default = default_block;
@@ -271,7 +271,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
 
             // gcc_jump(rest_of_default, NULL, continue_loop);
             // rest_of_default = continue_loop;
-            for (int64_t i = 0; i < length(tagged->members); i++) {
+            for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
                 // Pseudocode:
                 //     if (tag & member_tag == member_tag) {
                 //         print(member_tag);
@@ -303,7 +303,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
         }
         gcc_jump(rest_of_default, NULL, done);
 
-        gcc_switch(block, NULL, tag, default_block, length(cases), cases[0]);
+        gcc_switch(block, NULL, tag, default_block, LENGTH(cases), cases[0]);
 
         gcc_return(done, NULL, gcc_rval(cord));
         break;
@@ -393,7 +393,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
             gcc_func_t *hash_func = get_function(env, "hash_64bits");
             gcc_func_t *cmp_func = get_function(env, "compare_64bits");
 
-            // val = sss_hashmap_set(rec, &obj, NULL)
+            // val = Table_set(rec, &obj, NULL)
             gcc_block_t *noncycle_block = gcc_new_block(func, fresh("noncycle"));
             gcc_block_t *cycle_block = gcc_new_block(func, fresh("cycle"));
             sss_type_t *rec_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));

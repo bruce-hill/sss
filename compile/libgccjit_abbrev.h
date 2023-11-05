@@ -156,9 +156,15 @@ typedef enum gcc_jit_global_kind gcc_global_kind_e;
 #define gcc_rvalue_from_long gcc_jit_context_new_rvalue_from_long
 #define gcc_rvalue_size(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_SIZE), i)
 #define gcc_rvalue_int(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT), i)
+#define gcc_rvalue_int8(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT8), i)
 #define gcc_rvalue_int16(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT16), i)
 #define gcc_rvalue_int32(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT32), i)
 #define gcc_rvalue_int64(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_INT64), i)
+#define gcc_rvalue_uint(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_UINT), i)
+#define gcc_rvalue_uint8(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_UINT8), i)
+#define gcc_rvalue_uint16(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_UINT16), i)
+#define gcc_rvalue_uint32(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_UINT32), i)
+#define gcc_rvalue_uint64(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_UINT64), i)
 #define gcc_rvalue_bool(ctx, i) gcc_jit_context_new_rvalue_from_long(ctx, gcc_jit_context_get_type(ctx, GCC_T_BOOL), i)
 #define gcc_zero gcc_jit_context_zero
 #define gcc_one gcc_jit_context_one

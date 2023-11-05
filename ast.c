@@ -17,16 +17,16 @@ static inline CORD CORD_asprintf(const char *fmt, ...)
 
 static CORD ast_to_cord(const char *name, ast_t *ast);
 
-static CORD ast_list_to_cord(const char *name, List(ast_t*) asts)
+static CORD ast_list_to_cord(const char *name, ARRAY_OF(ast_t*) asts)
 {
     if (!asts)
         return "\x1b[35mNULL\x1b[m";
 
     CORD c = "[";
     if (name) CORD_sprintf(&c, "%s=[", name);
-    for (int64_t i = 0, len = LIST_LEN(asts); i < len; i++) {
+    for (int64_t i = 0, len = LENGTH(asts); i < len; i++) {
         if (i > 0) c = CORD_cat(c, ", ");
-        c = CORD_cat(c, ast_to_cord(NULL, LIST_ITEM(asts, i)));
+        c = CORD_cat(c, ast_to_cord(NULL, ith(asts, i)));
     }
     c = CORD_cat(c, "]");
     return c;
@@ -41,17 +41,17 @@ static CORD concat_cords(int len, CORD cords[len]) {
     return c;
 }
 
-static CORD str_list_to_cord(const char *name, List(const char*) strs)
+static CORD str_list_to_cord(const char *name, ARRAY_OF(const char*) strs)
 {
     CORD c;
     if (name) CORD_sprintf(&c, "%s=", name);
     else c = NULL;
     if (!strs) return CORD_cat(c, "\x1b[35mNULL\x1b[m");
     c = CORD_cat(c, "[");
-    for (int64_t i = 0, len = LIST_LEN(strs); i < len; i++) {
+    for (int64_t i = 0, len = LENGTH(strs); i < len; i++) {
         if (i > 0) c = CORD_cat(c, ", ");
-        if (LIST_ITEM(strs, i))
-            c = CORD_cat(c, LIST_ITEM(strs, i));
+        if (ith(strs, i))
+            c = CORD_cat(c, ith(strs, i));
         else
             c = CORD_cat(c, "(NULL)");
     }
@@ -70,19 +70,19 @@ static CORD label_double(const char *name, double d) { return CORD_asprintf("%s=
 static CORD label_bool(const char *name, bool b) { return CORD_asprintf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
 static CORD label_args(const char *name, args_t args) {
     CORD c = CORD_asprintf("%s={", name ? name : "(NULL)");
-    for (int64_t i = 0; i < LIST_LEN(args.names); i++) {
+    for (int64_t i = 0; i < LENGTH(args.names); i++) {
         if (i > 0) c = CORD_cat(c, ", ");
-        if (args.names && LIST_ITEM(args.names, i))
-            c = CORD_cat(c, LIST_ITEM(args.names, i));
-        if (args.types && LIST_ITEM(args.types, i))
-            CORD_sprintf(&c, "%r:%s", c, ast_to_cord(NULL, LIST_ITEM(args.types, i)));
-        if (args.defaults && LIST_ITEM(args.defaults, i))
-            CORD_sprintf(&c, "%r=%s", c, ast_to_cord(NULL, LIST_ITEM(args.defaults, i)));
+        if (args.names && ith(args.names, i))
+            c = CORD_cat(c, ith(args.names, i));
+        if (args.types && ith(args.types, i))
+            CORD_sprintf(&c, "%r:%s", c, ast_to_cord(NULL, ith(args.types, i)));
+        if (args.defaults && ith(args.defaults, i))
+            CORD_sprintf(&c, "%r=%s", c, ast_to_cord(NULL, ith(args.defaults, i)));
     }
     c = CORD_cat(c, "}");
     return c;
 }
-static CORD label_args_list(const char *name, List(args_t) args) {
+static CORD label_args_list(const char *name, ARRAY_OF(args_t) args) {
     (void)args;
     return CORD_asprintf("%s=...args...", name);
 }
@@ -97,7 +97,7 @@ CORD ast_to_cord(const char *name, ast_t *ast)
     // values with minimal boilerplate.
 #define F(field) _Generic((data->field), \
                           ast_t*: ast_to_cord, \
-                          List(ast_t*): ast_list_to_cord, \
+                          ARRAY_OF(ast_t*): ast_list_to_cord, \
                           const char *: label_str, \
                           int64_t: label_int, \
                           unsigned short int: label_int, \
@@ -105,8 +105,8 @@ CORD ast_to_cord(const char *name, ast_t *ast)
                           bool: label_bool, \
                           unsigned char: label_bool, \
                           args_t: label_args, \
-                          List(args_t): label_args_list, \
-                          List(const char *): str_list_to_cord)(#field, data->field)
+                          ARRAY_OF(args_t): label_args_list, \
+                          ARRAY_OF(const char *): str_list_to_cord)(#field, data->field)
 #define T(t, ...) case t: { auto data = Match(ast, t); (void)data; c = CORD_cat(c, "\x1b[1m" #t "(\x1b[m"); \
     c = CORD_cat(c, concat_cords((int)(sizeof (const char*[]){__VA_ARGS__})/(sizeof(const char*)), (const char*[]){__VA_ARGS__})); \
     c = CORD_cat(c, "\x1b[1m)\x1b[m"); break; }

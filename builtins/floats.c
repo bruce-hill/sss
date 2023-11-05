@@ -21,11 +21,11 @@ static CORD Num_cord(const Type *type, const double *f, bool colorize) {
     return c; 
 } 
 
-static string_t Num_format(double f, int64_t precision) { 
+static String_t Num_format(double f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
-    return (string_t){.data=str, .length=len, .stride=1}; 
+    return (String_t){.data=str, .length=len, .stride=1}; 
 } 
 
 static double Num_mod(double num, double modulus) { 
@@ -81,11 +81,11 @@ static CORD Num32_cord(float *f, bool colorize) {
     return c; 
 } 
 
-static string_t Num32_format(float f, int64_t precision) { 
+static String_t Num32_format(float f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
-    return (string_t){.data=str, .length=len, .stride=1}; 
+    return (String_t){.data=str, .length=len, .stride=1}; 
 } 
 
 static float Num32_mod(float num, float modulus) { 

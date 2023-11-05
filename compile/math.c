@@ -62,7 +62,7 @@ static gcc_rvalue_t *math_binop_rec(
                                     i32, lhs_len32, rhs_len32);
 
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
-        gcc_func_t *alloc_func = hget(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic", gcc_func_t*);
+        gcc_func_t *alloc_func = Table_gets(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
@@ -139,7 +139,7 @@ static gcc_rvalue_t *math_binop_rec(
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
-        gcc_func_t *alloc_func = hget(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic", gcc_func_t*);
+        gcc_func_t *alloc_func = Table_gets(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
@@ -202,8 +202,8 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
         gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
         auto members = Match(lhs_t, TaggedUnionType)->members;
-        for (int64_t i = 0; i < length(members); i++) {
-            if (ith(members, i).type && length(Match(ith(members, i).type, StructType)->field_types) > 0)
+        for (int64_t i = 0; i < LENGTH(members); i++) {
+            if (ith(members, i).type && LENGTH(Match(ith(members, i).type, StructType)->field_types) > 0)
                 compiler_err(env, ast, "%T tagged union values can't be combined because some tags have data attached to them.", lhs_t);
         }
         gcc_rvalue_t *result_tag;
@@ -252,11 +252,11 @@ static gcc_rvalue_t *math_binop_rec(
     auto struct_ = Match(struct_t, StructType);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, struct_t);
     gcc_struct_t *struct_gcc_t = gcc_type_if_struct(gcc_t);
-    NEW_LIST(gcc_field_t*, fields);
-    NEW_LIST(gcc_rvalue_t*, members);
-    for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
+    auto fields = EMPTY_ARRAY(gcc_field_t*);
+    auto members = EMPTY_ARRAY(gcc_rvalue_t*);
+    for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
         gcc_field_t *field = gcc_get_field(struct_gcc_t, i);
-        APPEND(fields, field);
+        append(fields, field);
         sss_type_t *field_t = ith(struct_->field_types, i);
 
         sss_type_t *lhs_field_t, *rhs_field_t;
@@ -281,9 +281,9 @@ static gcc_rvalue_t *math_binop_rec(
         // Just in case things get messed up with promotions:
         if (is_numeric(field_t))
             member = gcc_cast(env->ctx, loc, member, sss_type_to_gcc(env, field_t));
-        APPEND(members, member);
+        append(members, member);
     }
-    return gcc_struct_constructor(env->ctx, loc, gcc_t, length(fields), fields[0], members[0]);
+    return gcc_struct_constructor(env->ctx, loc, gcc_t, LENGTH(fields), fields[0], members[0]);
 }
 
 gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
@@ -420,7 +420,7 @@ void math_update_rec(
 
         auto struct_ = Match(lhs_t, StructType);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
-        for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
+        for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
             sss_type_t *field_t = ith(struct_->field_types, i);
             math_update_rec(
@@ -430,7 +430,7 @@ void math_update_rec(
     } else if (lhs_t->tag == StructType) {
         auto struct_ = Match(lhs_t, StructType);
         gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
-        for (int64_t i = 0, len = length(struct_->field_types); i < len; i++) {
+        for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
             sss_type_t *field_t = ith(struct_->field_types, i);
             gcc_rvalue_t *rhs_field = rhs_t->tag == StructType ? gcc_rvalue_access_field(rhs, loc, field) : rhs;

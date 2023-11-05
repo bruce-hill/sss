@@ -25,28 +25,26 @@ LIBS=-lgc -lgccjit -lcord -lm -lunistring -L. -l:libsss.so.$(VERSION)
 ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VERSION)\"
 
 LIBFILE=libsss.so.$(VERSION)
-CFILES=api.c span.c files.c parse.c ast.c environment.c args.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c \
+CFILES=files.c parse.c ast.c environment.c args.c types.c typecheck.c units.c compile/math.c compile/blocks.c compile/expr.c \
 			 compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c \
-			 compile/match.c compile/print.c compile/hashing.c compile/comparison.c util.c \
-			 libsss/list.c libsss/utils.c libsss/string.c libsss/hashmap.c libsss/base64.c SipHash/halfsiphash.c
-HFILES=span.h files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h libsss/list.h libsss/string.h libsss/hashmap.h
+			 compile/match.c compile/print.c compile/hashing.c compile/comparison.c compile/types.c util.c \
+			 SipHash/halfsiphash.c
+HFILES=files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/compile.h util.h \
+			 builtins/array.h builtins/functions.h builtins/range.h builtins/string.h builtins/table.h builtins/types.h
 OBJFILES=$(CFILES:.c=.o)
 
 BUILTIN_CFILES=builtins/integers.c builtins/floats.c builtins/char.c builtins/string.c builtins/bool.c builtins/range.c builtins/memory.c \
 							 builtins/functions.c builtins/array.c builtins/table.c builtins/cording.c builtins/hashing.c builtins/ordering.c \
-							 builtins/equality.c builtins/builtins.c
+							 builtins/equality.c
 BUILTIN_OBJFILES=$(BUILTIN_CFILES:.c=.o)
 
-all: builtins.so sss $(LIBFILE) sss.1
+all: $(LIBFILE) sss sss.1
 
-builtins.so: $(BUILTIN_OBJFILES)
-	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,builtins.so -shared -o $@
+$(LIBFILE): $(BUILTIN_OBJFILES) builtins/builtins.o SipHash/halfsiphash.o
+	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lm -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
 
-$(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss/base64.o SipHash/halfsiphash.o files.o span.o
-	$(CC) $^ $(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -lgc -Wl,-soname,$(LIBFILE) -shared -o $@
-
-sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
-	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
+sss: $(OBJFILES) $(BUILTIN_OBJFILES) $(HFILES) $(LIBFILE) sss.c
+	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) $(BUILTIN_OBJFILES) sss.c
 
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
@@ -58,7 +56,7 @@ tags: $(CFILES) $(HFILES) sss.c
 	ctags $^
 
 clean:
-	rm -f sss $(OBJFILES) $(BUILTIN_OBJFILES) sss[0-9]+* libsss.so.* builtins.so
+	rm -f sss $(OBJFILES) $(BUILTIN_OBJFILES) sss[0-9]+* libsss.so.*
 
 sss.1: sss.1.md
 	pandoc --lua-filter=.pandoc/bold-code.lua -s $< -t man -o $@

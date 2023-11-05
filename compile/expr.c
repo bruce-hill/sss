@@ -16,7 +16,6 @@
 #include "../args.h"
 #include "../ast.h"
 #include "../parse.h"
-#include "../span.h"
 #include "../typecheck.h"
 #include "../types.h"
 #include "../units.h"
@@ -159,8 +158,8 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
         }
 
         if (ptr->pointed->tag == CharType) {
-            // String length
-            gcc_func_t *len_func = hget(&env->global->funcs, "strlen", gcc_func_t*);
+            // String LENGTH
+            gcc_func_t *len_func = Table_gets(&env->global->funcs, "strlen");
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
             return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
         } else {
@@ -210,7 +209,7 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
-static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *t, List(ast_t*) args)
+static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *t, ARRAY_OF(ast_t*) args)
 {
     t = base_variant(t);
     if (t->tag != StructType)
@@ -218,7 +217,7 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
 
     gcc_loc_t *loc = ast_loc(env, ast);
     auto struct_type = Match(t, StructType);
-    if (length(struct_type->field_names) == 0) {
+    if (LENGTH(struct_type->field_names) == 0) {
         // GCC doesn't allow empty constructors for empty structs, but for
         // some reason, it's perfectly fine to just declare an empty struct
         // variable and use that as an rvalue.
@@ -226,18 +225,18 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
         gcc_lvalue_t *lval = gcc_local(gcc_block_func(*block), loc, gcc_t, "_empty_singleton");
         return gcc_rval(lval);
     }
-    if (length(args) > length(struct_type->field_names))
+    if (LENGTH(args) > LENGTH(struct_type->field_names))
         compiler_err(env, ast, "I expected this %T literal to only have %ld fields, but you provided %ld fields.",
-                     t, length(struct_type->field_names), length(args));
+                     t, LENGTH(struct_type->field_names), LENGTH(args));
 
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
     gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
     size_t num_fields = gcc_field_count(gcc_struct);
-    if (!(num_fields == (size_t)length(struct_type->field_names)))
+    if (!(num_fields == (size_t)LENGTH(struct_type->field_names)))
         compiler_err(env, ast, "Something went wrong with this struct!");
 
-    List(arg_info_t) arg_infos = bind_arguments(env, args, struct_type->field_names,
-                                                struct_type->field_types, struct_type->field_defaults);
+    auto arg_infos = bind_arguments(env, args, struct_type->field_names,
+                                    struct_type->field_types, struct_type->field_defaults);
 
     env_t *default_env = file_scope(env); // TODO: use scope from struct def
     gcc_func_t *func = gcc_block_func(*block);
@@ -269,7 +268,7 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
 
         field_rvals[arg->position] = rval;
         if (rval && arg->name)
-            hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
+            Table_sets(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
     }
 
     // Filter for only the populated fields (those not uninitialized):
@@ -337,9 +336,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
             compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        hset(env->bindings, name,
-             new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL,
-                 .visible_in_closures=decl->is_global));
+        Table_sets(env->bindings, name,
+                   new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL,
+                       .visible_in_closures=decl->is_global));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);
@@ -351,15 +350,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (t->tag == FunctionType) {
             auto fn = Match(t, FunctionType); 
             gcc_type_t *gcc_ret_t = sss_type_to_gcc(env, fn->ret);
-            NEW_LIST(gcc_param_t*, params);
-            for (int64_t i = 0, len = length(fn->arg_types); i < len; i++) {
+            auto params = EMPTY_ARRAY(gcc_param_t*);
+            for (int64_t i = 0, len = LENGTH(fn->arg_types); i < len; i++) {
                 gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
                 const char* arg_name = fn->arg_names ? ith(fn->arg_names, i) : NULL;
                 if (!arg_name) arg_name = fresh("arg");
-                APPEND(params, gcc_new_param(env->ctx, loc, arg_t, arg_name));
+                append(params, gcc_new_param(env->ctx, loc, arg_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
-                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, length(params), params[0], 0);
+                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, ext->name, LENGTH(params), params[0], 0);
             return gcc_get_func_address(func, loc);
         } else {
             gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
@@ -370,10 +369,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
     case Assign: {
         auto assignment = Match(ast, Assign);
-        List(ast_t*) targets = assignment->targets;
-        List(ast_t*) values = assignment->values;
-        int64_t len = length(targets);
-        int64_t num_values = length(values);
+        auto targets = assignment->targets;
+        auto values = assignment->values;
+        int64_t len = LENGTH(targets);
+        int64_t num_values = LENGTH(values);
         if (num_values != len)
             compiler_err(env, ast, "There's a mismatch in this assignment. The left side has %ld values, but the right side has %ld values.", len, num_values);
         
@@ -395,7 +394,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 };
             };
         } assign_target_t;
-        NEW_LIST(assign_target_t, lvals);
+        auto lvals = EMPTY_ARRAY(assign_target_t);
         foreach (targets, lhs, _) {
             sss_type_t *t_lhs = get_type(env, *lhs);
             assign_target_t target = {.type=t_lhs};
@@ -430,9 +429,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 target.is_table = false;
                 target.lval = get_lvalue(env, block, *lhs, false);
             }
-            APPEND_STRUCT(lvals, target);
+            append(lvals, target);
         }
-        NEW_LIST(gcc_rvalue_t*, rvals);
+        auto rvals = EMPTY_ARRAY(gcc_rvalue_t*);
         for (int64_t i = 0; i < len; i++) {
             auto target = ith(lvals, i);
             sss_type_t *t_lhs = target.type;
@@ -454,8 +453,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(*block, loc, tmp, rval);
             append(rvals, gcc_rval(tmp));
         }
-        NEW_LIST(sss_type_t*, target_types);
-        NEW_LIST(const char*, field_names);
+        auto target_types = EMPTY_ARRAY(sss_type_t*);
+        auto field_names = EMPTY_ARRAY(const char*);
         for (int64_t i = 0; i < len; i++) {
             auto target = ith(lvals, i);
             if (target.is_table) {
@@ -487,8 +486,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_assign(*block, ast_loc(env, ast), target.lval, ith(rvals, i));
             }
 
-            APPEND(target_types, target.type);
-            APPEND(field_names, heap_strf("_%ld", i+1));
+            append(target_types, target.type);
+            append(field_names, heap_strf("_%ld", i+1));
         }
         sss_type_t *values_tuple = Type(StructType, .field_types=target_types, .field_names=field_names);
         gcc_type_t *values_gcc_t = sss_type_to_gcc(env, values_tuple);
@@ -509,7 +508,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         
         do_env->loop_label = &(loop_label_t){
             .enclosing = env->loop_label,
-            .names = LIST(const char*, do_->label),
+            .names = ARRAY((const char*)do_->label),
             .skip_label = do_else,
             .stop_label = do_else,
             .deferred = do_env->deferred,
@@ -561,7 +560,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         defer_env->bindings->fallback = env->bindings->fallback;
         gcc_func_t *func = gcc_block_func(*block);
         for (uint32_t i = 1; i <= env->bindings->count; i++) {
-            auto entry = hnth(env->bindings, i , const char*, binding_t*);
+            struct {const char *key; binding_t *value;} *entry = Table_nths(env->bindings, i);
             gcc_lvalue_t *cached = gcc_local(func, loc, sss_type_to_gcc(env, entry->value->type), entry->key);
             if (!entry->value->rval) continue;
             gcc_assign(*block, loc, cached, entry->value->rval);
@@ -569,7 +568,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             *cached_binding = *entry->value;
             cached_binding->lval = cached;
             cached_binding->rval = gcc_rval(cached);
-            hset(defer_env->bindings, entry->key, cached_binding);
+            Table_sets(defer_env->bindings, entry->key, cached_binding);
         }
         defer_env->is_deferred = true;
         env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
@@ -577,14 +576,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case With: { // with var := expr, cleanup(var) ...
         auto with = Match(ast, With);
-        NEW_LIST(ast_t*, statements);
+        auto statements = EMPTY_ARRAY(ast_t*);
         ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name="with");
-        APPEND(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
+        append(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
         ast_t *cleanup = with->cleanup;
         if (!cleanup)
-            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field="close"), .args=LIST(ast_t*));
-        APPEND(statements, WrapAST(ast, Defer, .body=cleanup));
-        APPEND(statements, with->body);
+            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field="close"), .args=EMPTY_ARRAY(ast_t*));
+        append(statements, WrapAST(ast, Defer, .body=cleanup));
+        append(statements, with->body);
         return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
     }
     case Using: { // using expr *[; expr] body
@@ -592,7 +591,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env = fresh_scope(env);
         foreach (using->used, used, _) {
             sss_type_t *t = get_type(env, *used);
-            NEW_LIST(const char*, fields);
+            auto fields = EMPTY_ARRAY(const char*);
             for (;;) {
                 if (t->tag == PointerType) {
                     if (Match(t, PointerType)->is_optional)
@@ -611,10 +610,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
                 if (can_be_lvalue(env, shim, false)) {
                     gcc_lvalue_t *lval = get_lvalue(env, block, shim, false);
-                    hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
+                    Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
                 } else {
                     gcc_rvalue_t *rval = compile_expr(env, block, shim);
-                    hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .rval=rval));
+                    Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .rval=rval));
                 }
             }
         }
@@ -702,19 +701,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_constant(env, ast);
     }
     case Interp: {
-        return compile_expr(env, block, WrapAST(ast, StringJoin, .children=LIST(ast_t*, ast)));
+        return compile_expr(env, block, WrapAST(ast, StringJoin, .children=ARRAY(ast)));
     }
 #define STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval) \
-        gcc_struct_constructor(env->ctx, loc, gcc_t, 4, (gcc_field_t*[]){ \
+        gcc_struct_constructor(env->ctx, loc, gcc_t, 6, (gcc_field_t*[]){ \
                                           gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_DATA_FIELD), \
                                           gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_LENGTH_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_STRIDE_FIELD), \
                                           gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_CAPACITY_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_COW_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_ATOMIC_FIELD), \
+                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_STRIDE_FIELD), \
                                       }, (gcc_rvalue_t*[]){ \
                                           str_rval, \
-                                          gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT32)), \
+                                          gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT64)), \
+                                          gcc_rvalue_uint8(env->ctx, 0), \
+                                          gcc_rvalue_uint8(env->ctx, 0), \
+                                          gcc_rvalue_uint8(env->ctx, 1), \
                                           gcc_cast(env->ctx, loc, stride_rval, gcc_type(env->ctx, INT16)), \
-                                          gcc_rvalue_int16(env->ctx, -1), \
                                       })
     case StringLiteral: {
         const char* str = Match(ast, StringLiteral)->str;
@@ -757,11 +760,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
 
         // Optimize the case of empty strings
-        if (length(chunks) == 0) {
+        if (LENGTH(chunks) == 0) {
             return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i16_t));
-        } else if (length(chunks) == 1 && LIST_ITEM(chunks, 0)->tag == StringLiteral) {
+        } else if (LENGTH(chunks) == 1 && ith(chunks, 0)->tag == StringLiteral) {
             // Optimize the case of a single string literal
-            return compile_expr(env, block, LIST_ITEM(chunks, 0));
+            return compile_expr(env, block, ith(chunks, 0));
         }
 
         gcc_func_t *func = gcc_block_func(*block);
@@ -885,16 +888,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *def = NewAST(
             env->file, ast->start, ast->end,
             FunctionDef,
-            .args=(args_t){.names=LIST(const char*, convert->var),
-                           .types=LIST(ast_t*, convert->source_type)},
+            .args=(args_t){.names=ARRAY(convert->var),
+                           .types=ARRAY(convert->source_type)},
             .ret_type=convert->target_type,
             .body=convert->body);
         gcc_func_t *func = get_function_def(env, def, fresh("convert"));
         // compile_function(env, func, def);
         const char *name = heap_strf("#convert-from:%s", type_to_string(src_t));
-        sss_hashmap_t *ns = get_namespace(env, target_t);
-        hset(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=LIST(sss_type_t*, src_t), .ret=target_t),
-                           .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
+        table_t *ns = get_namespace(env, target_t);
+        Table_sets(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=ARRAY(src_t), .ret=target_t),
+                                 .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
     case TypeDef: {
@@ -902,7 +905,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = Match(b->type, TypeType)->type;
         env = get_type_env(env, t);
 
-        List(ast_t*) members = Match(ast, TypeDef)->definitions;
+        auto members = Match(ast, TypeDef)->definitions;
 
         foreach (members, stmt, _)
             predeclare_def_types(env, *stmt, true);
@@ -913,9 +916,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         defer_t *prev_deferred = env->deferred;
 
-        NEW_LIST(const char*, field_names);
-        NEW_LIST(sss_type_t*, field_types);
-        NEW_LIST(gcc_rvalue_t*, field_values);
+        auto field_names = EMPTY_ARRAY(const char*);
+        auto field_types = EMPTY_ARRAY(sss_type_t*);
+        auto field_values = EMPTY_ARRAY(gcc_rvalue_t*);
         foreach (members, member, _) {
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
@@ -926,27 +929,27 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 const char* name = Match(decl->var, Var)->name;
                 const char* sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
-                hset(env->bindings, name,
-                     new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
+                Table_sets(env->bindings, name,
+                           new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
-                APPEND(field_names, Match(decl->var, Var)->name);
-                APPEND(field_types, t);
-                APPEND(field_values, gcc_rval(lval));
+                append(field_names, Match(decl->var, Var)->name);
+                append(field_types, t);
+                append(field_values, gcc_rval(lval));
             } else if ((*member)->tag == TypeDef) {
                 auto def = Match(*member, TypeDef);
                 sss_type_t *ft = get_namespace_type(env, def->definitions);
-                APPEND(field_names, def->name);
-                APPEND(field_types, ft);
+                append(field_names, def->name);
+                append(field_types, ft);
                 gcc_rvalue_t *rval = compile_expr(env, block, *member);
-                APPEND(field_values, rval);
+                append(field_values, rval);
             } else if ((*member)->tag == FunctionDef) {
                 auto def = Match(*member, FunctionDef);
                 compile_statement(env, block, *member);
                 binding_t *b = get_binding(env, def->name);
-                APPEND(field_names, def->name);
-                APPEND(field_types, b->type);
-                APPEND(field_values, b->rval);
+                append(field_names, def->name);
+                append(field_types, b->type);
+                append(field_values, b->rval);
             } else {
                 compile_statement(env, block, *member);
             }
@@ -958,12 +961,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *expr_t = Type(StructType, .field_names=field_names, .field_types=field_types);
         gcc_type_t *expr_gcc_t = sss_type_to_gcc(env, expr_t);
         gcc_lvalue_t *var = gcc_local(func, loc, expr_gcc_t, fresh("type_value"));
-        gcc_field_t *fields[LIST_LEN(field_types)];
-        for (int i = 0; i < LIST_LEN(field_types); i++)
+        gcc_field_t *fields[LENGTH(field_types)];
+        for (int64_t i = 0; i < LENGTH(field_types); i++)
             fields[i] = gcc_get_field(gcc_type_if_struct(expr_gcc_t), i);
-        if (LIST_LEN(field_types) > 0)
+        if (LENGTH(field_types) > 0)
             gcc_assign(*block, loc, var, gcc_struct_constructor(
-                    env->ctx, loc, expr_gcc_t, LIST_LEN(field_types), fields, field_values[0]));
+                    env->ctx, loc, expr_gcc_t, LENGTH(field_types), fields, field_values[0]));
         return gcc_rval(var);
     }
     case Struct: {
@@ -1002,20 +1005,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (call->extern_return_type) {
             sss_type_t *ret_t = parse_type_ast(env, call->extern_return_type);
             gcc_type_t *gcc_ret_t = sss_type_to_gcc(env, ret_t);
-            NEW_LIST(const char*, arg_names);
-            NEW_LIST(sss_type_t*, arg_types);
-            NEW_LIST(gcc_param_t*, params);
+            auto arg_names = EMPTY_ARRAY(const char*);
+            auto arg_types = EMPTY_ARRAY(sss_type_t*);
+            auto params = EMPTY_ARRAY(gcc_param_t*);
             foreach (call->args, arg, _) {
                 ast_t *val = ((*arg)->tag == KeywordArg) ? Match(*arg, KeywordArg)->arg : *arg;
                 sss_type_t *arg_t = get_type(env, val);
                 gcc_type_t *arg_gcc_t = sss_type_to_gcc(env, arg_t);
                 const char* arg_name = ((*arg)->tag == KeywordArg) ? Match(*arg, KeywordArg)->name : fresh("arg");
-                APPEND(arg_names, arg_name);
-                APPEND(arg_types, arg_t);
-                APPEND(params, gcc_new_param(env->ctx, loc, arg_gcc_t, arg_name));
+                append(arg_names, arg_name);
+                append(arg_types, arg_t);
+                append(params, gcc_new_param(env->ctx, loc, arg_gcc_t, arg_name));
             }
             gcc_func_t *func = gcc_new_func(
-                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, Match(call->fn, Var)->name, length(params), params[0], 0);
+                env->ctx, loc, GCC_FUNCTION_IMPORTED, gcc_ret_t, Match(call->fn, Var)->name, LENGTH(params), params[0], 0);
             fn_ptr = gcc_get_func_address(func, loc);
             fn_sss_t = Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret_t, .env=env);
             goto got_function;
@@ -1072,7 +1075,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (binding->type->tag != FunctionType)
                     compiler_err(env, call->fn, "This value isn't a function, it's a %T", binding->type);
                 auto fn_info = Match(binding->type, FunctionType);
-                if (length(fn_info->arg_types) < 1)
+                if (LENGTH(fn_info->arg_types) < 1)
                     compiler_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %T.%s()",
                           value_type, access->field);
 
@@ -1104,21 +1107,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
       got_function:;
 
         auto fn_t = Match(fn_sss_t, FunctionType);
-        int64_t num_args = length(fn_t->arg_types);
-        List(ast_t*) args;
+        int64_t num_args = LENGTH(fn_t->arg_types);
+        ARRAY_OF(ast_t*) args;
         if (self_val) {
             assert(self_ast && self_t);
-            args = LIST(ast_t*, self_ast);
+            args = ARRAY(self_ast);
             foreach (call->args, a, _)
                 append(args, *a);
         } else {
             args = call->args;
         }
 
-        if (length(args) > num_args)
+        if (LENGTH(args) > num_args)
             compiler_err(env, ast, "This function call has too many arguments");
 
-        List(arg_info_t) arg_infos = bind_arguments(env, args, fn_t->arg_names, fn_t->arg_types, fn_t->arg_defaults);
+        ARRAY_OF(arg_info_t) arg_infos = bind_arguments(env, args, fn_t->arg_names, fn_t->arg_types, fn_t->arg_defaults);
         
         env_t *default_env = fn_t->env ? fresh_scope(fn_t->env) : file_scope(env);
         gcc_func_t *func = gcc_block_func(*block);
@@ -1152,7 +1155,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             arg_rvals[arg->position] = rval;
             if (arg->name)
-                hset(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
+                Table_sets(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
         }
 
         if (fn)
@@ -1262,7 +1265,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (Match(fielded_t, VariantType)->variant_of->tag == TaggedUnionType) {
                 // Accessing foo.Tag shouldn't return the constructor, it should do a checked access
                 auto tagged = Match(Match(fielded_t, VariantType)->variant_of, TaggedUnionType);
-                for (int64_t i = 0; i < length(tagged->members); i++) {
+                for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
                     auto member = ith(tagged->members, i);
                     if (streq(access->field, member.name)) {
                         fielded_t = Match(fielded_t, VariantType)->variant_of;
@@ -1280,7 +1283,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
             gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
             auto struct_type = Match(fielded_t, StructType);
-            for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
+            for (int64_t i = 0, len = LENGTH(struct_type->field_names); i < len; i++) {
                 const char *field_name = ith(struct_type->field_names, i);
                 if (!field_name) field_name = heap_strf("_%ld", i+1);
                 if (streq(field_name, access->field)) {
@@ -1291,7 +1294,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case ArrayType: {
-            if (streq(access->field, "length")) {
+            if (streq(access->field, "LENGTH")) {
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
                 gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
                 gcc_field_t *field = gcc_get_field(array_struct, ARRAY_LENGTH_FIELD);
@@ -1300,7 +1303,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case RangeType: {
-            if (streq(access->field, "length")) {
+            if (streq(access->field, "LENGTH")) {
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
                 return range_len(env, gcc_t, obj);
             } else if (streq(access->field, "first")) {
@@ -1316,7 +1319,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case TableType: {
-            if (streq(access->field, "length")) {
+            if (streq(access->field, "LENGTH")) {
                 gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_COUNT_FIELD);
                 return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
             } else if (streq(access->field, "default")) {
@@ -1379,7 +1382,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case TaggedUnionType: {
             auto tagged = Match(fielded_t, TaggedUnionType);
-            for (int64_t i = 0; i < length(tagged->members); i++) {
+            for (int64_t i = 0; i < LENGTH(tagged->members); i++) {
                 auto member = ith(tagged->members, i);
                 if (!streq(access->field, member.name)) continue;
 
@@ -1582,7 +1585,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             foreach (members, member, _) {
                 if (!member->type || member->type->tag != StructType) continue;
                 auto struct_ = Match(member->type, StructType);
-                if (LIST_LEN(struct_->field_types) != 1) continue;
+                if (LENGTH(struct_->field_types) != 1) continue;
                 if (!can_promote(src_t, ith(struct_->field_types, 0))) continue;
                 assert(promote(env, src_t, &val, ith(struct_->field_types, 0)));
                 if (tag_name)
@@ -1648,8 +1651,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *tag_gcc_t = get_tag_type(env, t);
             int64_t all_tags = 0;
             auto members = Match(base_variant(t), TaggedUnionType)->members;
-            for (int64_t i = 0; i < length(members); i++) {
-                if (ith(members, i).type && length(Match(ith(members, i).type, StructType)->field_types) > 0)
+            for (int64_t i = 0; i < LENGTH(members); i++) {
+                if (ith(members, i).type && LENGTH(Match(ith(members, i).type, StructType)->field_types) > 0)
                     compiler_err(env, ast, "%T tagged union values can't be negated because some tags have data attached to them.", t);
                 all_tags |= ith(members, i).tag_value;
             }
@@ -1838,7 +1841,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *rhs_loop = WrapAST(concat->rhs, For, .iter=concat->rhs,
                                   .value=WrapAST(concat->rhs, Var, .name="x.0"),
                                   .body=WrapAST(concat->rhs, Var, .name="x.0"));
-        ast_t *concat_ast = WrapAST(ast, Array, .items=LIST(ast_t*, lhs_loop, rhs_loop));
+        ast_t *concat_ast = WrapAST(ast, Array, .items=ARRAY(lhs_loop, rhs_loop));
         return compile_expr(env, block, concat_ast);
     }
     case ConcatenateUpdate: {
@@ -1955,8 +1958,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, loc, subject_var, subject);
         if (if_->subject->tag == Declare) {
             env = fresh_scope(env);
-            hset(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
-                 new(binding_t, .type=subject_t, .lval=subject_var, .rval=gcc_rval(subject_var)));
+            Table_sets(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
+                       new(binding_t, .type=subject_t, .lval=subject_var, .rval=gcc_rval(subject_var)));
         }
         subject = gcc_rval(subject_var);
 
@@ -1972,7 +1975,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         gcc_lvalue_t *when_value = has_value ? gcc_local(func, loc, sss_type_to_gcc(env, result_t), "_when_value") : NULL;
-        for (int64_t i = 0; i < LIST_LEN(if_->patterns); i++) {
+        for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
             auto outcomes = perform_conditional_match(env, block, subject_t, subject, ith(if_->patterns, i));
             gcc_rvalue_t *result = compile_expr(outcomes.match_env, &outcomes.match_block, ith(if_->blocks, i));
             assert(*block == NULL);
@@ -2105,8 +2108,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             env_t *lhs_env = fresh_scope(env), *rhs_env = fresh_scope(env);
             const char *var_name = (ast->tag == Min) ? "_min_" : "_max_";
             // Note: These both use 't' because promotion has already occurred.
-            hset(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
-            hset(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
+            Table_sets(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
+            Table_sets(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
 
             sss_type_t *cmp_lhs_t = get_type(lhs_env, key);
             gcc_rvalue_t *lhs_cmp_val = compile_expr(lhs_env, block, key),
@@ -2151,7 +2154,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, Var, "Num32"));
         if (streq(type_units(mix_t), "%"))
             amount = WrapAST(mix->key, Divide, amount, WrapAST(mix->key, Num, .n=1.0, .precision=32, .units="%"));
-        ast_t *mix_equation = WrapAST(ast, Block, LIST(ast_t*,
+        ast_t *mix_equation = WrapAST(ast, Block, ARRAY(
             WrapAST(mix->key, Declare, amount_var, amount),
             WrapAST(ast, Add,
                 WrapAST(mix->lhs, Multiply,
@@ -2169,7 +2172,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env = fresh_scope(env);
 
         ast_t *accum_var = WrapAST(ast, Var, .name="x.0");
-        hset(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        Table_sets(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
         ast_t *incoming_var = WrapAST(ast, Var, .name="y.0");
 
         ast_t *index, *value, *iter, *first, *between, *empty;
@@ -2182,11 +2185,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         value = incoming_var;
         iter = reduction->iter;
-        first = WrapAST(reduction->combination, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, value));
-        between = WrapAST(reduction->combination, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, reduction->combination));
+        first = WrapAST(reduction->combination, Assign, ARRAY(accum_var), ARRAY(value));
+        between = WrapAST(reduction->combination, Assign, ARRAY(accum_var), ARRAY(reduction->combination));
 
         if (reduction->fallback)
-            empty = WrapAST(reduction->fallback, Assign, LIST(ast_t*, accum_var), LIST(ast_t*, reduction->fallback));
+            empty = WrapAST(reduction->fallback, Assign, ARRAY(accum_var), ARRAY(reduction->fallback));
         else
             empty = WrapAST(reduction->iter, Fail, .message=StringAST(reduction->iter, "This collection was empty"));
 
@@ -2271,17 +2274,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             case Assign: {
                 auto assign = Match(expr, Assign);
                 ast_t *first = ith(assign->targets, 0);
-                if (length(assign->targets) == 1) {
+                if (LENGTH(assign->targets) == 1) {
                     sss_type_t *lhs_t = get_type(env, first);
-                    gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=LIST(sss_type_t*,lhs_t), .field_names=LIST(const char*, "_1")));
+                    gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=ARRAY(lhs_t), .field_names=ARRAY((const char*)"_1")));
                     val = gcc_rvalue_access_field(
                         val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
                     DOCTEST(heap_strf("%#W =", first), lhs_t, val);
                 } else {
-                    ast_t *last = ith(assign->targets, length(assign->targets)-1);
-                    NEW_LIST(ast_t*, members);
-                    for (int64_t i = 0; i < length(assign->targets); i++) {
-                        APPEND(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
+                    ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
+                    auto members = EMPTY_ARRAY(ast_t*);
+                    for (int64_t i = 0; i < LENGTH(assign->targets); i++) {
+                        append(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
                     }
                     sss_type_t *lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
                     DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), lhs_t, val);

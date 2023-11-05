@@ -10,11 +10,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "api.h"
 #include "parse.h"
 #include "files.h"
 #include "typecheck.h"
 #include "compile/compile.h"
+#include "builtins/table.h"
 #include "util.h"
 
 static bool verbose = false;
@@ -115,25 +115,25 @@ int run_repl(gcc_jit_context *ctx)
     // Set up `PROGRAM_NAME`
     sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
-    hset(&env->global->bindings, "PROGRAM_NAME",
+    Table_sets(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=string_t));
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    hset(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
+    Table_sets(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
     gcc_jit_global_set_initializer_rvalue(use_color_var, gcc_rvalue_bool(ctx, use_color));
-    hset(&env->global->bindings, "USE_COLOR",
+    Table_sets(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color_var), .type=Type(BoolType), .visible_in_closures=true));
 
     // Keep track of which functions have already been compiled:
-    sss_hashmap_t compiled_functions = {0};
+    table_t compiled_functions = {0};
 
     // Keep these alive and clean them up at the end so we can continue accessing their memory:
-    NEW_LIST(gcc_jit_result*, results);
+    auto results = EMPTY_ARRAY(gcc_jit_result*);
 
     // Read lines until we get a blank line
     for (;;) {
@@ -216,10 +216,10 @@ int run_repl(gcc_jit_context *ctx)
         ast_t *ast = parse_file(f, &on_err);
 
         // Convert decls to globals and wrap all statements in doctests
-        List(ast_t*) statements = Match(ast, Block)->statements;
-        NEW_LIST(ast_t*, stmts);
-        for (int64_t i = 0; i < LIST_LEN(statements); i++) {
-            ast_t *stmt = LIST_ITEM(statements, i);
+        auto statements = Match(ast, Block)->statements;
+        auto stmts = EMPTY_ARRAY(ast_t*);
+        for (int64_t i = 0; i < LENGTH(statements); i++) {
+            ast_t *stmt = ith(statements, i);
             if (stmt->tag == Use || (stmt->tag == Declare && Match(stmt, Declare)->value->tag == Use)) {
                 if (use_color) fprintf(stdout, "\x1b[31;1m");
                 fprintf(stdout, "I'm sorry, but 'use' statements are not currently supported in the REPL!\n");
@@ -231,7 +231,7 @@ int run_repl(gcc_jit_context *ctx)
             if (stmt->tag == Declare)
                 stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_global=true);
             stmt = WrapAST(stmt, DocTest, .expr=stmt, .skip_source=true);
-            APPEND(stmts, stmt);
+            append(stmts, stmt);
         }
         ast = WrapAST(ast, Block, .statements=stmts, .keep_scope=true);
 
@@ -250,11 +250,13 @@ int run_repl(gcc_jit_context *ctx)
         }
 
         for (uint32_t i = 1; i <= fresh_env->global->ast_functions.count; i++) {
-            auto entry = hnth(&fresh_env->global->ast_functions, i, ast_t*, func_context_t*);
-            if (hget(&compiled_functions, entry->value->func, void*))
+            struct { const char *key; func_context_t *value; } *entry = Table_nths(&fresh_env->global->ast_functions, i);
+            const char *func_addr = heap_strf("%p", entry->value->func);
+            if (Table_gets(&compiled_functions, func_addr))
                 continue;
-            compile_function(&entry->value->env, entry->value->func, entry->key);
-            hset(&compiled_functions, entry->value->func, entry->value->func);
+            ast_t *ast = (ast_t*)strtol(entry->key, NULL, 16); // ugly hack, key is a string-encoded pointer
+            compile_function(&entry->value->env, entry->value->func, ast);
+            Table_sets(&compiled_functions, func_addr, entry->value->func);
         }
 
         result = gcc_compile(ctx);
@@ -273,11 +275,11 @@ int run_repl(gcc_jit_context *ctx)
         fflush(stdout);
 
         // Copy out the variables to GC memory
-        for (sss_hashmap_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
+        for (table_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
             for (uint32_t i = 1; i <= bindings->count; i++) {
-                auto entry = hnth(bindings, i, const char*, binding_t*);
+                struct {const char *key; binding_t *value;} *entry = Table_nths(bindings, i);
                 binding_t *b = entry->value;
-                if (!b->sym_name || hget(env->bindings, entry->key, binding_t*) == b)
+                if (!b->sym_name || Table_gets(env->bindings, entry->key) == b)
                     continue;
 
                 // Update the binding so it points to the global memory:
@@ -287,7 +289,7 @@ int run_repl(gcc_jit_context *ctx)
                 gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(fresh_env->ctx, gcc_get_ptr_type(gcc_t), global);
                 b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
                 b->rval = gcc_rval(b->lval);
-                hset(env->bindings, entry->key, b);
+                Table_sets(env->bindings, entry->key, b);
             }
         }
 
@@ -333,7 +335,7 @@ int main(int argc, char *argv[])
         gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
 
     const char *driver_flags[] = {
-        "-lgc", "-lcord", "-lm", "-L.", "-l:libsss.so."SSS_VERSION,
+        "-lgc", "-lcord", "-lm", "-L.", "-l:libsss.so."SSS_VERSION, "-l:libbuiltins.so",
         "-Wl,-rpath", "-Wl,$ORIGIN",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)
@@ -346,6 +348,11 @@ int main(int argc, char *argv[])
         errx(1, "Couldn't set printf specifier");
     if (register_printf_specifier('W', printf_ast, printf_pointer_size))
         errx(1, "Couldn't set printf specifier");
+
+    extern Type CStringToVoidStarTable_type;
+    extern Type CString_type;
+    extern Type Memory_type;
+    CStringToVoidStarTable_type = make_table_type(&CString_type, &Memory_type);
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
@@ -372,18 +379,6 @@ int main(int argc, char *argv[])
             gcc_jit_context_add_command_line_option(ctx, "-fverbose-asm");
             verbose = true;
             continue;
-        } else if (streq(argv[i], "-a") || streq(argv[i], "--api")) {
-            if (i+1 >= argc)
-                errx(1, "I expected a .sss file to generate an API file for");
-
-            sss_file_t *f = sss_load_file(argv[i+1]);
-            if (!f) {
-                if (argv[i+1][0] == '-')
-                    errx(1, "'%s' is not a recognized command-line argument", argv[i+1]);
-                errx(1, "Couldn't open file: %s", argv[i+1]);
-            }
-            generate_api_file(argv[i+1], parse_file(f, NULL));
-            return 0;
         } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
             if (streq(argv[i]+2, "fast")) {
                 tail_calls = true;

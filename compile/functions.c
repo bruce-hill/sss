@@ -25,16 +25,16 @@ static bool is_cacheable(sss_type_t *t)
     case GeneratorType: return false;
     case StructType: {
         auto field_types = Match(t, StructType)->field_types;
-        for (int64_t i = 0; i < LIST_LEN(field_types); i++) {
-            if (!is_cacheable(LIST_ITEM(field_types, i)))
+        for (int64_t i = 0; i < LENGTH(field_types); i++) {
+            if (!is_cacheable(ith(field_types, i)))
                 return false;
         }
         return true;
     }
     case TaggedUnionType: {
         auto members = Match(t, TaggedUnionType)->members;
-        for (int64_t i = 0; i < LIST_LEN(members); i++) {
-            auto member = LIST_ITEM(members, i);
+        for (int64_t i = 0; i < LENGTH(members); i++) {
+            auto member = ith(members, i);
             if (member.type && !is_cacheable(member.type))
                 return false;
         }
@@ -47,20 +47,20 @@ static bool is_cacheable(sss_type_t *t)
 // Given an unpopulated function, populate its body with code that checks if
 // the arguments are in a cache, and if not, populates the cache by calling an
 // inline function with the real computational work (the returned func).
-static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_func_t *func, const char *name, List(const char*) arg_names, ast_t *max_cache_size)
+static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_func_t *func, const char *name, ARRAY_OF(const char*) arg_names, ast_t *max_cache_size)
 {
     auto fn_info = Match(fn_t, FunctionType);
-    NEW_LIST(gcc_param_t*, params);
-    for (int64_t i = 0; i < length(arg_names); i++) {
+    auto params = EMPTY_ARRAY(gcc_param_t*);
+    for (int64_t i = 0; i < LENGTH(arg_names); i++) {
         sss_type_t *argtype = ith(fn_info->arg_types, i);
         gcc_param_t *param = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, argtype), ith(arg_names, i));
         append(params, param);
-        hset(env->bindings, ith(arg_names, i), new(binding_t, .type=argtype, .lval=gcc_param_as_lvalue(param), .rval=gcc_param_as_rvalue(param)));
+        Table_sets(env->bindings, ith(arg_names, i), new(binding_t, .type=argtype, .lval=gcc_param_as_lvalue(param), .rval=gcc_param_as_rvalue(param)));
     }
 
     gcc_func_t *inner_func = gcc_new_func(
         env->ctx, loc, GCC_FUNCTION_ALWAYS_INLINE,
-        sss_type_to_gcc(env, fn_info->ret), name, length(params), params[0], 0);
+        sss_type_to_gcc(env, fn_info->ret), name, LENGTH(params), params[0], 0);
 
     gcc_block_t *block = gcc_new_block(func, fresh("cache_wrapper"));
     sss_type_t *arg_tuple_t = Type(StructType, .field_names=arg_names, .field_types=fn_info->arg_types);
@@ -71,8 +71,8 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
 
     gcc_lvalue_t *arg_tuple = gcc_local(func, loc, arg_tuple_gcc_t, "_cache_key");
     gcc_assign(block, loc, arg_tuple, gcc_struct_constructor(env->ctx, loc, arg_tuple_gcc_t, 0, NULL, NULL));
-    NEW_LIST(gcc_rvalue_t*, arg_rvals);
-    for (int64_t i = 0; i < length(arg_names); i++) {
+    auto arg_rvals = EMPTY_ARRAY(gcc_rvalue_t*);
+    for (int64_t i = 0; i < LENGTH(arg_names); i++) {
         gcc_assign(block, loc, gcc_lvalue_access_field(arg_tuple, loc, gcc_get_field(gcc_type_if_struct(arg_tuple_gcc_t), i)),
                    gcc_param_as_rvalue(gcc_func_get_param(func, i)));
         append(arg_rvals, gcc_param_as_rvalue(gcc_func_get_param(func, i)));
@@ -125,7 +125,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
     }
 
     gcc_lvalue_t *cached_var = gcc_local(func, loc, sss_type_to_gcc(env, fn_info->ret), "_cached");
-    gcc_assign(block, loc, cached_var, gcc_call(env->ctx, loc, inner_func, length(arg_rvals), arg_rvals[0]));
+    gcc_assign(block, loc, cached_var, gcc_call(env->ctx, loc, inner_func, LENGTH(arg_rvals), arg_rvals[0]));
     gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
     gcc_eval(block, loc, gcc_callx(
             env->ctx, loc, hashmap_set_fn,
@@ -153,7 +153,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     args_t args = def->tag == FunctionDef ? Match(def, FunctionDef)->args : Match(def, Lambda)->args;
 
     // Populate bindings for the arguments:
-    for (int64_t i = 0; i < length(args.names); i++) {
+    for (int64_t i = 0; i < LENGTH(args.names); i++) {
         const char* argname = ith(args.names, i);
         sss_type_t *argtype = ith(fn_info->arg_types, i);
         if (argtype->tag == VoidType)
@@ -161,14 +161,14 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
-        hset(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
+        Table_sets(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
     ast_t *max_cache_size = def->tag == FunctionDef ? Match(def, FunctionDef)->cache : NULL;
     if (max_cache_size) {
         if (fn_info->ret->tag == AbortType || fn_info->ret->tag == VoidType || fn_info->ret->tag == GeneratorType)
             compiler_err(env, def, "Functions can't be cached unless they have a return value.");
-        for (int64_t i = 0; i < length(fn_info->arg_types); i++) {
+        for (int64_t i = 0; i < LENGTH(fn_info->arg_types); i++) {
             sss_type_t *arg_t = ith(fn_info->arg_types, i);
             if (has_stack_memory(arg_t))
                 compiler_err(env, def, "Functions can't be cached if they take a pointer to stack memory, like the argument '%s' (type: %T)",
@@ -197,13 +197,14 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
-    func_context_t *func_context = hget(&env->global->ast_functions, def, func_context_t*);
+    const char *key = heap_strf("%p", def);
+    func_context_t *func_context = Table_gets(&env->global->ast_functions, key);
     if (func_context) return func_context->func;
 
     auto t = Match(get_type(env, def), FunctionType);
-    NEW_LIST(gcc_param_t*, params);
+    auto params = EMPTY_ARRAY(gcc_param_t*);
     auto arg_names = def->tag == FunctionDef ? Match(def, FunctionDef)->args.names : Match(def, Lambda)->args.names;
-    for (int64_t i = 0; i < length(arg_names); i++) {
+    for (int64_t i = 0; i < LENGTH(arg_names); i++) {
         const char* argname = ith(arg_names, i);
         sss_type_t *argtype = ith(t->arg_types, i);
         gcc_param_t *param = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, argtype), fresh(argname));
@@ -213,9 +214,9 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
     gcc_func_t *func = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
-        sss_type_to_gcc(env, t->ret), name, length(params), params[0], 0);
+        sss_type_to_gcc(env, t->ret), name, LENGTH(params), params[0], 0);
     func_context = new(func_context_t, .func=func, .env=*env);
-    hset(&env->global->ast_functions, def, func_context);
+    Table_sets(&env->global->ast_functions, key, func_context);
     return func;
 }
 

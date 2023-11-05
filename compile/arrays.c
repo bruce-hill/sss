@@ -53,8 +53,8 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_lvalue_t *length_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, ARRAY_LENGTH_FIELD));
 
     // array.length += 1
-    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
-    gcc_update(*block, NULL, length_field, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+    gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+    gcc_update(*block, NULL, length_field, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
 
     if (info->dynamic_size) {
         // array.items = GC_realloc(array.items, item_size*array.length)
@@ -70,7 +70,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     }
 
     // array.items[array.length-1] = item
-    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i32, gcc_rval(length_field), gcc_one(env->ctx, i32));
+    gcc_rvalue_t *index = gcc_binary_op(env->ctx, NULL, GCC_BINOP_MINUS, i64, gcc_rval(length_field), gcc_one(env->ctx, i64));
     // NOTE: This assumes stride == item_size
     gcc_lvalue_t *item_home = gcc_array_access(env->ctx, NULL, gcc_rval(data_field), index);
     if (!type_eq(t, item_type))
@@ -223,28 +223,28 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     if (index->tag == Range) {
         auto range = Match(index, Range);
         if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
-            gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
-#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i32_t, a, b)
+            gcc_type_t *i64_t = gcc_type(env->ctx, INT32);
+#define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, a, b)
             gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD));
             gcc_rvalue_t *offset;
             if (range->first)
-                offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i32_t), gcc_one(env->ctx, i32_t));
+                offset = SUB(gcc_cast(env->ctx, loc, compile_expr(env, block, range->first), i64_t), gcc_one(env->ctx, i64_t));
             else
-                offset = gcc_zero(env->ctx, i32_t);
+                offset = gcc_zero(env->ctx, i64_t);
 
-            gcc_lvalue_t *offset_var = gcc_local(func, loc, i32_t, "_offset");
+            gcc_lvalue_t *offset_var = gcc_local(func, loc, i64_t, "_offset");
             gcc_assign(*block, loc, offset_var, offset);
             // Bit hack to branchlessly set offset to zero when it would otherwise be negative:
             // offset &= ~(offset >> 31)
             gcc_update(*block, loc, offset_var, GCC_BINOP_BITWISE_AND,
-               gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, i32_t,
-                   gcc_binary_op(env->ctx, loc, GCC_BINOP_RSHIFT, i32_t, offset, gcc_rvalue_int32(env->ctx, 31))));
+               gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, i64_t,
+                   gcc_binary_op(env->ctx, loc, GCC_BINOP_RSHIFT, i64_t, offset, gcc_rvalue_int32(env->ctx, 31))));
             gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
             offset = gcc_rval(offset_var);
 
             gcc_type_t *gcc_item_t = sss_type_to_gcc(env, get_item_type(arr_t));
             gcc_rvalue_t *items = pointer_offset(env, gcc_get_ptr_type(gcc_item_t), old_items,
-                                                 gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, offset, gcc_cast(env->ctx, loc, old_stride, i32_t)));
+                                                 gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, offset, gcc_cast(env->ctx, loc, old_stride, i64_t)));
 
             gcc_lvalue_t *slice = gcc_local(func, loc, array_gcc_t, "_slice");
             // assign slice.items and slice.stride
@@ -257,7 +257,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
                 gcc_block_t *array_shorter = gcc_new_block(func, "array_shorter"),
                             *range_shorter = gcc_new_block(func, "range_shorter"),
                             *len_assigned = gcc_new_block(func, "len_assigned");
-                gcc_rvalue_t *range_len = gcc_cast(env->ctx, loc, compile_expr(env, block, range->last), i32_t);
+                gcc_rvalue_t *range_len = gcc_cast(env->ctx, loc, compile_expr(env, block, range->last), i64_t);
 
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, array_len, range_len), array_shorter, range_shorter);
 
@@ -311,27 +311,27 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
     if (streq(field_name, "length"))
         return NULL;
 
-    sss_type_t *array_t = get_type(env, ast);
+    sss_type_t *array_type = get_type(env, ast);
     gcc_loc_t *loc = ast_loc(env, ast);
-    if (array_t->tag == PointerType) {
-        auto ptr = Match(array_t, PointerType);
+    if (array_type->tag == PointerType) {
+        auto ptr = Match(array_type, PointerType);
         if (ptr->is_optional)
             compiler_err(env, ast, "This value can't be sliced, because it may or may not be null.");
         return array_field_slice(env, block, WrapAST(ast, Index, .indexed=ast), field_name, access);
     }
 
-    sss_type_t *item_t = get_item_type(array_t);
+    sss_type_t *item_t = get_item_type(array_type);
     if (!item_t)
         return NULL;
 
-    gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
+    gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_type);
     gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
 
     gcc_type_t *item_gcc_t = sss_type_to_gcc(env, item_t);
     gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
 
     auto struct_type = Match(base_variant(item_t), StructType);
-    for (int64_t i = 0, len = length(struct_type->field_names); i < len; i++) {
+    for (int64_t i = 0, len = LENGTH(struct_type->field_names); i < len; i++) {
         const char *struct_field_name = ith(struct_type->field_names, i);
         if (!struct_field_name) struct_field_name = heap_strf("_%ld", i+1);
         if (!streq(struct_field_name, field_name))  continue;
@@ -341,7 +341,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         if (access == ACCESS_WRITE) {
             arr_var = get_lvalue(env, block, ast, true);
             if (access == ACCESS_WRITE)
-                check_cow(env, block, array_t, gcc_lvalue_address(arr_var, loc));
+                check_cow(env, block, array_type, gcc_lvalue_address(arr_var, loc));
         } else {
             arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
             gcc_assign(*block, loc, arr_var, compile_expr(env, block, ast));
@@ -368,19 +368,23 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         gcc_field_t *fields[] = {
             gcc_get_field(slice_struct, ARRAY_DATA_FIELD),
             gcc_get_field(slice_struct, ARRAY_LENGTH_FIELD),
-            gcc_get_field(slice_struct, ARRAY_STRIDE_FIELD),
             gcc_get_field(slice_struct, ARRAY_CAPACITY_FIELD),
+            gcc_get_field(slice_struct, ARRAY_COW_FIELD),
+            gcc_get_field(slice_struct, ARRAY_ATOMIC_FIELD),
+            gcc_get_field(slice_struct, ARRAY_STRIDE_FIELD),
         };
 
         gcc_rvalue_t *rvals[] = {
             field_addr,
             len,
+            gcc_rvalue_uint8(env->ctx, 0), // capacity
+            gcc_rvalue_uint8(env->ctx, (access == ACCESS_READ)), // copy on write
+            gcc_rvalue_uint8(env->ctx, !has_heap_memory(item_t)), // atomic
             stride,
-            gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0),
         };
 
         gcc_lvalue_t *result_var = gcc_local(func, loc, slice_gcc_t, "_slice");
-        gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, 4, fields, rvals));
+        gcc_assign(*block, loc, result_var, gcc_struct_constructor(env->ctx, loc, slice_gcc_t, sizeof(fields)/sizeof(fields[0]), fields, rvals));
         return gcc_rval(result_var);
     }
     return NULL;
@@ -493,25 +497,29 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
         compiler_err(env, ast, "Arrays can't be defined with a Void item type");
 
     gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
-    int64_t min_length = array->items ? length(array->items) : 0;
+    int64_t min_length = array->items ? LENGTH(array->items) : 0;
     gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * min_length));
     gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
     gcc_rvalue_t *initial_items = min_length == 0 ? 
         gcc_null(env->ctx, gcc_item_ptr_t) : gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
+    gcc_field_t *fields[] = {
+        gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
+        gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
+        gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
+        gcc_get_field(gcc_struct, ARRAY_COW_FIELD),
+        gcc_get_field(gcc_struct, ARRAY_ATOMIC_FIELD),
+        gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
+    };
+    gcc_rvalue_t *field_values[] = {
+        initial_items, // data
+        gcc_rvalue_int64(env->ctx, 0), // length
+        gcc_rvalue_uint8(env->ctx, 0), // capacity
+        gcc_rvalue_uint8(env->ctx, mark_cow), // copy on write
+        gcc_rvalue_uint8(env->ctx, !has_heap_memory(item_t)), // atomic
+        gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), // stride
+    };
     gcc_assign(*block, loc, array_var, gcc_struct_constructor(
-            env->ctx, loc, gcc_t, 4,
-            (gcc_field_t*[]){
-                gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
-                gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
-                gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
-                gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
-            },
-            (gcc_rvalue_t*[]){
-                initial_items,
-                gcc_zero(env->ctx, gcc_type(env->ctx, INT32)),
-                gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)),
-                gcc_rvalue_int16(env->ctx, mark_cow ? -1 : 0),
-            }));
+            env->ctx, loc, gcc_t, sizeof(fields)/sizeof(fields[0]), fields, field_values));
 
     if (array->items) {
         env_t env2 = *env;
@@ -525,7 +533,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = LIST(const char*, "[]"),
+                .names = ARRAY((const char*)"[]"),
                 .skip_label = item_done,
                 .stop_label = array_done,
             };
@@ -602,8 +610,8 @@ void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj,
         continue_next_item = gcc_new_block(func, fresh("carry_on"));
 
         char *escapes[128] = {['\a']="\\a",['\b']="\\b",['\x1b']="\\e",['\f']="\\f",['\n']="\\n",['\t']="\\t",['\r']="\\r",['\v']="\\v",['"']="\\\"",['\\']="\\\\"};
-        NEW_LIST(gcc_case_t*, cases);
-#define ADD_CASE(block, lo, hi) APPEND(cases, gcc_new_case(env->ctx, gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), block))
+        auto cases = EMPTY_ARRAY(gcc_case_t*);
+#define ADD_CASE(block, lo, hi) append(cases, gcc_new_case(env->ctx, gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), gcc_rvalue_from_long(env->ctx, gcc_item_t, lo), block))
         for (int i = 0; i < 128; i++) {
             char *escape_str = escapes[i];
             if (!escape_str) continue;
@@ -629,7 +637,7 @@ void compile_array_cord_func(env_t *env, gcc_block_t **block, gcc_rvalue_t *obj,
 #undef ADD_CASE
 
         gcc_block_t *default_block = gcc_new_block(func, fresh("default"));
-        gcc_switch(add_next_item, NULL, item, default_block, length(cases), cases[0]);
+        gcc_switch(add_next_item, NULL, item, default_block, LENGTH(cases), cases[0]);
 
         gcc_func_t *cord_cat_char_fn = get_function(env, "CORD_cat_char");
         gcc_assign(default_block, NULL, cord, gcc_callx(env->ctx, NULL, cord_cat_char_fn, gcc_rval(cord), item));
@@ -699,9 +707,9 @@ static void define_array_insert(env_t *env, sss_type_t *t)
 
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length"), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "item", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), item_t, Type(IntType, .bits=64)),
-                                  .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array", "item", "index"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true), item_t, Type(IntType, .bits=64)),
+                                  .arg_defaults=ARRAY((ast_t*)NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "insert", b);
 }
@@ -728,9 +736,9 @@ static void define_array_insert_all(env_t *env, sss_type_t *t)
 
     ast_t *len_plus_one = FakeAST(Add, .lhs=FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length"), .rhs=FakeAST(Int, .i=1, .precision=64));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "other", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), t, Type(IntType, .bits=64)),
-                                  .arg_defaults=LIST(ast_t*, NULL, NULL, len_plus_one),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array", "other", "index"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true), t, Type(IntType, .bits=64)),
+                                  .arg_defaults=ARRAY((ast_t*)NULL, NULL, len_plus_one),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "insert_all", b);
 }
@@ -757,9 +765,9 @@ static void define_array_remove(env_t *env, sss_type_t *t)
 
     ast_t *len = FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length");
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index", "count"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64), Type(IntType, .bits=64)),
-                                  .arg_defaults=LIST(ast_t*, NULL, len, FakeAST(Int, .precision=64, .i=1)),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array", "index", "count"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64), Type(IntType, .bits=64)),
+                                  .arg_defaults=ARRAY((ast_t*)NULL, len, FakeAST(Int, .precision=64, .i=1)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "remove", b);
 }
@@ -794,9 +802,9 @@ static void define_array_pop(env_t *env, sss_type_t *t)
 
     ast_t *len = FakeAST(FieldAccess, .fielded=FakeAST(Var, .name="array"), .field="length");
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "index"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64)),
-                                  .arg_defaults=LIST(ast_t*, NULL, len),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array", "index"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true), Type(IntType, .bits=64)),
+                                  .arg_defaults=ARRAY((ast_t*)NULL, len),
                                   .ret=item_t));
     set_in_namespace(env, t, "pop", b);
 }
@@ -818,8 +826,8 @@ static void define_array_shuffle(env_t *env, sss_type_t *t)
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true)),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "shuffle", b);
 }
@@ -835,7 +843,7 @@ static void define_array_sort(env_t *env, sss_type_t *t)
     gcc_block_t *block = gcc_new_block(func, fresh("sort"));
     gcc_func_t *c_sort_func = get_function(env, "array_sort");
     sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(MemoryType));
-    sss_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=LIST(sss_type_t*, void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
+    sss_type_t *ptr_cmp_fn_t = Type(FunctionType, .arg_types=ARRAY(void_ptr_t, void_ptr_t), .ret=Type(IntType, .bits=32));
     gcc_type_t *ptr_cmp_fn_gcc_t = sss_type_to_gcc(env, ptr_cmp_fn_t);
     gcc_rvalue_t *cmp = gcc_get_func_address(get_indirect_compare_func(env, item_t), NULL);
     gcc_eval(block, NULL, gcc_callx(env->ctx, NULL, c_sort_func,
@@ -846,19 +854,19 @@ static void define_array_sort(env_t *env, sss_type_t *t)
     gcc_return_void(block, NULL);
 
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array"),
-                                  .arg_types=LIST(sss_type_t*, Type(PointerType, .pointed=t, .is_stack=true)),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array"),
+                                  .arg_types=ARRAY(Type(PointerType, .pointed=t, .is_stack=true)),
                                   .ret=Type(VoidType)));
     set_in_namespace(env, t, "sort", b);
 }
 
 static void define_array_join(env_t *env, sss_type_t *glue_t)
 {
-    sss_type_t *array_t = Type(ArrayType, .item_type=glue_t);
+    sss_type_t *array_type = Type(ArrayType, .item_type=glue_t);
     gcc_type_t *glue_gcc_t = sss_type_to_gcc(env, glue_t);
     gcc_param_t *params[] = {
         gcc_new_param(env->ctx, NULL, glue_gcc_t, fresh("glue")),
-        gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, array_t), fresh("array")),
+        gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, array_type), fresh("array")),
     };
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, glue_gcc_t, fresh("join"), 2, params, 0);
     gcc_block_t *block = gcc_new_block(func, fresh("join"));
@@ -870,8 +878,8 @@ static void define_array_join(env_t *env, sss_type_t *glue_t)
                                      gcc_rvalue_bool(env->ctx, !has_heap_memory(glue_t)));
     gcc_return(block, NULL, gcc_bitcast(env->ctx, NULL, retval, glue_gcc_t));
     binding_t *b = new(binding_t, .func=func,
-                       .type=Type(FunctionType, .arg_names=LIST(const char*, "array", "glue"),
-                                  .arg_types=LIST(sss_type_t*, glue_t, array_t),
+                       .type=Type(FunctionType, .arg_names=ARRAY((const char*)"array", "glue"),
+                                  .arg_types=ARRAY(glue_t, array_type),
                                   .ret=glue_t));
     set_in_namespace(env, glue_t, "join", b);
 }

@@ -16,7 +16,7 @@
 #include "util.h"
 
 // Cache of type string -> tuple type
-static sss_hashmap_t tuple_types = {0};
+static table_t tuple_types = {0};
 
 sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
@@ -82,48 +82,48 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         sss_type_t *ret_t = parse_type_ast(env, fn->ret_type);
         if (has_stack_memory(ret_t))
             compiler_err(env, fn->ret_type, "Functions are not allowed to return stack references, because the reference may no longer exist on the stack.");
-        NEW_LIST(const char*, arg_names);
-        NEW_LIST(ast_t*, arg_defaults);
-        NEW_LIST(sss_type_t*, arg_types);
-        for (int64_t i = 0; i < LIST_LEN(fn->args.types); i++) {
-            APPEND(arg_names, ith(fn->args.names, i));
+        auto arg_names = EMPTY_ARRAY(const char*);
+        auto arg_defaults = EMPTY_ARRAY(ast_t*);
+        auto arg_types = EMPTY_ARRAY(sss_type_t*);
+        for (int64_t i = 0; i < LENGTH(fn->args.types); i++) {
+            append(arg_names, ith(fn->args.names, i));
             if (ith(fn->args.types, i)) {
-                APPEND(arg_types, parse_type_ast(env, ith(fn->args.types, i)));
-                APPEND(arg_defaults, NULL);
+                append(arg_types, parse_type_ast(env, ith(fn->args.types, i)));
+                append(arg_defaults, NULL);
             } else {
                 sss_type_t *arg_t = get_type(env, ith(fn->args.defaults, i));
-                APPEND(arg_types, arg_t);
-                APPEND(arg_defaults, ith(fn->args.defaults, i));
+                append(arg_types, arg_t);
+                append(arg_defaults, ith(fn->args.defaults, i));
             }
         }
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=file_scope(env));
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);
-        NEW_LIST(const char*, member_names);
-        NEW_LIST(sss_type_t*, member_types);
+        auto member_names = EMPTY_ARRAY(const char*);
+        auto member_types = EMPTY_ARRAY(sss_type_t*);
         sss_type_t *t = Type(StructType, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
-        for (int64_t i = 0, len = length(struct_->members.types); i < len; i++) {
+        for (int64_t i = 0, len = LENGTH(struct_->members.types); i < len; i++) {
             const char *member_name = ith(struct_->members.names, i);
-            APPEND(member_names, member_name);
+            append(member_names, member_name);
             ast_t *type_ast = ith(struct_->members.types, i);
             sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
             if (has_stack_memory(member_t))
                 compiler_err(env, ith(struct_->members.types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
-            APPEND(member_types, member_t);
+            append(member_types, member_t);
         }
-        sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
+        sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
         } else {
-            hset(&tuple_types, type_to_string(t), t);
+            Table_sets(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
     case TypeTaggedUnion: {
         auto tu = Match(ast, TypeTaggedUnion);
-        NEW_LIST(sss_tagged_union_member_t, members);
-        for (int64_t i = 0, len = length(tu->tag_names); i < len; i++) {
+        auto members = EMPTY_ARRAY(sss_tagged_union_member_t);
+        for (int64_t i = 0, len = LENGTH(tu->tag_names); i < len; i++) {
             args_t args = ith(tu->tag_args, i);
             sss_type_t *member_t = parse_type_ast(env, WrapAST(ast, TypeStruct, .members=args));
             if (member_t && has_stack_memory(member_t))
@@ -133,7 +133,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
                 .tag_value=ith(tu->tag_values, i),
                 .type=member_t,
             };
-            APPEND_STRUCT(members, member);
+            append(members, member);
         }
         return Type(TaggedUnionType, .tag_bits=tu->tag_bits, .members=members);
     }
@@ -160,7 +160,7 @@ static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
     case RangeType: return INT_TYPE;
     case StructType: {
         auto struct_ = Match(base_t, StructType);
-        for (int64_t i = 0; i < length(struct_->field_names); i++) {
+        for (int64_t i = 0; i < LENGTH(struct_->field_names); i++) {
             if (streq(ith(struct_->field_names, i), "next")
                 && type_eq(ith(struct_->field_types, i), Type(PointerType, .pointed=iter_t, .is_optional=true)))
                 return Type(PointerType, .pointed=iter_t, .is_optional=false);
@@ -257,11 +257,11 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
     switch (t->tag) {
     case StructType: {
         auto struct_t = Match(t, StructType);
-        for (int64_t i = 0, len = LIST_LEN(struct_t->field_names); i < len; i++) {
-            const char *struct_field = LIST_ITEM(struct_t->field_names, i);
+        for (int64_t i = 0, len = LENGTH(struct_t->field_names); i < len; i++) {
+            const char *struct_field = ith(struct_t->field_names, i);
             if (!struct_field) struct_field = heap_strf("_%ld", i+1);
             if (streq(struct_field, field_name)) {
-                sss_type_t *field_t = LIST_ITEM(struct_t->field_types, i);
+                sss_type_t *field_t = ith(struct_t->field_types, i);
                 if (struct_t->units)
                     field_t = with_units(field_t, unit_derive(struct_t->units, NULL, env->derived_units));
 
@@ -295,11 +295,11 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
         if (base_variant(item_t)->tag == StructType) {
             // vecs.x ==> [v.x for v in vecs]
             auto struct_ = Match(base_variant(item_t), StructType);
-            for (int64_t i = 0, len = LIST_LEN(struct_->field_names); i < len; i++) {
-                const char *struct_field = LIST_ITEM(struct_->field_names, i);
+            for (int64_t i = 0, len = LENGTH(struct_->field_names); i < len; i++) {
+                const char *struct_field = ith(struct_->field_names, i);
                 if (!struct_field) struct_field = heap_strf("_%ld", i+1);
                 if (streq(struct_field, field_name)) {
-                    return Type(ArrayType, .item_type=LIST_ITEM(struct_->field_types, i));
+                    return Type(ArrayType, .item_type=ith(struct_->field_types, i));
                 }
             }
         }
@@ -373,7 +373,7 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         if (!name) return;
         binding_t *b = get_binding(env, name);
         if (!b)
-            hset(env->bindings, name, new(binding_t, .type=t));
+            Table_sets(env->bindings, name, new(binding_t, .type=t));
         return;
     }
     case Var: {
@@ -404,9 +404,9 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
             return;
         }
 
-        List(arg_info_t) arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
-                                                    struct_type->field_types, struct_type->field_defaults);
-        LIST_FOR (arg_infos, arg_info, _) {
+        auto arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
+                                        struct_type->field_types, struct_type->field_defaults);
+        foreach (arg_infos, arg_info, _) {
             if (arg_info->ast)
                 bind_match_patterns(env, arg_info->type, arg_info->ast);
         }
@@ -422,7 +422,7 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         // Tagged Union Constructor:
         auto tu_t = Match(t, TaggedUnionType);
         int64_t tag_index = -1;
-        for (int64_t i = 0; i < LIST_LEN(tu_t->members); i++) {
+        for (int64_t i = 0; i < LENGTH(tu_t->members); i++) {
             if (streq(ith(tu_t->members, i).name, fn_name)) {
                 tag_index = i;
                 break;
@@ -540,14 +540,14 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (array->type) {
             item_type = parse_type_ast(env, array->type);
         } else if (array->items) {
-            for (int64_t i = 0; i < LIST_LEN(array->items); i++) {
-                ast_t *item = LIST_ITEM(array->items, i);
+            for (int64_t i = 0; i < LENGTH(array->items); i++) {
+                ast_t *item = ith(array->items, i);
                 sss_type_t *t2 = get_type(env, item);
                 while (t2->tag == GeneratorType)
                     t2 = Match(t2, GeneratorType)->generated;
                 sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
                 if (!merged || (item_type && !streq(type_units(item_type), type_units(t2))))
-                    compiler_err(env, LIST_ITEM(array->items, i),
+                    compiler_err(env, ith(array->items, i),
                                 "This array item has type %s, which is different from earlier array items which have type %s",
                                 type_to_string(t2),  type_to_string(item_type));
                 item_type = merged;
@@ -568,24 +568,24 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         } else {
             if (table->default_value)
                 value_type = get_type(env, table->default_value);
-            for (int64_t i = 0; i < LIST_LEN(table->entries); i++) {
-                ast_t *entry = LIST_ITEM(table->entries, i);
+            for (int64_t i = 0; i < LENGTH(table->entries); i++) {
+                ast_t *entry = ith(table->entries, i);
                 sss_type_t *entry_t = get_type(env, entry);
                 while (entry_t->tag == GeneratorType)
                     entry_t = Match(entry_t, GeneratorType)->generated;
 
-                sss_type_t *key_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 0);
+                sss_type_t *key_t = ith(Match(entry_t, StructType)->field_types, 0);
                 sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
                 if (!key_merged || (key_type && !streq(type_units(key_type), type_units(key_t))))
-                    compiler_err(env, LIST_ITEM(table->entries, i),
+                    compiler_err(env, ith(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(key_t),  type_to_string(key_type));
                 key_type = key_merged;
 
-                sss_type_t *value_t = LIST_ITEM(Match(entry_t, StructType)->field_types, 1);
+                sss_type_t *value_t = ith(Match(entry_t, StructType)->field_types, 1);
                 sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
                 if (!val_merged || (value_type && !streq(type_units(value_type), type_units(value_t))))
-                    compiler_err(env, LIST_ITEM(table->entries, i),
+                    compiler_err(env, ith(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(value_t),  type_to_string(value_type));
                 value_type = val_merged;
@@ -597,13 +597,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
-        sss_type_t *t = Type(StructType, .field_names=LIST(const char*, "key", "value"),
-                            .field_types=LIST(sss_type_t*, get_type(env, entry->key), get_type(env, entry->value)));
-        sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
+        sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
+                            .field_types=ARRAY(get_type(env, entry->key), get_type(env, entry->value)));
+        sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
         } else {
-            hset(&tuple_types, type_to_string(t), t);
+            Table_sets(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -682,9 +682,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Block: {
         auto block = Match(ast, Block);
-        if (LIST_LEN(block->statements) == 0)
+        if (LENGTH(block->statements) == 0)
             return Type(VoidType);
-        ast_t *last = LIST_ITEM(block->statements, LIST_LEN(block->statements)-1);
+        ast_t *last = ith(block->statements, LENGTH(block->statements)-1);
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
@@ -709,13 +709,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             predeclare_def_funcs(env, *stmt);
         }
 
-        for (int64_t i = 0, len = LIST_LEN(block->statements); i < len-1; i++) {
-            ast_t *stmt = LIST_ITEM(block->statements, i);
+        for (int64_t i = 0, len = LENGTH(block->statements); i < len-1; i++) {
+            ast_t *stmt = ith(block->statements, i);
             switch (stmt->tag) {
             case Declare: {
                 auto decl = Match(stmt, Declare);
                 sss_type_t *t = get_type(env, decl->value);
-                hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+                Table_sets(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
                 break;
             }
             default:
@@ -922,20 +922,20 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case Lambda: {
         auto lambda = Match(ast, Lambda);
-        NEW_LIST(const char*, arg_names);
-        NEW_LIST(sss_type_t*, arg_types);
-        for (int64_t i = 0; i < LIST_LEN(lambda->args.types); i++) {
-            ast_t *arg_def = LIST_ITEM(lambda->args.types, i);
+        auto arg_names = EMPTY_ARRAY(const char*);
+        auto arg_types = EMPTY_ARRAY(sss_type_t*);
+        for (int64_t i = 0; i < LENGTH(lambda->args.types); i++) {
+            ast_t *arg_def = ith(lambda->args.types, i);
             sss_type_t *t = parse_type_ast(env, arg_def);
-            const char* arg_name = LIST_ITEM(lambda->args.names, i);
-            APPEND(arg_names, arg_name);
-            APPEND(arg_types, t);
+            const char* arg_name = ith(lambda->args.names, i);
+            append(arg_names, arg_name);
+            append(arg_types, t);
         }
 
         // Include only global bindings:
         env_t *lambda_env = file_scope(env);
-        for (int64_t i = 0; i < LIST_LEN(lambda->args.types); i++) {
-            hset(lambda_env->bindings, LIST_ITEM(arg_names, i), new(binding_t, .type=LIST_ITEM(arg_types, i)));
+        for (int64_t i = 0; i < LENGTH(lambda->args.types); i++) {
+            Table_sets(lambda_env->bindings, ith(arg_names, i), new(binding_t, .type=ith(arg_types, i)));
         }
         sss_type_t *ret = get_type(lambda_env, lambda->body);
         if (has_stack_memory(ret))
@@ -945,36 +945,36 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case FunctionDef: {
         auto def = Match(ast, FunctionDef);
-        NEW_LIST(const char*, arg_names);
-        NEW_LIST(sss_type_t*, arg_types);
-        NEW_LIST(ast_t*, arg_defaults);
+        auto arg_names = EMPTY_ARRAY(const char*);
+        auto arg_types = EMPTY_ARRAY(sss_type_t*);
+        auto arg_defaults = EMPTY_ARRAY(ast_t*);
 
         // In order to allow default values to reference other arguments (e.g. `def foo(x:Foo, y=x)`)
         // we need to create scoped bindings for them here:
         env_t *default_arg_env = file_scope(env);
-        default_arg_env->bindings = new(sss_hashmap_t, .fallback=default_arg_env->bindings);
-        for (int64_t i = 0; i < LIST_LEN(def->args.types); i++) {
-            ast_t *arg_type_def = LIST_ITEM(def->args.types, i);
+        default_arg_env->bindings = new(table_t, .fallback=default_arg_env->bindings);
+        for (int64_t i = 0; i < LENGTH(def->args.types); i++) {
+            ast_t *arg_type_def = ith(def->args.types, i);
             if (!arg_type_def) continue;
             sss_type_t *arg_type = parse_type_ast(env, arg_type_def);
-            hset(default_arg_env->bindings, LIST_ITEM(def->args.names, i), new(binding_t, .type=arg_type));
+            Table_sets(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
         }
         
-        for (int64_t i = 0; i < LIST_LEN(def->args.types); i++) {
-            ast_t *arg_def = LIST_ITEM(def->args.types, i);
-            const char* arg_name = LIST_ITEM(def->args.names, i);
-            APPEND(arg_names, arg_name);
+        for (int64_t i = 0; i < LENGTH(def->args.types); i++) {
+            ast_t *arg_def = ith(def->args.types, i);
+            const char* arg_name = ith(def->args.names, i);
+            append(arg_names, arg_name);
             if (arg_def) {
                 sss_type_t *arg_type = parse_type_ast(env, arg_def);
-                APPEND(arg_types, arg_type);
+                append(arg_types, arg_type);
                 ast_t *default_val = NULL;
-                APPEND(arg_defaults, default_val);
+                append(arg_defaults, default_val);
             } else {
-                ast_t *default_val = LIST_ITEM(def->args.defaults, i);
+                ast_t *default_val = ith(def->args.defaults, i);
                 sss_type_t *arg_type = get_type(default_arg_env, default_val);
-                APPEND(arg_types, arg_type);
-                APPEND(arg_defaults, default_val);
-                hset(default_arg_env->bindings, LIST_ITEM(def->args.names, i), new(binding_t, .type=arg_type));
+                append(arg_types, arg_type);
+                append(arg_defaults, default_val);
+                Table_sets(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
             }
         }
 
@@ -991,26 +991,26 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Struct: {
         auto struct_ = Match(ast, Struct);
         if (!struct_->type) {
-            NEW_LIST(const char*, field_names);
-            NEW_LIST(sss_type_t*, field_types);
+            auto field_names = EMPTY_ARRAY(const char*);
+            auto field_types = EMPTY_ARRAY(sss_type_t*);
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != KeywordArg)
                     compiler_err(env, *member, "Anonymous structs must have names for each field");
                 auto field = Match(*member, KeywordArg);
-                APPEND(field_names, field->name);
+                append(field_names, field->name);
                 sss_type_t *field_type = get_type(env, field->arg);
                 if (has_stack_memory(field_type))
                     compiler_err(env, field->arg, "Structs aren't allowed to have stack references because the struct may outlive the reference's stack frame.");
-                APPEND(field_types, field_type);
+                append(field_types, field_type);
             }
 
             sss_type_t *t = Type(StructType, .field_names=field_names, .field_types=field_types,
                                  .units=unit_derive(struct_->units, NULL, env->derived_units));
-            sss_type_t *memoized = hget(&tuple_types, type_to_string(t), sss_type_t*);
+            sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
             if (memoized) {
                 t = memoized;
             } else {
-                hset(&tuple_types, type_to_string(t), t);
+                Table_sets(&tuple_types, type_to_string(t), t);
             }
             return t;
         }
@@ -1038,13 +1038,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (if_->subject->tag == Declare) {
             subject_t = get_type(env, Match(if_->subject, Declare)->value);
             env = fresh_scope(env);
-            hset(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
+            Table_sets(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
                  new(binding_t, .type=subject_t));
         } else {
             subject_t = get_type(env, if_->subject);
         }
         sss_type_t *t = NULL;
-        for (int64_t i = 0; i < LIST_LEN(if_->patterns); i++) {
+        for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
             env_t *case_env = fresh_scope(env);
             bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
             sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
@@ -1073,10 +1073,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         env_t *loop_env = fresh_scope(env);
         if (for_loop->index) {
-            hset(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
+            Table_sets(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
         }
         if (for_loop->value) {
-            hset(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
+            Table_sets(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
         }
         
         if (for_loop->first)
@@ -1094,8 +1094,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         env = fresh_scope(env);
         auto reduction = Match(ast, Reduction);
         sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        hset(env->bindings, "x.0", new(binding_t, .type=item_type));
-        hset(env->bindings, "y.0", new(binding_t, .type=item_type));
+        Table_sets(env->bindings, "x.0", new(binding_t, .type=item_type));
+        Table_sets(env->bindings, "y.0", new(binding_t, .type=item_type));
         sss_type_t *combo_t = get_type(env, reduction->combination);
         if (!can_promote(item_type, combo_t))
             compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",
@@ -1115,7 +1115,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto with = Match(ast, With);
         if (with->var) {
             env = fresh_scope(env);
-            hset(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
+            Table_sets(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
         }
         return get_type(env, with->body);
     }
@@ -1124,7 +1124,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         env = fresh_scope(env);
         foreach (using->used, used, _) {
             sss_type_t *t = get_type(env, *used);
-            NEW_LIST(const char*, fields);
+            auto fields = EMPTY_ARRAY(const char*);
             for (;;) {
                 if (t->tag == PointerType) {
                     if (Match(t, PointerType)->is_optional)
@@ -1141,7 +1141,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             }
             foreach (fields, field, _) {
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
-                hset(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
+                Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
             }
         }
         return get_type(env, using->body);
@@ -1169,7 +1169,7 @@ bool is_discardable(env_t *env, ast_t *ast)
     return (t->tag == VoidType || t->tag == AbortType);
 }
 
-const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns)
+const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns)
 {
     foreach (patterns, pat, _) {
         if ((*pat)->tag == Wildcard)
@@ -1177,12 +1177,12 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
     }
 
     if (t->tag == TaggedUnionType) {
-        sss_hashmap_t member_handlers = {0};
+        table_t member_handlers = {0};
         auto members = Match(t, TaggedUnionType)->members;
-        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+        for (int64_t i = 0; i < LENGTH(members); i++) {
             auto member = ith(members, i);
-            NEW_LIST(ast_t*, list);
-            hset(&member_handlers, member.name, list);
+            auto list = EMPTY_ARRAY(ast_t*);
+            Table_sets(&member_handlers, member.name, list);
         }
 
         foreach (patterns, pat, _) {
@@ -1190,7 +1190,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                 ast_t *fn = Match((*pat), FunctionCall)->fn;
                 if (fn->tag == Var) {
                     const char *name = Match(fn, Var)->name;
-                    List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                    ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, name);
                     if (handlers) {
                         auto args = Match(*pat, FunctionCall)->args;
                         ast_t *m_pat = WrapAST(*pat, Struct, .members=args);
@@ -1199,17 +1199,17 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                 }
             } else if ((*pat)->tag == Var) {
                 const char *name = Match(*pat, Var)->name;
-                List(ast_t*) handlers = hget(&member_handlers, name, List(ast_t*));
+                ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, name);
                 if (handlers)
                     append(handlers, *pat);
             }
         }
 
         const char *unhandled = NULL;
-        for (int64_t i = 0; i < LIST_LEN(members); i++) {
+        for (int64_t i = 0; i < LENGTH(members); i++) {
             auto member = ith(members, i);
-            List(ast_t*) handlers = hget(&member_handlers, member.name, List(ast_t*));
-            if (LIST_LEN(handlers) == 0) {
+            ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, member.name);
+            if (LENGTH(handlers) == 0) {
                 if (unhandled)
                     unhandled = heap_strf("%s, nor is %s.%s",
                                           unhandled, type_to_string(t), member.name);
@@ -1247,7 +1247,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
             if (!handled_null) return "The null value is not handled";
         }
 
-        NEW_LIST(ast_t*, value_handlers);
+        auto value_handlers = EMPTY_ARRAY(ast_t*);
         foreach (patterns, pat, _) {
             if ((*pat)->tag == HeapAllocate)
                 append(value_handlers, Match(*pat, HeapAllocate)->value);
@@ -1274,31 +1274,31 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
     } else if (t->tag == StructType) {
         auto field_names = Match(t, StructType)->field_names;
         auto field_type_list = Match(t, StructType)->field_types;
-        sss_hashmap_t field_types = {0};
-        for (int64_t i = 0; i < length(field_names); i++) {
+        table_t field_types = {0};
+        for (int64_t i = 0; i < LENGTH(field_names); i++) {
             auto name = ith(field_names, i);
             if (!name) continue;
             auto type = ith(field_type_list, i);
-            hset(&field_types, name, type);
+            Table_sets(&field_types, name, type);
         }
 
         foreach (patterns, pat, _) {
             if ((*pat)->tag != Struct) continue;
             auto struct_ = Match(*pat, Struct);
-            sss_hashmap_t named_members = {0};
+            table_t named_members = {0};
             foreach (struct_->members, member, _) {
                 if ((*member)->tag != KeywordArg) continue;
                 auto memb = Match(*member, KeywordArg);
                 if (!memb->name) continue;
-                hset(&named_members, memb->name, memb->arg);
+                Table_sets(&named_members, memb->name, memb->arg);
             }
             foreach (struct_->members, member, _) {
                 if ((*member)->tag == KeywordArg && Match(*member, KeywordArg)->name)
                     continue;
-                for (int64_t i = 0; i < length(field_names); i++) {
+                for (int64_t i = 0; i < LENGTH(field_names); i++) {
                     const char *name = ith(field_names, i);
-                    if (name && !hget(&named_members, name, ast_t*)) {
-                        hset(&named_members, name, *member);
+                    if (name && !Table_gets(&named_members, name)) {
+                        Table_sets(&named_members, name, *member);
                         break;
                     }
                 }
@@ -1306,10 +1306,10 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
 
             const char *missing = NULL;
             for (int64_t i = 1; i <= named_members.count; i++) {
-                auto entry = hnth(&named_members, i, const char*, ast_t*);
-                sss_type_t *type = hget(&field_types, entry->key, sss_type_t*);
+                struct {const char *key; ast_t *value;} *entry = Table_nths(&named_members, i);
+                sss_type_t *type = Table_gets(&field_types, entry->key);
                 if (!type) continue;
-                missing = get_missing_pattern(env, type, LIST(ast_t*, entry->value));
+                missing = get_missing_pattern(env, type, ARRAY(entry->value));
                 if (missing) break;
             }
             if (!missing) return NULL;
@@ -1319,7 +1319,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, List(ast_t*) patterns
                      type_to_string(t));
 }
 
-sss_type_t *get_namespace_type(env_t *env, List(ast_t*) statements)
+sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
 {
     env = fresh_scope(env);
 
@@ -1336,31 +1336,31 @@ sss_type_t *get_namespace_type(env_t *env, List(ast_t*) statements)
         predeclare_def_funcs(env, *stmt);
     }
 
-    NEW_LIST(const char*, field_names);
-    NEW_LIST(sss_type_t*, field_types);
-    for (int64_t i = 0, len = LIST_LEN(statements); i < len; i++) {
-        ast_t *stmt = LIST_ITEM(statements, i);
+    auto field_names = EMPTY_ARRAY(const char*);
+    auto field_types = EMPTY_ARRAY(sss_type_t*);
+    for (int64_t i = 0, len = LENGTH(statements); i < len; i++) {
+        ast_t *stmt = ith(statements, i);
         switch (stmt->tag) {
         case Declare: {
             auto decl = Match(stmt, Declare);
             sss_type_t *t = get_type(env, decl->value);
-            hset(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
-            APPEND(field_names, Match(decl->var, Var)->name);
-            APPEND(field_types, t);
+            Table_sets(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+            append(field_names, Match(decl->var, Var)->name);
+            append(field_types, t);
             break;
         }
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
-            APPEND(field_names, def->name);
+            append(field_names, def->name);
             sss_type_t *t = get_namespace_type(env, def->definitions);
-            APPEND(field_types, t);
+            append(field_types, t);
             break;
         }
         case FunctionDef: {
             auto def = Match(stmt, FunctionDef);
-            APPEND(field_names, def->name);
+            append(field_names, def->name);
             sss_type_t *t = get_binding(env, def->name)->type;
-            APPEND(field_types, t);
+            append(field_types, t);
             break;
         }
         default:
@@ -1379,13 +1379,14 @@ sss_type_t *get_file_type(env_t *env, const char *path)
         compiler_err(env, NULL, "I can't find the file %s", sss_path);
 
     int64_t inode = (int64_t)file_info.st_ino; 
-    sss_type_t *type = hget(&env->global->module_types, inode, sss_type_t*);
+    const char *name = heap_strf("Module_%ld", inode);
+    sss_type_t *type = Table_gets(&env->global->module_types, name);
     if (type) return type;
 
     sss_file_t *f = sss_load_file(sss_path);
     ast_t *ast = parse_file(f, env->on_err);
-    type = Type(VariantType, .name=heap_strf("Module_%ld", inode), .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
-    hset(&env->global->module_types, inode, type);
+    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
+    Table_sets(&env->global->module_types, name, type);
     return type;
 }
 
