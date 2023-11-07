@@ -22,7 +22,9 @@
 #include "table.h"
 #include "types.h"
 
-#ifdef DEBUG_HASHTABLE
+#define DEBUG_TABLES
+
+#ifdef DEBUG_TABLES
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
 #else
 #define hdebug(...) (void)0
@@ -40,7 +42,7 @@ static inline void hshow(const table_t *t)
 {
     hdebug("{");
     for (uint32_t i = 1; i <= CAPACITY(t); i++) {
-        if (i > 0) hdebug(" ");
+        if (i > 1) hdebug(" ");
         hdebug("[%d]=%d(%d)", i, t->buckets[i].index1, t->buckets[i].next1);
     }
     hdebug("}\n");
@@ -62,10 +64,10 @@ void *Table_get_raw(const Type *type, const table_t *t, const void *key)
 
     uint32_t hash = HASH(key) % CAPACITY(t);
     hshow(t);
-    hdebug("Getting with initial probe at %u\n", hash);
-    for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1 - 1) {
+    hdebug("Getting value with initial probe at %u\n", hash);
+    for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1) {
         char *entry = t->entries + ENTRY_SIZE*(t->buckets[i].index1-1);
-        if (!EQUAL(entry, key))
+        if (EQUAL(entry, key))
             return entry + VALUE_OFFSET;
         if (t->buckets[i].next1 == 0)
             break;
@@ -89,9 +91,10 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
 {
     hshow(t);
     const void *key = entry;
+    hdebug("Set bucket '%s'\n", *(char**)key);
     uint32_t hash = HASH(key) % CAPACITY(t);
-    hdebug("Hash value = %u\n", hash);
-    hash_bucket_t *bucket = &t->buckets[hash];
+    hdebug("Hash value (mod %u) = %u\n", CAPACITY(t), hash);
+    hash_bucket_t *bucket = &t->buckets[1+hash];
     if (bucket->index1 == 0) {
         hdebug("Got an empty space\n");
         // Empty space:
@@ -120,7 +123,7 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
         for (;;) {
-            assert(EQUAL(t->entries + (bucket->index1-1)*ENTRY_SIZE, key));
+            // assert(EQUAL(t->entries + ENTRY_SIZE*(bucket->index1-1), key));
             if (bucket->next1 == 0) {
                 // End of chain
                 break;
@@ -141,7 +144,7 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
 
 static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
 {
-    hdebug("About to resize from %u to %u\n", t->capacity, new_capacity);
+    hdebug("About to resize from %u to %u\n", CAPACITY(t), new_capacity);
     hshow(t);
     // Add 1 capacity for storing metadata: capacity and nextfree
     t->buckets = GC_MALLOC_ATOMIC((size_t)(1+new_capacity)*sizeof(hash_bucket_t));
@@ -155,6 +158,7 @@ static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
     }
 
     char *new_entries = GC_MALLOC(new_capacity*ENTRY_SIZE);
+    memset(new_entries, 0, new_capacity*ENTRY_SIZE);
     if (t->entries) memcpy(new_entries, t->entries, t->count*ENTRY_SIZE);
     t->entries = new_entries;
 
@@ -165,7 +169,7 @@ static void hashmap_resize(const Type *type, table_t *t, uint32_t new_capacity)
 // Return address of value
 void *Table_set(const Type *type, table_t *t, const void *key, const void *value)
 {
-    hdebug("Raw hash of key being set: %u\n", key_hash(key));
+    hdebug("Raw hash of key being set: %u\n", HASH(key));
     if (!t || !key) return NULL;
     hshow(t);
 
@@ -391,8 +395,8 @@ uint32_t Table_hash(const Type *type, const table_t *t)
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
     for (uint32_t i = 0; i < t->count; i++) {
         void *entry = t->entries + i*entry_size;
-        key_hashes ^= generic_hash(entry, table.key);
-        value_hashes ^= generic_hash(entry + value_offset, table.value);
+        key_hashes ^= generic_hash(table.key, entry);
+        value_hashes ^= generic_hash(table.value, entry + value_offset);
     }
 
     if (t->fallback)
@@ -506,24 +510,24 @@ Type CStringToVoidStarTable_type;
 
 void *Table_gets(const table_t *t, const char *key)
 {
-    void **ret = Table_get(&CStringToVoidStarTable_type, t, key);
+    void **ret = Table_get(&CStringToVoidStarTable_type, t, &key);
     return ret ? *ret : NULL;
 }
 
 void *Table_gets_raw(const table_t *t, const char *key)
 {
-    void **ret = Table_get_raw(&CStringToVoidStarTable_type, t, key);
+    void **ret = Table_get_raw(&CStringToVoidStarTable_type, t, &key);
     return ret ? *ret : NULL;
 }
 
 void *Table_sets(table_t *t, const char *key, const void *value)
 {
-    return Table_set(&CStringToVoidStarTable_type, t, key, value);
+    return Table_set(&CStringToVoidStarTable_type, t, &key, &value);
 }
 
 void Table_removes(table_t *t, const char *key)
 {
-    return Table_remove(&CStringToVoidStarTable_type, t, key);
+    return Table_remove(&CStringToVoidStarTable_type, t, &key);
 }
 
 void *Table_nths(const table_t *t, uint32_t n)

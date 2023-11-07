@@ -16,7 +16,7 @@ bool generic_equals(const Type *type, const void *x, const void *y)
 {
     switch (type->equality.tag) {
         case EqualityComparison:
-            return (generic_compare(type, x, y) == 0);
+            return (generic_compare(x, y, type) == 0);
         case EqualityFunction:
             return type->equality.__data.EqualityFunction.fn(type, x, y);
         case EqualityData:

@@ -38,7 +38,7 @@ static CORD Str_cord(const Type *type, const String_t *s, bool colorize)
     // Note: it's important to have unicode strings not get broken up with
     // escapes, otherwise they won't print right.
     if (colorize) {
-        CORD c = "\x1b[31m\"";
+        CORD c = "\x1b[35m\"";
         for (uint32_t i = 0; i < s->length; i++) {
             switch (data[i]) {
 #define BACKSLASHED(esc) "\x1b[35m\\\x1b[1m" esc "\x1b[0;34m"
@@ -60,7 +60,7 @@ static CORD Str_cord(const Type *type, const String_t *s, bool colorize)
 #undef BACKSLASHED
             }
         }
-        c = CORD_cat(c, "\x1b[m");
+        c = CORD_cat(c, "\"\x1b[m");
         return c;
     } else {
         CORD c = "\"";
@@ -99,8 +99,9 @@ static int Str_compare(String_t *x, String_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static int Str_hash(String_t *s)
+static int Str_hash(const Type *type, String_t *s)
 {
+    (void)type;
     const char *data;
     if (s->stride == -1) {
         data = s->data - s->length + 1;
@@ -478,24 +479,29 @@ static CORD CString_cord(const Type *type, const char **s, bool colorize)
     return Str_cord(type, &str, colorize);
 }
 
-static uint32_t CString_hash(const char **s)
+#include <assert.h>
+static uint32_t CString_hash(const Type *type, const char **s)
 {
-    if (!*s) return 0;
+    (void)type;
+    if (!s) return 0;
     uint32_t hash;
     halfsiphash(*s, strlen(*s)+1, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+    printf("Hashing '%s' (len=%d) -> %u\n", *s, strlen(*s), hash);
+    assert(strlen(*s) > 0);
     return hash;
 }
 
 static uint32_t CString_compare(const char **x, const char **y, const Type *type)
 {
     (void)type;
+    printf("Comparing '%s' vs '%s'\n", *x, *y);
     return strcmp(*x, *y);
 }
 
 Type CString_type = {
     .name="CString",
-    .size=sizeof(String_t),
-    .align=alignof(String_t),
+    .size=sizeof(char*),
+    .align=alignof(char*),
     .cord=CordMethod(Function, (void*)CString_cord),
     .hash=HashMethod(Function, (void*)CString_hash),
     .order=OrderingMethod(Function, (void*)CString_compare),
