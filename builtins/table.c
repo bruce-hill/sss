@@ -218,7 +218,7 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
         copy_on_write(type, t, original_buckets, original_entries);
 
     int32_t index1 = ++t->count;
-    void *entry = t->entries + (index1-1)*ENTRY_SIZE;
+    void *entry = t->entries + ENTRY_SIZE*(index1-1);
     memcpy(entry, key, VALUE_OFFSET);
     if (value && value_size > 0)
         memcpy(entry + VALUE_OFFSET, value, ENTRY_SIZE - VALUE_OFFSET);
@@ -256,7 +256,7 @@ void Table_remove(const Type *type, table_t *t, const void *key)
 
     uint32_t hash = HASH(key) % CAPACITY(t);
     hash_bucket_t *bucket, *prev = NULL;
-    for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1 - 1) {
+    for (uint32_t i = hash+1; t->buckets[i].index1; i = t->buckets[i].next1) {
         if (EQUAL(t->entries + ENTRY_SIZE*(t->buckets[i].index1-1), key)) {
             bucket = &t->buckets[i];
             hdebug("Found key to delete\n");
@@ -280,7 +280,8 @@ void Table_remove(const Type *type, table_t *t, const void *key)
         uint32_t last_hash = HASH(t->entries + (last_index1-1)*ENTRY_SIZE) % CAPACITY(t);
 
         uint32_t i = last_hash + 1;
-        while (t->buckets[i].index1 != last_index1) i = t->buckets[i].next1 - 1;
+        while (t->buckets[i].index1 != last_index1)
+            i = t->buckets[i].next1;
         t->buckets[i].index1 = bucket->index1;
 
         memcpy(t->entries + (bucket->index1-1)*ENTRY_SIZE, t->entries + (last_index1-1)*ENTRY_SIZE, ENTRY_SIZE);
