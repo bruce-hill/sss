@@ -6,8 +6,7 @@
 
 #include "util.h"
 
-// Not currently used, but utility functions can go here
-
+__attribute__ ((visibility ("default")))
 char *heap_strn(const char *str, size_t len)
 {
     if (!str) return NULL;
@@ -18,11 +17,13 @@ char *heap_strn(const char *str, size_t len)
     return heaped;
 }
 
+__attribute__ ((visibility ("default")))
 char *heap_str(const char *str)
 {
     return heap_strn(str, strlen(str));
 }
 
+__attribute__ ((visibility ("default")))
 char *heap_strf(const char *fmt, ...)
 {
     va_list args;

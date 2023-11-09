@@ -13,6 +13,7 @@
 #include "types.h"
 #include "functions.h"
 #include "../SipHash/halfsiphash.h"
+#include "../util.h"
 
 extern const void *SSS_HASH_VECTOR;
 
@@ -268,29 +269,6 @@ uint32_t Array_hash(const Type *type, const array_t *arr)
         halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
         return hash;
     }
-}
-
-static inline char *heap_strn(const char *str, size_t len)
-{
-    if (!str) return NULL;
-    if (len == 0) return "";
-    char *heaped = GC_MALLOC_ATOMIC(len + 1);
-    memcpy(heaped, str, len);
-    heaped[len] = '\0';
-    return heaped;
-}
-
-static inline char *heap_strf(const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    char *tmp = NULL;
-    int len = vasprintf(&tmp, fmt, args);
-    if (len < 0) return NULL;
-    va_end(args);
-    char *ret = heap_strn(tmp, (size_t)len);
-    free(tmp);
-    return ret;
 }
 
 Type make_array_type(Type *item_type)
