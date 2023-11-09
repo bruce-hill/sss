@@ -341,8 +341,8 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
         if (LENGTH(members) > 0 && !Table_gets(ns, ith(members, 0).name))
             populate_tagged_union_constructors(env, t);
     }
-    for (uint32_t i = 1; i <= ns->count; i++) {
-        struct { const char *key; binding_t *value; } *entry = Table_nth(NULL, ns, i);
+    for (uint32_t i = 1; i <= Table_length(ns); i++) {
+        struct { const char *key; binding_t *value; } *entry = Table_entry(NULL, ns, i);
         if (!Table_gets(fresh->bindings, entry->key))
             Table_sets(fresh->bindings, entry->key, entry->value);
     }
@@ -352,8 +352,8 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
 static void copy_global_bindings(table_t *dest, table_t *src)
 {
     for (; src; src = src->fallback) {
-        for (uint32_t i = 1; i <= src->count; i++) {
-            struct { const char *key; binding_t *value;} *entry = Table_nths(src, i);
+        for (uint32_t i = 1; i <= Table_length(src); i++) {
+            struct { const char *key; binding_t *value;} *entry = Table_entrys(src, i);
             if (entry->value->visible_in_closures)
                 Table_sets(dest, entry->key, entry->value);
         }
@@ -518,8 +518,8 @@ const char *spellcheck(table_t *ns, const char *word)
     const char *closest = NULL;
     int closest_dist = 0;
     for (; ns; ns = ns->fallback) {
-        for (uint32_t i = 1; i <= ns->count; i++) {
-            struct { const char *key; binding_t *value;} *entry = Table_nths(ns, i);
+        for (uint32_t i = 1; i <= Table_length(ns); i++) {
+            struct { const char *key; binding_t *value;} *entry = Table_entrys(ns, i);
             int dist = word_distance(word, entry->key);
             if (closest == NULL || dist < closest_dist) {
                 closest = entry->key;

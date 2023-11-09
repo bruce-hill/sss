@@ -92,8 +92,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
     // Actually compile the functions:
-    for (uint32_t i = 1; i <= env->global->ast_functions.count; i++) {
-        struct {ast_t *key; func_context_t *value;} *entry = Table_nths(&env->global->ast_functions, i);
+    for (uint32_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
+        struct {ast_t *key; func_context_t *value;} *entry = Table_entrys(&env->global->ast_functions, i);
         compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 
@@ -164,8 +164,8 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_return(finished_loading_block, NULL, gcc_rval(module_var));
 
     // Actually compile the functions:
-    for (uint32_t i = 1; i <= env->global->ast_functions.count; i++) {
-        struct {ast_t *key; func_context_t *value;} *entry = Table_nths(&env->global->ast_functions, i);
+    for (uint32_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
+        struct {ast_t *key; func_context_t *value;} *entry = Table_entrys(&env->global->ast_functions, i);
         compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 

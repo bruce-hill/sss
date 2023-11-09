@@ -249,8 +249,8 @@ int run_repl(gcc_jit_context *ctx)
             block = NULL;
         }
 
-        for (uint32_t i = 1; i <= fresh_env->global->ast_functions.count; i++) {
-            struct { const char *key; func_context_t *value; } *entry = Table_nths(&fresh_env->global->ast_functions, i);
+        for (uint32_t i = 1; i <= Table_length(&fresh_env->global->ast_functions); i++) {
+            struct { const char *key; func_context_t *value; } *entry = Table_entrys(&fresh_env->global->ast_functions, i);
             const char *func_addr = heap_strf("%p", entry->value->func);
             if (Table_gets(&compiled_functions, func_addr))
                 continue;
@@ -276,8 +276,8 @@ int run_repl(gcc_jit_context *ctx)
 
         // Copy out the variables to GC memory
         for (table_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
-            for (uint32_t i = 1; i <= bindings->count; i++) {
-                struct {const char *key; binding_t *value;} *entry = Table_nths(bindings, i);
+            for (uint32_t i = 1; i <= Table_length(bindings); i++) {
+                struct {const char *key; binding_t *value;} *entry = Table_entrys(bindings, i);
                 binding_t *b = entry->value;
                 if (!b->sym_name || Table_gets(env->bindings, entry->key) == b)
                     continue;

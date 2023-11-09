@@ -7,9 +7,9 @@
 
 typedef struct {
     void *data;
-    unsigned long int length:42;
-    unsigned short int free:4, copy_on_write:1, atomic:1;
-    short int stride:16;
+    uint64_t length:42;
+    uint8_t free:4, copy_on_write:1, atomic:1;
+    uint16_t stride:16;
 } array_t;
 
 void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size);

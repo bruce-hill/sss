@@ -1305,8 +1305,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
             }
 
             const char *missing = NULL;
-            for (int64_t i = 1; i <= named_members.count; i++) {
-                struct {const char *key; ast_t *value;} *entry = Table_nths(&named_members, i);
+            for (int64_t i = 1; i <= Table_length(&named_members); i++) {
+                struct {const char *key; ast_t *value;} *entry = Table_entrys(&named_members, i);
                 sss_type_t *type = Table_gets(&field_types, entry->key);
                 if (!type) continue;
                 missing = get_missing_pattern(env, type, ARRAY(entry->value));
