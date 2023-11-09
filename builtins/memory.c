@@ -21,23 +21,15 @@ static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
     return cord;
 }
 
-static int Memory_compare(void *x, void *y) {
-    return (x > y) - (x < y);
-}
-
-static int Memory_hash(void *p) {
-    int hash;
-    halfsiphash(&p, sizeof(void*), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
-    return hash;
-}
-
 Type Memory_type = {
     .name=STRING("Memory"),
     .size=sizeof(void*),
     .align=alignof(void*),
-    .cord=CordMethod(Function, (void*)Memory_cord),
-    .order=OrderingMethod(Function, (void*)Memory_compare),
-    .hash=HashMethod(Function, (void*)Memory_hash),
+    .cord=(void*)Memory_cord,
+    .compare=NULL,
+    .equal=NULL,
+    .hash=NULL,
+    .bindings=(NamespaceBinding[]){{0}},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

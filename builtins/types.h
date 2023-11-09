@@ -21,6 +21,7 @@ typedef struct {
             struct Type *base;
         } NamedInfo;
         struct {
+            const char *sigil;
             struct Type *pointed;
         } PointerInfo;
         struct {
@@ -33,78 +34,27 @@ typedef struct {
     } __data;
 } TypeInfo;
 
-typedef struct Equality {
-    enum { EqualityComparison, EqualityFunction, EqualityData } tag;
-    union {
-        struct {} EqualityComparison; // Default: use (generic_compare()!=0)
-        struct {
-            bool (*fn)(const void*, const void*, const struct Type*);
-        } EqualityFunction;
-        struct {
-            size_t size;
-        } EqualityData;
-    } __data;
-} Equality;
-
-#define EqualityMethod(compare_tag, ...) ((Equality){.tag=Equality##compare_tag, .__data.Equality##compare_tag={__VA_ARGS__}})
-
-typedef struct Cording {
-    enum { CordNotImplemented, CordFunction, CordNamed, CordPointer } tag;
-    union {
-        struct {} CordNotImplemented;
-        struct {
-            CORD (*fn)(const void*, bool, const struct Type*);
-        } CordFunction;
-        struct {} CordNamed;
-        struct {
-            const char *sigil, *null_str;
-        } CordPointer;
-    } __data;
-} Cording;
-
-#define CordMethod(cord_tag, ...) ((Cording){.tag=Cord##cord_tag, .__data.Cord##cord_tag={__VA_ARGS__}})
-
-typedef struct Hashing {
-    enum { HashNotImplemented, HashFunction, HashData } tag;
-    union {
-        struct {} HashNotImplemented;
-        struct {
-            uint32_t (*fn)(const void*, const struct Type*);
-        } HashFunction;
-        struct {
-            size_t size;
-        } HashData;
-    } __data;
-} Hashing;
-
-#define HashMethod(hash_tag, ...) ((Hashing){.tag=Hash##hash_tag, .__data.Hash##hash_tag={__VA_ARGS__}})
-
-typedef struct Ordering {
-    enum { OrderingFunction, OrderingData } tag;
-    union {
-        struct {
-            int32_t (*fn)(const void*, const void*, const struct Type*);
-        } OrderingFunction;
-        struct {
-            size_t size;
-        } OrderingData;
-    } __data;
-} Ordering;
-
-#define OrderingMethod(compare_tag, ...) ((Ordering){.tag=Ordering##compare_tag, .__data.Ordering##compare_tag={__VA_ARGS__}})
+typedef uint32_t (*hash_fn_t)(const void*, const struct Type*);
+typedef int32_t (*compare_fn_t)(const void*, const void*, const struct Type*);
+typedef bool (*equal_fn_t)(const void*, const void*, const struct Type*);
+typedef CORD (*cord_fn_t)(const void*, bool, const struct Type*);
 
 typedef struct Type {
     String_t name;
     TypeInfo info;
     size_t size, align;
-    Equality equality;
-    Ordering order;
-    Hashing hash;
-    Cording cord;
+    equal_fn_t equal;
+    compare_fn_t compare;
+    hash_fn_t hash;
+    cord_fn_t cord;
     NamespaceBinding *bindings;
 } Type;
 
-bool generic_equals(const void *x, const void *y, const Type *type);
-CORD generic_cord(const void *obj, bool colorize, const Type *type);
-uint32_t generic_hash(const void *obj, const Type *type);
-int32_t generic_compare(const void *x, const void *y, const Type *type);
+uint32_t hash_data(const void *obj, const Type *type);
+int32_t compare_data(const void *x, const void *y, const Type *type);
+bool equal_data(const void *x, const void *y, const Type *type);
+Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn, NamespaceBinding *bindings);
+Type *make_named_type(const char *name, Type *t);
+Type *make_pointer_type(const char *sigil, Type *t);
+
+// vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

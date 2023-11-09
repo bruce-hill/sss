@@ -34,8 +34,7 @@ HFILES=files.h parse.h ast.h environment.h types.h typecheck.h units.h compile/c
 OBJFILES=$(CFILES:.c=.o)
 
 BUILTIN_CFILES=builtins/integers.c builtins/floats.c builtins/char.c builtins/string.c builtins/bool.c builtins/range.c builtins/memory.c \
-							 builtins/functions.c builtins/array.c builtins/table.c builtins/cording.c builtins/hashing.c builtins/ordering.c \
-							 builtins/equality.c
+							 builtins/functions.c builtins/array.c builtins/table.c builtins/types.c
 BUILTIN_OBJFILES=$(BUILTIN_CFILES:.c=.o)
 
 all: $(LIBFILE) sss sss.1

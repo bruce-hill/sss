@@ -47,4 +47,4 @@ void Table_removes(table_t *t, const char *key);
 
 #define Table_length(t) ((t)->entry_info ? (t)->entry_info->count : 0)
 
-Type make_table_type(Type *key, Type *value);
+Type *make_table_type(Type *key, Type *value);

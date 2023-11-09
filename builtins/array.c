@@ -140,7 +140,7 @@ void Array_sort(array_t *arr, const Type *type)
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
-    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, (void*)item_type);
+    qsort_r(arr->data, arr->length, item_size, (void*)item_type->compare, (void*)item_type);
 }
 
 void Array_shuffle(array_t *arr, size_t item_size)
@@ -192,8 +192,8 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
         return (x->length > y->length) - (x->length < y->length);
 
     Type *item = type->info.__data.ArrayInfo.item;
-    if (item->order.tag == OrderingData) {
-        size_t item_size = item->order.__data.OrderingData.size;
+    if (item->compare == compare_data) {
+        size_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
             int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
             if (cmp != 0) return cmp;
@@ -205,11 +205,16 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
         }
     } else {
         for (int32_t i = 0, len = MIN(x->length, y->length); i < len; i++) {
-            int32_t cmp = generic_compare(x->data + x->stride*i, y->data + y->stride*i, item);
+            int32_t cmp = item->compare(x->data + x->stride*i, y->data + y->stride*i, item);
             if (cmp != 0) return cmp;
         }
     }
     return (x->length > y->length) - (x->length < y->length);
+}
+
+bool Array_equal(const array_t *x, const array_t *y, const Type *type)
+{
+    return (Array_compare(x, y, type) == 0);
 }
 
 CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
@@ -219,7 +224,7 @@ CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
     for (unsigned long i = 0; i < arr->length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
-        CORD item_cord = generic_cord(arr->data + i*arr->stride, colorize, item_type);
+        CORD item_cord = item_type->cord(arr->data + i*arr->stride, colorize, item_type);
         c = CORD_cat(c, item_cord);
     }
     c = CORD_cat(c, "]");
@@ -234,8 +239,8 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     // hashes it down to a single item to start the next chunk. This repeats until the end, when it
     // hashes the last chunk down to a uint32_t.
     Type *item = type->info.__data.ArrayInfo.item;
-    if (item->hash.tag == HashData) {
-        size_t item_size = item->hash.__data.HashData.size;
+    if (item->hash == hash_data) {
+        size_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
         unsigned long length = arr->length;
@@ -248,7 +253,7 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
                 *(uint32_t*)p = chunk_hash;
                 p += sizeof(uint32_t);
             }
-            memcpy((p += item_size), arr->data + i*arr->stride, item->hash.__data.HashData.size);
+            memcpy((p += item_size), arr->data + i*arr->stride, item_size);
         }
         uint32_t hash;
         halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
@@ -263,7 +268,7 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
                 p = hash_batch;
                 *(p++) = chunk_hash;
             }
-            *(p++) = generic_hash(item, arr->data + i*arr->stride);
+            *(p++) = item->hash(arr->data + i*arr->stride, item);
         }
         uint32_t hash;
         halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
@@ -271,17 +276,18 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     }
 }
 
-Type make_array_type(Type *item_type)
+Type *make_array_type(Type *item_type)
 {
     const char *item_name = item_type->name.data;
-    return (Type){
+    return new(Type,
         .name=STRING(heap_strf("[%s]", item_name)),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
         .size=sizeof(array_t),
         .align=alignof(array_t),
-        .order=OrderingMethod(Function, (void*)Array_compare),
-        .hash=HashMethod(Function, (void*)Array_hash),
-        .cord=CordMethod(Function, (void*)Array_cord),
+        .compare=(void*)Array_compare,
+        .equal=(void*)Array_equal,
+        .hash=(void*)Array_hash,
+        .cord=(void*)Array_cord,
         .bindings=(NamespaceBinding[]){
             {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_compact},
             {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_name, item_name), Array_insert},
@@ -293,7 +299,7 @@ Type make_array_type(Type *item_type)
             {"clear", heap_strf("func(arr:@[%s]) Void", item_name), Array_clear},
             {NULL, NULL, NULL},
         },
-    };
+    );
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

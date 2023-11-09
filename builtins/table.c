@@ -32,8 +32,8 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(t, k) (generic_hash((k), type->info.__data.TableInfo.key) % ((t)->bucket_info->count))
-#define EQUAL(x, y) (generic_equals((x), (y), type->info.__data.TableInfo.key))
+#define HASH(t, k) (type->info.__data.TableInfo.key->hash((k), type->info.__data.TableInfo.key) % ((t)->bucket_info->count))
+#define EQUAL(x, y) (type->info.__data.TableInfo.key->equal((x), (y), type->info.__data.TableInfo.key))
 #define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
 #define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
@@ -375,11 +375,11 @@ bool Table_equals(const table_t *x, const table_t *y, const Type *type)
     }
 
     if (x->default_value && y->default_value
-        && !generic_equals(x->default_value, y->default_value, value_type))
+        && !value_type->equal(x->default_value, y->default_value, value_type))
         return false;
 
     if (x->fallback && y->fallback
-        && !generic_equals(x->fallback, y->fallback, type))
+        && !Table_equals(x->fallback, y->fallback, type))
         return false;
     
     return true;
@@ -396,18 +396,18 @@ int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
     memcpy(x_keys, x->entry_info->entries, x_size);
     memcpy(y_keys, y->entry_info->entries, y_size);
 
-    qsort_r(x_keys, Table_length(x), table.entry_size, (void*)generic_compare, table.key);
-    qsort_r(y_keys, Table_length(y), table.entry_size, (void*)generic_compare, table.key);
+    qsort_r(x_keys, Table_length(x), table.entry_size, (void*)table.key->equal, table.key);
+    qsort_r(y_keys, Table_length(y), table.entry_size, (void*)table.key->equal, table.key);
 
     for (uint32_t i = 0, length = MIN(Table_length(x), Table_length(y)); i < length; i++) {
         void *key_x = x_keys + i*table.entry_size;
         void *key_y = y_keys + i*table.entry_size;
-        int cmp = generic_compare(key_x, key_y, table.key);
+        int32_t cmp = table.key->compare(key_x, key_y, table.key);
         if (cmp != 0) return cmp;
 
         void *value_x = key_x + table.value_offset;
         void *value_y = key_y + table.value_offset;
-        cmp = generic_compare(value_x, value_y, table.key);
+        cmp = table.key->compare(value_x, value_y, table.key);
         if (cmp != 0) return cmp;
     }
     return (Table_length(x) > Table_length(y)) - (Table_length(x) < Table_length(y));
@@ -424,15 +424,15 @@ uint32_t Table_hash(const table_t *t, const Type *type)
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
     for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
         void *entry = GET_ENTRY(t, i);
-        key_hashes ^= generic_hash(entry, table.key);
-        value_hashes ^= generic_hash(entry + value_offset, table.value);
+        key_hashes ^= table.key->hash(entry, table.key);
+        value_hashes ^= table.value->hash(entry + value_offset, table.value);
     }
 
     if (t->fallback)
-        fallback_hash = generic_hash(t->fallback, type);
+        fallback_hash = Table_hash(t->fallback, type);
 
     if (t->default_value)
-        default_hash = generic_hash(t->default_value, table.value);
+        default_hash = table.value->hash(t->default_value, table.value);
 
     uint32_t components[] = {
         Table_length(t),
@@ -455,26 +455,26 @@ CORD Table_cord(const table_t *t, bool colorize, const Type *type)
         if (i > 1)
             c = CORD_cat(c, ", ");
         void *entry = Table_entry(type, t, i);
-        c = CORD_cat(c, generic_cord(entry, colorize, table.key));
+        c = CORD_cat(c, table.key->cord(entry, colorize, table.key));
         c = CORD_cat(c, "=>");
-        c = CORD_cat(c, generic_cord(entry + value_offset, colorize, table.value));
+        c = CORD_cat(c, table.value->cord(entry + value_offset, colorize, table.value));
     }
 
     if (t->fallback) {
         c = CORD_cat(c, "; fallback=");
-        c = CORD_cat(c, generic_cord(t->fallback, colorize, type));
+        c = CORD_cat(c, Table_cord(t->fallback, colorize, type));
     }
 
     if (t->default_value) {
         c = CORD_cat(c, "; default=");
-        c = CORD_cat(c, generic_cord(t->default_value, colorize, table.value));
+        c = CORD_cat(c, table.value->cord(t->default_value, colorize, table.value));
     }
 
     c = CORD_cat(c, "}");
     return c;
 }
 
-Type make_table_type(Type *key, Type *value)
+Type *make_table_type(Type *key, Type *value)
 {
     size_t entry_size = key->size;
     if (key->align > 1 && entry_size % key->align)
@@ -487,15 +487,15 @@ Type make_table_type(Type *key, Type *value)
 
     const char *key_name = key->name.data,
           *value_name = value->name.data;
-    return (Type){
+    return new(Type,
         .name=STRING(heap_strf("{%s=>%s}", key_name, value_name)),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
         .size=sizeof(table_t),
         .align=alignof(table_t),
-        .order=OrderingMethod(Function, (void*)Table_compare),
-        .equality=EqualityMethod(Function, (void*)Table_equals),
-        .hash=HashMethod(Function, (void*)Table_hash),
-        .cord=CordMethod(Function, (void*)Table_cord),
+        .compare=(void*)Table_compare,
+        .equal=(void*)Table_equals,
+        .hash=(void*)Table_hash,
+        .cord=(void*)Table_cord,
         .bindings=(NamespaceBinding[]){
             {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get},
             {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get_raw},
@@ -509,35 +509,35 @@ Type make_table_type(Type *key, Type *value)
             {"clear", heap_strf("func(t:@{%s=>%s}) Void", key_name, value_name), Table_clear},
             {NULL, NULL, NULL},
         },
-    };
+    );
 }
 
-Type CStringToVoidStarTable_type;
+Type *CStringToVoidStarTable_type;
 
 void *Table_gets(const table_t *t, const char *key)
 {
-    void **ret = Table_get(&CStringToVoidStarTable_type, t, &key);
+    void **ret = Table_get(CStringToVoidStarTable_type, t, &key);
     return ret ? *ret : NULL;
 }
 
 void *Table_gets_raw(const table_t *t, const char *key)
 {
-    void **ret = Table_get_raw(&CStringToVoidStarTable_type, t, &key);
+    void **ret = Table_get_raw(CStringToVoidStarTable_type, t, &key);
     return ret ? *ret : NULL;
 }
 
 void *Table_sets(table_t *t, const char *key, const void *value)
 {
-    return Table_set(&CStringToVoidStarTable_type, t, &key, &value);
+    return Table_set(CStringToVoidStarTable_type, t, &key, &value);
 }
 
 void Table_removes(table_t *t, const char *key)
 {
-    return Table_remove(&CStringToVoidStarTable_type, t, &key);
+    return Table_remove(CStringToVoidStarTable_type, t, &key);
 }
 
 void *Table_entrys(const table_t *t, uint32_t n)
 {
-    return Table_entry(&CStringToVoidStarTable_type, t, n);
+    return Table_entry(CStringToVoidStarTable_type, t, n);
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

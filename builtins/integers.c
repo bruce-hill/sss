@@ -51,9 +51,10 @@ extern const void *SSS_HASH_VECTOR;
         .name=STRING(#KindOfInt), \
         .size=sizeof(c_type), \
         .align=alignof(c_type), \
-        .cord=CordMethod(Function, (void*)KindOfInt ## _cord), \
-        .order=OrderingMethod(Data, sizeof(c_type)), \
-        .hash=HashMethod(Data, sizeof(c_type)), \
+        .cord=(void*)KindOfInt ## _cord, \
+        .compare=compare_data, \
+        .equal=equal_data, \
+        .hash=hash_data, \
         .bindings=(NamespaceBinding[]){ \
             {"format", "func(i:"#KindOfInt", digits=1) Str", KindOfInt##_format}, \
             {"hex", "func(i:"#KindOfInt", digits=1, uppercase=yes, prefix=yes) Str", KindOfInt##_hex}, \

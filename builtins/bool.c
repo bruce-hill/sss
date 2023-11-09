@@ -27,9 +27,10 @@ Type Bool_type = {
     .name=STRING("Bool"),
     .size=sizeof(bool),
     .align=alignof(bool),
-    .cord=CordMethod(Function, (void*)Bool_cord),
-    .order=OrderingMethod(Data, sizeof(bool)),
-    .hash=HashMethod(Data, sizeof(bool)),
+    .cord=(void*)Bool_cord,
+    .compare=compare_data,
+    .equal=equal_data,
+    .hash=hash_data,
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

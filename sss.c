@@ -349,7 +349,7 @@ int main(int argc, char *argv[])
     if (register_printf_specifier('W', printf_ast, printf_pointer_size))
         errx(1, "Couldn't set printf specifier");
 
-    extern Type CStringToVoidStarTable_type;
+    extern Type *CStringToVoidStarTable_type;
     extern Type CString_type;
     extern Type Memory_type;
     CStringToVoidStarTable_type = make_table_type(&CString_type, &Memory_type);

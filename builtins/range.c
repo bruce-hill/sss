@@ -15,7 +15,8 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Range_cord(const range_t *range, bool colorize, const Type *type) {
+static CORD Range_cord(const range_t *range, bool colorize, const Type *type)
+{
     (void)type;
     CORD c = NULL;
     if (colorize) c = "\x1b[0;35m";
@@ -41,7 +42,8 @@ static CORD Range_cord(const range_t *range, bool colorize, const Type *type) {
     return c;
 }
 
-static int Range_compare(range_t *x, range_t *y) {
+static int32_t Range_compare(range_t *x, range_t *y)
+{
     if (x->first != y->first)
         return x->first > y->first ? 1 : -1;
     if (x->last != y->last)
@@ -53,9 +55,11 @@ Type Range_type = {
     .name="Range",
     .size=sizeof(range_t),
     .align=alignof(range_t),
-    .cord=CordMethod(Function, (void*)Range_cord),
-    .order=OrderingMethod(Function, (void*)Range_compare),
-    .hash=HashMethod(Data, sizeof(range_t)),
+    .cord=(void*)Range_cord,
+    .compare=(void*)Range_compare,
+    .equal=equal_data,
+    .hash=hash_data,
+    .bindings=(NamespaceBinding[]){{0}},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

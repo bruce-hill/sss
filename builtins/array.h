@@ -3,6 +3,7 @@
 #include <gc/cord.h>
 
 #include "types.h"
+#include "../util.h"
 #include "functions.h"
 
 typedef struct {
@@ -22,9 +23,7 @@ void Array_clear(array_t *array);
 void Array_compact(array_t *arr, size_t item_size);
 int32_t Array_compare(const array_t *x, const array_t *y, const Type *type);
 
-#ifndef new
-#define new(t, ...) ((t*)memcpy(GC_MALLOC(sizeof(t)), &(t){__VA_ARGS__}, sizeof(t)))
-#endif
+Type *make_array_type(Type *item_type);
 
 #define ARRAY_OF(t) t**
 #define EMPTY_ARRAY(t) (t**)new(array_t)

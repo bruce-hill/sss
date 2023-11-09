@@ -22,7 +22,7 @@ typedef struct {
     int32_t index;
 } find_result_t;
 
-static String_t compacted(String_t str)
+static String_t compacted(const String_t str)
 {
     if (str.stride == 1) return str;
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
@@ -88,7 +88,7 @@ static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
     }
 }
 
-static int Str_compare(String_t *x, String_t *y)
+static int Str_compare(const String_t *x, const String_t *y)
 {
     unsigned long length = x->length < y->length ? x->length : y->length;
     for (unsigned long i = 0; i < length; i++) {
@@ -99,7 +99,12 @@ static int Str_compare(String_t *x, String_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static int Str_hash(String_t *s, const Type *type)
+static bool Str_equal(const String_t *x, const String_t *y)
+{
+    return (Str_compare(x, y) == 0);
+}
+
+static int Str_hash(const String_t *s, const Type *type)
 {
     (void)type;
     const char *data;
@@ -119,7 +124,7 @@ static int Str_hash(String_t *s, const Type *type)
     return hash;
 }
 
-static String_t uppercased(String_t s)
+static String_t uppercased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
@@ -127,7 +132,7 @@ static String_t uppercased(String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t lowercased(String_t s)
+static String_t lowercased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
@@ -135,7 +140,7 @@ static String_t lowercased(String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t capitalized(String_t s)
+static String_t capitalized(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     unsigned long i;
@@ -153,7 +158,7 @@ static String_t capitalized(String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t titlecased(String_t s)
+static String_t titlecased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     bool should_uppercase = true;
@@ -173,7 +178,7 @@ static String_t titlecased(String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static bool starts_with(String_t s, String_t prefix)
+static bool starts_with(const String_t s, const String_t prefix)
 {
     if (s.length < prefix.length) return false;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -183,7 +188,7 @@ static bool starts_with(String_t s, String_t prefix)
     return true;
 }
 
-static bool ends_with(String_t s, String_t suffix)
+static bool ends_with(const String_t s, const String_t suffix)
 {
     if (s.length < suffix.length) return false;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -193,7 +198,7 @@ static bool ends_with(String_t s, String_t suffix)
     return true;
 }
 
-static String_t without_prefix(String_t s, String_t prefix)
+static String_t without_prefix(const String_t s, const String_t prefix)
 {
     if (s.length < prefix.length) return s;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -208,7 +213,7 @@ static String_t without_prefix(String_t s, String_t prefix)
     };
 }
 
-static String_t without_suffix(String_t s, String_t suffix)
+static String_t without_suffix(const String_t s, const String_t suffix)
 {
     if (s.length < suffix.length) return s;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -223,7 +228,7 @@ static String_t without_suffix(String_t s, String_t suffix)
     };
 }
 
-static String_t trimmed(String_t s, String_t trim_chars, bool trim_left, bool trim_right)
+static String_t trimmed(const String_t s, const String_t trim_chars, bool trim_left, bool trim_right)
 {
     unsigned long length = s.length;
     unsigned long start = 0;
@@ -254,7 +259,7 @@ static String_t trimmed(String_t s, String_t trim_chars, bool trim_left, bool tr
     return (String_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
-static String_t slice(String_t s, int64_t _first, int64_t _stride, int64_t length)
+static String_t slice(const String_t s, int64_t _first, int64_t _stride, int64_t length)
 {
     if (_stride > INT16_MAX || _stride < INT16_MIN)
         errx(1, "Invalid string slice stride: %ld", _stride);
@@ -265,7 +270,7 @@ static String_t slice(String_t s, int64_t _first, int64_t _stride, int64_t lengt
     return (String_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
-static const char *c_string(String_t str)
+static const char *c_string(const String_t str)
 {
     if (str.length == 0)
         return "";
@@ -293,7 +298,7 @@ static String_t from_c_string(const char *str)
     return (String_t){.data=buf, .length=length, .stride=1};
 }
 
-static find_result_t find(String_t str, String_t pat)
+static find_result_t find(const String_t str, const String_t pat)
 {
     if (str.length < pat.length) return (find_result_t){.success=0};
     if (pat.length == 0) return (find_result_t){.success=1, .index=1};
@@ -372,7 +377,7 @@ static String_t replace(String_t text, String_t pat, String_t replacement, int64
     return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static String_t quoted(String_t text, const char *dsl, bool colorize)
+static String_t quoted(const String_t text, const char *dsl, bool colorize)
 {
     char *buf;
     size_t size;
@@ -411,7 +416,7 @@ static String_t quoted(String_t text, const char *dsl, bool colorize)
     return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static String_Array_t split(String_t str, String_t split_chars)
+static String_Array_t split(const String_t str, const String_t split_chars)
 {
     if (str.length == 0) return (String_Array_t){.stride=sizeof(String_t)};
     String_Array_t strings = {.stride=sizeof(String_t)};
@@ -439,9 +444,10 @@ static String_Array_t split(String_t str, String_t split_chars)
 
 Type Str_type = {
     .name="Str",
-    .cord=CordMethod(Function, (void*)Str_cord),
-    .hash=HashMethod(Function, (void*)Str_hash),
-    .order=OrderingMethod(Function, (void*)Str_compare),
+    .cord=(void*)Str_cord,
+    .compare=(void*)Str_compare,
+    .equal=(void*)Str_equal,
+    .hash=(void*)Str_hash,
     .bindings=(NamespaceBinding[]){
         {"uppercased", "func(str:Str) Str", uppercased},
         {"lowercased", "func(str:Str) Str", lowercased},
@@ -498,13 +504,19 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
     return strcmp(*x, *y);
 }
 
+static bool CString_equal(const char **x, const char **y, const Type *type)
+{
+    return (CString_compare(x, y, type) == 0);
+}
+
 Type CString_type = {
     .name="CString",
     .size=sizeof(char*),
     .align=alignof(char*),
-    .cord=CordMethod(Function, (void*)CString_cord),
-    .hash=HashMethod(Function, (void*)CString_hash),
-    .order=OrderingMethod(Function, (void*)CString_compare),
+    .cord=(void*)CString_cord,
+    .hash=(void*)CString_hash,
+    .compare=(void*)CString_compare,
+    .equal=(void*)CString_equal,
     .bindings=(NamespaceBinding[]){
         {"string", "func(str:CString) Str", from_c_string},
         {"from_string", "func(str:Str) CString", c_string},

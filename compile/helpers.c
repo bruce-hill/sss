@@ -318,7 +318,11 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         break;
     }
     case TypeType: {
-        gcc_t = gcc_get_ptr_type(gcc_type(env->ctx, CHAR));
+        cache_key = "Type";
+        gcc_t = Table_gets(&cache, cache_key);
+        if (gcc_t) return gcc_t;
+        // Janky workaround: the type struct contains a string as its first member, but we're ignoring subsequent members
+        gcc_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(ArrayType, Type(CharType)), .is_readonly=1));
         break;
     }
     case GeneratorType: {

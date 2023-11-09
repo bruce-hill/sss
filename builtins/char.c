@@ -65,9 +65,10 @@ Type Char_type = {
     .name=STRING("Char"),
     .size=sizeof(char),
     .align=alignof(char),
-    .cord=CordMethod(Function, (void*)Char_cord),
-    .order=OrderingMethod(Data, sizeof(char)),
-    .hash=HashMethod(Data, sizeof(char)),
+    .cord=(void*)Char_cord,
+    .compare=compare_data,
+    .equal=equal_data,
+    .hash=hash_data,
     .bindings=(NamespaceBinding[]){
         {"uppercased", "func(c:Char) Char", toupper},
         {"lowercased", "func(c:Char) Char", tolower},
