@@ -8,7 +8,7 @@
 
 typedef struct {
     uint32_t occupied:1, index:31;
-    int32_t next_offset;
+    uint32_t next_bucket;
 } hash_bucket_t;
 
 typedef struct {

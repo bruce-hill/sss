@@ -35,6 +35,7 @@
 #define EQUAL(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
 #define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
 #define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
+#define END_OF_CHAIN UINT32_MAX
 
 #define GET_ENTRY(t, i) ((t)->entry_info->entries + ENTRY_SIZE*(i))
 
@@ -45,7 +46,7 @@ static inline void hshow(const table_t *t)
     hdebug("{");
     for (uint32_t i = 0; i < Table_length(t); i++) {
         if (i > 0) hdebug(" ");
-        hdebug("[%d]=%d(%d)", i, t->bucket_info->buckets[i].index, t->bucket_info->buckets[i].next_offset);
+        hdebug("[%d]=%d(%d)", i, t->bucket_info->buckets[i].index, t->bucket_info->buckets[i].next_bucket);
     }
     hdebug("}\n");
 }
@@ -82,12 +83,12 @@ void *Table_get_raw(const Type *type, const table_t *t, const void *key)
     hshow(t);
     hdebug("Getting value with initial probe at %u\n", hash);
     hash_bucket_t *buckets = t->bucket_info->buckets;
-    for (uint32_t i = hash; buckets[i].occupied; i += buckets[i].next_offset) {
+    for (uint32_t i = hash; buckets[i].occupied; i = buckets[i].next_bucket) {
         hdebug("Checking against key in bucket %u\n", i);
         void *entry = GET_ENTRY(t, buckets[i].index);
         if (EQUAL(entry, key))
             return entry + VALUE_OFFSET;
-        if (!buckets[i].next_offset)
+        if (buckets[i].next_bucket == END_OF_CHAIN)
             break;
     }
     return NULL;
@@ -118,8 +119,9 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
     if (!bucket->occupied) {
         hdebug("Got an empty space\n");
         // Empty space:
-        bucket->index = index;
         bucket->occupied = 1;
+        bucket->index = index;
+        bucket->next_bucket = END_OF_CHAIN;
         hshow(t);
         return;
     }
@@ -134,30 +136,26 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
         hdebug("Hit a mid-chain entry\n");
         // Find chain predecessor
         uint32_t predecessor = collided_hash;
-        while (predecessor + buckets[predecessor].next_offset != hash)
-            predecessor += buckets[predecessor].next_offset;
+        while (buckets[predecessor].next_bucket != hash)
+            predecessor = buckets[predecessor].next_bucket;
 
         // Move mid-chain entry to free space and update predecessor
-        buckets[predecessor].next_offset = (int32_t)(t->bucket_info->last_free - predecessor);
-        buckets[t->bucket_info->last_free] = (hash_bucket_t){
-            .occupied = 1,
-            .index=bucket->index,
-            .next_offset=bucket->next_offset ? (hash + bucket->next_offset) - t->bucket_info->last_free : 0,
-        };
+        buckets[predecessor].next_bucket = t->bucket_info->last_free;
+        buckets[t->bucket_info->last_free] = *bucket;
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
         int32_t end_of_chain = hash;
-        while (buckets[end_of_chain].next_offset)
-            end_of_chain += buckets[end_of_chain].next_offset;
+        while (buckets[end_of_chain].next_bucket != END_OF_CHAIN)
+            end_of_chain = buckets[end_of_chain].next_bucket;
         hdebug("Appending to chain\n");
         // Chain now ends on the free space:
-        buckets[end_of_chain].next_offset = (int32_t)(t->bucket_info->last_free - end_of_chain);
+        buckets[end_of_chain].next_bucket = t->bucket_info->last_free;
         bucket = &buckets[t->bucket_info->last_free];
     }
 
-    bucket->next_offset = 0;
-    bucket->index = index;
     bucket->occupied = 1;
+    bucket->index = index;
+    bucket->next_bucket = END_OF_CHAIN;
     hshow(t);
 }
 
@@ -288,16 +286,14 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     //    maybe update lastfree_index1 to removed bucket's index
 
     uint32_t hash = HASH(t, key);
-    uint32_t found_index = 0;
     hash_bucket_t *bucket, *prev = NULL;
-    for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i += t->bucket_info->buckets[i].next_offset) {
+    for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
         if (EQUAL(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
             bucket = &t->bucket_info->buckets[i];
-            found_index = i;
             hdebug("Found key to delete\n");
             goto found_it;
         }
-        if (t->bucket_info->buckets[i].next_offset == 0)
+        if (t->bucket_info->buckets[i].next_bucket == END_OF_CHAIN)
             return;
         prev = &t->bucket_info->buckets[i];
     }
@@ -313,8 +309,8 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     } else {
         hdebug("Removing key/value from middle\n");
         uint32_t i = HASH(t, GET_ENTRY(t, last_index));
-        while (i + t->bucket_info->buckets[i].next_offset != last_index)
-            i += t->bucket_info->buckets[i].next_offset;
+        while (t->bucket_info->buckets[i].next_bucket != last_index)
+            i = t->bucket_info->buckets[i].next_bucket;
         t->bucket_info->buckets[i].index = bucket->index;
 
         memcpy(GET_ENTRY(t, bucket->index), GET_ENTRY(t, last_index), ENTRY_SIZE);
@@ -328,16 +324,11 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     if (prev) { // Middle (or end) of a chain
         hdebug("Removing from middle of a chain\n");
         bucket_to_clear = (bucket - t->bucket_info->buckets);
-        prev->next_offset = (bucket_to_clear + bucket->next_offset) - (prev - t->bucket_info->buckets);
-    } else if (bucket->next_offset) { // Start of a chain
+        prev->next_bucket = bucket->next_bucket;
+    } else if (bucket->next_bucket != END_OF_CHAIN) { // Start of a chain
         hdebug("Removing from start of a chain\n");
-        bucket_to_clear = (bucket - t->bucket_info->buckets) + bucket->next_offset;
-        hash_bucket_t *to_move = &t->bucket_info->buckets[bucket_to_clear];
-        *bucket = (hash_bucket_t){
-            .occupied=1,
-            .index=to_move->index,
-            .next_offset=to_move->next_offset ? (bucket_to_clear + to_move->next_offset) - found_index : 0,
-        };
+        bucket_to_clear = bucket->next_bucket;
+        *bucket = t->bucket_info->buckets[bucket_to_clear];
     } else { // Empty chain
         hdebug("Removing from empty chain\n");
         bucket_to_clear = (bucket - t->bucket_info->buckets);
