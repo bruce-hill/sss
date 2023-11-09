@@ -14,7 +14,7 @@
 #define auto __auto_type
 #endif
 
-CORD generic_cord(const Type *type, const void *obj, bool colorize)
+CORD generic_cord(const void *obj, bool colorize, const Type *type)
 {
     switch (type->cord.tag) {
     case CordNotImplemented: {
@@ -23,17 +23,17 @@ CORD generic_cord(const Type *type, const void *obj, bool colorize)
         return c;
     }
     case CordFunction:
-        return type->cord.__data.CordFunction.fn(type, obj, colorize);
+        return type->cord.__data.CordFunction.fn(obj, colorize, type);
     case CordNamed: {
         auto named = type->info.__data.NamedInfo;
-        return CORD_cat(named.name, generic_cord(named.base, obj, colorize));
+        return CORD_cat(named.name, generic_cord(obj, colorize, named.base));
     }
     case CordPointer: {
         auto ptr_info = type->cord.__data.CordPointer;
         void *ptr = *(void**)obj;
         if (ptr == NULL)
             return ptr_info.null_str;
-        return CORD_cat(ptr_info.sigil, generic_cord(type->info.__data.PointerInfo.pointed, ptr, colorize));
+        return CORD_cat(ptr_info.sigil, generic_cord(ptr, colorize, type->info.__data.PointerInfo.pointed));
     }
     }
     return "";

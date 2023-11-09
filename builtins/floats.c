@@ -13,7 +13,7 @@
 #include "string.h"
 #include "types.h"
 
-static CORD Num_cord(const Type *type, const double *f, bool colorize) { 
+static CORD Num_cord(const double *f, bool colorize, const Type *type) { 
     (void)type;
     CORD c; 
     if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[m", *f); 
@@ -74,7 +74,8 @@ Type Num_type = {
 #undef PRED
 #undef CONST
 
-static CORD Num32_cord(float *f, bool colorize) { 
+static CORD Num32_cord(float *f, bool colorize, const Type *type) { 
+    (void)type;
     CORD c; 
     if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[m", *f); 
     else CORD_sprintf(&c, "%g", *f); 

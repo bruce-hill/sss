@@ -37,7 +37,7 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
 void Table_remove(const Type *type, table_t *t, const void *key);
 void Table_clear(table_t *t);
 void Table_mark_copy_on_write(table_t *t);
-bool Table_equals(const Type *type, const table_t *x, const table_t *y);
+bool Table_equals(const table_t *x, const table_t *y, const Type *type);
 
 void *Table_entrys(const table_t *t, uint32_t n);
 void *Table_gets(const table_t *t, const char *key);

@@ -12,7 +12,7 @@
 #include "string.h"
 #include "types.h"
 
-static CORD Char_cord(const Type *type, const char *c, bool colorize) {
+static CORD Char_cord(const char *c, bool colorize, const Type *type) {
     (void)type;
     CORD cord = 0;
     switch (*c) {

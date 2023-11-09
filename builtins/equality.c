@@ -12,13 +12,13 @@
 #define auto __auto_type
 #endif
 
-bool generic_equals(const Type *type, const void *x, const void *y)
+bool generic_equals(const void *x, const void *y, const Type *type)
 {
     switch (type->equality.tag) {
         case EqualityComparison:
             return (generic_compare(x, y, type) == 0);
         case EqualityFunction:
-            return type->equality.__data.EqualityFunction.fn(type, x, y);
+            return type->equality.__data.EqualityFunction.fn(x, y, type);
         case EqualityData:
             return memcmp(x, y, type->equality.__data.EqualityData.size);
     }

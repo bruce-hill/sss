@@ -38,7 +38,7 @@ typedef struct Equality {
     union {
         struct {} EqualityComparison; // Default: use (generic_compare()!=0)
         struct {
-            bool (*fn)(const struct Type*, const void*, const void*);
+            bool (*fn)(const void*, const void*, const struct Type*);
         } EqualityFunction;
         struct {
             size_t size;
@@ -53,7 +53,7 @@ typedef struct Cording {
     union {
         struct {} CordNotImplemented;
         struct {
-            CORD (*fn)(const struct Type*, const void*, bool);
+            CORD (*fn)(const void*, bool, const struct Type*);
         } CordFunction;
         struct {} CordNamed;
         struct {
@@ -69,7 +69,7 @@ typedef struct Hashing {
     union {
         struct {} HashNotImplemented;
         struct {
-            uint32_t (*fn)(const struct Type*, const void*);
+            uint32_t (*fn)(const void*, const struct Type*);
         } HashFunction;
         struct {
             size_t size;
@@ -104,7 +104,7 @@ typedef struct Type {
     NamespaceBinding *bindings;
 } Type;
 
-bool generic_equals(const Type *type, const void *x, const void *y);
-CORD generic_cord(const Type *type, const void *obj, bool colorize);
-uint32_t generic_hash(const Type *type, const void *obj);
-int32_t generic_compare(const void *x, const void *y, const Type *type); // Type is last for compatibility with qsort_r()
+bool generic_equals(const void *x, const void *y, const Type *type);
+CORD generic_cord(const void *obj, bool colorize, const Type *type);
+uint32_t generic_hash(const void *obj, const Type *type);
+int32_t generic_compare(const void *x, const void *y, const Type *type);

@@ -31,7 +31,7 @@ static String_t compacted(String_t str)
     return (String_t){.data=buf, .length=str.length, .stride=1};
 }
 
-static CORD Str_cord(const Type *type, const String_t *s, bool colorize)
+static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
 {
     (void)type;
     char *data = s->data;
@@ -99,7 +99,7 @@ static int Str_compare(String_t *x, String_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static int Str_hash(const Type *type, String_t *s)
+static int Str_hash(String_t *s, const Type *type)
 {
     (void)type;
     const char *data;
@@ -473,14 +473,14 @@ Type Str_type = {
     },
 };
 
-static CORD CString_cord(const Type *type, const char **s, bool colorize)
+static CORD CString_cord(const char **s, bool colorize, const Type *type)
 {
     String_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
-    return Str_cord(type, &str, colorize);
+    return Str_cord(&str, colorize, type);
 }
 
 #include <assert.h>
-static uint32_t CString_hash(const Type *type, const char **s)
+static uint32_t CString_hash(const char **s, const Type *type)
 {
     (void)type;
     if (!s) return 0;

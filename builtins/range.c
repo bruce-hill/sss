@@ -15,7 +15,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Range_cord(const Type *type, const range_t *range, bool colorize) {
+static CORD Range_cord(const range_t *range, bool colorize, const Type *type) {
     (void)type;
     CORD c = NULL;
     if (colorize) c = "\x1b[0;35m";

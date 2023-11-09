@@ -32,8 +32,8 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(t, k) (generic_hash(type->info.__data.TableInfo.key, (k)) % ((t)->bucket_info->count))
-#define EQUAL(x, y) (generic_equals(type->info.__data.TableInfo.key, (x), (y)))
+#define HASH(t, k) (generic_hash((k), type->info.__data.TableInfo.key) % ((t)->bucket_info->count))
+#define EQUAL(x, y) (generic_equals((x), (y), type->info.__data.TableInfo.key))
 #define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
 #define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
@@ -353,7 +353,7 @@ void Table_clear(table_t *t)
     memset(t, 0, sizeof(table_t));
 }
 
-bool Table_equals(const Type *type, const table_t *x, const table_t *y)
+bool Table_equals(const table_t *x, const table_t *y, const Type *type)
 {
     if (Table_length(x) != Table_length(y))
         return false;
@@ -370,16 +370,16 @@ bool Table_equals(const Type *type, const table_t *x, const table_t *y)
         void *y_value = Table_get_raw(type, y, x_key);
         if (!y_value) return false;
         void *x_value = x_key + VALUE_OFFSET;
-        if (!Table_equals(value_type, x_value, y_value))
+        if (!Table_equals(x_value, y_value, value_type))
             return false;
     }
 
     if (x->default_value && y->default_value
-        && !generic_equals(value_type, x->default_value, y->default_value))
+        && !generic_equals(x->default_value, y->default_value, value_type))
         return false;
 
     if (x->fallback && y->fallback
-        && !generic_equals(type, x->fallback, y->fallback))
+        && !generic_equals(x->fallback, y->fallback, type))
         return false;
     
     return true;
@@ -413,7 +413,7 @@ int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
     return (Table_length(x) > Table_length(y)) - (Table_length(x) < Table_length(y));
 }
 
-uint32_t Table_hash(const Type *type, const table_t *t)
+uint32_t Table_hash(const table_t *t, const Type *type)
 {
     // Table hashes are computed as:
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
@@ -424,15 +424,15 @@ uint32_t Table_hash(const Type *type, const table_t *t)
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
     for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
         void *entry = GET_ENTRY(t, i);
-        key_hashes ^= generic_hash(table.key, entry);
-        value_hashes ^= generic_hash(table.value, entry + value_offset);
+        key_hashes ^= generic_hash(entry, table.key);
+        value_hashes ^= generic_hash(entry + value_offset, table.value);
     }
 
     if (t->fallback)
-        fallback_hash = generic_hash(type, t->fallback);
+        fallback_hash = generic_hash(t->fallback, type);
 
     if (t->default_value)
-        default_hash = generic_hash(table.value, t->default_value);
+        default_hash = generic_hash(t->default_value, table.value);
 
     uint32_t components[] = {
         Table_length(t),
@@ -446,7 +446,7 @@ uint32_t Table_hash(const Type *type, const table_t *t)
     return hash;
 }
 
-CORD Table_cord(const Type *type, const table_t *t, bool colorize)
+CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
     __auto_type table = type->info.__data.TableInfo;
     size_t value_offset = table.value_offset;
@@ -455,19 +455,19 @@ CORD Table_cord(const Type *type, const table_t *t, bool colorize)
         if (i > 1)
             c = CORD_cat(c, ", ");
         void *entry = Table_entry(type, t, i);
-        c = CORD_cat(c, generic_cord(table.key, entry, colorize));
+        c = CORD_cat(c, generic_cord(entry, colorize, table.key));
         c = CORD_cat(c, "=>");
-        c = CORD_cat(c, generic_cord(table.value, entry + value_offset, colorize));
+        c = CORD_cat(c, generic_cord(entry + value_offset, colorize, table.value));
     }
 
     if (t->fallback) {
         c = CORD_cat(c, "; fallback=");
-        c = CORD_cat(c, generic_cord(type, t->fallback, colorize));
+        c = CORD_cat(c, generic_cord(t->fallback, colorize, type));
     }
 
     if (t->default_value) {
         c = CORD_cat(c, "; default=");
-        c = CORD_cat(c, generic_cord(table.value, t->default_value, colorize));
+        c = CORD_cat(c, generic_cord(t->default_value, colorize, table.value));
     }
 
     c = CORD_cat(c, "}");

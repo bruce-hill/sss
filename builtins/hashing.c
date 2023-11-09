@@ -16,13 +16,13 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-uint32_t generic_hash(const Type *type, const void *obj)
+uint32_t generic_hash(const void *obj, const Type *type)
 {
     switch (type->hash.tag) {
     case HashNotImplemented:
         return 0;
     case HashFunction:
-        return type->hash.__data.HashFunction.fn(type, obj);
+        return type->hash.__data.HashFunction.fn(obj, type);
     case HashData: {
         uint32_t hash;
         halfsiphash((void*)obj, type->hash.__data.HashData.size, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));

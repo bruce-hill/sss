@@ -15,7 +15,7 @@ extern const void *SSS_HASH_VECTOR;
 #define str(a) #a
 
 #define DEFINE_INT_TYPE(c_type, KindOfInt, fmt, min_val, max_val, ...)\
-    static CORD KindOfInt ## _cord(const Type *type, const c_type *i, bool colorize) { \
+    static CORD KindOfInt ## _cord(const c_type *i, bool colorize, const Type *type) { \
         (void)type; \
         CORD c; \
         CORD_sprintf(&c, "%"fmt, *i); \

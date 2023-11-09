@@ -130,7 +130,7 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     arr->length -= count;
 }
 
-void Array_sort(const Type *type, array_t *arr)
+void Array_sort(array_t *arr, const Type *type)
 {
     const Type *item_type = type->info.__data.ArrayInfo.item;
     size_t item_size = item_type->size;
@@ -212,21 +212,21 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-CORD Array_cord(const Type *type, const array_t *arr, bool colorize)
+CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
 {
     Type *item_type = type->info.__data.ArrayInfo.item;
     CORD c = "[";
     for (unsigned long i = 0; i < arr->length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
-        CORD item_cord = generic_cord(item_type, arr->data + i*arr->stride, colorize);
+        CORD item_cord = generic_cord(arr->data + i*arr->stride, colorize, item_type);
         c = CORD_cat(c, item_cord);
     }
     c = CORD_cat(c, "]");
     return c;
 }
 
-uint32_t Array_hash(const Type *type, const array_t *arr)
+uint32_t Array_hash(const array_t *arr, const Type *type)
 {
     // Array hash is calculated as a rolling, compacting hash of the length of the array, followed by
     // the hashes of its items (or the items themselves if they're small plain data)
