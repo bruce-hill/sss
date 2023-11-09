@@ -139,7 +139,11 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
 
         // Move mid-chain entry to free space and update predecessor
         buckets[predecessor].next_offset = (int32_t)(t->bucket_info->last_free - predecessor);
-        buckets[t->bucket_info->last_free] = *bucket;
+        buckets[t->bucket_info->last_free] = (hash_bucket_t){
+            .occupied = 1,
+            .index=bucket->index,
+            .next_offset=bucket->next_offset ? (hash + bucket->next_offset) - t->bucket_info->last_free : 0,
+        };
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
         int32_t end_of_chain = hash;
@@ -284,10 +288,12 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     //    maybe update lastfree_index1 to removed bucket's index
 
     uint32_t hash = HASH(t, key);
+    uint32_t found_index = 0;
     hash_bucket_t *bucket, *prev = NULL;
-    for (uint32_t i = hash+1; t->bucket_info->buckets[i].occupied; i += t->bucket_info->buckets[i].next_offset) {
+    for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i += t->bucket_info->buckets[i].next_offset) {
         if (EQUAL(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
             bucket = &t->bucket_info->buckets[i];
+            found_index = i;
             hdebug("Found key to delete\n");
             goto found_it;
         }
@@ -326,7 +332,12 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     } else if (bucket->next_offset) { // Start of a chain
         hdebug("Removing from start of a chain\n");
         bucket_to_clear = (bucket - t->bucket_info->buckets) + bucket->next_offset;
-        *bucket = t->bucket_info->buckets[bucket_to_clear];
+        hash_bucket_t *to_move = &t->bucket_info->buckets[bucket_to_clear];
+        *bucket = (hash_bucket_t){
+            .occupied=1,
+            .index=to_move->index,
+            .next_offset=to_move->next_offset ? (bucket_to_clear + to_move->next_offset) - found_index : 0,
+        };
     } else { // Empty chain
         hdebug("Removing from empty chain\n");
         bucket_to_clear = (bucket - t->bucket_info->buckets);
