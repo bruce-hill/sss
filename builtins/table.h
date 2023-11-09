@@ -9,13 +9,13 @@
 typedef struct {
     uint32_t occupied:1, index:31;
     uint32_t next_bucket;
-} hash_bucket_t;
+} bucket_t;
 
 typedef struct {
     uint32_t count:32, last_free:31;
     uint8_t copy_on_write:1;
-    hash_bucket_t buckets[0];
-} hash_buckets_t;
+    bucket_t buckets[0];
+} bucket_info_t;
 
 typedef struct {
     uint32_t count:32, space:31;
@@ -25,7 +25,7 @@ typedef struct {
 
 typedef struct table_s {
     entries_t *entry_info;
-    hash_buckets_t *bucket_info;
+    bucket_info_t *bucket_info;
     struct table_s *fallback;
     void *default_value;
 } table_t;
