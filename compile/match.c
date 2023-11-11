@@ -34,7 +34,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     case Wildcard: {
         const char *name = Match(pattern, Wildcard)->name;
         if (name)
-            Table_sets(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
+            Table_str_set(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
         return outcomes;

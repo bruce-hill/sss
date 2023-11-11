@@ -55,7 +55,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
         sss_type_t *argtype = ith(fn_info->arg_types, i);
         gcc_param_t *param = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, argtype), ith(arg_names, i));
         append(params, param);
-        Table_sets(env->bindings, ith(arg_names, i), new(binding_t, .type=argtype, .lval=gcc_param_as_lvalue(param), .rval=gcc_param_as_rvalue(param)));
+        Table_str_set(env->bindings, ith(arg_names, i), new(binding_t, .type=argtype, .lval=gcc_param_as_lvalue(param), .rval=gcc_param_as_rvalue(param)));
     }
 
     gcc_func_t *inner_func = gcc_new_func(
@@ -161,7 +161,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
         gcc_param_t *param = gcc_func_get_param(func, i);
         gcc_lvalue_t *lv = gcc_param_as_lvalue(param);
         gcc_rvalue_t *rv = gcc_param_as_rvalue(param);
-        Table_sets(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
+        Table_str_set(env->bindings, argname, new(binding_t, .type=argtype, .lval=lv, .rval=rv));
     }
 
     ast_t *max_cache_size = def->tag == FunctionDef ? Match(def, FunctionDef)->cache : NULL;
@@ -198,7 +198,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
 gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
 {
     const char *key = heap_strf("%p", def);
-    func_context_t *func_context = Table_gets(&env->global->ast_functions, key);
+    func_context_t *func_context = Table_str_get(&env->global->ast_functions, key);
     if (func_context) return func_context->func;
 
     auto t = Match(get_type(env, def), FunctionType);
@@ -216,7 +216,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
         sss_type_to_gcc(env, t->ret), name, LENGTH(params), params[0], 0);
     func_context = new(func_context_t, .func=func, .env=*env);
-    Table_sets(&env->global->ast_functions, key, func_context);
+    Table_str_set(&env->global->ast_functions, key, func_context);
     return func;
 }
 

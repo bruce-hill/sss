@@ -578,9 +578,9 @@ static bool _can_have_cycles(sss_type_t *t, table_t *seen)
         }
         case VariantType: {
             const char *name = Match(t, VariantType)->name;
-            if (name && Table_gets(seen, name))
+            if (name && Table_str_get(seen, name))
                 return true;
-            Table_sets(seen, name, t);
+            Table_str_set(seen, name, t);
             return _can_have_cycles(Match(t, VariantType)->variant_of, seen);
         }
         default: return false;
@@ -599,11 +599,11 @@ sss_type_t *table_entry_type(sss_type_t *table_type)
     sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
                         .field_types=ARRAY((sss_type_t*)Match(table_type, TableType)->key_type,
                                            Match(table_type, TableType)->value_type));
-    sss_type_t *cached = Table_gets(&cache, type_to_string(t));
+    sss_type_t *cached = Table_str_get(&cache, type_to_string(t));
     if (cached) {
         return cached;
     } else {
-        Table_sets(&cache, type_to_string(t), t);
+        Table_str_set(&cache, type_to_string(t), t);
         return t;
     }
 }

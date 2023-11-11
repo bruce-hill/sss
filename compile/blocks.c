@@ -43,7 +43,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
 {
     if (def->tag == TypeDef) {
         const char *name = Match(def, TypeDef)->name;
-        if (Table_gets(env->bindings, name))
+        if (Table_str_get(env->bindings, name))
             compiler_err(env, def, "The name '%s' is already being used by something else", name);
 
         ast_t *type_ast = Match(def, TypeDef)->type;
@@ -63,7 +63,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
-        Table_sets(env->bindings, name, b);
+        Table_str_set(env->bindings, name, b);
         env_t *type_env = get_type_env(env, t);
         type_env->bindings->fallback = env->bindings;
         foreach (definitions, def, _)
@@ -119,7 +119,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
                         gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                         gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), struct_val),
                     }));
-            Table_sets(env->bindings, member.name,
+            Table_str_set(env->bindings, member.name,
                  new(binding_t, .type=Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=t),
                      .visible_in_closures=true,
                      .func=func, .rval=gcc_get_func_address(func, NULL)));
@@ -128,7 +128,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
                 env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
                     gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                 });
-            Table_sets(env->bindings, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
+            Table_str_set(env->bindings, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
         }
     }
 }
@@ -151,9 +151,9 @@ void populate_def_members(env_t *env, ast_t *def)
             auto struct_def = Match(type_ast, TypeStruct);
             for (int64_t i = 0, len = LENGTH(struct_def->members.names); i < len; i++) {
                 const char *name = ith(struct_def->members.names, i);
-                if (Table_gets(&used_names, name))
+                if (Table_str_get(&used_names, name))
                     compiler_err(env, def, "This struct has a duplicated field name: '%s'", name);
-                Table_sets(&used_names, name, (void*)true);
+                Table_str_set(&used_names, name, (void*)true);
                 append(struct_type->field_names, name);
                 ast_t *type = ith(struct_def->members.types, i);
                 ast_t *default_val = struct_def->members.defaults ? ith(struct_def->members.defaults, i) : NULL;
@@ -175,9 +175,9 @@ void populate_def_members(env_t *env, ast_t *def)
                 if (member_t && member_t->tag == PointerType && Match(member_t, PointerType)->is_stack)
                     compiler_err(env, def, "Tagged unions are not allowed to hold stack references, because the tagged union might outlive the stack frame.");
                 const char *name = ith(tu_def->tag_names, i);
-                if (Table_gets(&used_names, name))
+                if (Table_str_get(&used_names, name))
                     compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);
-                Table_sets(&used_names, name, (void*)true);
+                Table_str_set(&used_names, name, (void*)true);
                 sss_tagged_union_member_t member = {
                     .name=name,
                     .tag_value=ith(tu_def->tag_values, i),
@@ -205,7 +205,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
         binding_t *b =  new(binding_t, .type=get_type(env, def),
                             .func=func, .rval=gcc_get_func_address(func, NULL),
                             .visible_in_closures=true);
-        Table_sets(env->file_bindings, fndef->name, b);
+        Table_str_set(env->file_bindings, fndef->name, b);
     } else if (def->tag == TypeDef) {
         binding_t *b = get_binding(env, Match(def, TypeDef)->name);
         sss_type_t *t = Match(b->type, TypeType)->type;
@@ -219,7 +219,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
                 binding_t *b =  new(binding_t, .type=get_type(env, member),
                                     .func=func, .rval=gcc_get_func_address(func, NULL),
                                     .visible_in_closures=true);
-                Table_sets(env->bindings, fndef->name, b);
+                Table_str_set(env->bindings, fndef->name, b);
             } else {
                 predeclare_def_funcs(env, member);
             }

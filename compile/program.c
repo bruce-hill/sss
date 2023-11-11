@@ -28,17 +28,17 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_string_t, "PROGRAM_NAME");
-    Table_sets(&env->global->bindings, "PROGRAM_NAME",
+    Table_str_set(&env->global->bindings, "PROGRAM_NAME",
                new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, args_gcc_t, "ARGS");
-    Table_sets(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(ctx, BOOL), "USE_COLOR");
-    Table_sets(&env->global->bindings, "USE_COLOR",
+    Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
 
     // Compile main(int argc, char *argv[]) function
@@ -58,7 +58,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         }, 0);
     gcc_assign(main_block, NULL, program_name, gcc_callx(ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
 
-    gcc_func_t *getenv_fn = Table_gets(&env->global->funcs, "getenv");
+    gcc_func_t *getenv_fn = Table_str_get(&env->global->funcs, "getenv");
     gcc_rvalue_t *use_color_env_flag = gcc_comparison(
         ctx, NULL, GCC_COMPARISON_EQ, gcc_callx(ctx, NULL, getenv_fn, gcc_str(ctx, "NO_COLOR")),
         gcc_null(ctx, gcc_type(ctx, STRING)));
@@ -93,7 +93,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Actually compile the functions:
     for (uint32_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
-        struct {ast_t *key; func_context_t *value;} *entry = Table_entrys(&env->global->ast_functions, i);
+        struct {ast_t *key; func_context_t *value;} *entry = Table_str_entry(&env->global->ast_functions, i);
         compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 
@@ -117,19 +117,19 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Set up `PROGRAM_NAME`
     gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_string_t, "PROGRAM_NAME");
-    Table_sets(&env->global->bindings, "PROGRAM_NAME",
+    Table_str_set(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, args_gcc_t, "ARGS");
-    Table_sets(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     // gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(ctx, BOOL), "USE_COLOR");
-    // Table_sets(&env->global->bindings, "USE_COLOR",
+    // Table_str_set(&env->global->bindings, "USE_COLOR",
     //      new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
-    Table_sets(&env->global->bindings, "USE_COLOR",
+    Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rvalue_bool(ctx, true), .type=Type(BoolType), .visible_in_closures=true));
 
     struct stat file_stat;  
@@ -152,7 +152,7 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
     gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ret_gcc_type, fresh("module"));
     binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
-    Table_sets(env->bindings, "Module", b);
+    Table_str_set(env->bindings, "Module", b);
     env_t *type_env = get_type_env(env, t);
     type_env->bindings->fallback = env->bindings;
 
@@ -165,7 +165,7 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Actually compile the functions:
     for (uint32_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
-        struct {ast_t *key; func_context_t *value;} *entry = Table_entrys(&env->global->ast_functions, i);
+        struct {ast_t *key; func_context_t *value;} *entry = Table_str_entry(&env->global->ast_functions, i);
         compile_function(&entry->value->env, entry->value->func, entry->key);
     }
 

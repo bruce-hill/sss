@@ -47,10 +47,11 @@ void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_siz
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
     if (!arr->data) {
-        arr->data = arr->atomic ? GC_MALLOC_ATOMIC(item_size) : GC_MALLOC(item_size);
-        arr->free = 1;
+        arr->free = 4;
+        arr->data = arr->atomic ? GC_MALLOC_ATOMIC(arr->free * item_size) : GC_MALLOC(arr->free * item_size);
+        arr->stride = item_size;
     } else if (arr->free < 1 || (size_t)arr->stride != item_size) {
-        arr->free = 6;
+        arr->free = MAX(15, MIN(1, arr->length/4));
         void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int64_t i = 0; i < index-1; i++)
             memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
@@ -58,6 +59,7 @@ void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_siz
             memcpy(copy + (i+1)*item_size, arr->data + arr->stride*i, item_size);
         arr->data = copy;
         arr->copy_on_write = 0;
+        arr->stride = item_size;
     } else {
         if (arr->copy_on_write)
             Array_compact(arr, item_size);
@@ -76,8 +78,8 @@ void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t ite
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
     if (!arr->data) {
-        arr->data = arr->atomic ? GC_MALLOC_ATOMIC(item_size*to_insert.length) : GC_MALLOC(item_size*to_insert.length);
         arr->free = to_insert.length;
+        arr->data = arr->atomic ? GC_MALLOC_ATOMIC(item_size*arr->free) : GC_MALLOC(item_size*arr->free);
     } else if ((int64_t)arr->free < (int64_t)to_insert.length || (size_t)arr->stride != item_size) {
         arr->free = to_insert.length;
         void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);

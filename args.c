@@ -22,7 +22,7 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
     if (arg_names) {
         for (int64_t i = 0; i < LENGTH(arg_names); i++) {
             if (ith(arg_names, i))
-                Table_sets(&arg_positions, ith(arg_names, i), (void*)i);
+                Table_str_set(&arg_positions, ith(arg_names, i), (void*)i);
         }
     }
 
@@ -30,7 +30,7 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
     for (int64_t i = 0; i < LENGTH(args); i++) {
         ast_t *arg = ith(args, i);
         if (arg->tag == KeywordArg && Match(arg, KeywordArg)->name)
-            Table_sets(&kwargs, Match(arg, KeywordArg)->name, arg);
+            Table_str_set(&kwargs, Match(arg, KeywordArg)->name, arg);
     }
 
     arg_info_t *populated[num_args] = {};
@@ -40,13 +40,13 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
         arg_info_t *info = &arg_infos[next_arg++];
         if (arg->tag == KeywordArg && Match(arg, KeywordArg)->name) {
             const char *name = Match(arg, KeywordArg)->name;
-            int64_t *pos = Table_gets(&arg_positions, name);
+            int64_t *pos = Table_str_get(&arg_positions, name);
             if (!pos)
                 compiler_err(env, arg, "'%s' is not a valid argument name", name);
             info->position = *pos;
         } else {
             if (arg->tag == KeywordArg) arg = Match(arg, KeywordArg)->arg;
-            while (Table_gets(&kwargs, ith(arg_names, next_spec_arg))) {
+            while (Table_str_get(&kwargs, ith(arg_names, next_spec_arg))) {
                 if (next_spec_arg > num_args)
                     compiler_err(env, arg, "Too many arguments provided");
                 ++next_spec_arg;

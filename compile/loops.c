@@ -371,12 +371,12 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     auto label_names = ARRAY((const char*)"for");
     if (for_->index) {
         append(label_names, Match(for_->index, Var)->name);
-        Table_sets(loop_env->bindings, Match(for_->index, Var)->name,
+        Table_str_set(loop_env->bindings, Match(for_->index, Var)->name,
                    new(binding_t, .rval=gcc_rval(index_shadow), .lval=index_shadow, .type=INT_TYPE));
     }
     if (for_->value) {
         append(label_names, Match(for_->value, Var)->name);
-        Table_sets(loop_env->bindings, Match(for_->value, Var)->name,
+        Table_str_set(loop_env->bindings, Match(for_->value, Var)->name,
                    new(binding_t, .rval=gcc_rval(item_shadow), .lval=item_shadow, .type=item_t));
     }
     loop_env->loop_label = &(loop_label_t){

@@ -159,7 +159,7 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
 
         if (ptr->pointed->tag == CharType) {
             // String LENGTH
-            gcc_func_t *len_func = Table_gets(&env->global->funcs, "strlen");
+            gcc_func_t *len_func = Table_str_get(&env->global->funcs, "strlen");
             gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
             return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
         } else {
@@ -268,7 +268,7 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
 
         field_rvals[arg->position] = rval;
         if (rval && arg->name)
-            Table_sets(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
+            Table_str_set(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
     }
 
     // Filter for only the populated fields (those not uninitialized):
@@ -336,7 +336,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
             compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
                   "and I get confused if you try to redeclare the name of a namespace.");
-        Table_sets(env->bindings, name,
+        Table_str_set(env->bindings, name,
                    new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL,
                        .visible_in_closures=decl->is_global));
         assert(rval);
@@ -560,7 +560,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         defer_env->bindings->fallback = env->bindings->fallback;
         gcc_func_t *func = gcc_block_func(*block);
         for (uint32_t i = 1; i <= Table_length(env->bindings); i++) {
-            struct {const char *key; binding_t *value;} *entry = Table_entrys(env->bindings, i);
+            struct {const char *key; binding_t *value;} *entry = Table_str_entry(env->bindings, i);
             gcc_lvalue_t *cached = gcc_local(func, loc, sss_type_to_gcc(env, entry->value->type), entry->key);
             if (!entry->value->rval) continue;
             gcc_assign(*block, loc, cached, entry->value->rval);
@@ -568,7 +568,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             *cached_binding = *entry->value;
             cached_binding->lval = cached;
             cached_binding->rval = gcc_rval(cached);
-            Table_sets(defer_env->bindings, entry->key, cached_binding);
+            Table_str_set(defer_env->bindings, entry->key, cached_binding);
         }
         defer_env->is_deferred = true;
         env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
@@ -610,10 +610,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
                 if (can_be_lvalue(env, shim, false)) {
                     gcc_lvalue_t *lval = get_lvalue(env, block, shim, false);
-                    Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
+                    Table_str_set(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .lval=lval, .rval=gcc_rval(lval)));
                 } else {
                     gcc_rvalue_t *rval = compile_expr(env, block, shim);
-                    Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .rval=rval));
+                    Table_str_set(env->bindings, *field, new(binding_t, .type=get_type(env, shim), .rval=rval));
                 }
             }
         }
@@ -896,7 +896,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // compile_function(env, func, def);
         const char *name = heap_strf("#convert-from:%s", type_to_string(src_t));
         table_t *ns = get_namespace(env, target_t);
-        Table_sets(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=ARRAY(src_t), .ret=target_t),
+        Table_str_set(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=ARRAY(src_t), .ret=target_t),
                                  .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
         return NULL;
     }
@@ -929,7 +929,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 const char* name = Match(decl->var, Var)->name;
                 const char* sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
-                Table_sets(env->bindings, name,
+                Table_str_set(env->bindings, name,
                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
@@ -1155,7 +1155,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             arg_rvals[arg->position] = rval;
             if (arg->name)
-                Table_sets(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
+                Table_str_set(default_env->bindings, arg->name, new(binding_t, .type=arg->type, .rval=rval));
         }
 
         if (fn)
@@ -1958,7 +1958,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, loc, subject_var, subject);
         if (if_->subject->tag == Declare) {
             env = fresh_scope(env);
-            Table_sets(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
+            Table_str_set(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
                        new(binding_t, .type=subject_t, .lval=subject_var, .rval=gcc_rval(subject_var)));
         }
         subject = gcc_rval(subject_var);
@@ -2108,8 +2108,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             env_t *lhs_env = fresh_scope(env), *rhs_env = fresh_scope(env);
             const char *var_name = (ast->tag == Min) ? "_min_" : "_max_";
             // Note: These both use 't' because promotion has already occurred.
-            Table_sets(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
-            Table_sets(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
+            Table_str_set(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
+            Table_str_set(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
 
             sss_type_t *cmp_lhs_t = get_type(lhs_env, key);
             gcc_rvalue_t *lhs_cmp_val = compile_expr(lhs_env, block, key),
@@ -2172,7 +2172,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env = fresh_scope(env);
 
         ast_t *accum_var = WrapAST(ast, Var, .name="x.0");
-        Table_sets(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
+        Table_str_set(env->bindings, Match(accum_var, Var)->name, new(binding_t, .lval=ret, .rval=gcc_rval(ret), .type=t));
         ast_t *incoming_var = WrapAST(ast, Var, .name="y.0");
 
         ast_t *index, *value, *iter, *first, *between, *empty;

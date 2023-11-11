@@ -31,9 +31,9 @@ const char *fresh(const char *name)
             tmp[i] = '_';
     }
     name = (const char*)tmp;
-    int64_t count = (int64_t)Table_gets(&seen, name);
+    int64_t count = (int64_t)Table_str_get(&seen, name);
     const char *ret = heap_strf("%s__%ld", name, count++);
-    Table_sets(&seen, name, (void*)(count+1));
+    Table_str_set(&seen, name, (void*)(count+1));
     return ret;
 }
 
@@ -147,12 +147,12 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
 {
     t = base_variant(t);
     static table_t cache = {0};
-    gcc_type_t *gcc_t = Table_gets(&cache, type_to_string(t));
+    gcc_type_t *gcc_t = Table_str_get(&cache, type_to_string(t));
     if (gcc_t) return gcc_t;
     auto tagged = Match(base_variant(t), TaggedUnionType);
     auto fields = EMPTY_ARRAY(gcc_field_t*);
     foreach (tagged->members, member, _) {
-        if (member->type && Table_gets(&opaque_structs, type_to_string(member->type)))
+        if (member->type && Table_str_get(&opaque_structs, type_to_string(member->type)))
             compiler_err(env, NULL, "The tagged union %T recursively contains itself, which could be infinitely large. If you want to reference other %T values, use a pointer or an array.",
                          t, t);
         gcc_type_t *gcc_ft = member->type ? sss_type_to_gcc(env, member->type)
@@ -161,7 +161,7 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
         append(fields, field);
     }
     gcc_type_t *union_gcc_t = gcc_union(env->ctx, NULL, "data_union", LENGTH(fields), fields[0]);
-    Table_sets(&cache, type_to_string(t), union_gcc_t);
+    Table_str_set(&cache, type_to_string(t), union_gcc_t);
     return union_gcc_t;
 }
 
@@ -223,7 +223,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     static table_t cache = {0};
     t = with_units(t, NULL);
     const char *cache_key = type_to_string(t);
-    gcc_type_t *gcc_t = Table_gets(&cache, cache_key);
+    gcc_type_t *gcc_t = Table_str_get(&cache, cache_key);
     if (gcc_t) return gcc_t;
 
     const char *name = NULL;
@@ -329,17 +329,17 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case StructType: {
         auto struct_t = Match(t, StructType);
         const char *t_str = type_to_string(t);
-        gcc_type_t *opaque = Table_gets(&opaque_structs, t_str);
+        gcc_type_t *opaque = Table_str_get(&opaque_structs, t_str);
         if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "Tuple");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        Table_sets(&cache, t_str, gcc_t);
-        Table_sets(&opaque_structs, t_str, gcc_t);
+        Table_str_set(&cache, t_str, gcc_t);
+        Table_str_set(&opaque_structs, t_str, gcc_t);
 
         auto fields = EMPTY_ARRAY(gcc_field_t*);
         for (int64_t i = 0; i < LENGTH(struct_t->field_types); i++) {
             sss_type_t *sss_ft = ith(struct_t->field_types, i);
-            if (Table_gets(&opaque_structs, type_to_string(sss_ft)))
+            if (Table_str_get(&opaque_structs, type_to_string(sss_ft)))
                 compiler_err(env, NULL, "The struct %T recursively contains itself, which would be infinitely large. If you want to reference other %T structs, use a pointer or an array.",
                              t, t);
             gcc_type_t *gcc_ft = sss_type_to_gcc(env, sss_ft);
@@ -351,27 +351,27 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         }
         gcc_set_fields(gcc_struct, NULL, LENGTH(fields), fields[0]);
         gcc_t = gcc_struct_as_type(gcc_struct);
-        Table_removes(&opaque_structs, t_str);
+        Table_str_remove(&opaque_structs, t_str);
         break;
     }
     case TaggedUnionType: {
         const char *t_str = type_to_string(t);
-        gcc_type_t *opaque = Table_gets(&opaque_structs, t_str);
+        gcc_type_t *opaque = Table_str_get(&opaque_structs, t_str);
         if (opaque) return opaque;
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, name ? name : "TaggedUnion");
         gcc_t = gcc_struct_as_type(gcc_struct);
-        Table_sets(&cache, t_str, gcc_t);
-        Table_sets(&opaque_structs, t_str, gcc_t);
+        Table_str_set(&cache, t_str, gcc_t);
+        Table_str_set(&opaque_structs, t_str, gcc_t);
         gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
             gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
             gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
         });
-        Table_removes(&opaque_structs, t_str);
+        Table_str_remove(&opaque_structs, t_str);
         break;
     }
     case TypeType: {
         cache_key = "Type";
-        gcc_t = Table_gets(&cache, cache_key);
+        gcc_t = Table_str_get(&cache, cache_key);
         if (gcc_t) return gcc_t;
         gcc_t = gcc_get_ptr_type(get_type_gcc_type(env));
         break;
@@ -399,7 +399,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     }
 
-    Table_sets(&cache, cache_key, gcc_t);
+    Table_str_set(&cache, cache_key, gcc_t);
     return gcc_t;
 }
 

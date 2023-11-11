@@ -28,7 +28,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     sss_type_t *void_ptr_t = Type(PointerType, .pointed=Type(MemoryType), .is_optional=true);
     if (t->tag == PointerType && !type_eq(t, void_ptr_t)) {
         gcc_func_t *func = get_hash_func(env, void_ptr_t);
-        Table_sets(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));
+        Table_str_set(get_namespace(env, t), "__hash", get_from_namespace(env, void_ptr_t, "__hash"));
         return func;
     }
 
@@ -40,7 +40,7 @@ gcc_func_t *get_hash_func(env_t *env, sss_type_t *t)
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_INTERNAL, u32, sym_name, 1, params, 0);
     sss_type_t *fn_t = Type(FunctionType, .arg_types=ARRAY(Type(PointerType, .pointed=t)),
                            .arg_names=ARRAY((const char*)"obj"), .arg_defaults=NULL, .ret=Type(IntType, .bits=32, .is_unsigned=true));
-    Table_sets(get_namespace(env, t), "__hash",
+    Table_str_set(get_namespace(env, t), "__hash",
          new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t));
     gcc_block_t *block = gcc_new_block(func, fresh("hash"));
     gcc_comment(block, NULL, heap_strf("Implementation of hash(%s)", type_to_string(t)));

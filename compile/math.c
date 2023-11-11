@@ -62,7 +62,7 @@ static gcc_rvalue_t *math_binop_rec(
                                     i32, lhs_len32, rhs_len32);
 
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
-        gcc_func_t *alloc_func = Table_gets(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = Table_str_get(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
@@ -139,7 +139,7 @@ static gcc_rvalue_t *math_binop_rec(
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
-        gcc_func_t *alloc_func = Table_gets(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
+        gcc_func_t *alloc_func = Table_str_get(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
         gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));

@@ -112,11 +112,11 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
                 compiler_err(env, ith(struct_->members.types, i), "Structs can't have stack memory because the struct may outlive the stack frame.");
             append(member_types, member_t);
         }
-        sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
+        sss_type_t *memoized = Table_str_get(&tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
         } else {
-            Table_sets(&tuple_types, type_to_string(t), t);
+            Table_str_set(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -373,7 +373,7 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         if (!name) return;
         binding_t *b = get_binding(env, name);
         if (!b)
-            Table_sets(env->bindings, name, new(binding_t, .type=t));
+            Table_str_set(env->bindings, name, new(binding_t, .type=t));
         return;
     }
     case Var: {
@@ -599,11 +599,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto entry = Match(ast, TableEntry);
         sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
                             .field_types=ARRAY(get_type(env, entry->key), get_type(env, entry->value)));
-        sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
+        sss_type_t *memoized = Table_str_get(&tuple_types, type_to_string(t));
         if (memoized) {
             t = memoized;
         } else {
-            Table_sets(&tuple_types, type_to_string(t), t);
+            Table_str_set(&tuple_types, type_to_string(t), t);
         }
         return t;
     }
@@ -715,7 +715,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             case Declare: {
                 auto decl = Match(stmt, Declare);
                 sss_type_t *t = get_type(env, decl->value);
-                Table_sets(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+                Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
                 break;
             }
             default:
@@ -935,7 +935,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         // Include only global bindings:
         env_t *lambda_env = file_scope(env);
         for (int64_t i = 0; i < LENGTH(lambda->args.types); i++) {
-            Table_sets(lambda_env->bindings, ith(arg_names, i), new(binding_t, .type=ith(arg_types, i)));
+            Table_str_set(lambda_env->bindings, ith(arg_names, i), new(binding_t, .type=ith(arg_types, i)));
         }
         sss_type_t *ret = get_type(lambda_env, lambda->body);
         if (has_stack_memory(ret))
@@ -957,7 +957,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             ast_t *arg_type_def = ith(def->args.types, i);
             if (!arg_type_def) continue;
             sss_type_t *arg_type = parse_type_ast(env, arg_type_def);
-            Table_sets(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
+            Table_str_set(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
         }
         
         for (int64_t i = 0; i < LENGTH(def->args.types); i++) {
@@ -974,7 +974,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 sss_type_t *arg_type = get_type(default_arg_env, default_val);
                 append(arg_types, arg_type);
                 append(arg_defaults, default_val);
-                Table_sets(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
+                Table_str_set(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
             }
         }
 
@@ -1006,11 +1006,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
             sss_type_t *t = Type(StructType, .field_names=field_names, .field_types=field_types,
                                  .units=unit_derive(struct_->units, NULL, env->derived_units));
-            sss_type_t *memoized = Table_gets(&tuple_types, type_to_string(t));
+            sss_type_t *memoized = Table_str_get(&tuple_types, type_to_string(t));
             if (memoized) {
                 t = memoized;
             } else {
-                Table_sets(&tuple_types, type_to_string(t), t);
+                Table_str_set(&tuple_types, type_to_string(t), t);
             }
             return t;
         }
@@ -1038,7 +1038,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (if_->subject->tag == Declare) {
             subject_t = get_type(env, Match(if_->subject, Declare)->value);
             env = fresh_scope(env);
-            Table_sets(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
+            Table_str_set(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
                  new(binding_t, .type=subject_t));
         } else {
             subject_t = get_type(env, if_->subject);
@@ -1073,10 +1073,10 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         env_t *loop_env = fresh_scope(env);
         if (for_loop->index) {
-            Table_sets(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
+            Table_str_set(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
         }
         if (for_loop->value) {
-            Table_sets(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
+            Table_str_set(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
         }
         
         if (for_loop->first)
@@ -1094,8 +1094,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         env = fresh_scope(env);
         auto reduction = Match(ast, Reduction);
         sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        Table_sets(env->bindings, "x.0", new(binding_t, .type=item_type));
-        Table_sets(env->bindings, "y.0", new(binding_t, .type=item_type));
+        Table_str_set(env->bindings, "x.0", new(binding_t, .type=item_type));
+        Table_str_set(env->bindings, "y.0", new(binding_t, .type=item_type));
         sss_type_t *combo_t = get_type(env, reduction->combination);
         if (!can_promote(item_type, combo_t))
             compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",
@@ -1115,7 +1115,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto with = Match(ast, With);
         if (with->var) {
             env = fresh_scope(env);
-            Table_sets(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
+            Table_str_set(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
         }
         return get_type(env, with->body);
     }
@@ -1141,7 +1141,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             }
             foreach (fields, field, _) {
                 ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
-                Table_sets(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
+                Table_str_set(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
             }
         }
         return get_type(env, using->body);
@@ -1182,7 +1182,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
         for (int64_t i = 0; i < LENGTH(members); i++) {
             auto member = ith(members, i);
             auto list = EMPTY_ARRAY(ast_t*);
-            Table_sets(&member_handlers, member.name, list);
+            Table_str_set(&member_handlers, member.name, list);
         }
 
         foreach (patterns, pat, _) {
@@ -1190,7 +1190,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                 ast_t *fn = Match((*pat), FunctionCall)->fn;
                 if (fn->tag == Var) {
                     const char *name = Match(fn, Var)->name;
-                    ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, name);
+                    ARRAY_OF(ast_t*) handlers = Table_str_get(&member_handlers, name);
                     if (handlers) {
                         auto args = Match(*pat, FunctionCall)->args;
                         ast_t *m_pat = WrapAST(*pat, Struct, .members=args);
@@ -1199,7 +1199,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                 }
             } else if ((*pat)->tag == Var) {
                 const char *name = Match(*pat, Var)->name;
-                ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, name);
+                ARRAY_OF(ast_t*) handlers = Table_str_get(&member_handlers, name);
                 if (handlers)
                     append(handlers, *pat);
             }
@@ -1208,7 +1208,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
         const char *unhandled = NULL;
         for (int64_t i = 0; i < LENGTH(members); i++) {
             auto member = ith(members, i);
-            ARRAY_OF(ast_t*) handlers = Table_gets(&member_handlers, member.name);
+            ARRAY_OF(ast_t*) handlers = Table_str_get(&member_handlers, member.name);
             if (LENGTH(handlers) == 0) {
                 if (unhandled)
                     unhandled = heap_strf("%s, nor is %s.%s",
@@ -1279,7 +1279,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
             auto name = ith(field_names, i);
             if (!name) continue;
             auto type = ith(field_type_list, i);
-            Table_sets(&field_types, name, type);
+            Table_str_set(&field_types, name, type);
         }
 
         foreach (patterns, pat, _) {
@@ -1290,15 +1290,15 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                 if ((*member)->tag != KeywordArg) continue;
                 auto memb = Match(*member, KeywordArg);
                 if (!memb->name) continue;
-                Table_sets(&named_members, memb->name, memb->arg);
+                Table_str_set(&named_members, memb->name, memb->arg);
             }
             foreach (struct_->members, member, _) {
                 if ((*member)->tag == KeywordArg && Match(*member, KeywordArg)->name)
                     continue;
                 for (int64_t i = 0; i < LENGTH(field_names); i++) {
                     const char *name = ith(field_names, i);
-                    if (name && !Table_gets(&named_members, name)) {
-                        Table_sets(&named_members, name, *member);
+                    if (name && !Table_str_get(&named_members, name)) {
+                        Table_str_set(&named_members, name, *member);
                         break;
                     }
                 }
@@ -1306,8 +1306,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
 
             const char *missing = NULL;
             for (int64_t i = 1; i <= Table_length(&named_members); i++) {
-                struct {const char *key; ast_t *value;} *entry = Table_entrys(&named_members, i);
-                sss_type_t *type = Table_gets(&field_types, entry->key);
+                struct {const char *key; ast_t *value;} *entry = Table_str_entry(&named_members, i);
+                sss_type_t *type = Table_str_get(&field_types, entry->key);
                 if (!type) continue;
                 missing = get_missing_pattern(env, type, ARRAY(entry->value));
                 if (missing) break;
@@ -1344,7 +1344,7 @@ sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
         case Declare: {
             auto decl = Match(stmt, Declare);
             sss_type_t *t = get_type(env, decl->value);
-            Table_sets(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+            Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
             append(field_names, Match(decl->var, Var)->name);
             append(field_types, t);
             break;
@@ -1380,13 +1380,13 @@ sss_type_t *get_file_type(env_t *env, const char *path)
 
     int64_t inode = (int64_t)file_info.st_ino; 
     const char *name = heap_strf("Module_%ld", inode);
-    sss_type_t *type = Table_gets(&env->global->module_types, name);
+    sss_type_t *type = Table_str_get(&env->global->module_types, name);
     if (type) return type;
 
     sss_file_t *f = sss_load_file(sss_path);
     ast_t *ast = parse_file(f, env->on_err);
     type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
-    Table_sets(&env->global->module_types, name, type);
+    Table_str_set(&env->global->module_types, name, type);
     return type;
 }
 

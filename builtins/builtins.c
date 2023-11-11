@@ -15,7 +15,7 @@ extern Type Bool_type, Char_type,
        Num_type, Num32_type,
        Str_type, CString_type,
        Range_type, Memory_type;
-extern Type (*make_array_type)(Type*);
+extern Type *(make_array_type)(Type*);
 
 __attribute__ ((visibility ("default"))) NamespaceBinding *load()
 {

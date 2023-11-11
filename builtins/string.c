@@ -492,7 +492,6 @@ static uint32_t CString_hash(const char **s, const Type *type)
     if (!s) return 0;
     uint32_t hash;
     halfsiphash(*s, strlen(*s)+1, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
-    printf("Hashing '%s' (len=%d) -> %u\n", *s, strlen(*s), hash);
     assert(strlen(*s) > 0);
     return hash;
 }
@@ -500,7 +499,6 @@ static uint32_t CString_hash(const char **s, const Type *type)
 static uint32_t CString_compare(const char **x, const char **y, const Type *type)
 {
     (void)type;
-    printf("Comparing '%s' vs '%s'\n", *x, *y);
     return strcmp(*x, *y);
 }
 

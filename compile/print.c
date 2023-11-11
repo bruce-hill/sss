@@ -46,7 +46,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
     // Reuse same function for all Type types:
     if (t->tag == TypeType && Match(t, TypeType)->type) {
         gcc_func_t *func = get_cord_func(env, Type(TypeType));
-        Table_sets(get_namespace(env, t), func_name, get_from_namespace(env, Type(TypeType), func_name));
+        Table_str_set(get_namespace(env, t), func_name, get_from_namespace(env, Type(TypeType), func_name));
         return func;
     }
 
@@ -65,7 +65,7 @@ gcc_func_t *get_cord_func(env_t *env, sss_type_t *t)
                            .arg_names=ARRAY((const char*)"obj", "recursion", "color"),
                            .arg_defaults=NULL, .ret=Type(PointerType, .pointed=Type(MemoryType)));
     table_t *ns = get_namespace(env, t);
-    Table_sets(ns, func_name, new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
+    Table_str_set(ns, func_name, new(binding_t, .func=func, .rval=gcc_get_func_address(func, NULL), .type=fn_t, .sym_name=sym_name));
 
     gcc_block_t *block = gcc_new_block(func, fresh("to_cord"));
     gcc_comment(block, NULL, CORD_to_char_star(CORD_cat("to_cord() for type: ", type_to_typeof_string(t))));

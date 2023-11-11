@@ -23,8 +23,8 @@
                  (gcc_param_t*[]){__VA_ARGS__}, 1)
 
 static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
-    Table_sets(&env->global->funcs, heap_str(name),
-               gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
+    Table_str_set(&env->global->funcs, heap_str(name),
+                  gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
 }
 
 typedef struct {
@@ -51,7 +51,7 @@ static inline void _load_method(
     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, ret_t),
                                     extern_name, nargs, params, 0);
     sss_type_t *fn_type = Type(FunctionType, .arg_types=arg_type_list, .arg_names=arg_name_list, .arg_defaults=arg_default_list, .ret=ret_t);
-    Table_sets(ns, heap_str(method_name), new(binding_t, .type=fn_type, .func=func));
+    Table_str_set(ns, heap_str(method_name), new(binding_t, .type=fn_type, .func=func));
 }
 
 sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, ARRAY_OF(sss_tagged_union_member_t) members)
@@ -69,7 +69,7 @@ sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, ARRA
     }
     sss_type_t *t = Type(VariantType, .filename="<builtin>", .name=name, .variant_of=Type(TaggedUnionType, .tag_bits=tag_bits, .members=members));
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
-    Table_sets(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));
     populate_tagged_union_constructors(env, t);
     return t;
 }
@@ -134,8 +134,8 @@ static void load_global_functions(env_t *env)
                          PARAM(t_bool, "use_color"), PARAM(t_str, "expected"), PARAM(t_str, "filename"), PARAM(t_int, "start"),
                          PARAM(t_int, "end"));
     load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
-    gcc_func_t *exit_fn = Table_gets(&env->global->funcs, "exit");
-    Table_sets(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
+    gcc_func_t *exit_fn = Table_str_get(&env->global->funcs, "exit");
+    Table_str_set(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
         FunctionType,
         .arg_names=ARRAY((const char*)"status"),
         .arg_types=ARRAY(Type(IntType, .bits=32)),
@@ -143,8 +143,8 @@ static void load_global_functions(env_t *env)
         .ret=Type(AbortType))));
     load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
     load_global_func(env, gcc_type(ctx, STRING), "range_to_cord", PARAM(t_range, "range"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
-    gcc_func_t *range_to_cord = Table_gets(&env->global->funcs, "range_to_cord");
-    Table_sets(get_namespace(env, Type(RangeType)), "__cord",
+    gcc_func_t *range_to_cord = Table_str_get(&env->global->funcs, "range_to_cord");
+    Table_str_set(get_namespace(env, Type(RangeType)), "__cord",
          new(binding_t, .func=range_to_cord, .sym_name="range_to_cord"));
     load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
     load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
@@ -199,7 +199,7 @@ static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
     const char *name = type_to_string(str_type);
     gcc_rvalue_t *rval = gcc_str(env->ctx, name);
     binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
-    Table_sets(&env->global->bindings, name, binding);
+    Table_str_set(&env->global->bindings, name, binding);
 
     table_t *ns = get_namespace(env, str_type);
     load_method(env, ns, "sss_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
@@ -268,13 +268,13 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
                 append(error_members, item);
         }
         sss_type_t *c_err = define_tagged_union(env, 32, "CError", error_members);
-        Table_sets(&env->global->bindings, "CError", new(binding_t, .rval=gcc_str(ctx, "CError"), .type=Type(TypeType, .type=c_err)));
+        Table_str_set(&env->global->bindings, "CError", new(binding_t, .rval=gcc_str(ctx, "CError"), .type=Type(TypeType, .type=c_err)));
 
         gcc_type_t *errno_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, c_err));
         gcc_func_t *errno_loc_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, errno_ptr_gcc_t, "__errno_location", 0, NULL, 0);
         gcc_rvalue_t *errno_ptr = gcc_callx(env->ctx, NULL, errno_loc_func);
         gcc_lvalue_t *errno_lval = gcc_rvalue_dereference(errno_ptr, NULL);
-        Table_sets(&env->global->bindings, "errno", new(binding_t, .rval=gcc_rval(errno_lval), .lval=errno_lval, .type=c_err));
+        Table_str_set(&env->global->bindings, "errno", new(binding_t, .rval=gcc_rval(errno_lval), .lval=errno_lval, .type=c_err));
     }
 
     sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
@@ -299,7 +299,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     };
     gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
     gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
-    Table_sets(&env->global->bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
+    Table_str_set(&env->global->bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
     sss_type_t *warn_type = Type(
         FunctionType,
         .arg_names=ARRAY((const char*)"str", "end", "colorize"),
@@ -312,8 +312,8 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         gcc_new_param(ctx, NULL, gcc_type(env->ctx, BOOL), "colorize"),
     };
     gcc_func_t *warn_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "warn", 3, gcc_warn_params, 0);
-    Table_sets(&env->global->bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
-#define DEFTYPE(t) Table_sets(&env->global->bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
+    Table_str_set(&env->global->bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
+#define DEFTYPE(t) Table_str_set(&env->global->bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
     // Primitive types:
     DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort); DEFTYPE(Memory);
     DEFTYPE(Char); DEFTYPE(CStringChar);
@@ -338,13 +338,13 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
     table_t *ns = get_namespace(env, t);
     if (t->tag == TaggedUnionType) {
         auto members = Match(t, TaggedUnionType)->members;
-        if (LENGTH(members) > 0 && !Table_gets(ns, ith(members, 0).name))
+        if (LENGTH(members) > 0 && !Table_str_get(ns, ith(members, 0).name))
             populate_tagged_union_constructors(env, t);
     }
     for (uint32_t i = 1; i <= Table_length(ns); i++) {
         struct { const char *key; binding_t *value; } *entry = Table_entry(NULL, ns, i);
-        if (!Table_gets(fresh->bindings, entry->key))
-            Table_sets(fresh->bindings, entry->key, entry->value);
+        if (!Table_str_get(fresh->bindings, entry->key))
+            Table_str_set(fresh->bindings, entry->key, entry->value);
     }
     return fresh;
 }
@@ -353,9 +353,9 @@ static void copy_global_bindings(table_t *dest, table_t *src)
 {
     for (; src; src = src->fallback) {
         for (uint32_t i = 1; i <= Table_length(src); i++) {
-            struct { const char *key; binding_t *value;} *entry = Table_entrys(src, i);
+            struct { const char *key; binding_t *value;} *entry = Table_str_entry(src, i);
             if (entry->value->visible_in_closures)
-                Table_sets(dest, entry->key, entry->value);
+                Table_str_set(dest, entry->key, entry->value);
         }
     }
 }
@@ -395,20 +395,20 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 
 binding_t *get_binding(env_t *env, const char *name)
 {
-    return Table_gets(env->bindings, name);
+    return Table_str_get(env->bindings, name);
 }
 
 binding_t *get_local_binding(env_t *env, const char *name)
 {
     table_t *fallback = env->bindings->fallback;
-    binding_t *b = Table_gets(env->bindings, name);
+    binding_t *b = Table_str_get(env->bindings, name);
     env->bindings->fallback = fallback;
     return b;
 }
 
 gcc_func_t *get_function(env_t *env, const char *name)
 {
-    gcc_func_t *func = Table_gets(&env->global->funcs, name);
+    gcc_func_t *func = Table_str_get(&env->global->funcs, name);
     assert(func);
     return func;
 }
@@ -447,10 +447,10 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 table_t *get_namespace(env_t *env, sss_type_t *t)
 {
-    table_t *ns = Table_gets(&env->global->type_namespaces, type_to_string(t));
+    table_t *ns = Table_str_get(&env->global->type_namespaces, type_to_string(t));
     if (!ns) {
         ns = new(table_t, .fallback=env->file_bindings);
-        Table_sets(&env->global->type_namespaces, type_to_string(t), ns);
+        Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
 
         sss_type_t *base_t = t;
         for (;;) {
@@ -481,14 +481,14 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
     table_t *ns = get_namespace(env, t);
     table_t *fallback = ns->fallback;
     ns->fallback = NULL;
-    binding_t *b = Table_gets(ns, name);
+    binding_t *b = Table_str_get(ns, name);
     ns->fallback = fallback;
     return b;
 }
 
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value)
 {
-    Table_sets(get_namespace(env, t), heap_str(name), value);
+    Table_str_set(get_namespace(env, t), heap_str(name), value);
 }
 
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
@@ -514,12 +514,12 @@ static int word_distance(const char *s1, const char *s2) {
 
 const char *spellcheck(table_t *ns, const char *word)
 {
-    assert(!Table_gets(ns, word));
+    assert(!Table_str_get(ns, word));
     const char *closest = NULL;
     int closest_dist = 0;
     for (; ns; ns = ns->fallback) {
         for (uint32_t i = 1; i <= Table_length(ns); i++) {
-            struct { const char *key; binding_t *value;} *entry = Table_entrys(ns, i);
+            struct { const char *key; binding_t *value;} *entry = Table_str_entry(ns, i);
             int dist = word_distance(word, entry->key);
             if (closest == NULL || dist < closest_dist) {
                 closest = entry->key;

@@ -115,18 +115,18 @@ int run_repl(gcc_jit_context *ctx)
     // Set up `PROGRAM_NAME`
     sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
-    Table_sets(&env->global->bindings, "PROGRAM_NAME",
+    Table_str_set(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));
 
     // Set up `ARGS`
     gcc_type_t *args_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=string_t));
     gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    Table_sets(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
 
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
     gcc_jit_global_set_initializer_rvalue(use_color_var, gcc_rvalue_bool(ctx, use_color));
-    Table_sets(&env->global->bindings, "USE_COLOR",
+    Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color_var), .type=Type(BoolType), .visible_in_closures=true));
 
     // Keep track of which functions have already been compiled:
@@ -250,13 +250,13 @@ int run_repl(gcc_jit_context *ctx)
         }
 
         for (uint32_t i = 1; i <= Table_length(&fresh_env->global->ast_functions); i++) {
-            struct { const char *key; func_context_t *value; } *entry = Table_entrys(&fresh_env->global->ast_functions, i);
+            struct { const char *key; func_context_t *value; } *entry = Table_str_entry(&fresh_env->global->ast_functions, i);
             const char *func_addr = heap_strf("%p", entry->value->func);
-            if (Table_gets(&compiled_functions, func_addr))
+            if (Table_str_get(&compiled_functions, func_addr))
                 continue;
             ast_t *ast = (ast_t*)strtol(entry->key, NULL, 16); // ugly hack, key is a string-encoded pointer
             compile_function(&entry->value->env, entry->value->func, ast);
-            Table_sets(&compiled_functions, func_addr, entry->value->func);
+            Table_str_set(&compiled_functions, func_addr, entry->value->func);
         }
 
         result = gcc_compile(ctx);
@@ -277,9 +277,9 @@ int run_repl(gcc_jit_context *ctx)
         // Copy out the variables to GC memory
         for (table_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
             for (uint32_t i = 1; i <= Table_length(bindings); i++) {
-                struct {const char *key; binding_t *value;} *entry = Table_entrys(bindings, i);
+                struct {const char *key; binding_t *value;} *entry = Table_str_entry(bindings, i);
                 binding_t *b = entry->value;
-                if (!b->sym_name || Table_gets(env->bindings, entry->key) == b)
+                if (!b->sym_name || Table_str_get(env->bindings, entry->key) == b)
                     continue;
 
                 // Update the binding so it points to the global memory:
@@ -289,7 +289,7 @@ int run_repl(gcc_jit_context *ctx)
                 gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(fresh_env->ctx, gcc_get_ptr_type(gcc_t), global);
                 b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
                 b->rval = gcc_rval(b->lval);
-                Table_sets(env->bindings, entry->key, b);
+                Table_str_set(env->bindings, entry->key, b);
             }
         }
 
