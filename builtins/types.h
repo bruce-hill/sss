@@ -40,7 +40,7 @@ typedef bool (*equal_fn_t)(const void*, const void*, const struct Type*);
 typedef CORD (*cord_fn_t)(const void*, bool, const struct Type*);
 
 typedef struct Type {
-    String_t name;
+    const char *name;
     TypeInfo info;
     size_t size, align;
     equal_fn_t equal;

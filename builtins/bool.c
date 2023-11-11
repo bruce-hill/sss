@@ -24,7 +24,7 @@ static CORD Bool_cord(const bool *b, bool colorize, const Type *type)
 }
 
 Type Bool_type = {
-    .name=STRING("Bool"),
+    .name="Bool",
     .size=sizeof(bool),
     .align=alignof(bool),
     .cord=(void*)Bool_cord,

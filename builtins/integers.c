@@ -48,7 +48,7 @@ extern const void *SSS_HASH_VECTOR;
     } \
     static c_type KindOfInt##_min = min_val, KindOfInt##_max = max_val; \
     Type KindOfInt##_type = { \
-        .name=STRING(#KindOfInt), \
+        .name=#KindOfInt, \
         .size=sizeof(c_type), \
         .align=alignof(c_type), \
         .cord=(void*)KindOfInt ## _cord, \

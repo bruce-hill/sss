@@ -278,9 +278,9 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
 
 Type *make_array_type(Type *item_type)
 {
-    const char *item_name = item_type->name.data;
+    const char *item_name = item_type->name;
     return new(Type,
-        .name=STRING(heap_strf("[%s]", item_name)),
+        .name=heap_strf("[%s]", item_name),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
         .size=sizeof(array_t),
         .align=alignof(array_t),

@@ -22,7 +22,7 @@ static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
 }
 
 Type Memory_type = {
-    .name=STRING("Memory"),
+    .name="Memory",
     .size=sizeof(void*),
     .align=alignof(void*),
     .cord=(void*)Memory_cord,

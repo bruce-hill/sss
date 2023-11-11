@@ -485,10 +485,10 @@ Type *make_table_type(Type *key, Type *value)
     if (max_align > 1 && entry_size % max_align)
         entry_size += max_align - (entry_size % max_align); // padding
 
-    const char *key_name = key->name.data,
-          *value_name = value->name.data;
+    const char *key_name = key->name,
+          *value_name = value->name;
     return new(Type,
-        .name=STRING(heap_strf("{%s=>%s}", key_name, value_name)),
+        .name=heap_strf("{%s=>%s}", key_name, value_name),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
         .size=sizeof(table_t),
         .align=alignof(table_t),

@@ -62,7 +62,7 @@ BOOLIFY(isblank)
 
 typedef bool (*char_pred_t)(char);
 Type Char_type = {
-    .name=STRING("Char"),
+    .name="Char",
     .size=sizeof(char),
     .align=alignof(char),
     .cord=(void*)Char_cord,
