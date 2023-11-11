@@ -486,7 +486,21 @@ Type *make_table_type(Type *key, Type *value)
         entry_size += max_align - (entry_size % max_align); // padding
 
     const char *key_name = key->name,
-          *value_name = value->name;
+               *value_name = value->name;
+
+    NamespaceBinding bindings[] = {
+        {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get},
+        {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get_raw},
+        {"entry", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
+                            key_name, value_name, key_name, value_name), Table_entry},
+        {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
+                          key_name, value_name, key_name, value_name, value_name), Table_set},
+        {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
+                             key_name, value_name, key_name), Table_remove},
+        {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key_name, value_name), Table_equals},
+        {"clear", heap_strf("func(t:@{%s=>%s}) Void", key_name, value_name), Table_clear},
+        {NULL, NULL, NULL},
+    };
     return new(Type,
         .name=heap_strf("{%s=>%s}", key_name, value_name),
         .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
@@ -496,19 +510,7 @@ Type *make_table_type(Type *key, Type *value)
         .equal=(void*)Table_equals,
         .hash=(void*)Table_hash,
         .cord=(void*)Table_cord,
-        .bindings=(NamespaceBinding[]){
-            {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get},
-            {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get_raw},
-            {"entry", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
-                                key_name, value_name, key_name, value_name), Table_entry},
-            {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
-                              key_name, value_name, key_name, value_name, value_name), Table_set},
-            {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
-                                 key_name, value_name, key_name), Table_remove},
-            {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key_name, value_name), Table_equals},
-            {"clear", heap_strf("func(t:@{%s=>%s}) Void", key_name, value_name), Table_clear},
-            {NULL, NULL, NULL},
-        },
+        .bindings=memcpy(GC_MALLOC(sizeof(bindings)), bindings, sizeof(bindings)),
     );
 }
 

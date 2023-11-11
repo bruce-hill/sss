@@ -279,6 +279,19 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
 Type *make_array_type(Type *item_type)
 {
     const char *item_name = item_type->name;
+
+    NamespaceBinding bindings[] = {
+        {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_compact},
+        {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_name, item_name), Array_insert},
+        {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_name, item_name), Array_insert_all},
+        {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_name), Array_remove},
+        {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_name, item_name), Array_sort},
+        {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_shuffle},
+        {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_name, item_name), Array_join},
+        {"clear", heap_strf("func(arr:@[%s]) Void", item_name), Array_clear},
+        {NULL, NULL, NULL},
+    };
+
     return new(Type,
         .name=heap_strf("[%s]", item_name),
         .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
@@ -288,17 +301,7 @@ Type *make_array_type(Type *item_type)
         .equal=(void*)Array_equal,
         .hash=(void*)Array_hash,
         .cord=(void*)Array_cord,
-        .bindings=(NamespaceBinding[]){
-            {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_compact},
-            {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_name, item_name), Array_insert},
-            {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_name, item_name), Array_insert_all},
-            {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_name), Array_remove},
-            {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_name, item_name), Array_sort},
-            {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_shuffle},
-            {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_name, item_name), Array_join},
-            {"clear", heap_strf("func(arr:@[%s]) Void", item_name), Array_clear},
-            {NULL, NULL, NULL},
-        },
+        .bindings=memcpy(GC_MALLOC(sizeof(bindings)), bindings, sizeof(bindings)),
     );
 }
 

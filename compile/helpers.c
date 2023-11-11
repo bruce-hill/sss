@@ -165,6 +165,58 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
     return union_gcc_t;
 }
 
+static gcc_type_t *get_type_gcc_type(env_t *env)
+{
+    static gcc_type_t *type_gcc_type = NULL;
+    if (type_gcc_type != NULL)
+        return type_gcc_type;
+
+#define FIELD(name, type) gcc_new_field(env->ctx, NULL, type, name)
+#define STRUCT(name, ...) gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, name, sizeof((gcc_field_t*[]){__VA_ARGS__})/sizeof(gcc_field_t*), (gcc_field_t*[]){__VA_ARGS__}))
+#define UNION(name, ...) gcc_union(env->ctx, NULL, name, sizeof((gcc_field_t*[]){__VA_ARGS__})/sizeof(gcc_field_t*), (gcc_field_t*[]){__VA_ARGS__})
+
+    gcc_struct_t *type_struct = gcc_opaque_struct(env->ctx, NULL, "Type");
+    type_gcc_type = gcc_struct_as_type(type_struct);
+    
+    gcc_type_t *type_info_union_t = UNION(
+        "TypeInfo",
+        FIELD("NamedInfo", STRUCT(
+                "NamedInfo",
+                FIELD("name", gcc_type(env->ctx, STRING)), 
+                FIELD("base", gcc_get_ptr_type(type_gcc_type)))),
+        FIELD("PointerInfo", STRUCT(
+                "PointerInfo",
+                FIELD("sigil", gcc_type(env->ctx, STRING)), 
+                FIELD("pointed", gcc_get_ptr_type(type_gcc_type)))),
+        FIELD("ArrayInfo", STRUCT(
+                "ArrayInfo",
+                FIELD("item", gcc_get_ptr_type(type_gcc_type)))),
+        FIELD("TableInfo", STRUCT(
+                "TableInfo",
+                FIELD("key", gcc_get_ptr_type(type_gcc_type)),
+                FIELD("value", gcc_get_ptr_type(type_gcc_type)),
+                FIELD("entry_size", gcc_type(env->ctx, SIZE)),
+                FIELD("value_offset", gcc_type(env->ctx, SIZE)))));
+
+    gcc_field_t *fields[] = { 
+        FIELD("name", gcc_type(env->ctx, STRING)),
+        FIELD("info", STRUCT("TypeInfo", FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("__data", type_info_union_t))),
+        FIELD("size", gcc_type(env->ctx, SIZE)),
+        FIELD("align", gcc_type(env->ctx, SIZE)),
+        FIELD("equal", gcc_type(env->ctx, VOID_PTR)),
+        FIELD("compare", gcc_type(env->ctx, VOID_PTR)),
+        FIELD("hash", gcc_type(env->ctx, VOID_PTR)),
+        FIELD("cord", gcc_type(env->ctx, VOID_PTR)),
+        FIELD("bindings", gcc_type(env->ctx, VOID_PTR)),
+    };
+#undef UNION
+#undef STRUCT
+#undef FIELD
+    gcc_set_fields(type_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
+    return type_gcc_type;
+}
+
+
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
@@ -321,8 +373,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         cache_key = "Type";
         gcc_t = Table_gets(&cache, cache_key);
         if (gcc_t) return gcc_t;
-        // Janky workaround: the type struct contains a string as its first member, but we're ignoring subsequent members
-        gcc_t = sss_type_to_gcc(env, Type(PointerType, .pointed=Type(ArrayType, Type(CharType)), .is_readonly=1));
+        gcc_t = gcc_get_ptr_type(get_type_gcc_type(env));
         break;
     }
     case GeneratorType: {
