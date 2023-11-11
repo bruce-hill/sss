@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
     setenv("SSSPATH", heap_strf(".:%s/.local/share/sss/modules:/usr/local/share/sss/modules", getenv("HOME")), 0);
 
     const char *gcc_flags[] = {
-        "-ftrapv", "-freg-struct-return",
+        "-ftrapv", "-freg-struct-return", "-flto",
     };
     for (size_t i = 0; i < sizeof(gcc_flags)/sizeof(gcc_flags[0]); i++)
         gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
