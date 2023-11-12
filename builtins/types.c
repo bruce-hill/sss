@@ -17,9 +17,9 @@ uint32_t generic_hash(const void *obj, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_hash(obj, type);
     case TableInfo: return Table_hash(obj, type);
-    case CustomInfo:
-        if (type->__data.CustomInfo.hash)
-            return type->__data.CustomInfo.hash(obj, type);
+    case VTableInfo:
+        if (type->__data.VTableInfo.hash)
+            return type->__data.VTableInfo.hash(obj, type);
         // fallthrough
     default: {
         uint32_t hash;
@@ -34,9 +34,9 @@ int32_t generic_compare(const void *x, const void *y, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_compare(x, y, type);
     case TableInfo: return Table_compare(x, y, type);
-    case CustomInfo:
-        if (type->__data.CustomInfo.compare)
-            return type->__data.CustomInfo.compare(x, y, type);
+    case VTableInfo:
+        if (type->__data.VTableInfo.compare)
+            return type->__data.VTableInfo.compare(x, y, type);
         // fallthrough
     default: return (int32_t)memcmp((void*)x, (void*)y, type->size);
     }
@@ -47,9 +47,9 @@ bool generic_equal(const void *x, const void *y, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_equal(x, y, type);
     case TableInfo: return Table_equal(x, y, type);
-    case CustomInfo:
-        if (type->__data.CustomInfo.equal)
-            return type->__data.CustomInfo.equal(x, y, type);
+    case VTableInfo:
+        if (type->__data.VTableInfo.equal)
+            return type->__data.VTableInfo.equal(x, y, type);
         // fallthrough
     default: return (generic_compare(x, y, type) == 0);
     }
@@ -72,7 +72,7 @@ CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
     case ArrayInfo: return Array_cord(obj, colorize, type);
     case TableInfo: return Table_cord(obj, colorize, type);
-    case CustomInfo: return type->__data.CustomInfo.cord(obj, colorize, type);
+    case VTableInfo: return type->__data.VTableInfo.cord(obj, colorize, type);
     default: errx(1, "Unreachable");
     }
 }
@@ -99,8 +99,8 @@ static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 
 Type Type_type = {
     .name="Type",
-    .tag=CustomInfo,
-    .__data.CustomInfo={.cord=(void*)Type_cord},
+    .tag=VTableInfo,
+    .__data.VTableInfo={.cord=(void*)Type_cord},
 };
 
 Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
@@ -109,8 +109,8 @@ Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, v
         .name=name,
         .size=size,
         .align=align,
-        .tag=CustomInfo,
-        .__data.CustomInfo={
+        .tag=VTableInfo,
+        .__data.VTableInfo={
             .compare=compare_fn,
             .equal=equal_fn,
             .hash=hash_fn,

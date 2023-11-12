@@ -194,7 +194,7 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
         return (x->length > y->length) - (x->length < y->length);
 
     Type *item = type->__data.ArrayInfo.item;
-    if (item->tag == PointerInfo || (item->tag == CustomInfo && item->__data.CustomInfo.compare == NULL)) { // data comparison
+    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->__data.VTableInfo.compare == NULL)) { // data comparison
         size_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
             int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
@@ -241,7 +241,7 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     // hashes it down to a single item to start the next chunk. This repeats until the end, when it
     // hashes the last chunk down to a uint32_t.
     Type *item = type->__data.ArrayInfo.item;
-    if (item->tag == PointerInfo || (item->tag == CustomInfo && item->__data.CustomInfo.hash == NULL)) { // Raw data hash
+    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->__data.VTableInfo.hash == NULL)) { // Raw data hash
         size_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);

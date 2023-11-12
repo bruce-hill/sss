@@ -38,8 +38,8 @@ Type Num_type = {
     .name="Num",
     .size=sizeof(double),
     .align=alignof(double),
-    .tag=CustomInfo,
-    .__data.CustomInfo={.cord=(void*)Num_cord},
+    .tag=VTableInfo,
+    .__data.VTableInfo={.cord=(void*)Num_cord},
     // .bindings=STATIC_ARRAY((void*)
     //     Num_mod, Num_format, drand48,
     //     // Unops
@@ -99,8 +99,8 @@ Type Num32_type = {
     .name="Num32",
     .size=sizeof(float),
     .align=alignof(float),
-    .tag=CustomInfo,
-    .__data.CustomInfo={.cord=(void*)Num32_cord},
+    .tag=VTableInfo,
+    .__data.VTableInfo={.cord=(void*)Num32_cord},
     // .bindings=STATIC_ARRAY((void*)
     //     Num32_mod, Num32_format, Num32_random,
     //     // Unops

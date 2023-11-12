@@ -27,8 +27,8 @@ Type Bool_type = {
     .name="Bool",
     .size=sizeof(bool),
     .align=alignof(bool),
-    .tag=CustomInfo,
-    .__data.CustomInfo={.cord=(void*)Bool_cord},
+    .tag=VTableInfo,
+    .__data.VTableInfo={.cord=(void*)Bool_cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

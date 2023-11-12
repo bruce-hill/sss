@@ -16,8 +16,14 @@ typedef CORD (*cord_fn_t)(const void*, bool, const struct Type*);
 typedef struct Type {
     const char *name;
     size_t size, align;
-    enum { PointerInfo, ArrayInfo, TableInfo, CustomInfo } tag;
+    enum { VTableInfo, PointerInfo, ArrayInfo, TableInfo } tag;
     union {
+        struct {
+            equal_fn_t equal;
+            compare_fn_t compare;
+            hash_fn_t hash;
+            cord_fn_t cord;
+        } VTableInfo;
         struct {
             const char *sigil;
             struct Type *pointed;
@@ -29,12 +35,6 @@ typedef struct Type {
             struct Type *key, *value;
             size_t entry_size, value_offset;
         } TableInfo;
-        struct {
-            equal_fn_t equal;
-            compare_fn_t compare;
-            hash_fn_t hash;
-            cord_fn_t cord;
-        } CustomInfo;
     } __data;
 } Type;
 

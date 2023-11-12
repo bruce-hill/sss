@@ -66,8 +66,8 @@ Type Char_type = {
     .name="Char",
     .size=sizeof(char),
     .align=alignof(char),
-    .tag=CustomInfo,
-    .__data.CustomInfo={.cord=(void*)Char_cord},
+    .tag=VTableInfo,
+    .__data.VTableInfo={.cord=(void*)Char_cord},
     // .bindings=STATIC_ARRAY((void*)
     //     toupper, tolower, Char_isalnum, Char_isalpha, Char_iscntrl, Char_isdigit, Char_isgraph, Char_islower,
     //     Char_isprint, Char_ispunct, Char_isspace, Char_isupper, Char_isxdigit, Char_isascii, Char_isblank,
