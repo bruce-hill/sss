@@ -277,13 +277,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
                            .rval=gcc_lvalue_address(
                                gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol),
                                NULL));
-        printf("Declared type: %s\n", builtin_types[i].type_name);
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
-        printf("WTF: binding = %p, &binding = %p, got: %p\n",
-               b, &b, Table_str_get(&env->global->bindings, builtin_types[i].type_name));
-        assert(Table_str_get(&env->global->bindings, builtin_types[i].type_name) == b);
-        assert(env->bindings->fallback->fallback == &env->global->bindings);
-        assert(get_binding(env, builtin_types[i].type_name) == b);
     }
 
     // Then declare type methods:
