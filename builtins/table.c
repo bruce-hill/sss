@@ -33,10 +33,10 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(t, k) (type->info.__data.TableInfo.key->hash((k), type->info.__data.TableInfo.key) % ((t)->bucket_info->count))
-#define EQUAL(x, y) (type->info.__data.TableInfo.key->equal((x), (y), type->info.__data.TableInfo.key))
-#define ENTRY_SIZE (type->info.__data.TableInfo.entry_size)
-#define VALUE_OFFSET (type->info.__data.TableInfo.value_offset)
+#define HASH(t, k) (generic_hash((k), type->__data.TableInfo.key) % ((t)->bucket_info->count))
+#define EQUAL(x, y) (generic_equal((x), (y), type->__data.TableInfo.key))
+#define ENTRY_SIZE (type->__data.TableInfo.entry_size)
+#define VALUE_OFFSET (type->__data.TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
 
 #define GET_ENTRY(t, i) ((t)->entries.data + ENTRY_SIZE*(i))
@@ -61,7 +61,7 @@ typedef enum { COW_NONE = 0, COW_ENTRIES = 1, COW_BUCKETS = 2, COW_BOTH = 3 } co
 static void maybe_copy_on_write(const Type *type, table_t *t, cow_e which_cow)
 {
     if (t->entries.copy_on_write && (which_cow & COW_ENTRIES)) {
-        Array_compact(&t->entries, type->info.__data.TableInfo.entry_size);
+        Array_compact(&t->entries, type->__data.TableInfo.entry_size);
     }
 
     if (t->bucket_info && t->bucket_info->copy_on_write && (which_cow & COW_BUCKETS)) {
@@ -194,8 +194,8 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
 
     hdebug("Hash of key being set: %u\n", HASH(t, key));
 
-    size_t key_size = type->info.__data.TableInfo.key->size,
-           value_size = type->info.__data.TableInfo.value->size;
+    size_t key_size = type->__data.TableInfo.key->size,
+           value_size = type->__data.TableInfo.value->size;
     void *value_home = Table_get_raw(type, t, key);
     if (value_home) { // Update existing slot
         // Ensure that `value_home` is still inside t->entries, even if COW occurs
@@ -334,7 +334,7 @@ void Table_clear(table_t *t)
     memset(t, 0, sizeof(table_t));
 }
 
-bool Table_equals(const table_t *x, const table_t *y, const Type *type)
+bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 {
     if (Table_length(x) != Table_length(y))
         return false;
@@ -345,22 +345,22 @@ bool Table_equals(const table_t *x, const table_t *y, const Type *type)
     if ((x->fallback != NULL) != (y->fallback != NULL))
         return false;
 
-    const Type *value_type = type->info.__data.TableInfo.value;
+    const Type *value_type = type->__data.TableInfo.value;
     for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
         void *y_value = Table_get_raw(type, y, x_key);
         if (!y_value) return false;
-        if (!Table_equals(x_value, y_value, value_type))
+        if (!Table_equal(x_value, y_value, value_type))
             return false;
     }
 
     if (x->default_value && y->default_value
-        && !value_type->equal(x->default_value, y->default_value, value_type))
+        && !generic_equal(x->default_value, y->default_value, value_type))
         return false;
 
     if (x->fallback && y->fallback
-        && !Table_equals(x->fallback, y->fallback, type))
+        && !Table_equal(x->fallback, y->fallback, type))
         return false;
     
     return true;
@@ -368,8 +368,8 @@ bool Table_equals(const table_t *x, const table_t *y, const Type *type)
 
 int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
 {
-    __auto_type table = type->info.__data.TableInfo;
-    Type entry_type = {.size=ENTRY_SIZE, .compare=table.key->compare};
+    __auto_type table = type->__data.TableInfo;
+    Type entry_type = {.size=ENTRY_SIZE, .tag=table.key->tag, .__data=table.key->__data};
     array_t x_entries = x->entries, y_entries = y->entries;
     Array_sort(&x_entries, &entry_type);
     Array_sort(&y_entries, &entry_type);
@@ -380,7 +380,7 @@ int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
     for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
         void *value_x = x_entries.data + i*table.entry_size + table.value_offset;
         void *value_y = y_entries.data + i*table.entry_size + table.value_offset;
-        int32_t cmp = table.key->compare(value_x, value_y, table.value);
+        int32_t cmp = generic_compare(value_x, value_y, table.value);
         if (cmp != 0) return cmp;
     }
     return 0;
@@ -391,21 +391,21 @@ uint32_t Table_hash(const table_t *t, const Type *type)
     // Table hashes are computed as:
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
     // Where fallback and default hash to zero if absent
-    __auto_type table = type->info.__data.TableInfo;
+    __auto_type table = type->__data.TableInfo;
     size_t value_offset = table.value_offset;
 
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
     for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
         void *entry = GET_ENTRY(t, i);
-        key_hashes ^= table.key->hash(entry, table.key);
-        value_hashes ^= table.value->hash(entry + value_offset, table.value);
+        key_hashes ^= generic_hash(entry, table.key);
+        value_hashes ^= generic_hash(entry + value_offset, table.value);
     }
 
     if (t->fallback)
         fallback_hash = Table_hash(t->fallback, type);
 
     if (t->default_value)
-        default_hash = table.value->hash(t->default_value, table.value);
+        default_hash = generic_hash(t->default_value, table.value);
 
     uint32_t components[] = {
         Table_length(t),
@@ -421,16 +421,16 @@ uint32_t Table_hash(const table_t *t, const Type *type)
 
 CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
-    __auto_type table = type->info.__data.TableInfo;
+    auto table = type->__data.TableInfo;
     size_t value_offset = table.value_offset;
     CORD c = "{";
     for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
         void *entry = GET_ENTRY(t, i);
-        c = CORD_cat(c, table.key->cord(entry, colorize, table.key));
+        c = CORD_cat(c, generic_cord(entry, colorize, table.key));
         c = CORD_cat(c, "=>");
-        c = CORD_cat(c, table.value->cord(entry + value_offset, colorize, table.value));
+        c = CORD_cat(c, generic_cord(entry + value_offset, colorize, table.value));
     }
 
     if (t->fallback) {
@@ -440,7 +440,7 @@ CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 
     if (t->default_value) {
         c = CORD_cat(c, "; default=");
-        c = CORD_cat(c, table.value->cord(t->default_value, colorize, table.value));
+        c = CORD_cat(c, generic_cord(t->default_value, colorize, table.value));
     }
 
     c = CORD_cat(c, "}");
@@ -457,6 +457,10 @@ table_t Table_from_entries(const Type *type, array_t entries)
     return t;
 }
 
+// static array_t table_bindings = STATIC_ARRAY(
+//     (void*) Table_from_entries, Table_get, Table_get_raw, Table_entry, Table_set,
+//     Table_remove, Table_equals, Table_clear);
+
 Type *make_table_type(Type *key, Type *value)
 {
     size_t entry_size = key->size;
@@ -471,30 +475,13 @@ Type *make_table_type(Type *key, Type *value)
     const char *key_name = key->name,
                *value_name = value->name;
 
-    NamespaceBinding bindings[] = {
-        {"from_entries", heap_strf("func(type:@Type, entries:[{key:%s,value:%s}]) {%s=>%s}", key_name, value_name, key_name, value_name), Table_from_entries},
-        {"get", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get},
-        {"get_raw", heap_strf("func(type:@Type, t:{%s=>%s}, key:@%s) ?(readonly)%s", key_name, value_name, key_name, key_name), Table_get_raw},
-        {"entry", heap_strf("func(type:@Type, t:{%s=>%s}, n:UInt32) {key:%s, value:%s}",
-                            key_name, value_name, key_name, value_name), Table_entry},
-        {"set", heap_strf("func(type:@Type, t:@{%s=>%s}, key:@%s, value:?%s) @%s",
-                          key_name, value_name, key_name, value_name, value_name), Table_set},
-        {"remove", heap_strf("func(type:@Type, t:@{%s=>%s}, key:?%s) Void",
-                             key_name, value_name, key_name), Table_remove},
-        {"equals", heap_strf("func(type:@Type,x,y:@{%s=>%s}) Bool", key_name, value_name), Table_equals},
-        {"clear", heap_strf("func(t:@{%s=>%s}) Void", key_name, value_name), Table_clear},
-        {NULL, NULL, NULL},
-    };
     return new(Type,
         .name=heap_strf("{%s=>%s}", key_name, value_name),
-        .info={.tag=TableInfo, .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset}},
         .size=sizeof(table_t),
         .align=alignof(table_t),
-        .compare=(void*)Table_compare,
-        .equal=(void*)Table_equals,
-        .hash=(void*)Table_hash,
-        .cord=(void*)Table_cord,
-        .bindings=memcpy(GC_MALLOC(sizeof(bindings)), bindings, sizeof(bindings)),
+        .tag=TableInfo,
+        .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset},
+        // .bindings=table_bindings,
     );
 }
 

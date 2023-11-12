@@ -9,6 +9,7 @@
 #include <sys/param.h>
 #include <err.h>
 
+#include "array.h"
 #include "string.h"
 #include "types.h"
 
@@ -65,28 +66,12 @@ Type Char_type = {
     .name="Char",
     .size=sizeof(char),
     .align=alignof(char),
-    .cord=(void*)Char_cord,
-    .compare=compare_data,
-    .equal=equal_data,
-    .hash=hash_data,
-    .bindings=(NamespaceBinding[]){
-        {"uppercased", "func(c:Char) Char", toupper},
-        {"lowercased", "func(c:Char) Char", tolower},
-        {"is_alphanumeric", "func(c:Char) Bool", Char_isalnum},
-        {"is_alphabetic", "func(c:Char) Bool", Char_isalpha},
-        {"is_control", "func(c:Char) Bool", Char_iscntrl},
-        {"is_digit", "func(c:Char) Bool", Char_isdigit},
-        {"is_graphic", "func(c:Char) Bool", Char_isgraph},
-        {"is_lowercase", "func(c:Char) Bool", Char_islower},
-        {"is_printable", "func(c:Char) Bool", Char_isprint},
-        {"is_punctuation", "func(c:Char) Bool", Char_ispunct},
-        {"is_space", "func(c:Char) Bool", Char_isspace},
-        {"is_uppercase", "func(c:Char) Bool", Char_isupper},
-        {"is_hex", "func(c:Char) Bool", Char_isxdigit},
-        {"is_ascii", "func(c:Char) Bool", Char_isascii},
-        {"is_blank", "func(c:Char) Bool", Char_isblank},
-        {NULL}
-    },
+    .tag=CustomInfo,
+    .__data.CustomInfo={.cord=(void*)Char_cord},
+    // .bindings=STATIC_ARRAY((void*)
+    //     toupper, tolower, Char_isalnum, Char_isalpha, Char_iscntrl, Char_isdigit, Char_isgraph, Char_islower,
+    //     Char_isprint, Char_ispunct, Char_isspace, Char_isupper, Char_isxdigit, Char_isascii, Char_isblank,
+    // ),
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

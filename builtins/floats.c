@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "../SipHash/halfsiphash.h"
+#include "array.h"
 #include "string.h"
 #include "types.h"
 
@@ -21,54 +22,45 @@ static CORD Num_cord(const double *f, bool colorize, const Type *type) {
     return c; 
 } 
 
-static String_t Num_format(double f, int64_t precision) { 
+String_t Num_format(double f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
     return (String_t){.data=str, .length=len, .stride=1}; 
 } 
 
-static double Num_mod(double num, double modulus) { 
+double Num_mod(double num, double modulus) { 
     double result = fmod(num, modulus); 
     return (result < 0) != (modulus < 0) ? result + modulus : result; 
 }
 
-#define UNOP(name) {#name, "func(n:Num) Num", #name}
-#define BINOP(name) {#name, "func(x:Num, y:Num) Num", #name}
-#define PRED(name) {#name, "func(n:Num) Bool", #name}
-#define CONST(name, c_name) {#name, "Num", (double[]){c_name}}
 Type Num_type = {
     .name="Num",
     .size=sizeof(double),
     .align=alignof(double),
-    .cord=(void*)Num_cord,
-    .compare=compare_data,
-    .equal=equal_data,
-    .hash=hash_data,
-    .bindings=(NamespaceBinding[]){
-        {"mod", "func(n:Num, modulus:Num) Num", Num_mod},
-        {"format", "func(n:Num, precision:Int) Num", Num_format},
-        {"random", "func() Num", drand48},
-        // Unops
-        UNOP(acos), UNOP(asin), UNOP(atan), UNOP(cos), UNOP(sin), UNOP(tan), UNOP(cosh), UNOP(sinh), UNOP(tanh),
-        UNOP(acosh), UNOP(asinh), UNOP(atanh), UNOP(exp), UNOP(log), UNOP(log10), UNOP(exp10), UNOP(expm1),
-        UNOP(log1p), UNOP(logb), UNOP(exp2), UNOP(log2), UNOP(sqrt), UNOP(cbrt), UNOP(ceil), UNOP(fabs),
-        UNOP(floor), UNOP(significand), UNOP(j0), UNOP(j1), UNOP(y0), UNOP(y1), UNOP(erf), UNOP(erfc),
-        UNOP(tgamma), UNOP(rint), UNOP(nextdown), UNOP(nextup), UNOP(round),
-        UNOP(trunc), UNOP(roundeven),
-        // Binops
-        BINOP(atan2), BINOP(pow), BINOP(hypot), BINOP(copysign), BINOP(nextafter),
-        BINOP(remainder), BINOP(fmaxmag), BINOP(fminmag), BINOP(fdim),
-        // Predicates
-        PRED(isinf), PRED(finite), PRED(isnan),
-        // Constants
-        CONST(E, M_E), CONST(Log2_E, M_LOG2E), CONST(Log10_E, M_LOG10E), CONST(Ln_2, M_LN2),
-        CONST(Ln_10, M_LN10), CONST(Pi, M_PI), CONST(Tau, 2.*M_PI), CONST(HalfPi, M_PI_2),
-        CONST(QuarterPi, M_PI_4), CONST(InversePi, M_1_PI), CONST(DoubleInversePi, M_2_PI),
-        CONST(DoubleInverseSqrtPi, M_2_SQRTPI), CONST(Sqrt2, M_SQRT2), CONST(InverseSqrt2, M_SQRT1_2),
-        CONST(NaN, nan("")), CONST(Infinity, 1./0.),
-        {NULL, NULL, NULL},
-    },
+    .tag=CustomInfo,
+    .__data.CustomInfo={.cord=(void*)Num_cord},
+    // .bindings=STATIC_ARRAY((void*)
+    //     Num_mod, Num_format, drand48,
+    //     // Unops
+    //     acos, asin, atan, cos, sin, tan, cosh, sinh, tanh,
+    //     acosh, asinh, atanh, exp, log, log10, exp10, expm1,
+    //     log1p, logb, exp2, log2, sqrt, cbrt, ceil, fabs,
+    //     floor, significand, j0, j1, y0, y1, erf, erfc,
+    //     tgamma, rint, nextdown, nextup, round,
+    //     trunc, roundeven,
+    //     // Binops
+    //     atan2, pow, hypot, copysign, nextafter,
+    //     remainder, fmaxmag, fminmag, fdim,
+    //     // Predicates
+    //     isinf, finite, isnan,
+    //     // Constants
+    //     (double[]){M_E}, (double[]){M_LOG2E}, (double[]){M_LOG10E}, (double[]){M_LN2},
+    //     (double[]){M_LN10}, (double[]){M_PI}, (double[]){2.*M_PI}, (double[]){M_PI_2},
+    //     (double[]){M_PI_4}, (double[]){M_1_PI}, (double[]){M_2_PI},
+    //     (double[]){M_2_SQRTPI}, (double[]){M_SQRT2}, (double[]){M_SQRT1_2},
+    //     (double[]){NAN}, (double[]){1./0.},
+    // ),
 };
 #undef UNOP
 #undef BINOP
@@ -83,19 +75,19 @@ static CORD Num32_cord(float *f, bool colorize, const Type *type) {
     return c; 
 } 
 
-static String_t Num32_format(float f, int64_t precision) { 
+String_t Num32_format(float f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
     return (String_t){.data=str, .length=len, .stride=1}; 
 } 
 
-static float Num32_mod(float num, float modulus) { 
+float Num32_mod(float num, float modulus) { 
     float result = fmodf(num, modulus); 
     return (result < 0) != (modulus < 0) ? result + modulus : result; 
 }
 
-static float Num32_random(void) { 
+float Num32_random(void) { 
     return (float)drand48(); 
 } 
 
@@ -107,34 +99,29 @@ Type Num32_type = {
     .name="Num32",
     .size=sizeof(float),
     .align=alignof(float),
-    .cord=(void*)Num32_cord,
-    .compare=compare_data,
-    .equal=equal_data,
-    .hash=hash_data,
-    .bindings=(NamespaceBinding[]){
-        {"mod", "func(n:Num32, modulus:Num32) Num32", Num32_mod},
-        {"format", "func(n:Num32, precision:Int) Num32", Num32_format},
-        {"random", "func() Num32", Num32_random},
-        // Unops
-        UNOP(acos), UNOP(asin), UNOP(atan), UNOP(cos), UNOP(sin), UNOP(tan), UNOP(cosh), UNOP(sinh), UNOP(tanh),
-        UNOP(acosh), UNOP(asinh), UNOP(atanh), UNOP(exp), UNOP(log), UNOP(log10), UNOP(exp10), UNOP(expm1),
-        UNOP(log1p), UNOP(logb), UNOP(exp2), UNOP(log2), UNOP(sqrt), UNOP(cbrt), UNOP(ceil), UNOP(fabs),
-        UNOP(floor), UNOP(significand), UNOP(j0), UNOP(j1), UNOP(y0), UNOP(y1), UNOP(erf), UNOP(erfc),
-        UNOP(tgamma), UNOP(rint), UNOP(nextdown), UNOP(nextup), UNOP(round),
-        UNOP(trunc), UNOP(roundeven),
-        // Binops
-        BINOP(atan2), BINOP(pow), BINOP(hypot), BINOP(copysign), BINOP(nextafter),
-        BINOP(remainder), BINOP(fmaxmag), BINOP(fminmag), BINOP(fdim),
-        // Predicates
-        PRED(isinf), PRED(finite), PRED(isnan),
-        // Constants
-        CONST(E, M_E), CONST(Log2_E, M_LOG2E), CONST(Log10_E, M_LOG10E), CONST(Ln_2, M_LN2),
-        CONST(Ln_10, M_LN10), CONST(Pi, M_PI), CONST(Tau, 2.*M_PI), CONST(HalfPi, M_PI_2),
-        CONST(QuarterPi, M_PI_4), CONST(InversePi, M_1_PI), CONST(DoubleInversePi, M_2_PI),
-        CONST(DoubleInverseSqrtPi, M_2_SQRTPI), CONST(Sqrt2, M_SQRT2), CONST(InverseSqrt2, M_SQRT1_2),
-        CONST(NaN, nan("")), CONST(Infinity, 1./0.),
-        {NULL, NULL, NULL},
-    },
+    .tag=CustomInfo,
+    .__data.CustomInfo={.cord=(void*)Num32_cord},
+    // .bindings=STATIC_ARRAY((void*)
+    //     Num32_mod, Num32_format, Num32_random,
+    //     // Unops
+    //     acos, asin, atan, cos, sin, tan, cosh, sinh, tanh,
+    //     acosh, asinh, atanh, exp, log, log10, exp10, expm1,
+    //     log1p, logb, exp2, log2, sqrt, cbrt, ceil, fabs,
+    //     floor, significand, j0, j1, y0, y1, erf, erfc,
+    //     tgamma, rint, nextdown, nextup, round,
+    //     trunc, roundeven,
+    //     // Binops
+    //     atan2, pow, hypot, copysign, nextafter,
+    //     remainder, fmaxmag, fminmag, fdim,
+    //     // Predicates
+    //     isinf, finite, isnan,
+    //     // Constants
+    //     (double[]){M_E}, (double[]){M_LOG2E}, (double[]){M_LOG10E}, (double[]){M_LN2},
+    //     (double[]){M_LN10}, (double[]){M_PI}, (double[]){2.*M_PI}, (double[]){M_PI_2},
+    //     (double[]){M_PI_4}, (double[]){M_1_PI}, (double[]){M_2_PI},
+    //     (double[]){M_2_SQRTPI}, (double[]){M_SQRT2}, (double[]){M_SQRT1_2},
+    //     (double[]){NAN}, (double[]){1./0.},
+    // ),
 };
 #undef UNOP
 #undef BINOP

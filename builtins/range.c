@@ -55,11 +55,11 @@ Type Range_type = {
     .name="Range",
     .size=sizeof(range_t),
     .align=alignof(range_t),
-    .cord=(void*)Range_cord,
-    .compare=(void*)Range_compare,
-    .equal=equal_data,
-    .hash=hash_data,
-    .bindings=(NamespaceBinding[]){{0}},
+    .tag=CustomInfo,
+    .__data.CustomInfo={
+        .cord=(void*)Range_cord,
+        .compare=(void*)Range_compare,
+    },
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

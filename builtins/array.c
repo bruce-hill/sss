@@ -134,7 +134,7 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 
 void Array_sort(array_t *arr, const Type *type)
 {
-    const Type *item_type = type->info.__data.ArrayInfo.item;
+    const Type *item_type = type->__data.ArrayInfo.item;
     size_t item_size = item_type->size;
     if (item_type->align > 1 && item_size % item_type->align)
         item_size += item_type->align - (item_size % item_type->align); // padding
@@ -142,7 +142,7 @@ void Array_sort(array_t *arr, const Type *type)
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
-    qsort_r(arr->data, arr->length, item_size, (void*)item_type->compare, (void*)item_type);
+    qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, (void*)item_type);
 }
 
 void Array_shuffle(array_t *arr, size_t item_size)
@@ -193,8 +193,8 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
     if (x->data == y->data && x->stride == y->stride)
         return (x->length > y->length) - (x->length < y->length);
 
-    Type *item = type->info.__data.ArrayInfo.item;
-    if (item->compare == compare_data) {
+    Type *item = type->__data.ArrayInfo.item;
+    if (item->tag == PointerInfo || (item->tag == CustomInfo && item->__data.CustomInfo.compare == NULL)) { // data comparison
         size_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
             int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
@@ -207,7 +207,7 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
         }
     } else {
         for (int32_t i = 0, len = MIN(x->length, y->length); i < len; i++) {
-            int32_t cmp = item->compare(x->data + x->stride*i, y->data + y->stride*i, item);
+            int32_t cmp = generic_compare(x->data + x->stride*i, y->data + y->stride*i, item);
             if (cmp != 0) return cmp;
         }
     }
@@ -221,12 +221,12 @@ bool Array_equal(const array_t *x, const array_t *y, const Type *type)
 
 CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
 {
-    Type *item_type = type->info.__data.ArrayInfo.item;
+    Type *item_type = type->__data.ArrayInfo.item;
     CORD c = "[";
     for (unsigned long i = 0; i < arr->length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
-        CORD item_cord = item_type->cord(arr->data + i*arr->stride, colorize, item_type);
+        CORD item_cord = generic_cord(arr->data + i*arr->stride, colorize, item_type);
         c = CORD_cat(c, item_cord);
     }
     c = CORD_cat(c, "]");
@@ -240,8 +240,8 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     // In other words, it reads in a chunk of items or item hashes, then when it fills up the chunk,
     // hashes it down to a single item to start the next chunk. This repeats until the end, when it
     // hashes the last chunk down to a uint32_t.
-    Type *item = type->info.__data.ArrayInfo.item;
-    if (item->hash == hash_data) {
+    Type *item = type->__data.ArrayInfo.item;
+    if (item->tag == PointerInfo || (item->tag == CustomInfo && item->__data.CustomInfo.hash == NULL)) { // Raw data hash
         size_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
@@ -270,7 +270,7 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
                 p = hash_batch;
                 *(p++) = chunk_hash;
             }
-            *(p++) = item->hash(arr->data + i*arr->stride, item);
+            *(p++) = generic_hash(arr->data + i*arr->stride, item);
         }
         uint32_t hash;
         halfsiphash(&hash_batch, ((int64_t)p) - ((int64_t)hash_batch), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
@@ -278,32 +278,19 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     }
 }
 
+// static array_t array_bindings = STATIC_ARRAY(
+//     (void*)Array_compact, Array_insert, Array_insert_all, Array_remove, Array_sort, Array_shuffle, Array_join, Array_clear);
+
 Type *make_array_type(Type *item_type)
 {
     const char *item_name = item_type->name;
-
-    NamespaceBinding bindings[] = {
-        {"compact", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_compact},
-        {"insert", heap_strf("func(arr:@[%s], item:%s, index=#arr, item_size=sizeof(item)) Void", item_name, item_name), Array_insert},
-        {"insert_all", heap_strf("func(arr:@[%s], items:[%s], index=#arr, item_size=sizeof(arr[1])) Void", item_name, item_name), Array_insert_all},
-        {"remove", heap_strf("func(arr:@[%s], index=#arr, count=1, item_size=sizeof(arr[1])) Void", item_name), Array_remove},
-        {"sort", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1]), item_type=typeof(%s)) Void", item_name, item_name), Array_sort},
-        {"shuffle", heap_strf("func(arr:@[%s], item_size=sizeof(arr[1])) Void", item_name), Array_shuffle},
-        {"join", heap_strf("func(pieces:[[%s]], glue:[%s], item_size=sizeof(arr[1])) Void", item_name, item_name), Array_join},
-        {"clear", heap_strf("func(arr:@[%s]) Void", item_name), Array_clear},
-        {NULL, NULL, NULL},
-    };
-
     return new(Type,
         .name=heap_strf("[%s]", item_name),
-        .info={.tag=ArrayInfo, .__data.ArrayInfo={item_type}},
         .size=sizeof(array_t),
         .align=alignof(array_t),
-        .compare=(void*)Array_compare,
-        .equal=(void*)Array_equal,
-        .hash=(void*)Array_hash,
-        .cord=(void*)Array_cord,
-        .bindings=memcpy(GC_MALLOC(sizeof(bindings)), bindings, sizeof(bindings)),
+        .tag=ArrayInfo,
+        .__data.ArrayInfo={item_type},
+        // .bindings=array_bindings,
     );
 }
 

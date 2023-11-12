@@ -61,6 +61,8 @@ static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
             }
         }
         c = CORD_cat(c, "\"\x1b[m");
+        if (strcmp(type->name, "Str") != 0)
+            CORD_sprintf(&c, "\x1b[0;1m%s::%r", type->name, c);
         return c;
     } else {
         CORD c = "\"";
@@ -84,6 +86,8 @@ static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
             }
         }
         c = CORD_cat_char(c, '"');
+        if (strcmp(type->name, "Str") != 0)
+            CORD_sprintf(&c, "%s::%r", type->name, c);
         return c;
     }
 }
@@ -124,7 +128,7 @@ static int Str_hash(const String_t *s, const Type *type)
     return hash;
 }
 
-static String_t uppercased(const String_t s)
+String_t Str__uppercased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
@@ -132,7 +136,7 @@ static String_t uppercased(const String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t lowercased(const String_t s)
+String_t Str__lowercased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
@@ -140,7 +144,7 @@ static String_t lowercased(const String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t capitalized(const String_t s)
+String_t Str__capitalized(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     unsigned long i;
@@ -158,7 +162,7 @@ static String_t capitalized(const String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static String_t titlecased(const String_t s)
+String_t Str__titlecased(const String_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     bool should_uppercase = true;
@@ -178,7 +182,7 @@ static String_t titlecased(const String_t s)
     return (String_t){.data=s2, .length=s.length, .stride=1};
 }
 
-static bool starts_with(const String_t s, const String_t prefix)
+bool Str__starts_with(const String_t s, const String_t prefix)
 {
     if (s.length < prefix.length) return false;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -188,7 +192,7 @@ static bool starts_with(const String_t s, const String_t prefix)
     return true;
 }
 
-static bool ends_with(const String_t s, const String_t suffix)
+bool Str__ends_with(const String_t s, const String_t suffix)
 {
     if (s.length < suffix.length) return false;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -198,7 +202,7 @@ static bool ends_with(const String_t s, const String_t suffix)
     return true;
 }
 
-static String_t without_prefix(const String_t s, const String_t prefix)
+String_t Str__without_prefix(const String_t s, const String_t prefix)
 {
     if (s.length < prefix.length) return s;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -213,7 +217,7 @@ static String_t without_prefix(const String_t s, const String_t prefix)
     };
 }
 
-static String_t without_suffix(const String_t s, const String_t suffix)
+String_t Str__without_suffix(const String_t s, const String_t suffix)
 {
     if (s.length < suffix.length) return s;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -228,7 +232,7 @@ static String_t without_suffix(const String_t s, const String_t suffix)
     };
 }
 
-static String_t trimmed(const String_t s, const String_t trim_chars, bool trim_left, bool trim_right)
+String_t Str__trimmed(const String_t s, const String_t trim_chars, bool trim_left, bool trim_right)
 {
     unsigned long length = s.length;
     unsigned long start = 0;
@@ -259,7 +263,7 @@ static String_t trimmed(const String_t s, const String_t trim_chars, bool trim_l
     return (String_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
-static String_t slice(const String_t s, int64_t _first, int64_t _stride, int64_t length)
+String_t Str__slice(const String_t s, int64_t _first, int64_t _stride, int64_t length)
 {
     if (_stride > INT16_MAX || _stride < INT16_MIN)
         errx(1, "Invalid string slice stride: %ld", _stride);
@@ -270,7 +274,7 @@ static String_t slice(const String_t s, int64_t _first, int64_t _stride, int64_t
     return (String_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
-static const char *c_string(const String_t str)
+const char *Str__c_string(const String_t str)
 {
     if (str.length == 0)
         return "";
@@ -288,7 +292,7 @@ static const char *c_string(const String_t str)
     return buf;
 }
 
-static String_t from_c_string(const char *str)
+String_t Str__from_c_string(const char *str)
 {
     size_t length = str ? strlen(str) : 0;
     if (length == 0) return (String_t){.length=0, .stride=0};
@@ -298,7 +302,7 @@ static String_t from_c_string(const char *str)
     return (String_t){.data=buf, .length=length, .stride=1};
 }
 
-static find_result_t find(const String_t str, const String_t pat)
+find_result_t Str__find(const String_t str, const String_t pat)
 {
     if (str.length < pat.length) return (find_result_t){.success=0};
     if (pat.length == 0) return (find_result_t){.success=1, .index=1};
@@ -350,7 +354,7 @@ static find_result_t find(const String_t str, const String_t pat)
     // return 0;
 }
 
-static String_t replace(String_t text, String_t pat, String_t replacement, int64_t limit)
+String_t Str__replace(String_t text, String_t pat, String_t replacement, int64_t limit)
 {
     text = compacted(text);
     pat = compacted(pat);
@@ -377,7 +381,7 @@ static String_t replace(String_t text, String_t pat, String_t replacement, int64
     return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static String_t quoted(const String_t text, const char *dsl, bool colorize)
+String_t Str__quoted(const String_t text, const char *dsl, bool colorize)
 {
     char *buf;
     size_t size;
@@ -416,7 +420,7 @@ static String_t quoted(const String_t text, const char *dsl, bool colorize)
     return (String_t){.data=str, .length=size, .stride=1};
 }
 
-static String_Array_t split(const String_t str, const String_t split_chars)
+String_Array_t Str__split(const String_t str, const String_t split_chars)
 {
     if (str.length == 0) return (String_Array_t){.stride=sizeof(String_t)};
     String_Array_t strings = {.stride=sizeof(String_t)};
@@ -444,39 +448,23 @@ static String_Array_t split(const String_t str, const String_t split_chars)
 
 Type Str_type = {
     .name="Str",
-    .cord=(void*)Str_cord,
-    .compare=(void*)Str_compare,
-    .equal=(void*)Str_equal,
-    .hash=(void*)Str_hash,
-    .bindings=(NamespaceBinding[]){
-        {"uppercased", "func(str:Str) Str", uppercased},
-        {"lowercased", "func(str:Str) Str", lowercased},
-        {"capitalized", "func(str:Str) Str", capitalized},
-        {"titlecased", "func(str:Str) Str", titlecased},
-        {"starts_with", "func(str:Str, prefix:Str) Bool", starts_with},
-        {"ends_with", "func(str:Str, suffix:Str) Bool", ends_with},
-        {"without_prefix", "func(str:Str, prefix:Str) Str", without_prefix},
-        {"without_suffix", "func(str:Str, suffix:Str) Str", without_suffix},
-        {"trimmed", "func(str:Str, trim_chars:[Char], trim_left=yes, trim_right=yes) Str", trimmed},
-        {"slice", "func(str:Str, start=1, stride=1, length=Int.max) Str", slice},
-        {"c_string", "func(str:Str) CString", c_string},
-        {"from_c_string", "func(c_str:CString) Str", from_c_string},
-        {"find", "func(str:Str, target:Str) enum(Failure | Success(index:Int))", find},
-        {"replace", "func(str:Str, target:Str, replacement:Str, limit=Int.max) Str", replace},
-        {"quoted", "func(str:Str) Str", quoted},
-        {"split", "func(str:Str, split_chars:[Char]) [Str]", split},
-
-        // Array methods:
-        {"compact", "func(str:@Str, item_size=1) Void", Array_compact},
-        {"insert", "func(str:@Str, item:Char, index=#str, item_size=1) Void", Array_insert},
-        {"insert_all", "func(str:@Str, items:[Str], index=#str, item_size=1) Void", Array_insert_all},
-        {"remove", "func(str:@Str, index=#str, count=1, item_size=1) Void", Array_remove},
-        {"sort", "func(str:@Str, item_compare=Char.compare, item_size=1) Void", Array_sort},
-        {"shuffle", "func(str:@Str, item_size=1) Void", Array_shuffle},
-        {"join", "func(pieces:[Str], glue:Str, item_size=1) Void", Array_join},
-        {"clear", "func(str:@Str) Void", Array_clear},
-        {NULL, NULL, NULL},
+    .size=sizeof(String_t),
+    .align=alignof(String_t),
+    .tag=CustomInfo,
+    .__data.CustomInfo={
+        .cord=(void*)Str_cord,
+        .compare=(void*)Str_compare,
+        .equal=(void*)Str_equal,
+        .hash=(void*)Str_hash,
     },
+    // .bindings=STATIC_ARRAY((void*)
+    //     uppercased, lowercased, capitalized, titlecased, starts_with, ends_with, without_prefix,
+    //     without_suffix, trimmed, slice, c_string, from_c_string, find, replace, quoted, split,
+
+    //     // Array methods:
+    //     Array_compact, Array_insert, Array_insert_all, Array_remove, Array_sort, Array_shuffle,
+    //     Array_join, Array_clear,
+    // ),
 };
 
 static CORD CString_cord(const char **s, bool colorize, const Type *type)
@@ -511,15 +499,14 @@ Type CString_type = {
     .name="CString",
     .size=sizeof(char*),
     .align=alignof(char*),
-    .cord=(void*)CString_cord,
-    .hash=(void*)CString_hash,
-    .compare=(void*)CString_compare,
-    .equal=(void*)CString_equal,
-    .bindings=(NamespaceBinding[]){
-        {"string", "func(str:CString) Str", from_c_string},
-        {"from_string", "func(str:Str) CString", c_string},
-        {NULL, NULL, NULL},
+    .tag=CustomInfo,
+    .__data.CustomInfo={
+        .cord=(void*)CString_cord,
+        .hash=(void*)CString_hash,
+        .compare=(void*)CString_compare,
+        .equal=(void*)CString_equal,
     },
+    // .bindings=STATIC_ARRAY((void*)from_c_string, c_string),
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

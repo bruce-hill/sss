@@ -1,19 +1,80 @@
 // Generic type constructor
+#include <err.h>
 #include <gc.h>
 #include <string.h>
 #include <stdalign.h>
 
+#include "array.h"
+#include "table.h"
 #include "types.h"
 #include "../util.h"
 #include "../SipHash/halfsiphash.h"
 
 extern const void *SSS_HASH_VECTOR;
 
-uint32_t hash_data(const void *obj, const Type *type)
+uint32_t generic_hash(const void *obj, const Type *type)
 {
-    uint32_t hash;
-    halfsiphash((void*)obj, type->size, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
-    return hash;
+    switch (type->tag) {
+    case ArrayInfo: return Array_hash(obj, type);
+    case TableInfo: return Table_hash(obj, type);
+    case CustomInfo:
+        if (type->__data.CustomInfo.hash)
+            return type->__data.CustomInfo.hash(obj, type);
+        // fallthrough
+    default: {
+        uint32_t hash;
+        halfsiphash((void*)obj, type->size, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+        return hash;
+    }
+    }
+}
+
+int32_t generic_compare(const void *x, const void *y, const Type *type)
+{
+    switch (type->tag) {
+    case ArrayInfo: return Array_compare(x, y, type);
+    case TableInfo: return Table_compare(x, y, type);
+    case CustomInfo:
+        if (type->__data.CustomInfo.compare)
+            return type->__data.CustomInfo.compare(x, y, type);
+        // fallthrough
+    default: return (int32_t)memcmp((void*)x, (void*)y, type->size);
+    }
+}
+
+bool generic_equal(const void *x, const void *y, const Type *type)
+{
+    switch (type->tag) {
+    case ArrayInfo: return Array_equal(x, y, type);
+    case TableInfo: return Table_equal(x, y, type);
+    case CustomInfo:
+        if (type->__data.CustomInfo.equal)
+            return type->__data.CustomInfo.equal(x, y, type);
+        // fallthrough
+    default: return (generic_compare(x, y, type) == 0);
+    }
+}
+
+CORD generic_cord(const void *obj, bool colorize, const Type *type)
+{
+    switch (type->tag) {
+    case PointerInfo: {
+        auto ptr_info = type->__data.PointerInfo;
+        void *ptr = *(void**)obj;
+        CORD c;
+        if (ptr == NULL) {
+            CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
+        } else {
+            CORD_sprintf(&c, colorize ? "\x1b[34;1m%s%r\x1b[m" : "%s%r",
+                         ptr_info.sigil, generic_cord(ptr, colorize, ptr_info.pointed));
+        }
+        return c;
+    }
+    case ArrayInfo: return Array_cord(obj, colorize, type);
+    case TableInfo: return Table_cord(obj, colorize, type);
+    case CustomInfo: return type->__data.CustomInfo.cord(obj, colorize, type);
+    default: errx(1, "Unreachable");
+    }
 }
 
 int32_t compare_data(const void *x, const void *y, const Type *type)
@@ -38,75 +99,45 @@ static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 
 Type Type_type = {
     .name="Type",
-    .cord=(void*)Type_cord,
-    .hash=hash_data,
-    .compare=compare_data,
-    .equal=equal_data,
-    .bindings=(NamespaceBinding[]){{0}},
+    .tag=CustomInfo,
+    .__data.CustomInfo={.cord=(void*)Type_cord},
 };
 
-Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn, NamespaceBinding *bindings)
+Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
 {
     return new(Type,
         .name=name,
-        .info={NoInfo},
         .size=size,
         .align=align,
-        .compare=compare_fn,
-        .equal=equal_fn,
-        .hash=hash_fn,
-        .cord=cord_fn,
-        .bindings=bindings,
+        .tag=CustomInfo,
+        .__data.CustomInfo={
+            .compare=compare_fn,
+            .equal=equal_fn,
+            .hash=hash_fn,
+            .cord=cord_fn,
+        },
     );
-}
-
-CORD Pointer_cord(const void **obj, bool colorize, Type *type)
-{
-    auto ptr_info = type->info.__data.PointerInfo;
-    void *ptr = *(void**)obj;
-    CORD c;
-    if (ptr == NULL) {
-        CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
-    } else {
-        CORD_sprintf(&c, colorize ? "\x1b[34;1m%s%r\x1b[m" : "%s%r",
-                     ptr_info.sigil, ptr_info.pointed->cord(ptr, colorize, ptr_info.pointed));
-    }
-    return c;
 }
 
 Type *make_pointer_type(const char *sigil, Type *t)
 {
     return new(Type,
         .name=heap_strf("%s%s", sigil, t->name),
-        .info={NoInfo},
         .size=sizeof(void*),
         .align=alignof(void*),
-        .compare=compare_data,
-        .equal=equal_data,
-        .hash=hash_data,
-        .cord=(void*)Pointer_cord,
+        .tag=PointerInfo,
+        .__data.PointerInfo={sigil, t},
     );
-}
-
-CORD Named_cord(const void *obj, bool colorize, Type *type)
-{
-    auto info = type->info.__data.NamedInfo;
-    CORD c = info.base->cord(obj, colorize, info.base);
-    CORD_sprintf(&c, colorize ? "\x1b[32;1m%s::\x1b[m%r" : "%s::%r", type->name, c);
-    return c;
 }
 
 Type *make_named_type(const char *name, Type *t)
 {
     return new(Type,
         .name=name,
-        .info={NamedInfo, .__data.NamedInfo={name, t}},
         .size=t->size,
         .align=t->align,
-        .compare=t->compare,
-        .equal=t->equal,
-        .hash=t->hash,
-        .cord=(void*)Named_cord,
+        .tag=t->tag,
+        .__data=t->__data,
     );
 }
 

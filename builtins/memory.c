@@ -23,13 +23,10 @@ static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
 
 Type Memory_type = {
     .name="Memory",
-    .size=sizeof(void*),
-    .align=alignof(void*),
-    .cord=(void*)Memory_cord,
-    .compare=NULL,
-    .equal=NULL,
-    .hash=NULL,
-    .bindings=(NamespaceBinding[]){{0}},
+    .size=0,
+    .align=0,
+    .tag=CustomInfo,
+    .__data.CustomInfo={.cord=(void*)Memory_cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
