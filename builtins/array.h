@@ -2,10 +2,11 @@
 #include <stdbool.h>
 #include <gc/cord.h>
 
-#include "types.h"
 #include "../util.h"
-#include "functions.h"
 #include "datatypes.h"
+#include "functions.h"
+#include "range.h"
+#include "types.h"
 
 void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size);
 void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size);
@@ -15,6 +16,8 @@ void Array_shuffle(array_t *arr, size_t item_size);
 array_t Array_join(array_t pieces, array_t glue, size_t item_size);
 void Array_clear(array_t *array);
 void Array_compact(array_t *arr, size_t item_size);
+bool Array_contains(array_t array, void *item, const Type *type);
+array_t Array_slice(array_t array, range_t range, const Type *type);
 uint32_t Array_hash(const array_t *arr, const Type *type);
 int32_t Array_compare(const array_t *x, const array_t *y, const Type *type);
 bool Array_equal(const array_t *x, const array_t *y, const Type *type);

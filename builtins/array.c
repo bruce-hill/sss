@@ -11,6 +11,7 @@
 
 #include "array.h"
 #include "types.h"
+#include "range.h"
 #include "functions.h"
 #include "../SipHash/halfsiphash.h"
 #include "../util.h"
@@ -43,6 +44,8 @@ void Array_compact(array_t *arr, size_t item_size)
 
 void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
 {
+    if (index < 1) index = arr->length - index;
+
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
@@ -74,6 +77,8 @@ void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_siz
 
 void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
 {
+    if (index < 1) index = arr->length - index;
+
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
 
@@ -180,6 +185,70 @@ array_t Array_join(array_t pieces, array_t glue, size_t item_size)
             ptr = mempcpy(ptr, piece.data + j*piece.stride, item_size);
     }
     return (array_t){.data = data, .length = length, .stride = item_size};
+}
+
+array_t Array_slice(array_t array, range_t range, const Type *type)
+{
+    Type *item = type->ArrayInfo.item;
+    size_t item_size = item->size;
+
+    if (range.stride > INT16_MAX)
+        range.stride = INT16_MAX;
+    else if (range.stride < INT16_MIN)
+        range.stride = INT16_MIN;
+
+    if (range.stride == 0) {
+        // Zero stride
+        return (array_t){.atomic=array.atomic};
+    } else if (range.stride < 0) {
+        if (range.first == INT64_MIN) range.first = array.length;
+        if (range.last == INT64_MAX) range.last = 1;
+        if (range.first > array.length) {
+            // Range starting after array
+            int64_t residual = range.first % -range.stride;
+            range.first = array.length - (array.length % -range.stride) + residual;
+        }
+        if (range.first > array.length) range.first += range.stride;
+        if (range.first < 1) {
+            // Range outside array
+            return (array_t){.atomic=array.atomic};
+        }
+    } else {
+        if (range.first == INT64_MIN) range.first = 1;
+        if (range.last == INT64_MAX) range.last = array.length;
+        if (range.first < 1) {
+            // Range starting before array
+            range.first = range.first % range.stride;
+        }
+        while (range.first < 1) range.first += range.stride;
+        if (range.first > array.length) {
+            // Range outside array
+            return (array_t){.atomic=array.atomic};
+        }
+    }
+
+    int64_t len = (range.last - range.first) / range.stride + 1;
+    // If less than zero, set to zero (without a conditional branch)
+    len = len & ~(len >> 63);
+    if (len > array.length/labs(range.stride) + 1) len = array.length/labs(range.stride) + 1;
+    if (len < 0) len = -len;
+
+    return (array_t){
+        .atomic=array.atomic,
+        .data=array.data + item_size*(range.first-1),
+        .length=len,
+        .stride=(array.stride * range.stride),
+        .copy_on_write=1,
+    };
+}
+
+bool Array_contains(array_t array, void *item, const Type *type)
+{
+    Type *item_type = type->ArrayInfo.item;
+    for (int64_t i = 0; i < array.length; i++)
+        if (generic_equal(array.data + i*array.stride, item, item_type))
+            return true;
+    return false;
 }
 
 void Array_clear(array_t *array)
