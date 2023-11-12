@@ -2396,6 +2396,7 @@ ast_t *parse_type(sss_file_t *file, jmp_buf *on_err) {
 
     const char *pos = file->text;
     ast_t *ast = _parse_type(&ctx, pos);
+    if (!ast) return ast;
     pos = ast->end;
     whitespace(&pos);
     if (strlen(pos) > 0) {
@@ -2418,6 +2419,7 @@ ast_t *parse_expression_str(const char *str) {
     const char *pos = file->text;
     whitespace(&pos);
     ast_t *ast = parse_extended_expr(&ctx, pos);
+    if (!ast) return ast;
     pos = ast->end;
     whitespace(&pos);
     if (strlen(pos) > 0) {

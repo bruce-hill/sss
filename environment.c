@@ -278,6 +278,8 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; i++) {
             auto member = builtin_types[i].bindings[j];
             ast_t *type_ast = parse_type_str(member.type);
+            if (!type_ast)
+                compiler_err(env, NULL, "Couldn't parse builtin type for %s.%s: `%s`", builtin_types[i].type_name, member.sss_name, member.type);
             sss_type_t *member_type = parse_type_ast(env, type_ast);
             if (member_type->tag == FunctionType) {
                 gcc_func_t *func = import_function(env, member.symbol, member_type);
@@ -293,6 +295,8 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     for (size_t i = 0; i < sizeof(builtin_functions)/sizeof(builtin_functions[0]); i++) {
         auto fn = builtin_functions[i];
         ast_t *type_ast = parse_type_str(fn.type);
+        if (!type_ast)
+            compiler_err(env, NULL, "Couldn't parse builtin type for %s: `%s`", fn.symbol, fn.type);
         sss_type_t *fn_type = parse_type_ast(env, type_ast);
         gcc_func_t *func = import_function(env, fn.symbol, fn_type);
         Table_str_set(&env->global->funcs, fn.symbol, func);
