@@ -134,7 +134,7 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 
 void Array_sort(array_t *arr, const Type *type)
 {
-    const Type *item_type = type->__data.ArrayInfo.item;
+    const Type *item_type = type->ArrayInfo.item;
     size_t item_size = item_type->size;
     if (item_type->align > 1 && item_size % item_type->align)
         item_size += item_type->align - (item_size % item_type->align); // padding
@@ -193,8 +193,8 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
     if (x->data == y->data && x->stride == y->stride)
         return (x->length > y->length) - (x->length < y->length);
 
-    Type *item = type->__data.ArrayInfo.item;
-    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->__data.VTableInfo.compare == NULL)) { // data comparison
+    Type *item = type->ArrayInfo.item;
+    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->VTableInfo.compare == NULL)) { // data comparison
         size_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
             int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
@@ -221,7 +221,7 @@ bool Array_equal(const array_t *x, const array_t *y, const Type *type)
 
 CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
 {
-    Type *item_type = type->__data.ArrayInfo.item;
+    Type *item_type = type->ArrayInfo.item;
     CORD c = "[";
     for (unsigned long i = 0; i < arr->length; i++) {
         if (i > 0)
@@ -240,8 +240,8 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     // In other words, it reads in a chunk of items or item hashes, then when it fills up the chunk,
     // hashes it down to a single item to start the next chunk. This repeats until the end, when it
     // hashes the last chunk down to a uint32_t.
-    Type *item = type->__data.ArrayInfo.item;
-    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->__data.VTableInfo.hash == NULL)) { // Raw data hash
+    Type *item = type->ArrayInfo.item;
+    if (item->tag == PointerInfo || (item->tag == VTableInfo && item->VTableInfo.hash == NULL)) { // Raw data hash
         size_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
@@ -289,7 +289,7 @@ Type *make_array_type(Type *item_type)
         .size=sizeof(array_t),
         .align=alignof(array_t),
         .tag=ArrayInfo,
-        .__data.ArrayInfo={item_type},
+        .ArrayInfo={item_type},
         // .bindings=array_bindings,
     );
 }

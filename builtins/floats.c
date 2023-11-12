@@ -39,7 +39,7 @@ Type Num_type = {
     .size=sizeof(double),
     .align=alignof(double),
     .tag=VTableInfo,
-    .__data.VTableInfo={.cord=(void*)Num_cord},
+    .VTableInfo={.cord=(void*)Num_cord},
     // .bindings=STATIC_ARRAY((void*)
     //     Num_mod, Num_format, drand48,
     //     // Unops
@@ -100,7 +100,7 @@ Type Num32_type = {
     .size=sizeof(float),
     .align=alignof(float),
     .tag=VTableInfo,
-    .__data.VTableInfo={.cord=(void*)Num32_cord},
+    .VTableInfo={.cord=(void*)Num32_cord},
     // .bindings=STATIC_ARRAY((void*)
     //     Num32_mod, Num32_format, Num32_random,
     //     // Unops

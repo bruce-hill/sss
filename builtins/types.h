@@ -35,7 +35,7 @@ typedef struct Type {
             struct Type *key, *value;
             size_t entry_size, value_offset;
         } TableInfo;
-    } __data;
+    };
 } Type;
 
 uint32_t generic_hash(const void *obj, const Type *type);

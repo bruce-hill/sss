@@ -18,8 +18,8 @@ uint32_t generic_hash(const void *obj, const Type *type)
     case ArrayInfo: return Array_hash(obj, type);
     case TableInfo: return Table_hash(obj, type);
     case VTableInfo:
-        if (type->__data.VTableInfo.hash)
-            return type->__data.VTableInfo.hash(obj, type);
+        if (type->VTableInfo.hash)
+            return type->VTableInfo.hash(obj, type);
         // fallthrough
     default: {
         uint32_t hash;
@@ -35,8 +35,8 @@ int32_t generic_compare(const void *x, const void *y, const Type *type)
     case ArrayInfo: return Array_compare(x, y, type);
     case TableInfo: return Table_compare(x, y, type);
     case VTableInfo:
-        if (type->__data.VTableInfo.compare)
-            return type->__data.VTableInfo.compare(x, y, type);
+        if (type->VTableInfo.compare)
+            return type->VTableInfo.compare(x, y, type);
         // fallthrough
     default: return (int32_t)memcmp((void*)x, (void*)y, type->size);
     }
@@ -48,8 +48,8 @@ bool generic_equal(const void *x, const void *y, const Type *type)
     case ArrayInfo: return Array_equal(x, y, type);
     case TableInfo: return Table_equal(x, y, type);
     case VTableInfo:
-        if (type->__data.VTableInfo.equal)
-            return type->__data.VTableInfo.equal(x, y, type);
+        if (type->VTableInfo.equal)
+            return type->VTableInfo.equal(x, y, type);
         // fallthrough
     default: return (generic_compare(x, y, type) == 0);
     }
@@ -59,7 +59,7 @@ CORD generic_cord(const void *obj, bool colorize, const Type *type)
 {
     switch (type->tag) {
     case PointerInfo: {
-        auto ptr_info = type->__data.PointerInfo;
+        auto ptr_info = type->PointerInfo;
         void *ptr = *(void**)obj;
         CORD c;
         if (ptr == NULL) {
@@ -72,7 +72,7 @@ CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
     case ArrayInfo: return Array_cord(obj, colorize, type);
     case TableInfo: return Table_cord(obj, colorize, type);
-    case VTableInfo: return type->__data.VTableInfo.cord(obj, colorize, type);
+    case VTableInfo: return type->VTableInfo.cord(obj, colorize, type);
     default: errx(1, "Unreachable");
     }
 }
@@ -100,7 +100,7 @@ static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 Type Type_type = {
     .name="Type",
     .tag=VTableInfo,
-    .__data.VTableInfo={.cord=(void*)Type_cord},
+    .VTableInfo={.cord=(void*)Type_cord},
 };
 
 Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
@@ -110,7 +110,7 @@ Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, v
         .size=size,
         .align=align,
         .tag=VTableInfo,
-        .__data.VTableInfo={
+        .VTableInfo={
             .compare=compare_fn,
             .equal=equal_fn,
             .hash=hash_fn,
@@ -126,19 +126,16 @@ Type *make_pointer_type(const char *sigil, Type *t)
         .size=sizeof(void*),
         .align=alignof(void*),
         .tag=PointerInfo,
-        .__data.PointerInfo={sigil, t},
+        .PointerInfo={sigil, t},
     );
 }
 
 Type *make_named_type(const char *name, Type *t)
 {
-    return new(Type,
-        .name=name,
-        .size=t->size,
-        .align=t->align,
-        .tag=t->tag,
-        .__data=t->__data,
-    );
+    Type *named = GC_MALLOC_ATOMIC(sizeof(Type));
+    *named = *t;
+    named->name = name;
+    return named;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

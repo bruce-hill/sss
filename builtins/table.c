@@ -33,10 +33,10 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(t, k) (generic_hash((k), type->__data.TableInfo.key) % ((t)->bucket_info->count))
-#define EQUAL(x, y) (generic_equal((x), (y), type->__data.TableInfo.key))
-#define ENTRY_SIZE (type->__data.TableInfo.entry_size)
-#define VALUE_OFFSET (type->__data.TableInfo.value_offset)
+#define HASH(t, k) (generic_hash((k), type->TableInfo.key) % ((t)->bucket_info->count))
+#define EQUAL(x, y) (generic_equal((x), (y), type->TableInfo.key))
+#define ENTRY_SIZE (type->TableInfo.entry_size)
+#define VALUE_OFFSET (type->TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
 
 #define GET_ENTRY(t, i) ((t)->entries.data + ENTRY_SIZE*(i))
@@ -61,7 +61,7 @@ typedef enum { COW_NONE = 0, COW_ENTRIES = 1, COW_BUCKETS = 2, COW_BOTH = 3 } co
 static void maybe_copy_on_write(const Type *type, table_t *t, cow_e which_cow)
 {
     if (t->entries.copy_on_write && (which_cow & COW_ENTRIES)) {
-        Array_compact(&t->entries, type->__data.TableInfo.entry_size);
+        Array_compact(&t->entries, type->TableInfo.entry_size);
     }
 
     if (t->bucket_info && t->bucket_info->copy_on_write && (which_cow & COW_BUCKETS)) {
@@ -194,8 +194,8 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
 
     hdebug("Hash of key being set: %u\n", HASH(t, key));
 
-    size_t key_size = type->__data.TableInfo.key->size,
-           value_size = type->__data.TableInfo.value->size;
+    size_t key_size = type->TableInfo.key->size,
+           value_size = type->TableInfo.value->size;
     void *value_home = Table_get_raw(type, t, key);
     if (value_home) { // Update existing slot
         // Ensure that `value_home` is still inside t->entries, even if COW occurs
@@ -345,7 +345,7 @@ bool Table_equal(const table_t *x, const table_t *y, const Type *type)
     if ((x->fallback != NULL) != (y->fallback != NULL))
         return false;
 
-    const Type *value_type = type->__data.TableInfo.value;
+    const Type *value_type = type->TableInfo.value;
     for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
@@ -368,8 +368,9 @@ bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 
 int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
 {
-    __auto_type table = type->__data.TableInfo;
-    Type entry_type = {.size=ENTRY_SIZE, .tag=table.key->tag, .__data=table.key->__data};
+    auto table = type->TableInfo;
+    Type entry_type = *table.key;
+    entry_type.size = ENTRY_SIZE;
     array_t x_entries = x->entries, y_entries = y->entries;
     Array_sort(&x_entries, &entry_type);
     Array_sort(&y_entries, &entry_type);
@@ -391,7 +392,7 @@ uint32_t Table_hash(const table_t *t, const Type *type)
     // Table hashes are computed as:
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
     // Where fallback and default hash to zero if absent
-    __auto_type table = type->__data.TableInfo;
+    auto table = type->TableInfo;
     size_t value_offset = table.value_offset;
 
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
@@ -421,7 +422,7 @@ uint32_t Table_hash(const table_t *t, const Type *type)
 
 CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
-    auto table = type->__data.TableInfo;
+    auto table = type->TableInfo;
     size_t value_offset = table.value_offset;
     CORD c = "{";
     for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
@@ -480,7 +481,7 @@ Type *make_table_type(Type *key, Type *value)
         .size=sizeof(table_t),
         .align=alignof(table_t),
         .tag=TableInfo,
-        .__data.TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset},
+        .TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset},
         // .bindings=table_bindings,
     );
 }

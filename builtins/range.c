@@ -56,7 +56,7 @@ Type Range_type = {
     .size=sizeof(range_t),
     .align=alignof(range_t),
     .tag=VTableInfo,
-    .__data.VTableInfo={
+    .VTableInfo={
         .cord=(void*)Range_cord,
         .compare=(void*)Range_compare,
     },
