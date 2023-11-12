@@ -5,3 +5,4 @@ sss
 libsss.so.*
 .*
 !.gitignore
+SipHash
