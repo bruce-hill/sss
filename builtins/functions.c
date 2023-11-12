@@ -11,7 +11,7 @@
 #include "functions.h"
 #include "string.h"
 
-void builtin_say(String_t str, String_t end)
+void builtin_say(Str_t str, Str_t end)
 {
     if (str.stride == 1) {
         write(STDOUT_FILENO, str.data, str.length);
@@ -28,7 +28,7 @@ void builtin_say(String_t str, String_t end)
     }
 }
 
-void builtin_warn(String_t str, String_t end, bool colorize)
+void builtin_warn(Str_t str, Str_t end, bool colorize)
 {
     if (colorize) write(STDERR_FILENO, "\x1b[33m", 5);
     if (str.stride == 1) {
@@ -56,7 +56,7 @@ void builtin_fail(const char *fmt, ...)
     raise(SIGABRT);
 }
 
-void builtin_fail_array(String_t fmt, ...)
+void builtin_fail_array(Str_t fmt, ...)
 {
     char buf[fmt.length+1];
     for (unsigned long i = 0; i < fmt.length; i++)
@@ -70,12 +70,12 @@ void builtin_fail_array(String_t fmt, ...)
     raise(SIGABRT);
 }
 
-String_t builtin_last_err()
+Str_t builtin_last_err()
 {
     const char *str = strerror(errno);
     char *copy = GC_MALLOC_ATOMIC(strlen(str)+1);
     strcpy(copy, str);
-    return (String_t){.data=copy, .length=strlen(str), .stride=1};
+    return (Str_t){.data=copy, .length=strlen(str), .stride=1};
 }
 
 static inline char *without_colors(const char *str)
@@ -131,14 +131,14 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //         int64_t value;
 //         struct {
 //             int64_t value;
-//             string_t remaining;
+//             Str_t remaining;
 //         } partial;
 //     } data;
 // } int_conversion_t;
 
 // static const unsigned char FAILURE = 0, INVALID_RANGE = 1, PARTIAL_SUCCESS = 2, SUCCESS = 3, INVALID_BASE = 4;
 
-// int_conversion_t sss_string_to_int(string_t str, int64_t base)
+// int_conversion_t sss_string_to_int(Str_t str, int64_t base)
 // {
 //     str = flatten(str);
 //     char *endptr = (char*)&str.data[str.length];
@@ -154,7 +154,7 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //             return (int_conversion_t){
 //                 .tag=PARTIAL_SUCCESS,
 //                 .data.partial.value=n,
-//                 .data.partial.remaining=(string_t){
+//                 .data.partial.remaining=(Str_t){
 //                     .data=endptr,
 //                     .length=str.length - (int32_t)(endptr - str.data),
 //                     .stride=1,
@@ -172,12 +172,12 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //         double value;
 //         struct {
 //             double value;
-//             string_t remaining;
+//             Str_t remaining;
 //         } partial;
 //     } data;
 // } num_conversion_t;
 
-// num_conversion_t sss_string_to_num(string_t str)
+// num_conversion_t sss_string_to_num(Str_t str)
 // {
 //     str = flatten(str);
 //     char *endptr = (char*)&str.data[str.length];
@@ -192,7 +192,7 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //             return (num_conversion_t){
 //                 .tag=PARTIAL_SUCCESS,
 //                 .data.partial.value=num,
-//                 .data.partial.remaining=(string_t){
+//                 .data.partial.remaining=(Str_t){
 //                     .data=endptr,
 //                     .length=str.length - (int32_t)(endptr - str.data),
 //                     .stride=1,
@@ -208,7 +208,7 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //     int64_t seconds, nanoseconds;
 // } sss_time_t;
 
-// string_t sss_time_format(sss_time_t sss_time, string_t fmt)
+// Str_t sss_time_format(sss_time_t sss_time, Str_t fmt)
 // {
 //     static char buf[256];
 //     time_t time = (time_t)sss_time.seconds;
@@ -218,7 +218,7 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
 //     char *copy = GC_MALLOC_ATOMIC(len+1);
 //     memcpy(copy, buf, len);
 //     copy[len] = '\0';
-//     return (string_t){.data=copy, .length=(int32_t)len, .stride=1};
+//     return (Str_t){.data=copy, .length=(int32_t)len, .stride=1};
 // }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

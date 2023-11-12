@@ -10,7 +10,9 @@
 
 #include "ast.h"
 #include "files.h"
+#include "parse.h"
 #include "types.h"
+#include "typecheck.h"
 #include "environment.h"
 #include "compile/compile.h"
 #include "compile/libgccjit_abbrev.h"
@@ -73,6 +75,225 @@ sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, ARRA
     populate_tagged_union_constructors(env, t);
     return t;
 }
+
+typedef struct {
+    const char *symbol, *sss_name, *type;
+} builtin_binding_t;
+
+static sss_type_t sss_str_t = {
+    .tag=VariantType,
+    .__data.VariantType={
+        .name="Str", .variant_of=(sss_type_t[]){{
+            .tag=ArrayType,
+            .__data.ArrayType={
+                .item_type=(sss_type_t[]){{.tag=CharType}}
+            },
+        }},
+    },
+};
+
+static sss_type_t sss_c_str_t = {
+    .tag=VariantType,
+    .__data.VariantType={
+        .name="CString", .variant_of=(sss_type_t[]){{
+            .tag=PointerType,
+            .__data.PointerType={
+                .pointed=(sss_type_t[]){{.tag=CharType}},
+                .is_optional=true,
+            },
+        }},
+    },
+};
+
+
+// builtin_binding_t builtin_functions[] = {
+//     {"GC_malloc", "func(size:UInt) @Memory"},
+//     {"GC_malloc_atomic", "func(size:UInt) @Memory"},
+//     {"GC_realloc", "func(data:?Memory, size:UInt) @Memory"},
+//     {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
+//     {"getenv", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
+//     load_global_func(env, gcc_type(ctx, STRING), "getenv", PARAM(gcc_type(ctx, STRING), "name"));
+//     load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
+//     load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
+//     load_global_func(env, t_int, "puts", PARAM(t_str, "str"));
+//     load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
+//     load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
+//     load_global_var_func(env, t_int, "printf", PARAM(t_str, "format"));
+//     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
+//     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
+//     load_global_func(env, t_int, "strcmp", PARAM(t_str, "str1"), PARAM(t_str, "str2"));
+//     load_global_func(env, t_size, "strlen", PARAM(t_str, "str"));
+//     load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
+//     load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
+//     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
+//     // Cord functions:
+//     gcc_type_t *cord_t = gcc_get_type(ctx, GCC_T_STRING);
+//     load_global_func(env, cord_t, "CORD_cat", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
+//     load_global_func(env, cord_t, "CORD_cat_char_star", PARAM(cord_t, "x"), PARAM(t_str, "y"), PARAM(t_size, "leny"));
+//     load_global_func(env, cord_t, "CORD_cat_char", PARAM(cord_t, "x"), PARAM(t_char, "c"));
+//     load_global_func(env, t_int, "CORD_cmp", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
+//     load_global_func(env, cord_t, "CORD_to_const_char_star", PARAM(cord_t, "x"));
+//     load_global_func(env, cord_t, "CORD_to_char_star", PARAM(cord_t, "x"));
+//     load_global_func(env, t_int, "CORD_put", PARAM(cord_t, "x"), PARAM(gcc_get_type(ctx, GCC_T_FILE_PTR), "f"));
+//     load_global_var_func(env, t_int, "CORD_sprintf", PARAM(gcc_get_ptr_type(cord_t), "out"), PARAM(cord_t, "format"));
+//     load_global_var_func(env, t_int, "CORD_fprintf", PARAM(t_file, "out"), PARAM(cord_t, "format"));
+
+    // load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
+    // load_global_var_func(env, t_void, "sss_doctest", PARAM(t_str, "label"), PARAM(cord_t, "expr"), PARAM(t_str, "type"),
+    //                      PARAM(t_bool, "use_color"), PARAM(t_str, "expected"), PARAM(t_str, "filename"), PARAM(t_int, "start"),
+    //                      PARAM(t_int, "end"));
+    // load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
+    // gcc_func_t *exit_fn = Table_str_get(&env->global->funcs, "exit");
+    // Table_str_set(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
+    //     FunctionType,
+    //     .arg_names=ARRAY((const char*)"status"),
+    //     .arg_types=ARRAY(Type(IntType, .bits=32)),
+    //     .arg_defaults=ARRAY(FakeAST(Int, .i=0, .precision=32)),
+    //     .ret=Type(AbortType))));
+    // load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
+    // load_global_func(env, gcc_type(ctx, STRING), "range_to_cord", PARAM(t_range, "range"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
+    // gcc_func_t *range_to_cord = Table_str_get(&env->global->funcs, "range_to_cord");
+    // Table_str_set(get_namespace(env, Type(RangeType)), "__cord",
+    //      new(binding_t, .func=range_to_cord, .sym_name="range_to_cord"));
+    // load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
+    // load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
+    // load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
+    // load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
+// };
+
+struct {
+    sss_type_t sss_type;
+    const char *type_name, *type_symbol;
+    builtin_binding_t *bindings;
+} builtin_types[] = {
+    {{.tag=BoolType}, "Bool", "Bool_type", NULL},
+    {{.tag=MemoryType}, "Memory", "Memory_type", NULL},
+    {{.tag=RangeType}, "Range", "Range_type", NULL},
+
+#define BUILTIN_INT(t, ...) \
+    {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
+        {#t"__format", "format", "func(i:"#t", digits=0) Str"}, \
+        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no) Str"}, \
+        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=no) Str"}, \
+        {#t"__random", "random", "func() "#t}, \
+        {#t"__min",    "min", #t}, \
+        {#t"__max",    "max", #t}, \
+        {NULL, NULL, NULL}, \
+    }}
+    BUILTIN_INT(Int, .bits=64), BUILTIN_INT(Int32, .bits=32), BUILTIN_INT(Int16, .bits=16), BUILTIN_INT(Int8, .bits=8),
+    BUILTIN_INT(UInt, .bits=64, .is_unsigned=true), BUILTIN_INT(UInt32, .bits=32, .is_unsigned=true),
+    BUILTIN_INT(UInt16, .bits=16, .is_unsigned=true), BUILTIN_INT(UInt8, .bits=8, .is_unsigned=true),
+#undef BUILTIN_INT
+
+    {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
+        {"Num__format", "format", "func(n:Num, precision:Int) Str"},
+        {"drand48", "random", "func() Num"},
+        // Unary functions:
+#define UNARY(fn) {#fn, #fn, "func(n:Num) Num"}
+        UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
+        UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
+        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
+        UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
+        UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
+        UNARY(trunc), UNARY(roundeven),
+#undef UNARY
+        // Binary functions:
+        {"atan2", "atan2", "func(y:Num, x:Num) Num"},
+        {"pow", "pow", "func(base:Num, power:Num) Num"},
+        {"hypot", "hypot", "func(x:Num, y:Num) Num"},
+        {"copysign", "hypot", "func(magnitude:Num, sign:Num) Num"},
+        {"nextafter", "nextafter", "func(x:Num, toward:Num) Num"},
+        {"remainder", "remainder", "func(x:Num, divisor:Num) Num"},
+        {"fmaxmag", "max_magnitude", "func(x:Num, y:Num) Num"},
+        {"fminmag", "min_magnitude", "func(x:Num, y:Num) Num"},
+        {"fdim", "distance", "func(x:Num, y:Num) Num"},
+        // Predicates
+        {"isinf", "isinf", "func(n:Num) Bool"},
+        {"finite", "finite", "func(n:Num) Bool"},
+        {"isnan", "isnan", "func(n:Num) Bool"},
+        // Constants
+        {"Num__e", "e", "Num"}, {"Num__log2e", "log2e", "Num"}, {"Num__ln2", "ln2", "Num"},
+        {"Num__ln10", "ln10", "Num"}, {"Num__pi", "pi", "Num"}, {"Num__tau", "tau", "Num"},
+        {"Num__half_pi", "half_pi", "Num"}, {"Num__quarter_pi", "quarter_pi", "Num"},
+        {"Num__inverse_pi", "inverse_pi", "Num"}, {"Num__inverse_half_pi", "inverse_half_pi", "Num"},
+        {"Num__2_sqrt_pi", "2_sqrt_pi", "Num"}, {"Num__sqrt2", "sqrt2", "Num"},
+        {"Num__sqrt_half", "sqrt_half", "Num"}, {"Num__NaN", "NaN", "Num"}, {"Num__inf", "inf", "Num"},
+        {NULL, NULL, NULL},
+    }},
+
+    {{.tag=NumType, .__data.NumType={.bits=32}}, "Num32", "Num32_type", (builtin_binding_t[]){
+        {"Num32__format", "format", "func(n:Num32, precision:Int) Str"},
+        {"Num32__random", "random", "func() Num32"},
+        // Unary functions:
+#define UNARY(fn) {#fn"f", #fn, "func(n:Num32) Num32"}
+        UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
+        UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
+        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
+        UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
+        UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
+        UNARY(trunc), UNARY(roundeven),
+#undef UNARY
+        // Binary functions:
+        {"atan2f", "atan2", "func(y:Num32, x:Num32) Num32"},
+        {"powf", "pow", "func(base:Num32, power:Num32) Num32"},
+        {"hypotf", "hypot", "func(x:Num32, y:Num32) Num32"},
+        {"copysignf", "hypot", "func(magnitude:Num32, sign:Num32) Num32"},
+        {"nextafterf", "nextafter", "func(x:Num32, toward:Num32) Num32"},
+        {"remainderf", "remainder", "func(x:Num32, divisor:Num32) Num32"},
+        {"fmaxmagf", "max_magnitude", "func(x:Num32, y:Num32) Num32"},
+        {"fminmagf", "min_magnitude", "func(x:Num32, y:Num32) Num32"},
+        {"fdimf", "distance", "func(x:Num32, y:Num32) Num32"},
+        // Predicates
+        {"Num32__isinf", "isinf", "func(n:Num32) Bool"},
+        {"Num32__finite", "finite", "func(n:Num32) Bool"},
+        {"Num32__isnan", "isnan", "func(n:Num32) Bool"},
+        // Constants
+        {"Num32__e", "e", "Num32"}, {"Num32__log2e", "log2e", "Num32"}, {"Num32__ln2", "ln2", "Num32"},
+        {"Num32__ln10", "ln10", "Num32"}, {"Num32__pi", "pi", "Num32"}, {"Num32__tau", "tau", "Num32"},
+        {"Num32__half_pi", "half_pi", "Num32"}, {"Num32__quarter_pi", "quarter_pi", "Num32"},
+        {"Num32__inverse_pi", "inverse_pi", "Num32"}, {"Num32__inverse_half_pi", "inverse_half_pi", "Num32"},
+        {"Num32__2_sqrt_pi", "2_sqrt_pi", "Num32"}, {"Num32__sqrt2", "sqrt2", "Num32"},
+        {"Num32__sqrt_half", "sqrt_half", "Num32"}, {"Num32__NaN", "NaN", "Num32"}, {"Num32__inf", "inf", "Num32"},
+        {NULL, NULL, NULL},
+    }},
+
+    {{.tag=CharType}, "Char", "Char_type", (builtin_binding_t[]){
+        {"Char__toupper", "toupper", "func(c:Char) Char"},
+        {"Char__tolower", "tolower", "func(c:Char) Char"},
+#define CHARP(name) {"Char__"#name, #name, "func(c:Char) Bool"}
+        CHARP(isalnum), CHARP(isalpha), CHARP(iscntrl), CHARP(isdigit), CHARP(isgraph), CHARP(islower),
+        CHARP(isprint), CHARP(ispunct), CHARP(isspace), CHARP(isupper), CHARP(isxdigit), CHARP(isascii), CHARP(isblank),
+#undef CHARP
+        {NULL, NULL, NULL},
+    }},
+
+    {sss_str_t, "Str", "Str_type", (builtin_binding_t[]){
+        {"Str__uppercased", "uppercased", "func(s:Str) Str"},
+        {"Str__lowercased", "lowercased", "func(s:Str) Str"},
+        {"Str__capitalized", "capitalized", "func(s:Str) Str"},
+        {"Str__titlecased", "titlecased", "func(s:Str) Str"},
+        {"Str__starts_with", "starts_with", "func(s:Str) Bool"},
+        {"Str__ends_with", "ends_with", "func(s:Str) Bool"},
+        {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str) Str"},
+        {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str) Str"},
+        {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes) Str"},
+        {"Str__slice", "slice", "func(s:Str, first=1, stride=1, length=Int.max) Str"},
+        {"Str__c_string", "c_string", "func(s:Str) CString"},
+        {"Str__from_c_string", "from_c_string", "func(c:CString) Str"},
+        {"Str__find", "find", "func(s:Str, target:Str) Str"},
+        {"Str__replace", "replace", "func(s:Str, target:Str, replacement:Str, limit=Int.max) Str"},
+        {"Str__quoted", "quoted", "func(s:Str) Str"},
+        {"Str__split", "split", "func(s:Str, split_chars=[`, \\x20, \\n, \\r, \\t, \\v]) [Str]"},
+        {"Str__join", "join", "func(glue:Str, pieces:[Str]) Str"},
+        {NULL, NULL, NULL},
+    }},
+
+    {sss_c_str_t, "CString", "CString_type", (builtin_binding_t[]){
+        {"Str__c_string", "from_str", "func(s:Str) CString"},
+        {"Str__from_c_string", "as_str", "func(c:CString) Str"},
+        {NULL, NULL, NULL},
+    }},
+};
 
 #define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
                  sizeof((sss_arg_t[]){__VA_ARGS__})/sizeof(sss_arg_t),\
@@ -194,46 +415,6 @@ static void load_global_functions(env_t *env)
 #undef PARAM
 }
 
-static sss_type_t *define_string_type(env_t *env, sss_type_t *str_type)
-{
-    const char *name = type_to_string(str_type);
-    gcc_rvalue_t *rval = gcc_str(env->ctx, name);
-    binding_t *binding = new(binding_t, .rval=rval, .type=Type(TypeType, .type=str_type));
-    Table_str_set(&env->global->bindings, name, binding);
-
-    table_t *ns = get_namespace(env, str_type);
-    load_method(env, ns, "sss_string_uppercased", "uppercased", str_type, ARG("str",str_type,0));
-    load_method(env, ns, "sss_string_lowercased", "lowercased", str_type, ARG("str",str_type,0));
-    load_method(env, ns, "sss_string_capitalized", "capitalized", str_type, ARG("str",str_type,0));
-    load_method(env, ns, "sss_string_titlecased", "titlecased", str_type, ARG("str",str_type,0));
-    load_method(env, ns, "sss_string_quoted", "quoted", str_type,
-                ARG("str",str_type,0),
-                ARG("dsl", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true), FakeAST(Nil, .type=FakeAST(Var, .name="CStringChar"))),
-                ARG("colorize", Type(BoolType), FakeAST(Bool, .b=false)));
-    load_method(env, ns, "sss_string_starts_with", "starts_with", Type(BoolType), ARG("str",str_type,0), ARG("prefix",str_type,0));
-    load_method(env, ns, "sss_string_ends_with", "ends_with", Type(BoolType), ARG("str",str_type,0), ARG("suffix",str_type,0));
-    load_method(env, ns, "sss_string_without_prefix", "without_prefix", str_type, ARG("str",str_type,0), ARG("prefix",str_type,0));
-    load_method(env, ns, "sss_string_without_suffix", "without_suffix", str_type, ARG("str",str_type,0), ARG("suffix",str_type,0));
-    load_method(env, ns, "sss_string_trimmed", "trimmed", str_type,
-                ARG("str",str_type,0),
-                ARG("chars",str_type,FakeAST(StringJoin, .children=ARRAY(FakeAST(StringLiteral, .str=" \t\r\n")))),
-                ARG("trim_left",Type(BoolType),FakeAST(Bool,.b=true)),
-                ARG("trim_right",Type(BoolType),FakeAST(Bool,.b=true)));
-    load_method(env, ns, "sss_string_replace", "replace", str_type,
-                ARG("str",str_type,0), ARG("pattern",str_type,0), ARG("replacement",str_type,0), ARG("limit",INT_TYPE,FakeAST(Int,.i=-1,.precision=64)));
-    load_method(env, ns, "sss_string_split", "split", Type(ArrayType, .item_type=str_type),
-                ARG("str",str_type,0),
-                ARG("separators", str_type, FakeAST(StringJoin, .children=ARRAY(FakeAST(StringLiteral, .str=" \t\r\n")))));
-
-    // load_method(env, ns, "sss_string_find", "find",
-    //             define_tagged_union(env, 8, "FindResult", ARRAY(
-    //                 (sss_tagged_union_member_t){"Failure", 0, NULL}, {"Success", 1, Type(IntType, .bits=32)})),
-    //             ARG("str",str_type,0),
-    //             ARG("pattern",str_type,0));
-
-    return str_type;
-}
-
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls)
 {
     global_env_t *global = new(global_env_t);
@@ -250,74 +431,27 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
 
     load_global_functions(env);
 
-    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
-    table_t *str_ns = get_namespace(env, str_t);
-
-    { // Define a type representing error codes from C
-        auto error_members = EMPTY_ARRAY(sss_tagged_union_member_t);
-        sss_tagged_union_member_t item = {.name="SUCCESS", .tag_value=0};
-        append(error_members, item);
-        item.name = "FAILURE";
-        item.tag_value = -1;
-        append(error_members, item);
-        // These values are sadly platform-dependent, so they can't be hard-coded.
-        for (int64_t i = 1; i < 256; i++) {
-            item.name = strerrorname_np((int)i);
-            item.tag_value = i;
-            if (item.name)
-                append(error_members, item);
+    gcc_type_t *type_gcc_type = sss_type_to_gcc(env, Type(TypeType));
+    for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
+        sss_type_t *t = &builtin_types[i].sss_type;
+        binding_t *b = new(binding_t,
+                           .type=Type(TypeType, t),
+                           .rval=gcc_lvalue_address(
+                               gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol),
+                               NULL));
+        Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
+        for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; i++) {
+            auto member = builtin_types[i].bindings[j];
+            ast_t *type_ast = parse_type(sss_spoof_file("<builtins>", member.type), NULL);
+            sss_type_t *member_type = parse_type_ast(env, type_ast);
+            gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
+            // if (member_type->tag == FunctionType) {
+            // } else {
+            gcc_lvalue_t *lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, member_gcc_type, member.symbol);
+            set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .rval=gcc_rval(lval)));
+            // }
         }
-        sss_type_t *c_err = define_tagged_union(env, 32, "CError", error_members);
-        Table_str_set(&env->global->bindings, "CError", new(binding_t, .rval=gcc_str(ctx, "CError"), .type=Type(TypeType, .type=c_err)));
-
-        gcc_type_t *errno_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, c_err));
-        gcc_func_t *errno_loc_func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, errno_ptr_gcc_t, "__errno_location", 0, NULL, 0);
-        gcc_rvalue_t *errno_ptr = gcc_callx(env->ctx, NULL, errno_loc_func);
-        gcc_lvalue_t *errno_lval = gcc_rvalue_dereference(errno_ptr, NULL);
-        Table_str_set(&env->global->bindings, "errno", new(binding_t, .rval=gcc_rval(errno_lval), .lval=errno_lval, .type=c_err));
     }
-
-    sss_type_t *c_str = Type(PointerType, .pointed=Type(CStringCharType), .is_optional=true);
-    load_method(env, str_ns, "c_string", "c_string", Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false), ARG("str",str_t,0));
-    load_method(env, str_ns, "from_c_string", "from_pointer", str_t, ARG("str",c_str,0));
-    table_t *c_str_ns = get_namespace(env, c_str);
-    assert(c_str_ns == get_namespace(env, c_str));
-    load_method(env, c_str_ns, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
-    table_t *c_str_ptr_ns = get_namespace(env, Type(PointerType, .pointed=Type(CStringCharType), .is_optional=false));
-    load_method(env, c_str_ptr_ns, "from_c_string", "as_string", str_t, ARG("str",c_str,0));
-
-    sss_type_t *say_type = Type(
-        FunctionType,
-        .arg_names=ARRAY((const char*)"str", "end"),
-        .arg_types=ARRAY(str_t, str_t),
-        .arg_defaults=ARRAY((ast_t*)NULL, FakeAST(StringLiteral, .str="\n")),
-        .ret=Type(VoidType));
-
-    gcc_param_t *gcc_say_params[] = {
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "str"),
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "end"),
-    };
-    gcc_func_t *say_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "say", 2, gcc_say_params, 0);
-    gcc_rvalue_t *say_rvalue = gcc_get_func_address(say_func, NULL);
-    Table_str_set(&env->global->bindings, "say", new(binding_t, .func=say_func, .rval=say_rvalue, .type=say_type));
-    sss_type_t *warn_type = Type(
-        FunctionType,
-        .arg_names=ARRAY((const char*)"str", "end", "colorize"),
-        .arg_types=ARRAY(str_t, str_t, Type(BoolType)),
-        .arg_defaults=ARRAY((ast_t*)NULL, FakeAST(StringLiteral, .str="\n"), FakeAST(Var, "USE_COLOR")),
-        .ret=Type(VoidType));
-    gcc_param_t *gcc_warn_params[] = {
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "str"),
-        gcc_new_param(ctx, NULL, sss_type_to_gcc(env, str_t), "end"),
-        gcc_new_param(ctx, NULL, gcc_type(env->ctx, BOOL), "colorize"),
-    };
-    gcc_func_t *warn_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, VOID), "warn", 3, gcc_warn_params, 0);
-    Table_str_set(&env->global->bindings, "warn", new(binding_t, .func=warn_func, .rval=gcc_get_func_address(warn_func, NULL), .type=warn_type));
-#define DEFTYPE(t) Table_str_set(&env->global->bindings, #t, new(binding_t, .rval=gcc_str(ctx, #t), .type=Type(TypeType, .type=Type(t##Type))));
-    // Primitive types:
-    DEFTYPE(Bool); DEFTYPE(Void); DEFTYPE(Abort); DEFTYPE(Memory);
-    DEFTYPE(Char); DEFTYPE(CStringChar);
-#undef DEFTYPE
 
     return env;
 }
@@ -458,8 +592,6 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             if (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
             else break;
         }
-        if (type_eq(base_t, Type(ArrayType, .item_type=Type(CharType))))
-            (void)define_string_type(env, t);
     }
     return ns;
 }

@@ -22,17 +22,26 @@ static CORD Num_cord(const double *f, bool colorize, const Type *type) {
     return c; 
 } 
 
-String_t Num_format(double f, int64_t precision) { 
+Str_t Num__format(double f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
-    return (String_t){.data=str, .length=len, .stride=1}; 
+    return (Str_t){.data=str, .length=len, .stride=1}; 
 } 
 
-double Num_mod(double num, double modulus) { 
+double Num__mod(double num, double modulus) { 
     double result = fmod(num, modulus); 
     return (result < 0) != (modulus < 0) ? result + modulus : result; 
 }
+
+double Num__e = M_E, Num__log2e = M_LOG2E, Num__ln2 = M_LN2, Num__ln10 = M_LN10, Num__pi = M_PI,
+       Num__tau = 2.*M_PI, Num__half_pi = M_PI_2, Num__quarter_pi = M_PI_4, Num__inverse_pi = M_1_PI,
+       Num__inverse_half_pi = M_2_PI, Num__2_sqrt_pi = M_2_SQRTPI, Num__sqrt2 = M_SQRT2, Num__sqrt_half = M_SQRT1_2,
+       Num__NaN = NAN, Num__inf = 1./0.;
+
+bool Num__isinf(double n) { return isinf(n); }
+bool Num__finite(double n) { return finite(n); }
+bool Num__isnan(double n) { return isnan(n); }
 
 Type Num_type = {
     .name="Num",
@@ -75,21 +84,30 @@ static CORD Num32_cord(float *f, bool colorize, const Type *type) {
     return c; 
 } 
 
-String_t Num32_format(float f, int64_t precision) { 
+Str_t Num32__format(float f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
-    return (String_t){.data=str, .length=len, .stride=1}; 
+    return (Str_t){.data=str, .length=len, .stride=1}; 
 } 
 
-float Num32_mod(float num, float modulus) { 
+float Num32__mod(float num, float modulus) { 
     float result = fmodf(num, modulus); 
     return (result < 0) != (modulus < 0) ? result + modulus : result; 
 }
 
-float Num32_random(void) { 
+float Num32__random(void) { 
     return (float)drand48(); 
-} 
+}
+
+float Num32__e = M_E, Num32__log2e = M_LOG2E, Num32__ln2 = M_LN2, Num32__ln10 = M_LN10, Num32__pi = M_PI,
+      Num32__tau = 2.*M_PI, Num32__half_pi = M_PI_2, Num32__quarter_pi = M_PI_4, Num32__inverse_pi = M_1_PI,
+      Num32__inverse_half_pi = M_2_PI, Num32__2_sqrt_pi = M_2_SQRTPI, Num32__sqrt2 = M_SQRT2,
+      Num32__sqrt_half = M_SQRT1_2, Num32__NaN = NAN, Num32__inf = 1./0.;
+
+bool Num32__isinf(float n) { return isinf(n); }
+bool Num32__finite(float n) { return finite(n); }
+bool Num32__isnan(float n) { return isnan(n); }
 
 #define UNOP(name) {#name, "func(n:Num32) Num32", #name}
 #define BINOP(name) {#name, "func(x:Num32, y:Num32) Num32", #name}

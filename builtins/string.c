@@ -22,16 +22,16 @@ typedef struct {
     int32_t index;
 } find_result_t;
 
-static String_t compacted(const String_t str)
+static Str_t compacted(const Str_t str)
 {
     if (str.stride == 1) return str;
     char *buf = GC_MALLOC_ATOMIC(str.length + 1);
     for (unsigned long i = 0; i < str.length; i++)
         buf[i] = str.data[i*str.stride];
-    return (String_t){.data=buf, .length=str.length, .stride=1};
+    return (Str_t){.data=buf, .length=str.length, .stride=1};
 }
 
-static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
+static CORD Str_cord(const Str_t *s, bool colorize, const Type *type)
 {
     (void)type;
     char *data = s->data;
@@ -92,7 +92,7 @@ static CORD Str_cord(const String_t *s, bool colorize, const Type *type)
     }
 }
 
-static int Str_compare(const String_t *x, const String_t *y)
+static int Str_compare(const Str_t *x, const Str_t *y)
 {
     unsigned long length = x->length < y->length ? x->length : y->length;
     for (unsigned long i = 0; i < length; i++) {
@@ -103,12 +103,12 @@ static int Str_compare(const String_t *x, const String_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static bool Str_equal(const String_t *x, const String_t *y)
+static bool Str_equal(const Str_t *x, const Str_t *y)
 {
     return (Str_compare(x, y) == 0);
 }
 
-static int Str_hash(const String_t *s, const Type *type)
+static int Str_hash(const Str_t *s, const Type *type)
 {
     (void)type;
     const char *data;
@@ -128,23 +128,23 @@ static int Str_hash(const String_t *s, const Type *type)
     return hash;
 }
 
-String_t Str__uppercased(const String_t s)
+Str_t Str__uppercased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
         s2[i] = toupper(s.data[i*s.stride]);
-    return (String_t){.data=s2, .length=s.length, .stride=1};
+    return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
-String_t Str__lowercased(const String_t s)
+Str_t Str__lowercased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     for (unsigned long i = 0; i < s.length; i++)
         s2[i] = tolower(s.data[i*s.stride]);
-    return (String_t){.data=s2, .length=s.length, .stride=1};
+    return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
-String_t Str__capitalized(const String_t s)
+Str_t Str__capitalized(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     unsigned long i;
@@ -159,10 +159,10 @@ String_t Str__capitalized(const String_t s)
     }
     for (; i < s.length; i++)
         s2[i] = s.data[i*s.stride];
-    return (String_t){.data=s2, .length=s.length, .stride=1};
+    return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
-String_t Str__titlecased(const String_t s)
+Str_t Str__titlecased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
     bool should_uppercase = true;
@@ -179,10 +179,10 @@ String_t Str__titlecased(const String_t s)
             s2[i] = s.data[i*s.stride];
         }
     }
-    return (String_t){.data=s2, .length=s.length, .stride=1};
+    return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
-bool Str__starts_with(const String_t s, const String_t prefix)
+bool Str__starts_with(const Str_t s, const Str_t prefix)
 {
     if (s.length < prefix.length) return false;
     for (unsigned long i = 0; i < prefix.length; i++) {
@@ -192,7 +192,7 @@ bool Str__starts_with(const String_t s, const String_t prefix)
     return true;
 }
 
-bool Str__ends_with(const String_t s, const String_t suffix)
+bool Str__ends_with(const Str_t s, const Str_t suffix)
 {
     if (s.length < suffix.length) return false;
     for (unsigned long i = 0; i < suffix.length; i++) {
@@ -202,14 +202,14 @@ bool Str__ends_with(const String_t s, const String_t suffix)
     return true;
 }
 
-String_t Str__without_prefix(const String_t s, const String_t prefix)
+Str_t Str__without_prefix(const Str_t s, const Str_t prefix)
 {
     if (s.length < prefix.length) return s;
     for (unsigned long i = 0; i < prefix.length; i++) {
         if (s.data[i*s.stride] != prefix.data[i*prefix.stride])
             return s;
     }
-    return (String_t){
+    return (Str_t){
         .data=s.data + prefix.length*s.stride,
         .length=s.length - prefix.length,
         .stride=s.stride,
@@ -217,14 +217,14 @@ String_t Str__without_prefix(const String_t s, const String_t prefix)
     };
 }
 
-String_t Str__without_suffix(const String_t s, const String_t suffix)
+Str_t Str__without_suffix(const Str_t s, const Str_t suffix)
 {
     if (s.length < suffix.length) return s;
     for (unsigned long i = 0; i < suffix.length; i++) {
         if (s.data[(s.length - suffix.length + i)*s.stride] != suffix.data[i*suffix.stride])
             return s;
     }
-    return (String_t){
+    return (Str_t){
         .data=s.data,
         .length=s.length - suffix.length,
         .stride=s.stride,
@@ -232,7 +232,7 @@ String_t Str__without_suffix(const String_t s, const String_t suffix)
     };
 }
 
-String_t Str__trimmed(const String_t s, const String_t trim_chars, bool trim_left, bool trim_right)
+Str_t Str__trimmed(const Str_t s, const Str_t trim_chars, bool trim_left, bool trim_right)
 {
     unsigned long length = s.length;
     unsigned long start = 0;
@@ -260,10 +260,10 @@ String_t Str__trimmed(const String_t s, const String_t trim_chars, bool trim_lef
         }
     }
   done_trimming_right:;
-    return (String_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
+    return (Str_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
-String_t Str__slice(const String_t s, int64_t _first, int64_t _stride, int64_t length)
+Str_t Str__slice(const Str_t s, int64_t _first, int64_t _stride, int64_t length)
 {
     if (_stride > INT16_MAX || _stride < INT16_MIN)
         errx(1, "Invalid string slice stride: %ld", _stride);
@@ -271,10 +271,10 @@ String_t Str__slice(const String_t s, int64_t _first, int64_t _stride, int64_t l
     unsigned long first = (unsigned long)CLAMP(_first-1, 0, (int64_t)s.length-1),
                   last = (unsigned long)CLAMP(_first + length - 1, 0, (int64_t)s.length-1);
     unsigned long slice_len = (last - first)/stride;
-    return (String_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
+    return (Str_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
-const char *Str__c_string(const String_t str)
+const char *Str__c_string(const Str_t str)
 {
     if (str.length == 0)
         return "";
@@ -292,17 +292,17 @@ const char *Str__c_string(const String_t str)
     return buf;
 }
 
-String_t Str__from_c_string(const char *str)
+Str_t Str__from_c_string(const char *str)
 {
     size_t length = str ? strlen(str) : 0;
-    if (length == 0) return (String_t){.length=0, .stride=0};
+    if (length == 0) return (Str_t){.length=0, .stride=0};
     char *buf = GC_MALLOC_ATOMIC(length + 1);
     memcpy(buf, str, length+1);
     buf[length+1] = '\0';
-    return (String_t){.data=buf, .length=length, .stride=1};
+    return (Str_t){.data=buf, .length=length, .stride=1};
 }
 
-find_result_t Str__find(const String_t str, const String_t pat)
+find_result_t Str__find(const Str_t str, const Str_t pat)
 {
     if (str.length < pat.length) return (find_result_t){.success=0};
     if (pat.length == 0) return (find_result_t){.success=1, .index=1};
@@ -354,7 +354,7 @@ find_result_t Str__find(const String_t str, const String_t pat)
     // return 0;
 }
 
-String_t Str__replace(String_t text, String_t pat, String_t replacement, int64_t limit)
+Str_t Str__replace(Str_t text, Str_t pat, Str_t replacement, int64_t limit)
 {
     text = compacted(text);
     pat = compacted(pat);
@@ -378,10 +378,10 @@ String_t Str__replace(String_t text, String_t pat, String_t replacement, int64_t
     memcpy(str, buf, size+1);
     fclose(mem);
     free(buf);
-    return (String_t){.data=str, .length=size, .stride=1};
+    return (Str_t){.data=str, .length=size, .stride=1};
 }
 
-String_t Str__quoted(const String_t text, const char *dsl, bool colorize)
+Str_t Str__quoted(const Str_t text, const char *dsl, bool colorize)
 {
     char *buf;
     size_t size;
@@ -417,13 +417,13 @@ String_t Str__quoted(const String_t text, const char *dsl, bool colorize)
     memcpy(str, buf, size+1);
     fclose(mem);
     free(buf);
-    return (String_t){.data=str, .length=size, .stride=1};
+    return (Str_t){.data=str, .length=size, .stride=1};
 }
 
-String_Array_t Str__split(const String_t str, const String_t split_chars)
+Str_Array_t Str__split(const Str_t str, const Str_t split_chars)
 {
-    if (str.length == 0) return (String_Array_t){.stride=sizeof(String_t)};
-    String_Array_t strings = {.stride=sizeof(String_t)};
+    if (str.length == 0) return (Str_Array_t){.stride=sizeof(Str_t)};
+    Str_Array_t strings = {.stride=sizeof(Str_t)};
     size_t capacity = 0;
     bool separators[256] = {0};
     for (unsigned long i = 0; i < split_chars.length; i++)
@@ -436,8 +436,8 @@ String_Array_t Str__split(const String_t str, const String_t split_chars)
             ++length;
             ++i;
         }
-        strings.data = GC_REALLOC(strings.data, sizeof(String_t)*(capacity += 1));
-        strings.data[strings.length++] = (String_t){
+        strings.data = GC_REALLOC(strings.data, sizeof(Str_t)*(capacity += 1));
+        strings.data[strings.length++] = (Str_t){
             .data=&str.data[str.stride*(i-length)],
             .length=length, 
             .stride=str.stride,
@@ -446,10 +446,34 @@ String_Array_t Str__split(const String_t str, const String_t split_chars)
     return strings;
 }
 
+Str_t Str__join(Str_t glue, Str_Array_t pieces)
+{
+    if (pieces.length == 0) return (Str_t){.stride=1};
+
+    unsigned long length = 0;
+    for (unsigned long i = 0; i < pieces.length; i++) {
+        if (i > 0) length += glue.length;
+        length += ((Str_t*)((void*)pieces.data + i*pieces.stride))->length;
+    }
+    char *data = GC_MALLOC_ATOMIC((size_t)length+1);
+    char *ptr = data;
+    for (unsigned long i = 0; i < pieces.length; i++) {
+        if (i > 0) {
+            for (unsigned long j = 0; j < glue.length; j++)
+                *(ptr++) = glue.data[j*glue.stride];
+        }
+        Str_t piece = *(Str_t*)((void*)pieces.data + i*pieces.stride);
+        for (unsigned long j = 0; j < piece.length; j++)
+            *(ptr++) = piece.data[j*piece.stride];
+    }
+    return (Str_t){.data=data, .length=length, .stride=1};
+}
+
+
 Type Str_type = {
     .name="Str",
-    .size=sizeof(String_t),
-    .align=alignof(String_t),
+    .size=sizeof(Str_t),
+    .align=alignof(Str_t),
     .tag=VTableInfo,
     .VTableInfo={
         .cord=(void*)Str_cord,
@@ -469,7 +493,7 @@ Type Str_type = {
 
 static CORD CString_cord(const char **s, bool colorize, const Type *type)
 {
-    String_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
+    Str_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
     return Str_cord(&str, colorize, type);
 }
 
