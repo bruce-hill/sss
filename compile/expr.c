@@ -237,8 +237,8 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
             env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
             demote_int_literals(&arg_ast, arg->type);
             sss_type_t *actual_t = get_type(arg_env, arg_ast);
-            rval = compile_expr(arg_env, block, arg_ast);
-            if (!promote(arg_env, actual_t, &rval, arg->type))
+            rval = compile_ast_to_type(arg_env, block, arg_ast, arg->type);
+            if (!rval)
                 compiler_err(arg_env, arg_ast, "This struct expected this field to have type %T, but this value is a %T", arg->type, actual_t);
 
             if (arg->ast->tag != Var) {
@@ -408,9 +408,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 target.table_type = value_type(table_t);
                 sss_type_t *key_t = Match(target.table_type, TableType)->key_type;
                 target.key = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "key");
-                gcc_rvalue_t *key_val = compile_expr(env, block, Match(*lhs, Index)->index);
                 sss_type_t *actual_key_t = get_type(env, Match(*lhs, Index)->index);
-                if (!promote(env, actual_key_t, &key_val, key_t))
+                gcc_rvalue_t *key_val = compile_ast_to_type(env, block, Match(*lhs, Index)->index, actual_key_t);
+                if (!key_val)
                     compiler_err(env, Match(*lhs, Index)->index, "This key has type %T, but to work in this table, it needs type %T", actual_key_t, key_t);
                 gcc_assign(*block, loc, target.key, key_val);
             } else {
@@ -430,9 +430,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (t_rhs->tag == GeneratorType)
                 compiler_err(env, rhs, "This expression isn't guaranteed to have a single value, so you can't assign it to a variable."); 
 
-            gcc_rvalue_t *rval = compile_expr(rhs_env, block, ith(values, i));
-
-            if (!promote(rhs_env, t_rhs, &rval, t_lhs))
+            gcc_rvalue_t *rval = compile_ast_to_type(rhs_env, block, ith(values, i), t_lhs);
+            if (!rval)
                 compiler_err(env, rhs, "You're assigning this %T value to a variable with type %T and I can't figure out how to make that work.",
                     t_rhs, t_lhs);
 
@@ -650,8 +649,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (env->return_type->tag == VoidType && value_t->tag != VoidType)
             compiler_err(env, ast, "I was expecting a plain `return` with no expression here or a Void-type function call, because the function this is inside has no declared return type. If you want to return a value, please change the function's definition to include a return type.");
 
-        gcc_rvalue_t *val = compile_expr(env, block, ret->value);
-        if (!promote(env, value_t, &val, env->return_type))
+        gcc_rvalue_t *val = compile_ast_to_type(env, block, ret->value, env->return_type);
+        if (!val)
             compiler_err(env, ast, "I was expecting this `return` to have value of type %T because of the function's type signature, but this value has type %T",
                   env->return_type, value_t);
 
@@ -1063,21 +1062,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     compiler_err(env, call->fn, "This function doesn't take any arguments. If you want to call it anyways, use the class name like %T.%s()",
                           value_type, access->field);
 
-                self_val = compile_expr(env, block, self_ast);
                 sss_type_t *expected_self = ith(fn_info->arg_types, 0);
-                if (!type_eq(self_t, expected_self) && !promote(env, self_t, &self_val, expected_self)) {
-                    while (self_t->tag == PointerType && expected_self->tag != PointerType) {
-                        if (Match(self_t, PointerType)->is_optional)
-                            compiler_err(env, self_ast, "This value needs to be dereferenced to pass it as a method argument, but it might be null");
-                        self_t = Match(self_t, PointerType)->pointed;
-                        self_val = gcc_rval(gcc_rvalue_dereference(self_val, loc));
-                        if (type_eq(self_t, expected_self) || promote(env, self_t, &self_val, expected_self))
-                            goto successfully_dereferenced;
-                    }
+                self_val = compile_ast_to_type(env, block, self_ast, expected_self);
+                if (!self_val)
                     compiler_err(env, ast, "The method %T.%s(...) is being called on a %T, but it wants a %T.",
                           self_t, access->field, self_t, expected_self);
-                }
-              successfully_dereferenced:
+
                 fn = binding->func;
                 fn_ptr = binding->rval;
                 break;
@@ -1120,8 +1110,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 env_t *arg_env = scope_with_type(arg->is_default ? default_env : env, arg->type);
                 demote_int_literals(&arg_ast, arg->type);
                 sss_type_t *actual_t = get_type(arg_env, arg_ast);
-                rval = compile_expr(arg_env, block, arg_ast);
-                if (!promote(arg_env, actual_t, &rval, arg->type))
+                rval = compile_ast_to_type(arg_env, block, arg_ast, arg->type);
+                if (!rval)
                     compiler_err(arg_env, arg_ast, "This function expected this argument to have type %T, but this value is a %T", arg->type, actual_t);
 
                 if (arg->ast->tag != Var) {
@@ -1673,20 +1663,26 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         sss_type_t *lhs_t = get_type(env, lhs);
         sss_type_t *rhs_t = get_type(env, rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
 
-        if (!promote(env, lhs_t, &lhs_val, rhs_t)
-            && !promote(env, rhs_t, &rhs_val, lhs_t))
+        sss_type_t *comparison_type;
+        if (can_promote(lhs_t, rhs_t))
+            comparison_type = rhs_t;
+        else if (can_promote(rhs_t, lhs_t))
+            comparison_type = lhs_t;
+        else
             compiler_err(env, ast, "I don't know how to do a comparison between a %T and a %T.", lhs_t, rhs_t);
 
-        if (is_ordered && !is_orderable(lhs_t))
-            compiler_err(env, ast, "I can't do ordered comparisons between values with type %T", lhs_t);
+        if (is_ordered && !is_orderable(comparison_type))
+            compiler_err(env, ast, "I can't do ordered comparisons between values with type %T", comparison_type);
 
-        if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, comparison_type);
+        gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, comparison_type);
+        assert(lhs_val && rhs_val);
+
+        if (is_numeric(comparison_type) || comparison_type->tag == PointerType)
             return gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
 
-        return gcc_comparison(env->ctx, loc, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
+        return gcc_comparison(env->ctx, loc, cmp, compare_values(env, comparison_type, lhs_val, rhs_val),
                               gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
     }
     case Negative: {
@@ -1718,14 +1714,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
         gcc_assign(*block, NULL, result, lhs_val);
         lhs_val = gcc_rval(result);
-        if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-            // Numeric promotion:
-            if (!promote(env, lhs_t, &lhs_val, rhs_t))
-                assert(promote(env, rhs_t, &rhs_val, lhs_t));
+        if (is_integral(t)) {
+            gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, sss_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_block_t *if_truthy = gcc_new_block(func, fresh("and_truthy"));
@@ -1768,14 +1761,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
         gcc_assign(*block, loc, result, lhs_val);
         lhs_val = gcc_rval(result);
         if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-            if (!promote(env, lhs_t, &lhs_val, rhs_t)
-                && !promote(env, rhs_t, &rhs_val, lhs_t))
-                compiler_err(env, ast, "I can't figure out how to combine a %T and a %T", lhs_t, rhs_t);
+            gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
             return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, sss_type_to_gcc(env, t), lhs_val, rhs_val);
         }
         gcc_block_t *if_falsey = gcc_new_block(func, fresh("or_falsey"));
@@ -1863,10 +1853,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, ast);
         sss_type_t *lhs_t = get_type(env, lhs);
         sss_type_t *rhs_t = get_type(env, rhs);
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-        if (!promote(env, lhs_t, &lhs_val, rhs_t)
-            && !promote(env, rhs_t, &rhs_val, lhs_t))
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
+        gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
+        if (!lhs_val || !rhs_val)
             compiler_err(env, ast, "The left hand side of this modulus has type %T, but the right hand side has type %T and I can't figure out how to combine them.",
                          lhs_t, rhs_t);
 
@@ -1907,10 +1896,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         sss_type_t *base_t = get_type(env, base);
         sss_type_t *rhs_t = get_type(env, exponent);
-        gcc_rvalue_t *base_val = compile_expr(env, block, base);
-        gcc_rvalue_t *exponent_val = compile_expr(env, block, exponent);
-        if (!promote(env, base_t, &base_val, rhs_t)
-            && !promote(env, rhs_t, &exponent_val, base_t))
+        gcc_rvalue_t *base_val = compile_ast_to_type(env, block, base, t);
+        gcc_rvalue_t *exponent_val = compile_ast_to_type(env, block, exponent, t);
+        if (!base_val || !exponent_val)
             compiler_err(env, ast, "The base of this operation has type %T, but the exponent has type %T and I can't figure out how to combine them.",
                          base_t, rhs_t);
 
@@ -2070,19 +2058,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type(env, ast);
         sss_type_t *lhs_t = get_type(env, lhs_ast),
                   *rhs_t = get_type(env, rhs_ast);
-        gcc_lvalue_t *lhs = gcc_local(func, loc, sss_type_to_gcc(env, lhs_t), "_lhs"),
-                     *rhs = gcc_local(func, loc, sss_type_to_gcc(env, rhs_t), "_rhs"),
+        gcc_lvalue_t *lhs = gcc_local(func, loc, sss_type_to_gcc(env, t), "_lhs"),
+                     *rhs = gcc_local(func, loc, sss_type_to_gcc(env, t), "_rhs"),
                      *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_result");
 
-        gcc_assign(*block, loc, lhs, compile_expr(env, block, lhs_ast));
-        gcc_assign(*block, loc, rhs, compile_expr(env, block, rhs_ast));
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs_ast, t),
+                     *rhs_val = compile_ast_to_type(env, block, rhs_ast, t);
 
-        gcc_rvalue_t *lhs_val = gcc_rval(lhs),
-                     *rhs_val = gcc_rval(rhs);
-
-        if (!promote(env, lhs_t, &lhs_val, rhs_t)
-            && !promote(env, rhs_t, &rhs_val, lhs_t))
+        if (!lhs_val || !rhs_val)
             compiler_err(env, ast, "I don't know how to do a comparison between a %T and a %T.", lhs_t, rhs_t);
+
+        gcc_assign(*block, loc, lhs, lhs_val);
+        lhs_val = gcc_rval(lhs);
+        gcc_assign(*block, loc, rhs, rhs_val);
+        rhs_val = gcc_rval(rhs);
 
         if (!is_orderable(lhs_t))
             compiler_err(env, ast, "I can't do ordered comparisons between values with type %T", lhs_t);

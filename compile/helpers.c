@@ -417,18 +417,59 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed)
     }
 }
 
+gcc_rvalue_t *compile_ast_to_type(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *needed)
+{
+    sss_type_t *actual = get_type(env, ast);
+    gcc_loc_t *loc = ast_loc(env, ast);
+
+    // Lvalue to (maybe mutable) stack reference:
+    if (!type_eq(actual, needed) && needed->tag == PointerType && Match(needed, PointerType)->is_stack
+        && type_eq(actual, Match(needed, PointerType)->pointed) && can_be_lvalue(env, ast, false)) {
+        gcc_lvalue_t *lval = get_lvalue(env, block, ast, false);
+        return gcc_lvalue_address(lval, loc);
+    }
+
+    gcc_rvalue_t *rval = compile_expr(env, block, ast);
+    if (type_eq(actual, needed))
+        return rval;
+
+    // Value to readonly stack reference:
+    if (actual->tag != PointerType && needed->tag == PointerType && Match(needed, PointerType)->is_stack
+        && Match(needed, PointerType)->is_readonly
+        && can_promote(actual, Match(needed, PointerType)->pointed)) {
+        gcc_func_t *func = gcc_block_func(*block);
+        sss_type_t *needed_value_t = Match(needed, PointerType)->pointed;
+        gcc_lvalue_t *tmp = gcc_local(func, NULL, sss_type_to_gcc(env, needed_value_t), "_tmp");
+        if (!promote(env, actual, &rval, needed_value_t))
+            return NULL;
+        gcc_assign(*block, loc, tmp, rval);
+        return gcc_lvalue_address(tmp, loc);
+    } else {
+        if (!promote(env, actual, &rval, needed))
+            return NULL;
+        return rval;
+    }
+}
+
 bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *needed)
 {
     if (!can_promote(actual, needed))
         return false;
 
-    // String <-> c string promotion
-    if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType)))) {
+    // Automatic dereferencing:
+    if (actual->tag == PointerType && !Match(actual, PointerType)->is_optional
+        && can_promote(Match(actual, PointerType)->pointed, needed)) {
+        *val = gcc_rval(gcc_rvalue_dereference(*val, NULL));
+        return promote(env, Match(needed, PointerType)->pointed, val, needed);
+    // C String -> String promotion:
+    } else if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType)))) {
         binding_t *b = get_from_namespace(env, needed, "from_pointer");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
+    // String -> C String promotion:
     } else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType)))) {
         binding_t *b = get_from_namespace(env, actual, "c_string");
         *val = gcc_callx(env->ctx, NULL, b->func, *val);
+    // Tuple -> Named struct promotion
     } else if (actual->tag == StructType && base_variant(needed)->tag == StructType) { // Struct promotion
         gcc_type_t *actual_gcc_t = sss_type_to_gcc(env, actual);
         gcc_type_t *needed_gcc_t = sss_type_to_gcc(env, needed);
@@ -446,6 +487,7 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
             append(field_vals, field_val);
         }
         *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LENGTH(needed_fields), needed_fields[0], field_vals[0]);
+    // Casting
     } else if (!type_eq(actual, needed) || actual->tag == FunctionType) {
         *val = gcc_cast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
     }

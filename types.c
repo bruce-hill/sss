@@ -466,6 +466,11 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         return cmp == NUM_PRECISION_EQUAL || cmp == NUM_PRECISION_LESS;
     }
 
+    // Automatic dereferencing:
+    if (actual->tag == PointerType && !Match(actual, PointerType)->is_optional
+        && can_promote(Match(actual, PointerType)->pointed, needed))
+        return true;
+
     // Optional promotion:
     if (needed->tag == PointerType && actual->tag == PointerType) {
         auto needed_ptr = Match(needed, PointerType);

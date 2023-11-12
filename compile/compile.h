@@ -66,6 +66,8 @@ gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *
 bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices);
 // Convert an AST into an lvalue
 gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow_slices);
+// Compile and promote an AST to a given type
+gcc_rvalue_t *compile_ast_to_type(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *needed);
 // Apply optional/numeric promotion when possible
 bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *needed);
 // Integer demotion in select cases:
