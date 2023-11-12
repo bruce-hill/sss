@@ -87,7 +87,7 @@ static PARSER(parse_extended_expr);
 static PARSER(parse_term_no_suffix);
 static PARSER(parse_term);
 static PARSER(parse_inline_block);
-static PARSER(_parse_type);
+static PARSER(parse_type);
 static PARSER(parse_statement);
 static PARSER(parse_block);
 static PARSER(parse_opt_indented_block);
@@ -381,7 +381,7 @@ PARSER(parse_parens) {
     whitespace(&pos);
     ast_t *expr;
     if (match(&pos, ":")) {
-        expr = optional_ast(ctx, &pos, _parse_type);
+        expr = optional_ast(ctx, &pos, parse_type);
     } else {
         expr = optional_ast(ctx, &pos, parse_extended_expr);
     }
@@ -479,11 +479,11 @@ PARSER(parse_table_type) {
     const char *start = pos;
     if (!match(&pos, "{")) return NULL;
     whitespace(&pos);
-    ast_t *key_type = optional_ast(ctx, &pos, _parse_type);
+    ast_t *key_type = optional_ast(ctx, &pos, parse_type);
     if (!key_type) return NULL;
     whitespace(&pos);
     if (!match(&pos, "=>")) return NULL;
-    ast_t *value_type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the rest of this table type");
+    ast_t *value_type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the rest of this table type");
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this table type");
     return NewAST(ctx->file, start, pos, TypeTable, .key_type=key_type, .value_type=value_type);
@@ -523,14 +523,14 @@ PARSER(parse_func_type) {
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this function type");
     spaces(&pos);
     if (!match(&pos, "->")) return NULL;
-    ast_t *ret = optional_ast(ctx, &pos, _parse_type);
+    ast_t *ret = optional_ast(ctx, &pos, parse_type);
     return NewAST(ctx->file, start, pos, TypeFunction, .args=args, .ret_type=ret);
 }
 
 PARSER(parse_array_type) {
     const char *start = pos;
     if (!match(&pos, "[")) return NULL;
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse an array item type after this point");
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this array type");
     return NewAST(ctx->file, start, pos, TypeArray, .item_type=type);
@@ -559,7 +559,7 @@ PARSER(parse_pointer_type) {
     }
 
     spaces(&pos);
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
     return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack, .is_readonly=is_readonly);
 }
@@ -569,7 +569,7 @@ PARSER(parse_type_type) {
     if (!match_word(&pos, "Type")) return NULL;
     spaces(&pos);
     if (!match(&pos, "(")) return NULL;
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
     return NewAST(ctx->file, start, pos, TypeTypeAST, .type=type);
@@ -593,7 +593,7 @@ static const char* get_units(const char **pos) {
     return units;
 }
 
-PARSER(_parse_type) {
+PARSER(parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
     bool success = (false
@@ -608,7 +608,7 @@ PARSER(_parse_type) {
     );
     if (!success && match(&pos, "(")) {
         whitespace(&pos);
-        type = optional_ast(ctx, &pos, _parse_type);
+        type = optional_ast(ctx, &pos, parse_type);
         if (!type) return NULL;
         whitespace(&pos);
         expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
@@ -679,7 +679,7 @@ PARSER(parse_array) {
     ast_t *item_type = NULL;
     if (match(&pos, ":")) {
         whitespace(&pos);
-        item_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a type for this array");
+        item_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a type for this array");
     }
 
     for (;;) {
@@ -710,11 +710,11 @@ PARSER(parse_table) {
     ast_t *key_type = NULL, *value_type = NULL;
     if (match(&pos, ":")) {
         whitespace(&pos);
-        key_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a key type for this table");
+        key_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a key type for this table");
         whitespace(&pos);
         if (!match(&pos, "=>"))
             parser_err(ctx, pos, pos, "I expected an '=>' for this table type");
-        value_type = expect_ast(ctx, pos-1, &pos, _parse_type, "I couldn't parse a value type for this table");
+        value_type = expect_ast(ctx, pos-1, &pos, parse_type, "I couldn't parse a value type for this table");
     }
 
     for (;;) {
@@ -1455,7 +1455,7 @@ PARSER(parse_lambda) {
 PARSER(parse_nil) {
     const char *start = pos;
     if (!match(&pos, "!")) return NULL;
-    ast_t *type = _parse_type(ctx, pos);
+    ast_t *type = parse_type(ctx, pos);
     if (!type) return NULL;
     return NewAST(ctx->file, start, type->end, Nil, .type=type);
 }
@@ -1481,7 +1481,7 @@ PARSER(parse_bitcast) {
     if (!match_word(&pos, "bitcast")) return NULL;
     ast_t *expr = expect_ast(ctx, start, &pos, parse_term, "I expected an expression here");
     if (!match_word(&pos, "as")) parser_err(ctx, start, pos, "I expected a 'as' and type for this bitcast");
-    ast_t *t = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this bitcast");
+    ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this bitcast");
     return NewAST(ctx->file, start, pos, Bitcast, .value=expr, .type=t);
 }
 
@@ -1625,7 +1625,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     ast_t *extern_return_type = NULL;
     if (is_extern) {
         if (match(&pos, ":"))
-            extern_return_type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the return type of this external function call");
+            extern_return_type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the return type of this external function call");
         else
             extern_return_type = NewAST(ctx->file, pos, pos, Var, .name="Void");
     }
@@ -1711,7 +1711,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             spaces(&next);
         else
             whitespace(&next);
-        ast_t *rhs = tag == Cast ? _parse_type(ctx, next) : parse_term(ctx, next);
+        ast_t *rhs = tag == Cast ? parse_type(ctx, next) : parse_term(ctx, next);
         if (!rhs && tag == Range) {
             ast_t *prev = ith(terms, LENGTH(terms)-1);
             terms[0][LENGTH(terms)-1] = NewAST(ctx->file, next, next, Range, .first=prev);
@@ -1782,7 +1782,7 @@ PARSER(parse_predeclaration) {
     if (!match(&pos, ":")) return NULL;
     if (match(&pos, "=") || match(&pos, ":")) return NULL;
     spaces(&pos);
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this declaration");
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this declaration");
     return NewAST(ctx->file, start, pos, Predeclare, .var=var, .type=type);
 }
 
@@ -2007,7 +2007,7 @@ PARSER(parse_type_def) {
     spaces(&pos);
 
     if (!match(&pos, ":=")) return NULL;
-    ast_t *type_ast = expect_ast(ctx, start, &pos, _parse_type, "I expected a type after this ':='");
+    ast_t *type_ast = expect_ast(ctx, start, &pos, parse_type, "I expected a type after this ':='");
     ARRAY_OF(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
     return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .definitions=definitions);
 }
@@ -2033,7 +2033,7 @@ PARSER(parse_enum_type) {
         spaces(&pos);
         if (match(&pos, ":")) {
             spaces(&pos);
-            ast_t *type_ast = expect_ast(ctx, tag_start, &pos, _parse_type, "I expected a type after this ':'");
+            ast_t *type_ast = expect_ast(ctx, tag_start, &pos, parse_type, "I expected a type after this ':'");
             char *name = GC_malloc_atomic(type_ast->end - type_ast->start + 1);
             char *dest = name;
             for (const char *src = type_ast->start; src < type_ast->end; src++) {
@@ -2136,12 +2136,12 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
                 append(args.names, name);
                 break;
             } else if (match(pos, ":")) {
-                type = expect_ast(ctx, *pos-1, pos, _parse_type, "I expected a type here");
+                type = expect_ast(ctx, *pos-1, pos, parse_type, "I expected a type here");
                 append(args.names, name);
                 break;
             } else if (allow_unnamed) {
                 *pos = arg_start;
-                type = optional_ast(ctx, pos, _parse_type);
+                type = optional_ast(ctx, pos, parse_type);
                 if (type)
                     append(args.names, NULL);
                 break;
@@ -2202,7 +2202,7 @@ PARSER(parse_func_def) {
     ast_t *ret_type = NULL;
     spaces(&pos);
     if (match(&pos, "->") || match(&pos, ":"))
-        ret_type = optional_ast(ctx, &pos, _parse_type);
+        ret_type = optional_ast(ctx, &pos, parse_type);
 
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block,
                              "This function needs a body block");
@@ -2222,9 +2222,9 @@ PARSER(parse_convert_def) {
     spaces(&pos);
     if (!match(&pos, ":")) return NULL;
 
-    ast_t *source_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion source type here");
+    ast_t *source_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion source type here");
     expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");
-    ast_t *target_type = expect_ast(ctx, start, &pos, _parse_type, "I expected a conversion target type here");
+    ast_t *target_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion target type here");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
     return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
 }
@@ -2279,7 +2279,7 @@ PARSER(parse_extern) {
     }
     if (!match(&pos, ":"))
         parser_err(ctx, start, pos, "I couldn't get a type for this extern");
-    ast_t *type = expect_ast(ctx, start, &pos, _parse_type, "I couldn't parse the type for this extern");
+    ast_t *type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this extern");
     return NewAST(ctx->file, start, pos, Extern, .name=name, .type=type, .address=address);
 }
 
@@ -2388,14 +2388,16 @@ ast_t *parse_file(sss_file_t *file, jmp_buf *on_err) {
     return ast;
 }
 
-ast_t *parse_type(sss_file_t *file, jmp_buf *on_err) {
+ast_t *parse_type_str(const char *str) {
+    sss_file_t *file = sss_spoof_file("<type>", str);
     parse_ctx_t ctx = {
         .file=file,
-        .on_err=on_err,
+        .on_err=NULL,
     };
 
     const char *pos = file->text;
-    ast_t *ast = _parse_type(&ctx, pos);
+    whitespace(&pos);
+    ast_t *ast = parse_type(&ctx, pos);
     if (!ast) return ast;
     pos = ast->end;
     whitespace(&pos);
@@ -2403,10 +2405,6 @@ ast_t *parse_type(sss_file_t *file, jmp_buf *on_err) {
         parser_err(&ctx, pos, pos + strlen(pos), "I couldn't parse this part of the type");
     }
     return ast;
-}
-
-ast_t *parse_type_str(const char *str) {
-    return parse_type(sss_spoof_file("<type>", str), NULL);
 }
 
 ast_t *parse_expression_str(const char *str) {
