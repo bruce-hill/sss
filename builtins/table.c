@@ -58,7 +58,7 @@ static inline void hshow(const table_t *t)
 
 typedef enum { COW_NONE = 0, COW_ENTRIES = 1, COW_BUCKETS = 2, COW_BOTH = 3 } cow_e;
 
-static void maybe_copy_on_write(const Type *type, table_t *t, cow_e which_cow)
+static void maybe_copy_on_write(table_t *t, cow_e which_cow, const Type *type)
 {
     if (t->entries.copy_on_write && (which_cow & COW_ENTRIES)) {
         Array_compact(&t->entries, type->TableInfo.entry_size);
@@ -78,7 +78,7 @@ void Table_mark_copy_on_write(table_t *t)
 }
 
 // Return address of value or NULL
-void *Table_get_raw(const Type *type, const table_t *t, const void *key)
+void *Table_get_raw(const table_t *t, const void *key, const Type *type)
 {
     if (!t || !key || !t->bucket_info) return NULL;
 
@@ -97,10 +97,10 @@ void *Table_get_raw(const Type *type, const table_t *t, const void *key)
     return NULL;
 }
 
-void *Table_get(const Type *type, const table_t *t, const void *key)
+void *Table_get(const table_t *t, const void *key, const Type *type)
 {
     for (const table_t *iter = t; iter; iter = iter->fallback) {
-        void *ret = Table_get_raw(type, iter, key);
+        void *ret = Table_get_raw(iter, key, type);
         if (ret) return ret;
     }
     for (const table_t *iter = t; iter; iter = iter->fallback) {
@@ -109,7 +109,7 @@ void *Table_get(const Type *type, const table_t *t, const void *key)
     return NULL;
 }
 
-static void Table_set_bucket(const Type *type, table_t *t, const void *entry, int32_t index)
+static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const Type *type)
 {
     assert(t->bucket_info);
     hshow(t);
@@ -164,7 +164,7 @@ static void Table_set_bucket(const Type *type, table_t *t, const void *entry, in
     hshow(t);
 }
 
-static void hashmap_resize_buckets(const Type *type, table_t *t, uint32_t new_capacity)
+static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type *type)
 {
     hdebug("About to resize from %u to %u\n", t->bucket_info ? t->bucket_info->count : 0, new_capacity);
     hshow(t);
@@ -176,7 +176,7 @@ static void hashmap_resize_buckets(const Type *type, table_t *t, uint32_t new_ca
     // Rehash:
     for (uint32_t i = 0; i < Table_length(t); i++) {
         hdebug("Rehashing %u\n", i);
-        Table_set_bucket(type, t, GET_ENTRY(t, i), i);
+        Table_set_bucket(t, GET_ENTRY(t, i), i, type);
     }
 
     hshow(t);
@@ -184,23 +184,23 @@ static void hashmap_resize_buckets(const Type *type, table_t *t, uint32_t new_ca
 }
 
 // Return address of value
-void *Table_set(const Type *type, table_t *t, const void *key, const void *value)
+void *Table_set(table_t *t, const void *key, const void *value, const Type *type)
 {
     if (!t || !key) return NULL;
     hshow(t);
 
     if (!t->bucket_info)
-        hashmap_resize_buckets(type, t, 4);
+        hashmap_resize_buckets(t, 4, type);
 
     hdebug("Hash of key being set: %u\n", HASH(t, key));
 
     size_t key_size = type->TableInfo.key->size,
            value_size = type->TableInfo.value->size;
-    void *value_home = Table_get_raw(type, t, key);
+    void *value_home = Table_get_raw(t, key, type);
     if (value_home) { // Update existing slot
         // Ensure that `value_home` is still inside t->entries, even if COW occurs
         ptrdiff_t offset = value_home - t->entries.data;
-        maybe_copy_on_write(type, t, COW_BUCKETS);
+        maybe_copy_on_write(t, COW_BUCKETS, type);
         value_home = t->entries.data + offset;
 
         if (value && value_size > 0)
@@ -213,12 +213,12 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
     // Resize buckets if necessary
     if (t->entries.length >= t->bucket_info->count) {
         uint32_t newsize = t->bucket_info->count + MIN(t->bucket_info->count, 64);
-        hashmap_resize_buckets(type, t, newsize);
+        hashmap_resize_buckets(t, newsize, type);
     }
 
     if (!value && value_size > 0) {
         for (table_t *iter = t->fallback; iter; iter = iter->fallback) {
-            value = Table_get_raw(type, iter, key);
+            value = Table_get_raw(iter, key, type);
             if (value) break;
         }
         for (table_t *iter = t; !value && iter; iter = iter->fallback) {
@@ -226,7 +226,7 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
         }
     }
 
-    maybe_copy_on_write(type, t, COW_BOTH);
+    maybe_copy_on_write(t, COW_BOTH, type);
 
     char buf[ENTRY_SIZE] = {};
     memcpy(buf, key, key_size);
@@ -236,16 +236,16 @@ void *Table_set(const Type *type, table_t *t, const void *key, const void *value
 
     uint32_t entry_index = t->entries.length-1;
     void *entry = GET_ENTRY(t, entry_index);
-    Table_set_bucket(type, t, entry, entry_index);
+    Table_set_bucket(t, entry, entry_index, type);
     return entry + VALUE_OFFSET;
 }
 
-void Table_remove(const Type *type, table_t *t, const void *key)
+void Table_remove(table_t *t, const void *key, const Type *type)
 {
     if (!t || Table_length(t) == 0) return;
 
     // TODO: this work doesn't need to be done if the key is already missing
-    maybe_copy_on_write(type, t, COW_BOTH);
+    maybe_copy_on_write(t, COW_BOTH, type);
 
     // If unspecified, pop a random key:
     if (!key) {
@@ -323,7 +323,7 @@ void Table_remove(const Type *type, table_t *t, const void *key)
     hshow(t);
 }
 
-void *Table_entry(const Type *type, const table_t *t, uint32_t n)
+void *Table_entry(const table_t *t, uint32_t n, const Type *type)
 {
     assert(n >= 1 && n <= Table_length(t));
     return GET_ENTRY(t, n-1);
@@ -349,7 +349,7 @@ bool Table_equal(const table_t *x, const table_t *y, const Type *type)
     for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
-        void *y_value = Table_get_raw(type, y, x_key);
+        void *y_value = Table_get_raw(y, x_key, type);
         if (!y_value) return false;
         if (!Table_equal(x_value, y_value, value_type))
             return false;
@@ -448,12 +448,12 @@ CORD Table_cord(const table_t *t, bool colorize, const Type *type)
     return c;
 }
 
-table_t Table_from_entries(const Type *type, array_t entries)
+table_t Table_from_entries(array_t entries, const Type *type)
 {
     table_t t = {.entries=entries};
     for (uint32_t i = 0; i < Table_length(&t); i++) {
         hdebug("Rehashing %u\n", i);
-        Table_set_bucket(type, &t, GET_ENTRY(&t, i), i);
+        Table_set_bucket(&t, GET_ENTRY(&t, i), i, type);
     }
     return t;
 }
@@ -490,28 +490,28 @@ Type *CStringToVoidStarTable_type;
 
 void *Table_str_get(const table_t *t, const char *key)
 {
-    void **ret = Table_get(CStringToVoidStarTable_type, t, &key);
+    void **ret = Table_get(t, &key, CStringToVoidStarTable_type);
     return ret ? *ret : NULL;
 }
 
 void *Table_str_get_raw(const table_t *t, const char *key)
 {
-    void **ret = Table_get_raw(CStringToVoidStarTable_type, t, &key);
+    void **ret = Table_get_raw(t, &key, CStringToVoidStarTable_type);
     return ret ? *ret : NULL;
 }
 
 void *Table_str_set(table_t *t, const char *key, const void *value)
 {
-    return Table_set(CStringToVoidStarTable_type, t, &key, &value);
+    return Table_set(t, &key, &value, CStringToVoidStarTable_type);
 }
 
 void Table_str_remove(table_t *t, const char *key)
 {
-    return Table_remove(CStringToVoidStarTable_type, t, &key);
+    return Table_remove(t, &key, CStringToVoidStarTable_type);
 }
 
 void *Table_str_entry(const table_t *t, uint32_t n)
 {
-    return Table_entry(CStringToVoidStarTable_type, t, n);
+    return Table_entry(t, n, CStringToVoidStarTable_type);
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

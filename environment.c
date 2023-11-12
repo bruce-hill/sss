@@ -290,7 +290,7 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
             populate_tagged_union_constructors(env, t);
     }
     for (uint32_t i = 1; i <= Table_length(ns); i++) {
-        struct { const char *key; binding_t *value; } *entry = Table_entry(NULL, ns, i);
+        struct { const char *key; binding_t *value; } *entry = Table_entry(ns, i, NULL);
         if (!Table_str_get(fresh->bindings, entry->key))
             Table_str_set(fresh->bindings, entry->key, entry->value);
     }
