@@ -6,8 +6,7 @@
 
 #include "util.h"
 
-__attribute__ ((visibility ("default")))
-char *heap_strn(const char *str, size_t len)
+public char *heap_strn(const char *str, size_t len)
 {
     if (!str) return NULL;
     if (len == 0) return "";
@@ -17,14 +16,12 @@ char *heap_strn(const char *str, size_t len)
     return heaped;
 }
 
-__attribute__ ((visibility ("default")))
-char *heap_str(const char *str)
+public char *heap_str(const char *str)
 {
     return heap_strn(str, strlen(str));
 }
 
-__attribute__ ((visibility ("default")))
-char *heap_strf(const char *fmt, ...)
+public char *heap_strf(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);

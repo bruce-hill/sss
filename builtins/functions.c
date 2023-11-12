@@ -11,8 +11,7 @@
 #include "functions.h"
 #include "string.h"
 
-__attribute__ ((visibility ("default")))
-void builtin_say(Str_t str, Str_t end)
+public void builtin_say(Str_t str, Str_t end)
 {
     if (str.stride == 1) {
         write(STDOUT_FILENO, str.data, str.length);
@@ -29,8 +28,7 @@ void builtin_say(Str_t str, Str_t end)
     }
 }
 
-__attribute__ ((visibility ("default")))
-void builtin_warn(Str_t str, Str_t end, bool colorize)
+public void builtin_warn(Str_t str, Str_t end, bool colorize)
 {
     if (colorize) write(STDERR_FILENO, "\x1b[33m", 5);
     if (str.stride == 1) {
@@ -49,8 +47,7 @@ void builtin_warn(Str_t str, Str_t end, bool colorize)
     if (colorize) write(STDERR_FILENO, "\x1b[m", 3);
 }
 
-__attribute__ ((visibility ("default")))
-void builtin_fail(const char *fmt, ...)
+public void builtin_fail(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -59,8 +56,7 @@ void builtin_fail(const char *fmt, ...)
     raise(SIGABRT);
 }
 
-__attribute__ ((visibility ("default")))
-void builtin_fail_array(Str_t fmt, ...)
+public void builtin_fail_array(Str_t fmt, ...)
 {
     char buf[fmt.length+1];
     for (unsigned long i = 0; i < fmt.length; i++)
@@ -74,8 +70,7 @@ void builtin_fail_array(Str_t fmt, ...)
     raise(SIGABRT);
 }
 
-__attribute__ ((visibility ("default")))
-Str_t builtin_last_err()
+public Str_t builtin_last_err()
 {
     const char *str = strerror(errno);
     char *copy = GC_MALLOC_ATOMIC(strlen(str)+1);
@@ -102,8 +97,7 @@ static inline char *without_colors(const char *str)
     return buf;
 }
 
-__attribute__ ((visibility ("default")))
-void builtin_doctest(const char *label, CORD expr, const char *type, bool use_color, const char *expected, const char *filename, int start, int end)
+public void builtin_doctest(const char *label, CORD expr, const char *type, bool use_color, const char *expected, const char *filename, int start, int end)
 {
     static sss_file_t *file = NULL;
     if (filename && (file == NULL || strcmp(file->filename, filename) != 0))

@@ -20,8 +20,7 @@ extern const void *SSS_HASH_VECTOR;
 
 // Replace the array's .data pointer with a new pointer to a copy of the
 // data that is compacted and has a stride of exactly `item_size`
-__attribute__ ((visibility ("default")))
-void Array_compact(array_t *arr, size_t item_size)
+public void Array_compact(array_t *arr, size_t item_size)
 {
     void *copy = NULL;
     if (arr->length > 0) {
@@ -43,8 +42,7 @@ void Array_compact(array_t *arr, size_t item_size)
     };
 }
 
-__attribute__ ((visibility ("default")))
-void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
+public void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -77,8 +75,7 @@ void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_siz
     memcpy((void*)arr->data + (index-1)*item_size, item, item_size);
 }
 
-__attribute__ ((visibility ("default")))
-void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
+public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -110,8 +107,7 @@ void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t ite
         memcpy((void*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
 }
 
-__attribute__ ((visibility ("default")))
-void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
+public void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -143,8 +139,7 @@ void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
     arr->length -= count;
 }
 
-__attribute__ ((visibility ("default")))
-void Array_sort(array_t *arr, const Type *type)
+public void Array_sort(array_t *arr, const Type *type)
 {
     const Type *item_type = type->ArrayInfo.item;
     size_t item_size = item_type->size;
@@ -157,8 +152,7 @@ void Array_sort(array_t *arr, const Type *type)
     qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, (void*)item_type);
 }
 
-__attribute__ ((visibility ("default")))
-void Array_shuffle(array_t *arr, size_t item_size)
+public void Array_shuffle(array_t *arr, size_t item_size)
 {
     if (arr->copy_on_write || (size_t)arr->stride != item_size)
         Array_compact(arr, item_size);
@@ -172,8 +166,7 @@ void Array_shuffle(array_t *arr, size_t item_size)
     }
 }
 
-__attribute__ ((visibility ("default")))
-array_t Array_slice(array_t array, range_t range, const Type *type)
+public array_t Array_slice(array_t array, range_t range, const Type *type)
 {
     Type *item = type->ArrayInfo.item;
     size_t item_size = item->size;
@@ -228,8 +221,7 @@ array_t Array_slice(array_t array, range_t range, const Type *type)
     };
 }
 
-__attribute__ ((visibility ("default")))
-bool Array_contains(array_t array, void *item, const Type *type)
+public bool Array_contains(array_t array, void *item, const Type *type)
 {
     Type *item_type = type->ArrayInfo.item;
     for (int64_t i = 0; i < array.length; i++)
@@ -238,14 +230,12 @@ bool Array_contains(array_t array, void *item, const Type *type)
     return false;
 }
 
-__attribute__ ((visibility ("default")))
-void Array_clear(array_t *array)
+public void Array_clear(array_t *array)
 {
     *array = (array_t){.data=0, .length=0};
 }
 
-__attribute__ ((visibility ("default")))
-int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
+public int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
 {
     // Early out for arrays with the same data, e.g. two copies of the same array:
     if (x->data == y->data && x->stride == y->stride)
@@ -272,14 +262,12 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-__attribute__ ((visibility ("default")))
-bool Array_equal(const array_t *x, const array_t *y, const Type *type)
+public bool Array_equal(const array_t *x, const array_t *y, const Type *type)
 {
     return (Array_compare(x, y, type) == 0);
 }
 
-__attribute__ ((visibility ("default")))
-CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
+public CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
 {
     Type *item_type = type->ArrayInfo.item;
     CORD c = "[";
@@ -293,8 +281,7 @@ CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
     return c;
 }
 
-__attribute__ ((visibility ("default")))
-uint32_t Array_hash(const array_t *arr, const Type *type)
+public uint32_t Array_hash(const array_t *arr, const Type *type)
 {
     // Array hash is calculated as a rolling, compacting hash of the length of the array, followed by
     // the hashes of its items (or the items themselves if they're small plain data)
@@ -339,8 +326,7 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
     }
 }
 
-__attribute__ ((visibility ("default")))
-Type *make_array_type(Type *item_type)
+public Type *make_array_type(Type *item_type)
 {
     const char *item_name = item_type->name;
     return new(Type,

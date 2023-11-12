@@ -10,6 +10,7 @@
 #include <err.h>
 
 #include "types.h"
+#include "../util.h"
 #include "../SipHash/halfsiphash.h"
 
 extern const void *SSS_HASH_VECTOR;
@@ -23,8 +24,7 @@ static CORD Bool_cord(const bool *b, bool colorize, const Type *type)
         return *b ? "yes" : "no";
 }
 
-__attribute__ ((visibility ("default")))
-Type Bool_type = {
+public Type Bool_type = {
     .name="Bool",
     .size=sizeof(bool),
     .align=alignof(bool),

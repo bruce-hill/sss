@@ -11,6 +11,7 @@
 
 #include "range.h"
 #include "types.h"
+#include "../util.h"
 #include "../SipHash/halfsiphash.h"
 
 extern const void *SSS_HASH_VECTOR;
@@ -51,8 +52,7 @@ static int32_t Range_compare(range_t *x, range_t *y)
     return (x->stride > y->stride) - (x->stride < y->stride);
 }
 
-__attribute__ ((visibility ("default")))
-Type Range_type = {
+public Type Range_type = {
     .name="Range",
     .size=sizeof(range_t),
     .align=alignof(range_t),

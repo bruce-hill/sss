@@ -12,8 +12,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-__attribute__ ((visibility ("default")))
-uint32_t generic_hash(const void *obj, const Type *type)
+public uint32_t generic_hash(const void *obj, const Type *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_hash(obj, type);
@@ -30,8 +29,7 @@ uint32_t generic_hash(const void *obj, const Type *type)
     }
 }
 
-__attribute__ ((visibility ("default")))
-int32_t generic_compare(const void *x, const void *y, const Type *type)
+public int32_t generic_compare(const void *x, const void *y, const Type *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_compare(x, y, type);
@@ -44,8 +42,7 @@ int32_t generic_compare(const void *x, const void *y, const Type *type)
     }
 }
 
-__attribute__ ((visibility ("default")))
-bool generic_equal(const void *x, const void *y, const Type *type)
+public bool generic_equal(const void *x, const void *y, const Type *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_equal(x, y, type);
@@ -58,8 +55,7 @@ bool generic_equal(const void *x, const void *y, const Type *type)
     }
 }
 
-__attribute__ ((visibility ("default")))
-CORD generic_cord(const void *obj, bool colorize, const Type *type)
+public CORD generic_cord(const void *obj, bool colorize, const Type *type)
 {
     switch (type->tag) {
     case PointerInfo: {
@@ -91,15 +87,13 @@ static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
     return c;
 }
 
-__attribute__ ((visibility ("default")))
-Type Type_type = {
+public Type Type_type = {
     .name="Type",
     .tag=VTableInfo,
     .VTableInfo={.cord=(void*)Type_cord},
 };
 
-__attribute__ ((visibility ("default")))
-Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
+public Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
 {
     return new(Type,
         .name=name,
@@ -115,13 +109,10 @@ Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, v
     );
 }
 
-__attribute__ ((visibility ("default")))
-Type Void_type = {.name="Void", .size=0, .align=0};
-__attribute__ ((visibility ("default")))
-Type Abort_type = {.name="Abort", .size=0, .align=0};
+public Type Void_type = {.name="Void", .size=0, .align=0};
+public Type Abort_type = {.name="Abort", .size=0, .align=0};
 
-__attribute__ ((visibility ("default")))
-Type *make_pointer_type(const char *sigil, Type *t)
+public Type *make_pointer_type(const char *sigil, Type *t)
 {
     return new(Type,
         .name=heap_strf("%s%s", sigil, t->name),
@@ -132,8 +123,7 @@ Type *make_pointer_type(const char *sigil, Type *t)
     );
 }
 
-__attribute__ ((visibility ("default")))
-Type *make_named_type(const char *name, Type *t)
+public Type *make_named_type(const char *name, Type *t)
 {
     Type *named = GC_MALLOC_ATOMIC(sizeof(Type));
     *named = *t;

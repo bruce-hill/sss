@@ -18,8 +18,7 @@
 
 static const int tabstop = 4;
 
-__attribute__ ((visibility ("default")))
-char *resolve_path(const char *path, const char *relative_to)
+public char *resolve_path(const char *path, const char *relative_to)
 {
     if (!relative_to || streq(relative_to, "/dev/stdin")) relative_to = ".";
     if (!path || strlen(path) == 0) return NULL;
@@ -107,8 +106,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
 //
 // Read an entire file into memory.
 //
-__attribute__ ((visibility ("default")))
-sss_file_t *sss_load_file(const char* filename)
+public sss_file_t *sss_load_file(const char* filename)
 {
     FILE *file = filename[0] ? fopen(filename, "r") : stdin;
     return _load_file(filename, file);
@@ -117,8 +115,7 @@ sss_file_t *sss_load_file(const char* filename)
 //
 // Create a virtual file from a string.
 //
-__attribute__ ((visibility ("default")))
-sss_file_t *sss_spoof_file(const char* filename, const char *text)
+public sss_file_t *sss_spoof_file(const char* filename, const char *text)
 {
     FILE *file = fmemopen((char*)text, strlen(text)+1, "r");
     return _load_file(filename, file);
@@ -127,8 +124,7 @@ sss_file_t *sss_spoof_file(const char* filename, const char *text)
 //
 // Given a pointer, determine which line number it points to (1-indexed)
 //
-__attribute__ ((visibility ("default")))
-size_t sss_get_line_number(sss_file_t *f, const char *p)
+public size_t sss_get_line_number(sss_file_t *f, const char *p)
 {
     // Binary search:
     ssize_t lo = 0, hi = (ssize_t)f->lines.length-1;
@@ -150,8 +146,7 @@ size_t sss_get_line_number(sss_file_t *f, const char *p)
 //
 // Given a pointer, determine which line column it points to.
 //
-__attribute__ ((visibility ("default")))
-size_t sss_get_line_column(sss_file_t *f, const char *p)
+public size_t sss_get_line_column(sss_file_t *f, const char *p)
 {
     size_t line_no = sss_get_line_number(f, p);
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_no-1)*f->lines.stride));
@@ -161,8 +156,7 @@ size_t sss_get_line_column(sss_file_t *f, const char *p)
 //
 // Given a pointer, get the indentation of the line it's on.
 //
-__attribute__ ((visibility ("default")))
-size_t sss_get_indent(sss_file_t *f, const char *p)
+public size_t sss_get_indent(sss_file_t *f, const char *p)
 {
     ssize_t line_no = sss_get_line_number(f, p);
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_no-1)*f->lines.stride));
@@ -172,8 +166,7 @@ size_t sss_get_indent(sss_file_t *f, const char *p)
 //
 // Return a pointer to the line with the specified line number (1-indexed)
 //
-__attribute__ ((visibility ("default")))
-const char *sss_get_line(sss_file_t *f, size_t line_number)
+public const char *sss_get_line(sss_file_t *f, size_t line_number)
 {
     if (line_number == 0 || line_number > (size_t)f->lines.length) return NULL;
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_number-1)*f->lines.stride));
@@ -183,8 +176,7 @@ const char *sss_get_line(sss_file_t *f, size_t line_number)
 //
 // Return a value like /foo:line:col
 //
-__attribute__ ((visibility ("default")))
-const char *sss_get_file_pos(sss_file_t *f, const char *p)
+public const char *sss_get_file_pos(sss_file_t *f, const char *p)
 {
     return heap_strf("%s:%ld:%ld", f->filename, sss_get_line_number(f, p), sss_get_line_column(f, p));
 }
@@ -208,8 +200,7 @@ static int fputc_column(FILE *out, char c, char print_char, int *column)
 //
 // Print a span from a file
 //
-__attribute__ ((visibility ("default")))
-int fprint_span(FILE *out, sss_file_t *file, const char *start, const char *end, const char *hl_color, size_t context_lines, bool use_color)
+public int fprint_span(FILE *out, sss_file_t *file, const char *start, const char *end, const char *hl_color, size_t context_lines, bool use_color)
 {
     if (!file) return 0;
 

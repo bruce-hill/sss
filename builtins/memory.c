@@ -10,6 +10,7 @@
 #include <err.h>
 
 #include "types.h"
+#include "../util.h"
 #include "../SipHash/halfsiphash.h"
 
 extern const void *SSS_HASH_VECTOR;
@@ -21,8 +22,7 @@ static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
     return cord;
 }
 
-__attribute__ ((visibility ("default")))
-Type Memory_type = {
+public Type Memory_type = {
     .name="Memory",
     .size=0,
     .align=0,

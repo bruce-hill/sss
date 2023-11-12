@@ -7,5 +7,4 @@
 #include "functions.h"
 #include "table.h"
 
-__attribute__ ((visibility ("default")))
-const char *SSS_HASH_VECTOR = "sss hash vector ----------------------------------------------";
+public const char *SSS_HASH_VECTOR = "sss hash vector ----------------------------------------------";

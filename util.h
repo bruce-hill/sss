@@ -17,6 +17,10 @@
 #define auto __auto_type
 #endif
 
+#ifndef public
+#define public __attribute__ ((visibility ("default")))
+#endif
+
 char *heap_strn(const char *str, size_t len);
 char *heap_str(const char *str);
 char *heap_strf(const char *fmt, ...);
