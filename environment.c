@@ -169,6 +169,7 @@ struct {
     {{.tag=BoolType}, "Bool", "Bool_type", NULL},
     {{.tag=MemoryType}, "Memory", "Memory_type", NULL},
     {{.tag=RangeType}, "Range", "Range_type", NULL},
+    {{.tag=TypeType}, "Type", "Type_type", NULL},
 
 #define BUILTIN_INT(t, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
