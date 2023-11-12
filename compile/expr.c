@@ -2216,11 +2216,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_func_t *func = gcc_block_func(*block);
         gcc_func_t *doctest_fn = get_function(env, "builtin_doctest");
-        gcc_func_t *generic_cord_fn = get_function(env, "generic_cord_fn");
+        gcc_func_t *generic_cord_fn = get_function(env, "generic_cord");
 
 #define DOCTEST(label, t, val_ptr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
            gcc_str(env->ctx, label), \
-           gcc_callx(env->ctx, loc, generic_cord_fn, val_ptr, gcc_rvalue_bool(env->ctx, true), get_type_rvalue(env, t)), \
+           gcc_callx(env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, val_ptr, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true), get_type_rvalue(env, t)), \
            gcc_str(env->ctx, type_to_string_concise(t)), \
            use_color, \
            test->output ? gcc_str(env->ctx, test->output) : gcc_null(env->ctx, gcc_type(env->ctx, STRING)), \
@@ -2296,8 +2296,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *val = compile_expr(env, block, expr);
             gcc_lvalue_t *val_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_expression");
             gcc_assign(*block, loc, val_var, val);
-            val = gcc_rval(val_var);
-            DOCTEST("=", t, val);
+            DOCTEST("=", t, gcc_lvalue_address(val_var, loc));
             return NULL;
         }
     }

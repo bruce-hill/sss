@@ -400,7 +400,8 @@ binding_t *get_local_binding(env_t *env, const char *name)
 gcc_func_t *get_function(env_t *env, const char *name)
 {
     gcc_func_t *func = Table_str_get(&env->global->funcs, name);
-    assert(func);
+    if (!func)
+        compiler_err(env, NULL, "Couldn't find function: %s", name);
     return func;
 }
 
