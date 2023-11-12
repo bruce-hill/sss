@@ -548,8 +548,16 @@ PARSER(parse_pointer_type) {
     else
         return NULL;
 
-    spaces(&pos);
-    bool is_readonly = match(&pos, "(read-only)");
+    bool is_readonly = false;
+    for (;;) {
+        spaces(&pos);
+        if (match(&pos, "(optional)"))
+            optional = true;
+        else if (match(&pos, "(read-only)"))
+            is_readonly = true;
+        else break;
+    }
+
     spaces(&pos);
     ast_t *type = expect_ast(ctx, start, &pos, _parse_type,
                              "I couldn't parse a pointer type after this point");

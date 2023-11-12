@@ -325,7 +325,8 @@ void Table_remove(table_t *t, const void *key, const Type *type)
 
 void *Table_entry(const table_t *t, uint32_t n, const Type *type)
 {
-    assert(n >= 1 && n <= Table_length(t));
+    if (n < 1 || n > Table_length(t))
+        return NULL;
     return GET_ENTRY(t, n-1);
 }
 

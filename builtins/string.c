@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <gc.h>
 #include <gc/cord.h>
 #include <stdalign.h>
@@ -481,14 +482,6 @@ Type Str_type = {
         .equal=(void*)Str_equal,
         .hash=(void*)Str_hash,
     },
-    // .bindings=STATIC_ARRAY((void*)
-    //     uppercased, lowercased, capitalized, titlecased, starts_with, ends_with, without_prefix,
-    //     without_suffix, trimmed, slice, c_string, from_c_string, find, replace, quoted, split,
-
-    //     // Array methods:
-    //     Array_compact, Array_insert, Array_insert_all, Array_remove, Array_sort, Array_shuffle,
-    //     Array_join, Array_clear,
-    // ),
 };
 
 static CORD CString_cord(const char **s, bool colorize, const Type *type)
@@ -497,7 +490,6 @@ static CORD CString_cord(const char **s, bool colorize, const Type *type)
     return Str_cord(&str, colorize, type);
 }
 
-#include <assert.h>
 static uint32_t CString_hash(const char **s, const Type *type)
 {
     (void)type;
@@ -514,11 +506,6 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
     return strcmp(*x, *y);
 }
 
-static bool CString_equal(const char **x, const char **y, const Type *type)
-{
-    return (CString_compare(x, y, type) == 0);
-}
-
 Type CString_type = {
     .name="CString",
     .size=sizeof(char*),
@@ -528,9 +515,38 @@ Type CString_type = {
         .cord=(void*)CString_cord,
         .hash=(void*)CString_hash,
         .compare=(void*)CString_compare,
-        .equal=(void*)CString_equal,
     },
-    // .bindings=STATIC_ARRAY((void*)from_c_string, c_string),
+};
+
+
+static CORD Cord_cord(const CORD *c, bool colorize, const Type *type)
+{
+    const char *str = CORD_to_const_char_star(*c);
+    return CString_cord(&str, colorize, type);
+}
+
+static uint32_t Cord_hash(const CORD *c, const Type *type)
+{
+    const char *str = CORD_to_const_char_star(*c);
+    return CString_hash(&str, type);
+}
+
+static uint32_t Cord_compare(const char **x, const char **y, const Type *type)
+{
+    (void)type;
+    return CORD_cmp(*x, *y);
+}
+
+Type Cord_type = {
+    .name="Cord",
+    .size=sizeof(CORD),
+    .align=alignof(CORD),
+    .tag=VTableInfo,
+    .VTableInfo={
+        .cord=(void*)Cord_cord,
+        .hash=(void*)Cord_hash,
+        .compare=(void*)Cord_compare,
+    },
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

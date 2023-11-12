@@ -183,11 +183,17 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         if (!promote(env, pattern_t, &pattern_val, t))
             compiler_err(env, pattern, "This pattern has type %T, but you're attempting to match it against a value with type %T", pattern_t, t);
         gcc_rvalue_t *is_match;
-        if (is_numeric(t) || t->tag == BoolType || t->tag == CharType || t->tag == PointerType)
+        if (is_numeric(t) || t->tag == BoolType || t->tag == CharType || t->tag == PointerType) {
             is_match = gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, pattern_val);
-        else
-            is_match = gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, compare_values(env, t, val, pattern_val),
-                                      gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        } else {
+            gcc_lvalue_t *val_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "value");
+            gcc_assign(*block, loc, val_var, val);
+            gcc_lvalue_t *pat_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "pattern");
+            gcc_assign(*block, loc, pat_var, pattern_val);
+
+            is_match = gcc_callx(env->ctx, loc, get_function(env, "generic_equal"),
+                                 gcc_lvalue_address(val_var, loc), gcc_lvalue_address(pat_var, loc), get_type_rvalue(env, t));
+        }
 
         gcc_jump_condition(*block, loc, is_match, outcomes.match_block, outcomes.no_match_block);
         *block = NULL;

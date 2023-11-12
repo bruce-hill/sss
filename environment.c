@@ -46,12 +46,47 @@ static sss_type_t sss_c_str_t = {
     },
 };
 
+static sss_type_t sss_cord_t = {
+    .tag=VariantType,
+    .__data.VariantType={
+        .name="Cord", .variant_of=(sss_type_t[]){{
+            .tag=PointerType,
+            .__data.PointerType={
+                .pointed=(sss_type_t[]){{.tag=CharType}},
+                .is_optional=true,
+            },
+        }},
+    },
+};
+
+
 struct {const char *symbol, *type; } builtin_functions[] = {
     {"GC_malloc", "func(size:UInt) @Memory"},
     {"GC_malloc_atomic", "func(size:UInt) @Memory"},
     {"GC_realloc", "func(data:?Memory, size:UInt) @Memory"},
     {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
     {"getenv", "func(name:CString) CString"},
+
+    // Generic functions:
+    {"generic_compare", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&Type) Int32"},
+    {"generic_equal", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&Type) Bool"},
+    {"generic_hash", "func(obj:&(readonly)Memory, type:&Type) UInt32"},
+    {"generic_cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&Type) Cord"},
+
+    // Builtins:
+    {"builtin_say", "func(str:Str, end=\"\\n\") Void"},
+    {"builtin_last_err", "func() Str"},
+    {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32) Void"},
+
+    // Modulus:
+    {"Num_mod", "func(n:Num, divisor:Num) Num"},
+    {"Num32_mod", "func(n:Num32, divisor:Num32) Num32"},
+
+    // Dynamic linking:
+    {"dlopen", "func(filename:CString, flags:Int32) ?Memory"},
+    {"dlsym", "func(handle:@Memory, symbol:CString) ?Memory"},
+    {"dlclose", "func(handle:@Memory) ?Memory"},
+
     // Cord functions:
     {"CORD_cat", "func(x:Cord, y:Cord)"},
     {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt64)"},
@@ -59,14 +94,6 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"CORD_cmp", "func(x:Cord, y:Cord) Int32"},
     {"CORD_to_const_char_star", "func(x:Cord) CString"},
     {"CORD_to_char_star", "func(x:Cord) CString"},
-    {"builtin_say", "func(str:Str, end=\"\\n\") Void"},
-    {"builtin_last_err", "func() Str"},
-    {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32) Void"},
-    {"Num_mod", "func(n:Num, divisor:Num) Num"},
-    {"Num32_mod", "func(n:Num32, divisor:Num32) Num32"},
-    {"dlopen", "func(filename:CString, flags:Int32) ?Memory"},
-    {"dlsym", "func(handle:@Memory, symbol:CString) ?Memory"},
-    {"dlclose", "func(handle:@Memory) ?Memory"},
 };
 
 struct {
@@ -200,6 +227,10 @@ struct {
     {sss_c_str_t, "CString", "CString_type", (builtin_binding_t[]){
         {"Str__c_string", "from_str", "func(s:Str) CString"},
         {"Str__from_c_string", "as_str", "func(c:CString) Str"},
+        {NULL, NULL, NULL},
+    }},
+
+    {sss_cord_t, "Cord", "Cord_type", (builtin_binding_t[]){
         {NULL, NULL, NULL},
     }},
 };
@@ -393,28 +424,12 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 }
 
-// typedef struct {
-//     const char *name, *default_code;
-//     sss_type_t *type;
-// } arg_def_t;
-
-// static void load_method(env_t *env, table_t *ns, const char *name, const char *symbol, sss_type_t *return_type, ARRAY_OF(arg_def_t) args)
-// {
-//     auto arg_names = EMPTY_ARRAY(const char*);
-//     auto arg_defaults = EMPTY_ARRAY(ast_t*);
-//     auto arg_types = EMPTY_ARRAY(sss_type_t*);
-//     auto params = EMPTY_ARRAY(gcc_param_t*);
-//     foreach (args, arg, _) {
-//         append(arg_names, arg->name);
-//         ast_t *default_ast = arg->default_code ? parse_expression_str(arg->default_code) : NULL;
-//         append(arg_defaults, default_ast);
-//         append(arg_types, arg->type);
-//         append(params, gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, arg->type), arg->name ? arg->name : fresh("arg")));
-//     }
-//     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, return_type), symbol, LENGTH(params), params[0], 0);
-//     sss_type_t *fn_t = Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=return_type, .env=env);
-//     Table_str_set(ns, name, new(binding_t, .type=fn_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
-// }
+static inline void load_method(env_t *env, table_t *ns, const char *name, const char *symbol, const char *type_string)
+{
+    sss_type_t *t = parse_type_ast(env, parse_type_str(type_string));
+    gcc_func_t *func = import_function(env, symbol, t);
+    Table_str_set(ns, name, new(binding_t, .type=t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+}
 
 table_t *get_namespace(env_t *env, sss_type_t *t)
 {
@@ -425,6 +440,37 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
     if (!ns) {
         ns = new(table_t, .fallback=env->file_bindings);
         Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
+
+        if (t->tag == TableType) {
+            sss_type_t *key_t = Match(t, TableType)->key_type;
+            sss_type_t *value_t = Match(t, TableType)->value_type;
+            load_method(env, ns, "remove", "Table_remove", heap_strf("func(t:&%T, key:&(readonly)%T, _type=typeof(*t)) Void", t, key_t));
+            load_method(env, ns, "pop", "Table_remove", heap_strf("func(t:&%T, _key=!%T, _type=typeof(*t)) Void", t, key_t));
+            load_method(env, ns, "set", "Table_set", heap_strf("func(t:&%T, key:&(readonly)%T, value:&(readonly)%T, _type=typeof(*t)) Void", t, key_t, value_t));
+            load_method(env, ns, "get", "Table_get", heap_strf("func(t:&(readonly)%T, key:&(readonly)%T, _type=typeof(*t)) ?%T", t, key_t, value_t));
+            load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(readonly)%T, key:&(readonly)%T, _type=typeof(*t)) ?%T", t, key_t, value_t));
+            load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T) Void", t));
+            load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write", heap_strf("func(t:&%T) Void", t));
+            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(readonly)%T, n:Int, _type=typeof(*t)) ?struct(key:%T, value:%T)", t, key_t, value_t));
+        } else if (t->tag == ArrayType) {
+            sss_type_t *item_t = Match(t, ArrayType)->item_type;
+            load_method(env, ns, "insert", "Array_insert",
+                        heap_strf("func(array:&%T, item:&(readonly)%T, index=0, _item_size=sizeof(item)) Void", t, item_t));
+            load_method(env, ns, "insert_all", "Array_insert_all",
+                        heap_strf("func(array:&%T, to_insert:&(readonly)%T, index=0, _item_size=sizeof(array[1])) Void", t, t));
+            load_method(env, ns, "remove", "Array_remove",
+                        heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1])) Void", t));
+            load_method(env, ns, "sort", "Array_sort",
+                        heap_strf("func(array:&%T, _type=typeof(*array)) Void", t));
+            load_method(env, ns, "shuffle", "Array_shuffle",
+                        heap_strf("func(array:&%T, _item_size=sizeof(array[1])) Void", t));
+            load_method(env, ns, "clear", "Array_clear",
+                        heap_strf("func(array:&%T) Void", t));
+            load_method(env, ns, "contains", "Array_contains",
+                        heap_strf("func(array:%T, item:&(readonly)%T) Bool", t, item_t));
+            load_method(env, ns, "slice", "Array_slice",
+                        heap_strf("func(array:%T, range:Range, _type:typeof(array)) Bool", t));
+        }
     }
     return ns;
 }
@@ -444,22 +490,7 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
     // (we don't want module.Struct.__cord to return module.__cord, even
     // though the namespace may have that set as a fallback so that code
     // module.Struct can reference things inside the module's namespace)
-    binding_t *b = Table_str_get_raw(ns, name);
-    if (!b) {
-        sss_type_t *base_t = t;
-        for (;;) {
-            if (t->tag == PointerType)
-                t = Match(t, PointerType)->pointed;
-            else if (t->tag == VariantType)
-                t = Match(t, VariantType)->variant_of;
-            else break;
-        }
-        if (base_t->tag == ArrayType)
-            b = get_array_method(env, base_t, name);
-        else if (base_t->tag == TableType)
-            b = get_table_method(env, base_t, name);
-    }
-    return b;
+    return Table_str_get_raw(ns, name);
 }
 
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value)

@@ -867,23 +867,14 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
                 continue;
             }
 
-            // Do table_t rec = {0}; def = 0; rec->default = &def; print(obj, &rec)
-            sss_type_t *cycle_checker_t = Type(TableType, .key_type=Type(PointerType, .pointed=Type(MemoryType)), .value_type=Type(IntType, .bits=64));
-            gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, cycle_checker_t);
-            gcc_lvalue_t *cycle_checker = gcc_local(func, NULL, hashmap_gcc_t, "_rec");
-            gcc_assign(*block, NULL, cycle_checker, gcc_struct_constructor(env->ctx, NULL, hashmap_gcc_t, 0, NULL, NULL));
-            gcc_lvalue_t *next_index = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_index");
-            gcc_assign(*block, NULL, next_index, gcc_one(env->ctx, gcc_type(env->ctx, INT64)));
-            gcc_assign(*block, NULL, gcc_lvalue_access_field(
-                    cycle_checker, NULL, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD)),
-                gcc_lvalue_address(next_index, NULL));
-
-            gcc_type_t *void_star = gcc_type(env->ctx, VOID_PTR);
-            gcc_func_t *cord_fn = get_cord_func(env, t);
+            gcc_func_t *generic_cord_fn = get_function(env, "generic_cord");
+            gcc_lvalue_t *var = gcc_local(func, NULL, sss_type_to_gcc(env, t), fresh("_arg"));
+            gcc_assign(*block, NULL, var, rval);
             gcc_rvalue_t *cord_result = gcc_callx(
-                env->ctx, NULL, cord_fn, rval,
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(cycle_checker, NULL), void_star),
-                gcc_rvalue_bool(env->ctx, false));
+                env->ctx, NULL, generic_cord_fn,
+                gcc_lvalue_address(var, NULL),
+                gcc_rvalue_bool(env->ctx, false),
+                get_type_rvalue(env, t));
             gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_str");
             gcc_assign(*block, NULL, str_var, gcc_callx(env->ctx, NULL, get_function(env, "CORD_to_char_star"), cord_result));
             append(args, gcc_rval(str_var));

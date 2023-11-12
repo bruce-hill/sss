@@ -330,13 +330,6 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
   class_lookup:;
     t = original_t;
     for (;;) {
-        if (streq(field_name, "__hash"))
-            (void)get_hash_func(env, t); 
-        else if (streq(field_name, "__compare"))
-            (void)get_compare_func(env, t); 
-        else if (streq(field_name, "__cord"))
-            (void)get_cord_func(env, t); 
-
         binding_t *b = get_from_namespace(env, t, field_name);
         if (b) return b->type;
 

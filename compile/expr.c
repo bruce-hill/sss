@@ -452,22 +452,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 size_t value_align = gcc_alignof(env, value_t);
                 size_t value_offset = key_size;
                 if (value_align > 0 && value_offset % value_align != 0) value_offset = (value_offset - (value_offset % value_align) + value_align);
-                gcc_rvalue_t *entry_offset = gcc_rvalue_size(env->ctx, value_offset);
 
-                gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
-                gcc_func_t *key_hash = get_hash_func(env, key_t);
-                gcc_func_t *key_cmp = get_indirect_compare_func(env, key_t);
+                binding_t *set_fn_binding = get_from_namespace(env, target.table_type, "set");
                 gcc_lvalue_t *val_lval = gcc_local(func, loc, sss_type_to_gcc(env, value_t), "value");
                 gcc_assign(*block, loc, val_lval, ith(rvals, i));
                 gcc_rvalue_t *call = gcc_callx(
-                    env->ctx, loc, hashmap_set_fn,
-                    gcc_cast(env->ctx, loc, target.table, gcc_type(env->ctx, VOID_PTR)),
-                    gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
-                    gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
-                    gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(target.table_type))),
-                    gcc_cast(env->ctx, loc, gcc_lvalue_address(target.key, loc), gcc_type(env->ctx, VOID_PTR)),
-                    entry_offset,
-                    gcc_cast(env->ctx, loc, gcc_lvalue_address(val_lval, loc), gcc_type(env->ctx, VOID_PTR)));
+                    env->ctx, loc, set_fn_binding->func,
+                    target.table,
+                    gcc_lvalue_address(target.key, loc),
+                    gcc_lvalue_address(val_lval, loc),
+                    get_type_rvalue(env, target.table_type)
+                );
                 gcc_eval(*block, loc, call);
             } else {
                 gcc_assign(*block, ast_loc(env, ast), target.lval, ith(rvals, i));
@@ -760,6 +755,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_func_t *cord_cat_fn = get_function(env, "CORD_cat");
 #define APPEND_CORD(block, c) gcc_assign(block, loc, cord_var, gcc_callx(env->ctx, loc, cord_cat_fn, gcc_rval(cord_var), c))
 
+        gcc_func_t *generic_cord_fn = get_function(env, "generic_cord");
+        assert(generic_cord_fn);
+
         foreach (chunks, chunk, _) {
             loc = ast_loc(env, *chunk);
             if ((*chunk)->tag == StringLiteral) {
@@ -787,17 +785,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
             gcc_rvalue_t *obj = gcc_rval(interp_var);
 
-            if (!type_eq(t, string_t)) {
-                binding_t *convert_b = get_from_namespace(env, string_t, heap_strf("#convert-from:%s", type_to_string(t)));
-                if (convert_b) {
-                    gcc_lvalue_t *converted_var = gcc_local(func, loc, sss_type_to_gcc(env, string_t), "_converted");
-                    gcc_assign(*block, loc, converted_var, gcc_callx(env->ctx, loc, convert_b->func, obj));
-                    obj = gcc_rval(converted_var);
-                    t = string_t;
-                } else if (variant_t) {
-                    compiler_err(env, interp->value, "I don't know how to interpolate %T values in a %T string", t, variant_t);
-                }
-            }
+            // TODO: safe string interpolation
 
             if (!interp->quote_string && type_eq(t, string_t)) {
                 // i = 1
@@ -836,12 +824,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 *block = done;
                 continue;
             }
-            gcc_func_t *cord_fn = get_cord_func(env, t);
-            assert(cord_fn);
-            
             APPEND_CORD(*block, gcc_callx(
-                env->ctx, loc, cord_fn, obj, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false)));
+                env->ctx, loc, generic_cord_fn, gcc_lvalue_address(interp_var, loc),
+                interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false),
+                get_type_rvalue(env, t)));
         }
         loc = ast_loc(env, ast);
         gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
@@ -1028,12 +1014,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             auto access = Match(call->fn, FieldAccess);
             self_ast = access->fielded;
             self_t = get_type(env, self_ast);
-            if (streq(access->field, "__hash"))
-                (void)get_hash_func(env, self_t); 
-            else if (streq(access->field, "__compare"))
-                (void)get_compare_func(env, self_t); 
-            else if (streq(access->field, "__cord"))
-                (void)get_cord_func(env, self_t); 
             sss_type_t *value_type = self_t;
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
@@ -1487,7 +1467,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_value_t, TableType)->value_type)));
             ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
         } else if (container_value_t->tag == ArrayType) {
-            ret = array_contains(env, block, in->container, in->member);
+            return compile_expr(env, block, WrapAST(
+                    ast, FunctionCall,
+                    .fn=WrapAST(in->container, FieldAccess, .fielded=in->container, .field="contains"),
+                    .args=ARRAY(in->member)));
         } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
@@ -1682,8 +1665,33 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (is_numeric(comparison_type) || comparison_type->tag == PointerType)
             return gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
 
-        return gcc_comparison(env->ctx, loc, cmp, compare_values(env, comparison_type, lhs_val, rhs_val),
-                              gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+        gcc_func_t *func = gcc_block_func(*block);
+        gcc_lvalue_t *lhs_var = gcc_local(func, loc, sss_type_to_gcc(env, comparison_type), "_lhs");
+        gcc_assign(*block, loc, lhs_var, lhs_val);
+        gcc_lvalue_t *rhs_var = gcc_local(func, loc, sss_type_to_gcc(env, comparison_type), "_rhs");
+        gcc_assign(*block, loc, rhs_var, rhs_val);
+
+        switch (ast->tag) {
+        case Equal: case NotEqual: {
+            gcc_func_t *generic_equal = get_function(env, "generic_equal");
+            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal, gcc_lvalue_address(lhs_var, loc),
+                                             gcc_lvalue_address(lhs_var, loc),
+                                             get_type_rvalue(env, comparison_type));
+            if (ast->tag == NotEqual)
+                return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
+            else
+                return result;
+        }
+        default: {
+            gcc_func_t *generic_compare = get_function(env, "generic_compare");
+            return gcc_comparison(env->ctx, loc, cmp,
+                                  gcc_callx(env->ctx, loc, generic_compare,
+                                            gcc_lvalue_address(lhs_var, loc),
+                                            gcc_lvalue_address(rhs_var, loc),
+                                            get_type_rvalue(env, comparison_type)),
+                                  gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
+        }
+        }
     }
     case Negative: {
         if (env->should_mark_cow) {
@@ -2084,20 +2092,34 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             Table_str_set(lhs_env->bindings, var_name, new(binding_t, .type=t, .rval=lhs_val));
             Table_str_set(rhs_env->bindings, var_name, new(binding_t, .type=t, .rval=rhs_val));
 
-            sss_type_t *cmp_lhs_t = get_type(lhs_env, key);
+            sss_type_t *comparison_t = get_type(lhs_env, key);
             gcc_rvalue_t *lhs_cmp_val = compile_expr(lhs_env, block, key),
                          *rhs_cmp_val = compile_expr(rhs_env, block, key);
-            if (is_numeric(cmp_lhs_t) || cmp_lhs_t->tag == PointerType)
+            if (is_numeric(comparison_t) || comparison_t->tag == PointerType) {
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_cmp_val, rhs_cmp_val);
-            else
-                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, cmp_lhs_t, lhs_cmp_val, rhs_cmp_val),
+            } else {
+                gcc_lvalue_t *lhs_cmp_var = gcc_local(func, loc, sss_type_to_gcc(env, comparison_t), "lhs_key"),
+                             *rhs_cmp_var = gcc_local(func, loc, sss_type_to_gcc(env, comparison_t), "rhs_key");
+                gcc_assign(*block, loc, lhs_cmp_var, lhs_cmp_val);
+                gcc_assign(*block, loc, rhs_cmp_var, rhs_cmp_val);
+                gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
+                                                     gcc_lvalue_address(lhs_cmp_var, loc),
+                                                     gcc_lvalue_address(rhs_cmp_var, loc),
+                                                     get_type_rvalue(env, comparison_t));
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+            }
         } else {
-            if (is_numeric(lhs_t) || lhs_t->tag == PointerType)
+            if (is_numeric(lhs_t) || lhs_t->tag == PointerType) {
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
-            else
-                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, compare_values(env, lhs_t, lhs_val, rhs_val),
+            } else {
+                gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
+                                                     gcc_lvalue_address(lhs, loc),
+                                                     gcc_lvalue_address(rhs, loc),
+                                                     get_type_rvalue(env, t));
+                should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+            }
         }
 
         gcc_block_t *choose_lhs = gcc_new_block(func, fresh("choose_lhs")),
@@ -2193,11 +2215,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             end = (int)(test->expr->end - test->expr->file->text);
 
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_func_t *doctest_fn = get_function(env, "sss_doctest");
+        gcc_func_t *doctest_fn = get_function(env, "builtin_doctest");
+        gcc_func_t *generic_cord_fn = get_function(env, "generic_cord_fn");
 
-#define DOCTEST(label, t, expr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
+#define DOCTEST(label, t, val_ptr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
            gcc_str(env->ctx, label), \
-           gcc_callx(env->ctx, loc, get_cord_func(env, t), expr, gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true)), \
+           gcc_callx(env->ctx, loc, generic_cord_fn, val_ptr, gcc_rvalue_bool(env->ctx, true), get_type_rvalue(env, t)), \
            gcc_str(env->ctx, type_to_string_concise(t)), \
            use_color, \
            test->output ? gcc_str(env->ctx, test->output) : gcc_null(env->ctx, gcc_type(env->ctx, STRING)), \
@@ -2212,23 +2235,23 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (ret_t->tag == VoidType) return NULL;
             gcc_lvalue_t *ret_var = gcc_local(func, loc, sss_type_to_gcc(env, ret_t), "_ret");
             gcc_assign(*block, loc, ret_var, compile_expr(env, block, ret));
-            DOCTEST("return", ret_t, gcc_rval(ret_var));
+            DOCTEST("return", ret_t, gcc_lvalue_address(ret_var, loc));
             gcc_return(*block, loc, gcc_rval(ret_var));
             *block = NULL;
             return NULL;
         }
 
         sss_type_t *t = get_type(env, expr);
+        gcc_lvalue_t *expression_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_expr");
         if (t->tag == VoidType || t->tag == AbortType) {
             if (test->output)
                 compiler_err(env, ast, "There shouldn't be any output for a Void expression like this");
 
             assert(is_discardable(env, ast));
             gcc_rvalue_t *val = compile_expr(env, block, expr);
-            if (val && *block)
-                gcc_eval(*block, ast_loc(env, expr), val);
-            else
-                return NULL;
+            if (!*block || !val) return NULL;
+            gcc_assign(*block, ast_loc(env, expr), expression_var, val);
+            val = gcc_rval(expression_var);
 
             // For declarations, assignment, and updates, even though it
             // doesn't evaluate to a value, it's helpful to print out the new
@@ -2241,7 +2264,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
                 // END UNSAFE
                 sss_type_t *lhs_t = get_type(env, lhs_ast);
-                DOCTEST(heap_strf("%#W =", lhs_ast), lhs_t, val);
+                DOCTEST(heap_strf("%#W =", lhs_ast), lhs_t, gcc_lvalue_address(expression_var, loc));
                 break;
             }
             case Assign: {
@@ -2250,9 +2273,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 if (LENGTH(assign->targets) == 1) {
                     sss_type_t *lhs_t = get_type(env, first);
                     gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=ARRAY(lhs_t), .field_names=ARRAY((const char*)"_1")));
-                    val = gcc_rvalue_access_field(
-                        val, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
-                    DOCTEST(heap_strf("%#W =", first), lhs_t, val);
+                    gcc_lvalue_t *field_lval = gcc_lvalue_access_field(
+                        expression_var, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
+                    DOCTEST(heap_strf("%#W =", first), lhs_t, gcc_lvalue_address(field_lval, loc));
                 } else {
                     ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
                     auto members = EMPTY_ARRAY(ast_t*);
@@ -2260,7 +2283,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         append(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
                     }
                     sss_type_t *lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
-                    DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), lhs_t, val);
+                    DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), lhs_t, gcc_lvalue_address(expression_var, loc));
                 }
                 break;
             }

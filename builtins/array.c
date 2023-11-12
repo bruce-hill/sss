@@ -44,7 +44,7 @@ void Array_compact(array_t *arr, size_t item_size)
 
 void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
 {
-    if (index < 1) index = arr->length - index;
+    if (index < 1) index = arr->length - index + 1;
 
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
@@ -77,7 +77,7 @@ void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_siz
 
 void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
 {
-    if (index < 1) index = arr->length - index;
+    if (index < 1) index = arr->length - index + 1;
 
     if (index < 1) index = 1;
     else if (index > (int64_t)arr->length + 1) index = (int64_t)arr->length + 1;
@@ -109,6 +109,8 @@ void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t ite
 
 void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
 {
+    if (index < 1) index = arr->length - index + 1;
+
     if (index < 1 || index > (int64_t)arr->length || count < 1) return;
 
     if (count > arr->length - index + 1)
@@ -162,29 +164,6 @@ void Array_shuffle(array_t *arr, size_t item_size)
         memcpy((void*)arr->data + i*item_size, arr->data + j*item_size, item_size);
         memcpy((void*)arr->data + j*item_size, tmp, item_size);
     }
-}
-
-array_t Array_join(array_t pieces, array_t glue, size_t item_size)
-{
-    if (pieces.length == 0) return (array_t){.stride=item_size};
-
-    unsigned long length = 0;
-    for (unsigned long i = 0; i < pieces.length; i++) {
-        if (i > 0) length += glue.length;
-        length += ((array_t*)(pieces.data + i*pieces.stride))->length;
-    }
-    void *data = pieces.atomic ? GC_MALLOC_ATOMIC((size_t)length*item_size) : GC_MALLOC((size_t)length*item_size);
-    void *ptr = data;
-    for (unsigned long i = 0; i < pieces.length; i++) {
-        if (i > 0) {
-            for (unsigned long j = 0; j < glue.length; j++)
-                ptr = mempcpy(ptr, (void*)glue.data + j*glue.stride, item_size);
-        }
-        array_t piece = *(array_t*)(pieces.data + i*pieces.stride);
-        for (unsigned long j = 0; j < piece.length; j++)
-            ptr = mempcpy(ptr, piece.data + j*piece.stride, item_size);
-    }
-    return (array_t){.data = data, .length = length, .stride = item_size};
 }
 
 array_t Array_slice(array_t array, range_t range, const Type *type)
@@ -346,9 +325,6 @@ uint32_t Array_hash(const array_t *arr, const Type *type)
         return hash;
     }
 }
-
-// static array_t array_bindings = STATIC_ARRAY(
-//     (void*)Array_compact, Array_insert, Array_insert_all, Array_remove, Array_sort, Array_shuffle, Array_join, Array_clear);
 
 Type *make_array_type(Type *item_type)
 {

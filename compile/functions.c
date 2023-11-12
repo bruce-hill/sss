@@ -78,18 +78,14 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
         append(arg_rvals, gcc_param_as_rvalue(gcc_func_get_param(func, i)));
     }
 
-    gcc_func_t *hashmap_get_fn = get_function(env, "sss_hashmap_get_raw");
-    gcc_func_t *key_hash = get_hash_func(env, arg_tuple_t);
-    gcc_func_t *key_cmp = get_indirect_compare_func(env, arg_tuple_t);
+    binding_t *get_fn_binding = get_from_namespace(env, cache_t, "get");
     gcc_lvalue_t *cached_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret)), "_cached_ptr");
-    gcc_assign(block, loc, cached_ptr, gcc_cast(env->ctx, loc, gcc_callx(
-                env->ctx, loc, hashmap_get_fn,
-                gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
-                gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
-                gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
-                gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
-                gcc_lvalue_address(arg_tuple, loc),
-                table_entry_value_offset(env, cache_t)), gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret))));
+    gcc_assign(block, loc, cached_ptr, gcc_callx(
+            env->ctx, loc, get_fn_binding->func,
+            gcc_lvalue_address(cache, loc),
+            gcc_lvalue_address(arg_tuple, loc), // key
+            get_type_rvalue(env, cache_t),
+    ));
     gcc_block_t *if_cached = gcc_new_block(func, fresh("cached")),
                 *if_not_cached = gcc_new_block(func, fresh("not_cached"));
     gcc_jump_condition(block, loc,
@@ -114,28 +110,27 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
                            populate_cache, needs_pop);
 
         block = needs_pop;
-        gcc_eval(block, loc, gcc_callx(env->ctx, loc, get_function(env, "sss_hashmap_remove"),
-                                       gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
-                                       gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
-                                       gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
-                                       gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
-                                       gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR))));
+        binding_t *remove_fn_binding = get_from_namespace(env, cache_t, "pop");
+        gcc_eval(block, loc,
+                 gcc_callx(env->ctx, loc, remove_fn_binding->func,
+                           gcc_lvalue_address(cache, loc),
+                           gcc_null(env->ctx, gcc_get_ptr_type(arg_tuple_gcc_t)),
+                           get_type_rvalue(env, cache_t)
+                 ));
         gcc_jump(block, loc, populate_cache);
         block = populate_cache;
     }
 
     gcc_lvalue_t *cached_var = gcc_local(func, loc, sss_type_to_gcc(env, fn_info->ret), "_cached");
     gcc_assign(block, loc, cached_var, gcc_call(env->ctx, loc, inner_func, LENGTH(arg_rvals), arg_rvals[0]));
-    gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
-    gcc_eval(block, loc, gcc_callx(
-            env->ctx, loc, hashmap_set_fn,
-            gcc_cast(env->ctx, loc, gcc_lvalue_address(cache, loc), gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, loc, gcc_get_func_address(key_hash, loc), gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, loc, gcc_get_func_address(key_cmp, loc), gcc_type(env->ctx, VOID_PTR)),
-            gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(cache_t))),
-            gcc_lvalue_address(arg_tuple, loc),
-            table_entry_value_offset(env, cache_t),
-            gcc_cast(env->ctx, loc, gcc_lvalue_address(cached_var, loc), gcc_type(env->ctx, VOID_PTR))));
+    binding_t *set_fn_binding = get_from_namespace(env, cache_t, "set");
+    gcc_eval(block, loc,
+             gcc_callx(env->ctx, loc, set_fn_binding->func,
+                       gcc_lvalue_address(cache, loc), // table
+                       gcc_lvalue_address(arg_tuple, loc), // key
+                       gcc_lvalue_address(cached_var, loc), // value
+                       get_type_rvalue(env, cache_t) // type
+             ));
     gcc_return(block, loc, gcc_rval(cached_var));
     return inner_func;
 }
