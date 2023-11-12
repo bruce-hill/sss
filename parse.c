@@ -2122,8 +2122,6 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
             whitespace(pos);
             const char *arg_start = *pos;
             const char *name = get_id(pos);
-            printf("Got arg name: %s\n", name);
-            printf("Got arg name: %s\n", name);
             whitespace(pos);
             if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
                 default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");

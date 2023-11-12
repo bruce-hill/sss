@@ -24,7 +24,7 @@
 #include "table.h"
 #include "types.h"
 
-#define DEBUG_TABLES
+//#define DEBUG_TABLES
 
 #ifdef DEBUG_TABLES
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
