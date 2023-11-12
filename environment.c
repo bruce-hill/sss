@@ -204,17 +204,21 @@ struct {
     }},
 };
 
-static inline gcc_func_t *load_func(env_t *env, const char *name, sss_type_t *t)
+gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t)
 {
+    gcc_func_t *func = Table_str_get(&env->global->funcs, name);
+    if (func) return func;
     auto params = EMPTY_ARRAY(gcc_param_t*);
-    auto fn = Match(t, FunctionType);
+    auto fn = Match(fn_t, FunctionType);
     for (size_t i = 0; i < LENGTH(fn->arg_types); i++) {
         gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
         const char *arg_name = ith(fn->arg_names, i);
         append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
     }
     gcc_type_t *t_ret = sss_type_to_gcc(env, fn->ret);
-    return gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, LENGTH(params), params[0], 0);
+    func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, LENGTH(params), params[0], 0);
+    Table_str_set(&env->global->funcs, name, func);
+    return func;
 }
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls)
@@ -242,10 +246,10 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
         for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; i++) {
             auto member = builtin_types[i].bindings[j];
-            ast_t *type_ast = parse_type(sss_spoof_file("<builtins>", member.type), NULL);
+            ast_t *type_ast = parse_type_str(member.type);
             sss_type_t *member_type = parse_type_ast(env, type_ast);
             if (member_type->tag == FunctionType) {
-                gcc_func_t *func = load_func(env, member.symbol, member_type);
+                gcc_func_t *func = import_function(env, member.symbol, member_type);
                 set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .func=func, .rval=gcc_get_func_address(func, NULL)));
             } else {
                 gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
@@ -257,9 +261,9 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
 
     for (size_t i = 0; i < sizeof(builtin_functions)/sizeof(builtin_functions[0]); i++) {
         auto fn = builtin_functions[i];
-        ast_t *type_ast = parse_type(sss_spoof_file("<builtins>", fn.type), NULL);
+        ast_t *type_ast = parse_type_str(fn.type);
         sss_type_t *fn_type = parse_type_ast(env, type_ast);
-        gcc_func_t *func = load_func(env, fn.symbol, fn_type);
+        gcc_func_t *func = import_function(env, fn.symbol, fn_type);
         Table_str_set(&env->global->funcs, fn.symbol, func);
     }
 
@@ -389,19 +393,38 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 }
 
+// typedef struct {
+//     const char *name, *default_code;
+//     sss_type_t *type;
+// } arg_def_t;
+
+// static void load_method(env_t *env, table_t *ns, const char *name, const char *symbol, sss_type_t *return_type, ARRAY_OF(arg_def_t) args)
+// {
+//     auto arg_names = EMPTY_ARRAY(const char*);
+//     auto arg_defaults = EMPTY_ARRAY(ast_t*);
+//     auto arg_types = EMPTY_ARRAY(sss_type_t*);
+//     auto params = EMPTY_ARRAY(gcc_param_t*);
+//     foreach (args, arg, _) {
+//         append(arg_names, arg->name);
+//         ast_t *default_ast = arg->default_code ? parse_expression_str(arg->default_code) : NULL;
+//         append(arg_defaults, default_ast);
+//         append(arg_types, arg->type);
+//         append(params, gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, arg->type), arg->name ? arg->name : fresh("arg")));
+//     }
+//     gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, return_type), symbol, LENGTH(params), params[0], 0);
+//     sss_type_t *fn_t = Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=return_type, .env=env);
+//     Table_str_set(ns, name, new(binding_t, .type=fn_t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+// }
+
 table_t *get_namespace(env_t *env, sss_type_t *t)
 {
+    while (t->tag == PointerType)
+        t = Match(t, PointerType)->pointed;
+
     table_t *ns = Table_str_get(&env->global->type_namespaces, type_to_string(t));
     if (!ns) {
         ns = new(table_t, .fallback=env->file_bindings);
         Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
-
-        sss_type_t *base_t = t;
-        for (;;) {
-            // if (base_t->tag == PointerType) base_t = Match(base_t, PointerType)->pointed;
-            if (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
-            else break;
-        }
     }
     return ns;
 }
@@ -416,15 +439,26 @@ env_t *get_type_env(env_t *env, sss_type_t *t)
 
 binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
 {
+    table_t *ns = get_namespace(env, t);
     // Do lookup without fallbacks
     // (we don't want module.Struct.__cord to return module.__cord, even
     // though the namespace may have that set as a fallback so that code
     // module.Struct can reference things inside the module's namespace)
-    table_t *ns = get_namespace(env, t);
-    table_t *fallback = ns->fallback;
-    ns->fallback = NULL;
-    binding_t *b = Table_str_get(ns, name);
-    ns->fallback = fallback;
+    binding_t *b = Table_str_get_raw(ns, name);
+    if (!b) {
+        sss_type_t *base_t = t;
+        for (;;) {
+            if (t->tag == PointerType)
+                t = Match(t, PointerType)->pointed;
+            else if (t->tag == VariantType)
+                t = Match(t, VariantType)->variant_of;
+            else break;
+        }
+        if (base_t->tag == ArrayType)
+            b = get_array_method(env, base_t, name);
+        else if (base_t->tag == TableType)
+            b = get_table_method(env, base_t, name);
+    }
     return b;
 }
 

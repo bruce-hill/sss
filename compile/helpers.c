@@ -180,17 +180,22 @@ static gcc_type_t *get_type_gcc_type(env_t *env)
     
     gcc_type_t *type_info_union_t = UNION(
         "TypeInfo",
-        FIELD("NamedInfo", STRUCT(
-                "NamedInfo",
-                FIELD("name", gcc_type(env->ctx, STRING)), 
-                FIELD("base", gcc_get_ptr_type(type_gcc_type)))),
+        FIELD("VTableInfo", STRUCT(
+                "VTableInfo",
+                FIELD("equal", gcc_type(env->ctx, VOID_PTR)), 
+                FIELD("compare", gcc_type(env->ctx, VOID_PTR)), 
+                FIELD("hash", gcc_type(env->ctx, VOID_PTR)), 
+                FIELD("cord", gcc_type(env->ctx, VOID_PTR)),
+        )),
         FIELD("PointerInfo", STRUCT(
                 "PointerInfo",
                 FIELD("sigil", gcc_type(env->ctx, STRING)), 
-                FIELD("pointed", gcc_get_ptr_type(type_gcc_type)))),
+                FIELD("pointed", gcc_get_ptr_type(type_gcc_type))
+        )),
         FIELD("ArrayInfo", STRUCT(
                 "ArrayInfo",
-                FIELD("item", gcc_get_ptr_type(type_gcc_type)))),
+                FIELD("item", gcc_get_ptr_type(type_gcc_type))
+        )),
         FIELD("TableInfo", STRUCT(
                 "TableInfo",
                 FIELD("key", gcc_get_ptr_type(type_gcc_type)),
@@ -200,14 +205,9 @@ static gcc_type_t *get_type_gcc_type(env_t *env)
 
     gcc_field_t *fields[] = { 
         FIELD("name", gcc_type(env->ctx, STRING)),
-        FIELD("info", STRUCT("TypeInfo", FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("__data", type_info_union_t))),
         FIELD("size", gcc_type(env->ctx, SIZE)),
         FIELD("align", gcc_type(env->ctx, SIZE)),
-        FIELD("equal", gcc_type(env->ctx, VOID_PTR)),
-        FIELD("compare", gcc_type(env->ctx, VOID_PTR)),
-        FIELD("hash", gcc_type(env->ctx, VOID_PTR)),
-        FIELD("cord", gcc_type(env->ctx, VOID_PTR)),
-        FIELD("bindings", gcc_type(env->ctx, VOID_PTR)),
+        FIELD("info", STRUCT("TypeInfo", FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("__data", type_info_union_t))),
     };
 #undef UNION
 #undef STRUCT

@@ -44,7 +44,8 @@ typedef struct {
 typedef struct {
     table_t bindings; // name -> binding_t*
     table_t funcs; // name -> func
-    table_t type_namespaces; // sss_type_t* -> name -> binding_t*
+    table_t type_namespaces; // type_string -> member_name -> binding_t*
+    table_t type_rvals; // type_string -> gcc_rvalue_t*
     table_t def_types; // ast_t* -> binding_t*
     table_t ast_functions; // ast_t* -> func_context_t*
     table_t module_types; // inode -> sss_type_t*
@@ -81,6 +82,7 @@ env_t *scope_with_type(env_t *env, sss_type_t *t);
 binding_t *get_binding(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);
+gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
 env_t *get_type_env(env_t *env, sss_type_t *t);
 table_t *get_namespace(env_t *env, sss_type_t *t);

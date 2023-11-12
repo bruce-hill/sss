@@ -1051,11 +1051,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             default: {
                 sss_type_t *base_t = value_type;
                 while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
-                binding_t *binding = (base_t->tag == ArrayType) ?
-                    get_array_method(env, value_type, access->field)
-                    : (base_t->tag == TableType ?
-                       get_table_method(env, value_type, access->field)
-                       : get_from_namespace(env, self_t, access->field));
+                binding_t *binding = get_from_namespace(env, self_t, access->field);
                 if (!binding)
                     binding = get_from_namespace(env, value_type, access->field);
                 if (!binding)
@@ -1837,7 +1833,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t_lhs = get_type(env, concat->lhs);
         sss_type_t *array_t = t_lhs;
         while (array_t->tag == PointerType) array_t = Match(array_t, PointerType)->pointed;
-        binding_t *b = get_array_method(env, array_t, "insert_all");
+        binding_t *b = get_from_namespace(env, array_t, "insert_all");
         assert(b);
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
         if (t_lhs->tag == ArrayType) {

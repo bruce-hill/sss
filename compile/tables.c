@@ -31,13 +31,12 @@ gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
 
 void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr)
 {
-    sss_type_t *table_t = Type(TableType, .key_type=Type(BoolType), .value_type=Type(BoolType));
-    gcc_type_t *table_gcc_t = sss_type_to_gcc(env, table_t);
-    gcc_struct_t *table_struct = gcc_type_if_struct(table_gcc_t);
-    gcc_lvalue_t *cow = gcc_rvalue_dereference_field(
-        gcc_cast(env->ctx, NULL, table_ptr, gcc_get_ptr_type(table_gcc_t)), NULL,
-        gcc_get_field(table_struct, TABLE_COW_FIELD));
-    gcc_assign(*block, NULL, cow, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, BOOL), 1));
+    gcc_param_t *params[] = {
+        gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "t"),
+    };
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
+                                    gcc_type(env->ctx, VOID), "Table_mark_copy_on_write", 1, params, 0);
+    gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, func, table_ptr));
 }
 
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast, bool autocreate)
@@ -45,6 +44,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_func_t *func = gcc_block_func(*block);
     sss_type_t *needed_key_t = Match(t, TableType)->key_type;
     gcc_type_t *needed_key_gcc_t = sss_type_to_gcc(env, needed_key_t);
+    gcc_type_t *value_gcc_t = sss_type_to_gcc(env, Match(t, TableType)->value_type);
 
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
     if (!block) return NULL;
@@ -53,39 +53,32 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
 
     gcc_lvalue_t *key_lval = gcc_local(func, NULL, needed_key_gcc_t, "_key");
     gcc_assign(*block, NULL, key_lval, key_val);
-    flatten_arrays(env, block, needed_key_t, gcc_lvalue_address(key_lval, NULL));
 
-    gcc_func_t *key_hash = get_hash_func(env, needed_key_t);
-    gcc_func_t *key_cmp = get_indirect_compare_func(env, needed_key_t);
-    gcc_type_t *value_gcc_t = sss_type_to_gcc(env, Match(t, TableType)->value_type);
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
+    gcc_rvalue_t *type_ptr = get_type_rvalue(env, t);
     if (autocreate) {
-        gcc_func_t *hashmap_set_fn = get_function(env, "sss_hashmap_set");
-        gcc_rvalue_t *call = gcc_callx(
-            env->ctx, NULL, hashmap_set_fn,
-            gcc_cast(env->ctx, NULL, table, gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
-            gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
-            gcc_lvalue_address(key_lval, NULL),
-            table_entry_value_offset(env, t),
-            gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)));
-
-        gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(value_gcc_t)));
+        gcc_param_t *params[] = {
+            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "type"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, t)), "t"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(needed_key_gcc_t), "key"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(value_gcc_t), "value"),
+        };
+        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
+                                        gcc_get_ptr_type(value_gcc_t), "Table_set", sizeof(params)/sizeof(params[0]), params, 0);
+        gcc_assign(*block, NULL, dest,
+                   gcc_callx(env->ctx, NULL, func, type_ptr, table, gcc_lvalue_address(key_lval, NULL),
+                             gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))));
         return gcc_rvalue_dereference(gcc_rval(dest), NULL);
     } else {
-        gcc_func_t *hashmap_get_raw_fn = get_function(env, "sss_hashmap_get_raw");
-        gcc_rvalue_t *call = gcc_callx(
-            env->ctx, NULL, hashmap_get_raw_fn,
-            gcc_cast(env->ctx, NULL, table, gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, NULL, gcc_get_func_address(key_hash, NULL), gcc_type(env->ctx, VOID_PTR)),
-            gcc_cast(env->ctx, NULL, gcc_get_func_address(key_cmp, NULL), gcc_type(env->ctx, VOID_PTR)),
-            gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
-            gcc_lvalue_address(key_lval, NULL),
-            table_entry_value_offset(env, t));
-
-        gcc_assign(*block, NULL, dest, gcc_cast(env->ctx, NULL, call, gcc_get_ptr_type(value_gcc_t)));
-
+        gcc_param_t *params[] = {
+            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "type"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, t)), "t"),
+            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(needed_key_gcc_t), "key"),
+        };
+        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
+                                        gcc_get_ptr_type(value_gcc_t), "Table_get_raw", sizeof(params)/sizeof(params[0]), params, 0);
+        gcc_assign(*block, NULL, dest,
+                   gcc_callx(env->ctx, NULL, func, type_ptr, table, gcc_lvalue_address(key_lval, NULL)));
         gcc_block_t *if_missing = gcc_new_block(func, fresh("if_missing")),
                     *done = gcc_new_block(func, fresh("done"));
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(dest), gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))),
