@@ -352,7 +352,17 @@ int main(int argc, char *argv[])
     extern Type *CStringToVoidStarTable_type;
     extern Type CString_type;
     extern Type Memory_type;
-    CStringToVoidStarTable_type = make_table_type(&CString_type, &Memory_type);
+    Type MemoryPointer_type = {
+        .name="@Memory",
+        .size=sizeof(void*),
+        .align=alignof(void*),
+        .tag=PointerInfo,
+        .PointerInfo={
+            .sigil="?",
+            .pointed=&Memory_type,
+        },
+    };
+    CStringToVoidStarTable_type = make_table_type(&CString_type, &MemoryPointer_type);
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {

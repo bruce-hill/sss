@@ -89,8 +89,10 @@ void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     for (uint32_t i = hash; buckets[i].occupied; i = buckets[i].next_bucket) {
         hdebug("Checking against key in bucket %u\n", i);
         void *entry = GET_ENTRY(t, buckets[i].index);
-        if (EQUAL(entry, key))
+        if (EQUAL(entry, key)) {
+            hdebug("Found key!\n");
             return entry + VALUE_OFFSET;
+        }
         if (buckets[i].next_bucket == END_OF_CHAIN)
             break;
     }

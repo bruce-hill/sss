@@ -59,41 +59,40 @@ static sss_type_t sss_cord_t = {
     },
 };
 
-
 struct {const char *symbol, *type; } builtin_functions[] = {
-    {"GC_malloc", "func(size:UInt) @Memory"},
-    {"GC_malloc_atomic", "func(size:UInt) @Memory"},
-    {"GC_realloc", "func(data:?Memory, size:UInt) @Memory"},
-    {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
-    {"getenv", "func(name:CString) CString"},
+    {"GC_malloc", "func(size:UInt)->@Memory"},
+    {"GC_malloc_atomic", "func(size:UInt)->@Memory"},
+    {"GC_realloc", "func(data:?Memory, size:UInt)->@Memory"},
+    {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt)->@Memory"},
+    {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
-    {"generic_compare", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&Type) Int32"},
-    {"generic_equal", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&Type) Bool"},
-    {"generic_hash", "func(obj:&(readonly)Memory, type:&Type) UInt32"},
-    {"generic_cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&Type) Cord"},
+    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&Type)->Int32"},
+    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&Type)->Bool"},
+    {"generic_hash", "func(obj:&(read-only)Memory, type:&Type)->UInt32"},
+    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&Type)->Cord"},
 
     // Builtins:
-    {"builtin_say", "func(str:Str, end=\"\\n\") Void"},
-    {"builtin_last_err", "func() Str"},
-    {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32) Void"},
+    {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
+    {"builtin_last_err", "func()->Str"},
+    {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32)->Void"},
 
     // Modulus:
-    {"Num_mod", "func(n:Num, divisor:Num) Num"},
-    {"Num32_mod", "func(n:Num32, divisor:Num32) Num32"},
+    {"Num_mod", "func(n:Num, divisor:Num)->Num"},
+    {"Num32_mod", "func(n:Num32, divisor:Num32)->Num32"},
 
     // Dynamic linking:
-    {"dlopen", "func(filename:CString, flags:Int32) ?Memory"},
-    {"dlsym", "func(handle:@Memory, symbol:CString) ?Memory"},
-    {"dlclose", "func(handle:@Memory) ?Memory"},
+    {"dlopen", "func(filename:CString, flags:Int32)->?Memory"},
+    {"dlsym", "func(handle:@Memory, symbol:CString)->?Memory"},
+    {"dlclose", "func(handle:@Memory)->?Memory"},
 
     // Cord functions:
-    {"CORD_cat", "func(x:Cord, y:Cord)"},
-    {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt64)"},
-    {"CORD_cat_char", "func(x:Cord, c:Char)"},
-    {"CORD_cmp", "func(x:Cord, y:Cord) Int32"},
-    {"CORD_to_const_char_star", "func(x:Cord) CString"},
-    {"CORD_to_char_star", "func(x:Cord) CString"},
+    {"CORD_cat", "func(x:Cord, y:Cord)->Cord"},
+    {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt)->Cord"},
+    {"CORD_cat_char", "func(x:Cord, c:Char)->Cord"},
+    {"CORD_cmp", "func(x:Cord, y:Cord)->Int32"},
+    {"CORD_to_const_char_star", "func(x:Cord)->CString"},
+    {"CORD_to_char_star", "func(x:Cord)->CString"},
 };
 
 struct {
@@ -105,13 +104,15 @@ struct {
     {{.tag=MemoryType}, "Memory", "Memory_type", NULL},
     {{.tag=RangeType}, "Range", "Range_type", NULL},
     {{.tag=TypeType}, "Type", "Type_type", NULL},
+    {{.tag=VoidType}, "Void", "Void_type", NULL},
+    {{.tag=AbortType}, "Void", "Abort_type", NULL},
 
 #define BUILTIN_INT(t, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
-        {#t"__format", "format", "func(i:"#t", digits=0) Str"}, \
-        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no) Str"}, \
-        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=no) Str"}, \
-        {#t"__random", "random", "func() "#t}, \
+        {#t"__format", "format", "func(i:"#t", digits=0)->Str"}, \
+        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no)->Str"}, \
+        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=no)->Str"}, \
+        {#t"__random", "random", "func()->"#t}, \
         {#t"__min",    "min", #t}, \
         {#t"__max",    "max", #t}, \
         {NULL, NULL, NULL}, \
@@ -122,10 +123,10 @@ struct {
 #undef BUILTIN_INT
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
-        {"Num__format", "format", "func(n:Num, precision:Int) Str"},
-        {"drand48", "random", "func() Num"},
+        {"Num__format", "format", "func(n:Num, precision:Int)->Str"},
+        {"drand48", "random", "func()->Num"},
         // Unary functions:
-#define UNARY(fn) {#fn, #fn, "func(n:Num) Num"}
+#define UNARY(fn) {#fn, #fn, "func(n:Num)->Num"}
         UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
         UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
         UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
@@ -134,19 +135,19 @@ struct {
         UNARY(trunc), UNARY(roundeven),
 #undef UNARY
         // Binary functions:
-        {"atan2", "atan2", "func(y:Num, x:Num) Num"},
-        {"pow", "pow", "func(base:Num, power:Num) Num"},
-        {"hypot", "hypot", "func(x:Num, y:Num) Num"},
-        {"copysign", "hypot", "func(magnitude:Num, sign:Num) Num"},
-        {"nextafter", "nextafter", "func(x:Num, toward:Num) Num"},
-        {"remainder", "remainder", "func(x:Num, divisor:Num) Num"},
-        {"fmaxmag", "max_magnitude", "func(x:Num, y:Num) Num"},
-        {"fminmag", "min_magnitude", "func(x:Num, y:Num) Num"},
-        {"fdim", "distance", "func(x:Num, y:Num) Num"},
+        {"atan2", "atan2", "func(y:Num, x:Num)->Num"},
+        {"pow", "pow", "func(base:Num, power:Num)->Num"},
+        {"hypot", "hypot", "func(x:Num, y:Num)->Num"},
+        {"copysign", "hypot", "func(magnitude:Num, sign:Num)->Num"},
+        {"nextafter", "nextafter", "func(x:Num, toward:Num)->Num"},
+        {"remainder", "remainder", "func(x:Num, divisor:Num)->Num"},
+        {"fmaxmag", "max_magnitude", "func(x:Num, y:Num)->Num"},
+        {"fminmag", "min_magnitude", "func(x:Num, y:Num)->Num"},
+        {"fdim", "distance", "func(x:Num, y:Num)->Num"},
         // Predicates
-        {"isinf", "isinf", "func(n:Num) Bool"},
-        {"finite", "finite", "func(n:Num) Bool"},
-        {"isnan", "isnan", "func(n:Num) Bool"},
+        {"isinf", "isinf", "func(n:Num)->Bool"},
+        {"finite", "finite", "func(n:Num)->Bool"},
+        {"isnan", "isnan", "func(n:Num)->Bool"},
         // Constants
         {"Num__e", "e", "Num"}, {"Num__log2e", "log2e", "Num"}, {"Num__ln2", "ln2", "Num"},
         {"Num__ln10", "ln10", "Num"}, {"Num__pi", "pi", "Num"}, {"Num__tau", "tau", "Num"},
@@ -158,10 +159,10 @@ struct {
     }},
 
     {{.tag=NumType, .__data.NumType={.bits=32}}, "Num32", "Num32_type", (builtin_binding_t[]){
-        {"Num32__format", "format", "func(n:Num32, precision:Int) Str"},
-        {"Num32__random", "random", "func() Num32"},
+        {"Num32__format", "format", "func(n:Num32, precision:Int)->Str"},
+        {"Num32__random", "random", "func()->Num32"},
         // Unary functions:
-#define UNARY(fn) {#fn"f", #fn, "func(n:Num32) Num32"}
+#define UNARY(fn) {#fn"f", #fn, "func(n:Num32)->Num32"}
         UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
         UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
         UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
@@ -170,19 +171,19 @@ struct {
         UNARY(trunc), UNARY(roundeven),
 #undef UNARY
         // Binary functions:
-        {"atan2f", "atan2", "func(y:Num32, x:Num32) Num32"},
-        {"powf", "pow", "func(base:Num32, power:Num32) Num32"},
-        {"hypotf", "hypot", "func(x:Num32, y:Num32) Num32"},
-        {"copysignf", "hypot", "func(magnitude:Num32, sign:Num32) Num32"},
-        {"nextafterf", "nextafter", "func(x:Num32, toward:Num32) Num32"},
-        {"remainderf", "remainder", "func(x:Num32, divisor:Num32) Num32"},
-        {"fmaxmagf", "max_magnitude", "func(x:Num32, y:Num32) Num32"},
-        {"fminmagf", "min_magnitude", "func(x:Num32, y:Num32) Num32"},
-        {"fdimf", "distance", "func(x:Num32, y:Num32) Num32"},
+        {"atan2f", "atan2", "func(y:Num32, x:Num32)->Num32"},
+        {"powf", "pow", "func(base:Num32, power:Num32)->Num32"},
+        {"hypotf", "hypot", "func(x:Num32, y:Num32)->Num32"},
+        {"copysignf", "hypot", "func(magnitude:Num32, sign:Num32)->Num32"},
+        {"nextafterf", "nextafter", "func(x:Num32, toward:Num32)->Num32"},
+        {"remainderf", "remainder", "func(x:Num32, divisor:Num32)->Num32"},
+        {"fmaxmagf", "max_magnitude", "func(x:Num32, y:Num32)->Num32"},
+        {"fminmagf", "min_magnitude", "func(x:Num32, y:Num32)->Num32"},
+        {"fdimf", "distance", "func(x:Num32, y:Num32)->Num32"},
         // Predicates
-        {"Num32__isinf", "isinf", "func(n:Num32) Bool"},
-        {"Num32__finite", "finite", "func(n:Num32) Bool"},
-        {"Num32__isnan", "isnan", "func(n:Num32) Bool"},
+        {"Num32__isinf", "isinf", "func(n:Num32)->Bool"},
+        {"Num32__finite", "finite", "func(n:Num32)->Bool"},
+        {"Num32__isnan", "isnan", "func(n:Num32)->Bool"},
         // Constants
         {"Num32__e", "e", "Num32"}, {"Num32__log2e", "log2e", "Num32"}, {"Num32__ln2", "ln2", "Num32"},
         {"Num32__ln10", "ln10", "Num32"}, {"Num32__pi", "pi", "Num32"}, {"Num32__tau", "tau", "Num32"},
@@ -194,9 +195,9 @@ struct {
     }},
 
     {{.tag=CharType}, "Char", "Char_type", (builtin_binding_t[]){
-        {"Char__toupper", "toupper", "func(c:Char) Char"},
-        {"Char__tolower", "tolower", "func(c:Char) Char"},
-#define CHARP(name) {"Char__"#name, #name, "func(c:Char) Bool"}
+        {"Char__toupper", "toupper", "func(c:Char)->Char"},
+        {"Char__tolower", "tolower", "func(c:Char)->Char"},
+#define CHARP(name) {"Char__"#name, #name, "func(c:Char)->Bool"}
         CHARP(isalnum), CHARP(isalpha), CHARP(iscntrl), CHARP(isdigit), CHARP(isgraph), CHARP(islower),
         CHARP(isprint), CHARP(ispunct), CHARP(isspace), CHARP(isupper), CHARP(isxdigit), CHARP(isascii), CHARP(isblank),
 #undef CHARP
@@ -204,29 +205,29 @@ struct {
     }},
 
     {sss_str_t, "Str", "Str_type", (builtin_binding_t[]){
-        {"Str__uppercased", "uppercased", "func(s:Str) Str"},
-        {"Str__lowercased", "lowercased", "func(s:Str) Str"},
-        {"Str__capitalized", "capitalized", "func(s:Str) Str"},
-        {"Str__titlecased", "titlecased", "func(s:Str) Str"},
-        {"Str__starts_with", "starts_with", "func(s:Str) Bool"},
-        {"Str__ends_with", "ends_with", "func(s:Str) Bool"},
-        {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str) Str"},
-        {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str) Str"},
-        {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes) Str"},
-        {"Str__slice", "slice", "func(s:Str, first=1, stride=1, length=Int.max) Str"},
-        {"Str__c_string", "c_string", "func(s:Str) CString"},
-        {"Str__from_c_string", "from_c_string", "func(c:CString) Str"},
-        {"Str__find", "find", "func(s:Str, target:Str) Str"},
-        {"Str__replace", "replace", "func(s:Str, target:Str, replacement:Str, limit=Int.max) Str"},
-        {"Str__quoted", "quoted", "func(s:Str) Str"},
-        {"Str__split", "split", "func(s:Str, split_chars=[`, \\x20, \\n, \\r, \\t, \\v]) [Str]"},
-        {"Str__join", "join", "func(glue:Str, pieces:[Str]) Str"},
+        {"Str__uppercased", "uppercased", "func(s:Str)->Str"},
+        {"Str__lowercased", "lowercased", "func(s:Str)->Str"},
+        {"Str__capitalized", "capitalized", "func(s:Str)->Str"},
+        {"Str__titlecased", "titlecased", "func(s:Str)->Str"},
+        {"Str__starts_with", "starts_with", "func(s:Str)->Bool"},
+        {"Str__ends_with", "ends_with", "func(s:Str)->Bool"},
+        {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str)->Str"},
+        {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str)->Str"},
+        {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
+        {"Str__slice", "slice", "func(s:Str, first=1, stride=1, length=Int.max)->Str"},
+        {"Str__c_string", "c_string", "func(s:Str)->CString"},
+        {"Str__from_c_string", "from_c_string", "func(c:CString)->Str"},
+        {"Str__find", "find", "func(s:Str, target:Str)->Str"},
+        {"Str__replace", "replace", "func(s:Str, target:Str, replacement:Str, limit=Int.max)->Str"},
+        {"Str__quoted", "quoted", "func(s:Str)->Str"},
+        {"Str__split", "split", "func(s:Str, split_chars=[`, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
+        {"Str__join", "join", "func(glue:Str, pieces:[Str])->Str"},
         {NULL, NULL, NULL},
     }},
 
     {sss_c_str_t, "CString", "CString_type", (builtin_binding_t[]){
-        {"Str__c_string", "from_str", "func(s:Str) CString"},
-        {"Str__from_c_string", "as_str", "func(c:CString) Str"},
+        {"Str__c_string", "from_str", "func(s:Str)->CString"},
+        {"Str__from_c_string", "as_str", "func(c:CString)->Str"},
         {NULL, NULL, NULL},
     }},
 
@@ -267,6 +268,8 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     env->bindings->fallback = env->file_bindings;
 
     gcc_type_t *type_gcc_type = sss_type_to_gcc(env, Type(TypeType));
+
+    // Declare types first:
     for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
         binding_t *b = new(binding_t,
@@ -274,7 +277,18 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
                            .rval=gcc_lvalue_address(
                                gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol),
                                NULL));
+        printf("Declared type: %s\n", builtin_types[i].type_name);
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
+        printf("WTF: binding = %p, &binding = %p, got: %p\n",
+               b, &b, Table_str_get(&env->global->bindings, builtin_types[i].type_name));
+        assert(Table_str_get(&env->global->bindings, builtin_types[i].type_name) == b);
+        assert(env->bindings->fallback->fallback == &env->global->bindings);
+        assert(get_binding(env, builtin_types[i].type_name) == b);
+    }
+
+    // Then declare type methods:
+    for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
+        sss_type_t *t = &builtin_types[i].sss_type;
         for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; i++) {
             auto member = builtin_types[i].bindings[j];
             ast_t *type_ast = parse_type_str(member.type);
@@ -448,32 +462,32 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
         if (t->tag == TableType) {
             sss_type_t *key_t = Match(t, TableType)->key_type;
             sss_type_t *value_t = Match(t, TableType)->value_type;
-            load_method(env, ns, "remove", "Table_remove", heap_strf("func(t:&%T, key:&(readonly)%T, _type=typeof(*t)) Void", t, key_t));
-            load_method(env, ns, "pop", "Table_remove", heap_strf("func(t:&%T, _key=!%T, _type=typeof(*t)) Void", t, key_t));
-            load_method(env, ns, "set", "Table_set", heap_strf("func(t:&%T, key:&(readonly)%T, value:&(readonly)%T, _type=typeof(*t)) Void", t, key_t, value_t));
-            load_method(env, ns, "get", "Table_get", heap_strf("func(t:&(readonly)%T, key:&(readonly)%T, _type=typeof(*t)) ?%T", t, key_t, value_t));
-            load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(readonly)%T, key:&(readonly)%T, _type=typeof(*t)) ?%T", t, key_t, value_t));
-            load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T) Void", t));
-            load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write", heap_strf("func(t:&%T) Void", t));
-            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(readonly)%T, n:Int, _type=typeof(*t)) ?struct(key:%T, value:%T)", t, key_t, value_t));
+            load_method(env, ns, "remove", "Table_remove", heap_strf("func(t:&%T, key:&(read-only)%T, _type=typeof(*t))->Void", t, key_t));
+            load_method(env, ns, "pop", "Table_remove", heap_strf("func(t:&%T, _key=!%T, _type=typeof(*t))->Void", t, key_t));
+            load_method(env, ns, "set", "Table_set", heap_strf("func(t:&%T, key:&(read-only)%T, value:&(read-only)%T, _type=typeof(*t))->Void", t, key_t, value_t));
+            load_method(env, ns, "get", "Table_get", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(*t))->?%T", t, key_t, value_t));
+            load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(*t))->?%T", t, key_t, value_t));
+            load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T)->Void", t));
+            load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write", heap_strf("func(t:&%T)->Void", t));
+            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(read-only)%T, n:Int, _type=typeof(*t))->?struct(key:%T, value:%T)", t, key_t, value_t));
         } else if (t->tag == ArrayType) {
             sss_type_t *item_t = Match(t, ArrayType)->item_type;
             load_method(env, ns, "insert", "Array_insert",
-                        heap_strf("func(array:&%T, item:&(readonly)%T, index=0, _item_size=sizeof(item)) Void", t, item_t));
+                        heap_strf("func(array:&%T, item:&(read-only)%T, index=0, _item_size=sizeof(item))->Void", t, item_t));
             load_method(env, ns, "insert_all", "Array_insert_all",
-                        heap_strf("func(array:&%T, to_insert:&(readonly)%T, index=0, _item_size=sizeof(array[1])) Void", t, t));
+                        heap_strf("func(array:&%T, to_insert:&(read-only)%T, index=0, _item_size=sizeof(array[1]))->Void", t, t));
             load_method(env, ns, "remove", "Array_remove",
-                        heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1])) Void", t));
+                        heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1]))->Void", t));
             load_method(env, ns, "sort", "Array_sort",
-                        heap_strf("func(array:&%T, _type=typeof(*array)) Void", t));
+                        heap_strf("func(array:&%T, _type=typeof(*array))->Void", t));
             load_method(env, ns, "shuffle", "Array_shuffle",
-                        heap_strf("func(array:&%T, _item_size=sizeof(array[1])) Void", t));
+                        heap_strf("func(array:&%T, _item_size=sizeof(array[1]))->Void", t));
             load_method(env, ns, "clear", "Array_clear",
-                        heap_strf("func(array:&%T) Void", t));
+                        heap_strf("func(array:&%T)->Void", t));
             load_method(env, ns, "contains", "Array_contains",
-                        heap_strf("func(array:%T, item:&(readonly)%T) Bool", t, item_t));
+                        heap_strf("func(array:%T, item:&(read-only)%T)->Bool", t, item_t));
             load_method(env, ns, "slice", "Array_slice",
-                        heap_strf("func(array:%T, range:Range, _type:typeof(array)) Bool", t));
+                        heap_strf("func(array:%T, range:Range, _type:typeof(array))->Bool", t));
         }
     }
     return ns;

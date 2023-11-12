@@ -44,7 +44,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "type", "then", "struct", "stop", "skip",
+    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_mix_", "_min_", "_max_", "include",
@@ -548,16 +548,8 @@ PARSER(parse_pointer_type) {
     else
         return NULL;
 
-    bool is_readonly = false;
-    for (;;) {
-        spaces(&pos);
-        if (match(&pos, "(optional)"))
-            optional = true;
-        else if (match(&pos, "(read-only)"))
-            is_readonly = true;
-        else break;
-    }
-
+    spaces(&pos);
+    bool is_readonly = match(&pos, "(read-only)");
     spaces(&pos);
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
@@ -2130,6 +2122,8 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
             whitespace(pos);
             const char *arg_start = *pos;
             const char *name = get_id(pos);
+            printf("Got arg name: %s\n", name);
+            printf("Got arg name: %s\n", name);
             whitespace(pos);
             if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
                 default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");

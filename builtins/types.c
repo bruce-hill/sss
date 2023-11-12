@@ -119,6 +119,9 @@ Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, v
     );
 }
 
+Type Void_type = {.name="Void", .size=0, .align=0};
+Type Abort_type = {.name="Abort", .size=0, .align=0};
+
 Type *make_pointer_type(const char *sigil, Type *t)
 {
     return new(Type,
