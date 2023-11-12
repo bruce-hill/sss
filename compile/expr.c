@@ -156,19 +156,7 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
             *block = done;
             return gcc_rval(len_var);
         }
-
-        if (ptr->pointed->tag == CharType) {
-            // String LENGTH
-            gcc_func_t *len_func = Table_str_get(&env->global->funcs, "strlen");
-            gcc_rvalue_t *len = gcc_callx(env->ctx, NULL, len_func, obj);
-            return gcc_cast(env->ctx, NULL, len, gcc_type(env->ctx, INT64));
-        } else {
-            return compile_len(env, block, ptr->pointed, gcc_rval(gcc_rvalue_dereference(obj, NULL)));
-        }
-    }
-    case TypeType: {
-        size_t len = strlen(type_to_string(Match(t, TypeType)->type));
-        return gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), len);
+        return compile_len(env, block, ptr->pointed, gcc_rval(gcc_rvalue_dereference(obj, NULL)));
     }
     case RangeType: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);

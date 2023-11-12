@@ -17,65 +17,6 @@
 #include "compile/compile.h"
 #include "compile/libgccjit_abbrev.h"
 
-#define load_global_func(env, t_ret, name, ...) _load_global_func(env, t_ret, name, \
-                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
-                 (gcc_param_t*[]){__VA_ARGS__}, 0)
-#define load_global_var_func(env, t_ret, name, ...) _load_global_func(env, t_ret, name, \
-                 sizeof((gcc_param_t*[]){__VA_ARGS__})/sizeof(gcc_param_t*),\
-                 (gcc_param_t*[]){__VA_ARGS__}, 1)
-
-static inline void _load_global_func(env_t *env, gcc_type_t *t_ret, const char *name, int nargs, gcc_param_t *args[nargs], int is_vararg) {
-    Table_str_set(&env->global->funcs, heap_str(name),
-                  gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, nargs, args, is_vararg));
-}
-
-typedef struct {
-    const char *name;
-    sss_type_t *t;
-    ast_t *default_val;
-} sss_arg_t;
-#define ARG(...) ((sss_arg_t){__VA_ARGS__})
-
-static inline void _load_method(
-    env_t *env, table_t *ns, const char *extern_name, const char *method_name, sss_type_t *ret_t, int nargs, sss_arg_t args[nargs]
-) {
-    gcc_param_t *params[nargs];
-    auto arg_name_list = EMPTY_ARRAY(const char*);
-    auto arg_type_list = EMPTY_ARRAY(sss_type_t*);
-    auto arg_default_list = EMPTY_ARRAY(ast_t*);
-    for (int i = 0; i < nargs; i++) {
-        params[i] = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, args[i].t), args[i].name);
-        append(arg_name_list, args[i].name);
-        append(arg_type_list, args[i].t);
-        append(arg_default_list, args[i].default_val);
-    }
-    
-    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, ret_t),
-                                    extern_name, nargs, params, 0);
-    sss_type_t *fn_type = Type(FunctionType, .arg_types=arg_type_list, .arg_names=arg_name_list, .arg_defaults=arg_default_list, .ret=ret_t);
-    Table_str_set(ns, heap_str(method_name), new(binding_t, .type=fn_type, .func=func));
-}
-
-sss_type_t *define_tagged_union(env_t *env, int tag_bits, const char *name, ARRAY_OF(sss_tagged_union_member_t) members)
-{
-    for (int64_t i = 0; i < LENGTH(members); i++) {
-        auto member = ith(members, i);
-        if (member.type && member.type->tag != StructType) {
-            members[0][i].type = Type(StructType, .field_names=ARRAY(ith(members, i).name),
-                                      .field_types=ARRAY(ith(members, i).type),
-                                      .field_defaults=ARRAY((ast_t*)NULL));
-        } else if (!member.type) {
-            members[0][i].type = Type(StructType, .field_names=EMPTY_ARRAY(const char*), .field_types=EMPTY_ARRAY(sss_type_t*),
-                                      .field_defaults=EMPTY_ARRAY(ast_t*));
-        }
-    }
-    sss_type_t *t = Type(VariantType, .filename="<builtin>", .name=name, .variant_of=Type(TaggedUnionType, .tag_bits=tag_bits, .members=members));
-    gcc_rvalue_t *rval = gcc_str(env->ctx, name);
-    Table_str_set(&env->global->bindings, name, new(binding_t, .type=Type(TypeType, t), .rval=rval, .visible_in_closures=true));
-    populate_tagged_union_constructors(env, t);
-    return t;
-}
-
 typedef struct {
     const char *symbol, *sss_name, *type;
 } builtin_binding_t;
@@ -105,61 +46,28 @@ static sss_type_t sss_c_str_t = {
     },
 };
 
-
-// builtin_binding_t builtin_functions[] = {
-//     {"GC_malloc", "func(size:UInt) @Memory"},
-//     {"GC_malloc_atomic", "func(size:UInt) @Memory"},
-//     {"GC_realloc", "func(data:?Memory, size:UInt) @Memory"},
-//     {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
-//     {"getenv", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
-//     load_global_func(env, gcc_type(ctx, STRING), "getenv", PARAM(gcc_type(ctx, STRING), "name"));
-//     load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
-//     load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
-//     load_global_func(env, t_int, "puts", PARAM(t_str, "str"));
-//     load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
-//     load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
-//     load_global_var_func(env, t_int, "printf", PARAM(t_str, "format"));
-//     load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
-//     load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
-//     load_global_func(env, t_int, "strcmp", PARAM(t_str, "str1"), PARAM(t_str, "str2"));
-//     load_global_func(env, t_size, "strlen", PARAM(t_str, "str"));
-//     load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
-//     load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
-//     load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
-//     // Cord functions:
-//     gcc_type_t *cord_t = gcc_get_type(ctx, GCC_T_STRING);
-//     load_global_func(env, cord_t, "CORD_cat", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
-//     load_global_func(env, cord_t, "CORD_cat_char_star", PARAM(cord_t, "x"), PARAM(t_str, "y"), PARAM(t_size, "leny"));
-//     load_global_func(env, cord_t, "CORD_cat_char", PARAM(cord_t, "x"), PARAM(t_char, "c"));
-//     load_global_func(env, t_int, "CORD_cmp", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
-//     load_global_func(env, cord_t, "CORD_to_const_char_star", PARAM(cord_t, "x"));
-//     load_global_func(env, cord_t, "CORD_to_char_star", PARAM(cord_t, "x"));
-//     load_global_func(env, t_int, "CORD_put", PARAM(cord_t, "x"), PARAM(gcc_get_type(ctx, GCC_T_FILE_PTR), "f"));
-//     load_global_var_func(env, t_int, "CORD_sprintf", PARAM(gcc_get_ptr_type(cord_t), "out"), PARAM(cord_t, "format"));
-//     load_global_var_func(env, t_int, "CORD_fprintf", PARAM(t_file, "out"), PARAM(cord_t, "format"));
-
-    // load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
-    // load_global_var_func(env, t_void, "sss_doctest", PARAM(t_str, "label"), PARAM(cord_t, "expr"), PARAM(t_str, "type"),
-    //                      PARAM(t_bool, "use_color"), PARAM(t_str, "expected"), PARAM(t_str, "filename"), PARAM(t_int, "start"),
-    //                      PARAM(t_int, "end"));
-    // load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
-    // gcc_func_t *exit_fn = Table_str_get(&env->global->funcs, "exit");
-    // Table_str_set(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
-    //     FunctionType,
-    //     .arg_names=ARRAY((const char*)"status"),
-    //     .arg_types=ARRAY(Type(IntType, .bits=32)),
-    //     .arg_defaults=ARRAY(FakeAST(Int, .i=0, .precision=32)),
-    //     .ret=Type(AbortType))));
-    // load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
-    // load_global_func(env, gcc_type(ctx, STRING), "range_to_cord", PARAM(t_range, "range"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
-    // gcc_func_t *range_to_cord = Table_str_get(&env->global->funcs, "range_to_cord");
-    // Table_str_set(get_namespace(env, Type(RangeType)), "__cord",
-    //      new(binding_t, .func=range_to_cord, .sym_name="range_to_cord"));
-    // load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
-    // load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
-    // load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
-    // load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
-// };
+struct {const char *symbol, *type; } builtin_functions[] = {
+    {"GC_malloc", "func(size:UInt) @Memory"},
+    {"GC_malloc_atomic", "func(size:UInt) @Memory"},
+    {"GC_realloc", "func(data:?Memory, size:UInt) @Memory"},
+    {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt) @Memory"},
+    {"getenv", "func(name:CString) CString"},
+    // Cord functions:
+    {"CORD_cat", "func(x:Cord, y:Cord)"},
+    {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt64)"},
+    {"CORD_cat_char", "func(x:Cord, c:Char)"},
+    {"CORD_cmp", "func(x:Cord, y:Cord) Int32"},
+    {"CORD_to_const_char_star", "func(x:Cord) CString"},
+    {"CORD_to_char_star", "func(x:Cord) CString"},
+    {"builtin_say", "func(str:Str, end=\"\\n\") Void"},
+    {"builtin_last_err", "func() Str"},
+    {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32) Void"},
+    {"Num_mod", "func(n:Num, divisor:Num) Num"},
+    {"Num32_mod", "func(n:Num32, divisor:Num32) Num32"},
+    {"dlopen", "func(filename:CString, flags:Int32) ?Memory"},
+    {"dlsym", "func(handle:@Memory, symbol:CString) ?Memory"},
+    {"dlclose", "func(handle:@Memory) ?Memory"},
+};
 
 struct {
     sss_type_t sss_type;
@@ -296,124 +204,17 @@ struct {
     }},
 };
 
-#define load_method(env,ns,ename,mname,ret,...) _load_method(env,ns,ename,mname,ret,\
-                 sizeof((sss_arg_t[]){__VA_ARGS__})/sizeof(sss_arg_t),\
-                 (sss_arg_t[]){__VA_ARGS__})
-
-// Load a bunch of global (external) functions
-static void load_global_functions(env_t *env)
+static inline gcc_func_t *load_func(env_t *env, const char *name, sss_type_t *t)
 {
-    gcc_ctx_t *ctx = env->ctx;
-    gcc_type_t *t_str = gcc_get_ptr_type(gcc_get_type(ctx, GCC_T_CHAR)),
-               *t_int = gcc_get_type(ctx, GCC_T_INT),
-               *t_int64 = gcc_get_type(ctx, GCC_T_INT64),
-               *t_u32 = gcc_get_type(ctx, GCC_T_UINT32),
-               *t_double = gcc_get_type(ctx, GCC_T_DOUBLE),
-               *t_void = gcc_get_type(ctx, GCC_T_VOID),
-               *t_void_ptr = gcc_get_type(ctx, GCC_T_VOID_PTR),
-               *t_size = gcc_get_type(ctx, GCC_T_SIZE),
-               *t_bool = gcc_get_type(ctx, GCC_T_BOOL),
-               *t_char = gcc_get_type(ctx, GCC_T_CHAR),
-               *t_file = gcc_get_type(ctx, GCC_T_FILE_PTR),
-               *t_range = sss_type_to_gcc(env, Type(RangeType)),
-               *t_bl_str = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-
-#define PARAM(type, name) gcc_new_param(ctx, NULL, type, name)
-    load_global_func(env, t_void_ptr, "GC_malloc", PARAM(t_size, "size"));
-    load_global_func(env, t_void_ptr, "GC_malloc_atomic", PARAM(t_size, "size"));
-    load_global_func(env, t_void_ptr, "GC_realloc", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"));
-    load_global_func(env, t_void_ptr, "memcpy", PARAM(t_void_ptr, "dest"), PARAM(t_void_ptr, "src"), PARAM(t_size, "size"));
-    load_global_func(env, t_file, "open_memstream", PARAM(gcc_get_ptr_type(t_str), "buf"), PARAM(gcc_get_ptr_type(t_size), "size"));
-    load_global_func(env, t_void, "free", PARAM(t_void_ptr, "ptr"));
-    load_global_func(env, gcc_type(ctx, STRING), "getenv", PARAM(gcc_type(ctx, STRING), "name"));
-    load_global_func(env, t_int, "fwrite", PARAM(t_void_ptr, "data"), PARAM(t_size, "size"), PARAM(t_size, "nmemb"), PARAM(t_file, "file"));
-    load_global_func(env, t_int, "fputs", PARAM(t_str, "str"), PARAM(t_file, "file"));
-    load_global_func(env, t_int, "puts", PARAM(t_str, "str"));
-    load_global_func(env, t_int, "fputc", PARAM(gcc_get_type(ctx, GCC_T_CHAR), "c"), PARAM(t_file, "file"));
-    load_global_var_func(env, t_int, "fprintf", PARAM(t_file, "file"), PARAM(t_str, "format"));
-    load_global_var_func(env, t_int, "printf", PARAM(t_str, "format"));
-    load_global_func(env, t_int, "fflush", PARAM(t_file, "file"));
-    load_global_func(env, t_int, "fclose", PARAM(t_file, "file"));
-    load_global_func(env, t_int, "strcmp", PARAM(t_str, "str1"), PARAM(t_str, "str2"));
-    load_global_func(env, t_size, "strlen", PARAM(t_str, "str"));
-    load_global_func(env, t_str, "heap_str", PARAM(t_str, "str"));
-    load_global_func(env, t_str, "heap_strn", PARAM(t_str, "str"), PARAM(t_size, "length"));
-    load_global_var_func(env, t_str, "heap_strf", PARAM(t_str, "fmt"));
-    // Cord functions:
-    gcc_type_t *cord_t = gcc_get_type(ctx, GCC_T_STRING);
-    load_global_func(env, cord_t, "CORD_cat", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
-    load_global_func(env, cord_t, "CORD_cat_char_star", PARAM(cord_t, "x"), PARAM(t_str, "y"), PARAM(t_size, "leny"));
-    load_global_func(env, cord_t, "CORD_cat_char", PARAM(cord_t, "x"), PARAM(t_char, "c"));
-    load_global_func(env, t_int, "CORD_cmp", PARAM(cord_t, "x"), PARAM(cord_t, "y"));
-    load_global_func(env, cord_t, "CORD_to_const_char_star", PARAM(cord_t, "x"));
-    load_global_func(env, cord_t, "CORD_to_char_star", PARAM(cord_t, "x"));
-    load_global_func(env, t_int, "CORD_put", PARAM(cord_t, "x"), PARAM(gcc_get_type(ctx, GCC_T_FILE_PTR), "f"));
-    load_global_var_func(env, t_int, "CORD_sprintf", PARAM(gcc_get_ptr_type(cord_t), "out"), PARAM(cord_t, "format"));
-    load_global_var_func(env, t_int, "CORD_fprintf", PARAM(t_file, "out"), PARAM(cord_t, "format"));
-
-    load_global_var_func(env, t_void, "fail", PARAM(t_str, "message"));
-    load_global_var_func(env, t_void, "sss_doctest", PARAM(t_str, "label"), PARAM(cord_t, "expr"), PARAM(t_str, "type"),
-                         PARAM(t_bool, "use_color"), PARAM(t_str, "expected"), PARAM(t_str, "filename"), PARAM(t_int, "start"),
-                         PARAM(t_int, "end"));
-    load_global_var_func(env, t_void, "exit", PARAM(gcc_get_type(ctx, GCC_T_INT), "status"));
-    gcc_func_t *exit_fn = Table_str_get(&env->global->funcs, "exit");
-    Table_str_set(&env->global->bindings, "exit", new(binding_t, .func=exit_fn, .sym_name="exit", .visible_in_closures=true, .type=Type(
-        FunctionType,
-        .arg_names=ARRAY((const char*)"status"),
-        .arg_types=ARRAY(Type(IntType, .bits=32)),
-        .arg_defaults=ARRAY(FakeAST(Int, .i=0, .precision=32)),
-        .ret=Type(AbortType))));
-    load_global_func(env, t_double, "sane_fmod", PARAM(t_double, "num"), PARAM(t_double, "modulus"));
-    load_global_func(env, gcc_type(ctx, STRING), "range_to_cord", PARAM(t_range, "range"), PARAM(t_void_ptr, "stack"), PARAM(t_bool, "color"));
-    gcc_func_t *range_to_cord = Table_str_get(&env->global->funcs, "range_to_cord");
-    Table_str_set(get_namespace(env, Type(RangeType)), "__cord",
-         new(binding_t, .func=range_to_cord, .sym_name="range_to_cord"));
-    load_global_func(env, t_bl_str, "range_slice", PARAM(t_bl_str, "array"), PARAM(t_range, "range"), PARAM(t_size, "item_size"));
-    load_global_func(env, t_void_ptr, "dlopen", PARAM(t_str, "filename"), PARAM(t_int, "flags"));
-    load_global_func(env, t_void_ptr, "dlsym", PARAM(t_void_ptr, "handle"), PARAM(t_str, "symbol"));
-    load_global_func(env, t_int, "dlclose", PARAM(t_void_ptr, "handle"));
-    load_global_func(env, t_void, "array_cow", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_flatten", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_insert", PARAM(t_void_ptr, "array"),
-                     PARAM(t_void_ptr, "item"),
-                     PARAM(t_int64, "index"),
-                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_insert_all", PARAM(t_void_ptr, "array"),
-                     PARAM(t_void_ptr, "other"),
-                     PARAM(t_int64, "index"),
-                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_remove", PARAM(t_void_ptr, "array"),
-                     PARAM(t_int64, "index"),
-                     PARAM(t_int64, "count"),
-                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_sort", PARAM(t_void_ptr, "array"),
-                     PARAM(t_void_ptr, "compare"),
-                     PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_void, "array_shuffle", PARAM(t_void_ptr, "array"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-    load_global_func(env, t_bl_str, "array_join", PARAM(t_void_ptr, "array"), PARAM(t_void_ptr, "glue"), PARAM(t_size, "item_size"), PARAM(t_bool, "atomic"));
-
-    // int halfsiphash(const void *in, const size_t inlen, const void *k, void *out, const size_t outlen);
-    load_global_func(env, t_int, "halfsiphash", PARAM(t_void_ptr, "in"), PARAM(t_size, "inlen"), PARAM(t_void_ptr, "k"),
-                     PARAM(t_void_ptr, "out"), PARAM(t_size, "outlen"));
-
-    load_global_func(env, t_void_ptr, "sss_hashmap_get", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"), PARAM(t_size, "value_offset"));
-    load_global_func(env, t_void_ptr, "sss_hashmap_get_raw", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"), PARAM(t_size, "value_offset"));
-    load_global_func(env, t_void_ptr, "sss_hashmap_set", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"),
-                     PARAM(t_size, "value_offset"), PARAM(t_void_ptr, "value"));
-    load_global_func(env, t_void, "sss_hashmap_remove", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_cmp"), PARAM(t_size, "entry_size"), PARAM(t_void_ptr, "key"));
-    load_global_func(env, t_u32, "sss_hashmap_hash", PARAM(t_void_ptr, "table"), PARAM(t_void_ptr, "entry_hash"), PARAM(t_size, "entry_size"));
-    load_global_func(env, t_u32, "sss_hashmap_len", PARAM(t_void_ptr, "table"));
-    load_global_func(env, t_void, "sss_hashmap_mark_cow", PARAM(t_void_ptr, "table"));
-    load_global_func(env, t_int, "sss_hashmap_compare", PARAM(t_void_ptr, "table1"), PARAM(t_void_ptr, "table2"), PARAM(t_void_ptr, "key_hash"),
-                     PARAM(t_void_ptr, "key_compare"), PARAM(t_void_ptr, "value_compare"),
-                     PARAM(t_size, "entry_size"), PARAM(t_size, "value_offset"));
-    load_global_func(env, t_u32, "hash_64bits", PARAM(t_void_ptr, "ptr"));
-    load_global_func(env, t_u32, "compare_64bits", PARAM(t_void_ptr, "a"), PARAM(t_void_ptr, "b"));
-#undef PARAM
+    auto params = EMPTY_ARRAY(gcc_param_t*);
+    auto fn = Match(t, FunctionType);
+    for (size_t i = 0; i < LENGTH(fn->arg_types); i++) {
+        gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
+        const char *arg_name = ith(fn->arg_names, i);
+        append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
+    }
+    gcc_type_t *t_ret = sss_type_to_gcc(env, fn->ret);
+    return gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, LENGTH(params), params[0], 0);
 }
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls)
@@ -430,8 +231,6 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     );
     env->bindings->fallback = env->file_bindings;
 
-    load_global_functions(env);
-
     gcc_type_t *type_gcc_type = sss_type_to_gcc(env, Type(TypeType));
     for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
@@ -445,13 +244,23 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
             auto member = builtin_types[i].bindings[j];
             ast_t *type_ast = parse_type(sss_spoof_file("<builtins>", member.type), NULL);
             sss_type_t *member_type = parse_type_ast(env, type_ast);
-            gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
-            // if (member_type->tag == FunctionType) {
-            // } else {
-            gcc_lvalue_t *lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, member_gcc_type, member.symbol);
-            set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .rval=gcc_rval(lval)));
-            // }
+            if (member_type->tag == FunctionType) {
+                gcc_func_t *func = load_func(env, member.symbol, member_type);
+                set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .func=func, .rval=gcc_get_func_address(func, NULL)));
+            } else {
+                gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
+                gcc_lvalue_t *lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, member_gcc_type, member.symbol);
+                set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .rval=gcc_rval(lval)));
+            }
         }
+    }
+
+    for (size_t i = 0; i < sizeof(builtin_functions)/sizeof(builtin_functions[0]); i++) {
+        auto fn = builtin_functions[i];
+        ast_t *type_ast = parse_type(sss_spoof_file("<builtins>", fn.type), NULL);
+        sss_type_t *fn_type = parse_type_ast(env, type_ast);
+        gcc_func_t *func = load_func(env, fn.symbol, fn_type);
+        Table_str_set(&env->global->funcs, fn.symbol, func);
     }
 
     return env;
