@@ -129,6 +129,7 @@ static int Str_hash(const Str_t *s, const Type *type)
     return hash;
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__uppercased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
@@ -137,6 +138,7 @@ Str_t Str__uppercased(const Str_t s)
     return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__lowercased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
@@ -145,6 +147,7 @@ Str_t Str__lowercased(const Str_t s)
     return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__capitalized(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
@@ -163,6 +166,7 @@ Str_t Str__capitalized(const Str_t s)
     return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__titlecased(const Str_t s)
 {
     char *s2 = GC_MALLOC_ATOMIC(s.length + 1);
@@ -183,6 +187,7 @@ Str_t Str__titlecased(const Str_t s)
     return (Str_t){.data=s2, .length=s.length, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 bool Str__starts_with(const Str_t s, const Str_t prefix)
 {
     if (s.length < prefix.length) return false;
@@ -193,6 +198,7 @@ bool Str__starts_with(const Str_t s, const Str_t prefix)
     return true;
 }
 
+__attribute__ ((visibility ("default")))
 bool Str__ends_with(const Str_t s, const Str_t suffix)
 {
     if (s.length < suffix.length) return false;
@@ -203,6 +209,7 @@ bool Str__ends_with(const Str_t s, const Str_t suffix)
     return true;
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__without_prefix(const Str_t s, const Str_t prefix)
 {
     if (s.length < prefix.length) return s;
@@ -218,6 +225,7 @@ Str_t Str__without_prefix(const Str_t s, const Str_t prefix)
     };
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__without_suffix(const Str_t s, const Str_t suffix)
 {
     if (s.length < suffix.length) return s;
@@ -233,6 +241,7 @@ Str_t Str__without_suffix(const Str_t s, const Str_t suffix)
     };
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__trimmed(const Str_t s, const Str_t trim_chars, bool trim_left, bool trim_right)
 {
     unsigned long length = s.length;
@@ -264,6 +273,7 @@ Str_t Str__trimmed(const Str_t s, const Str_t trim_chars, bool trim_left, bool t
     return (Str_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__slice(const Str_t s, int64_t _first, int64_t _stride, int64_t length)
 {
     if (_stride > INT16_MAX || _stride < INT16_MIN)
@@ -275,6 +285,7 @@ Str_t Str__slice(const Str_t s, int64_t _first, int64_t _stride, int64_t length)
     return (Str_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
 }
 
+__attribute__ ((visibility ("default")))
 const char *Str__c_string(const Str_t str)
 {
     if (str.length == 0)
@@ -293,6 +304,7 @@ const char *Str__c_string(const Str_t str)
     return buf;
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__from_c_string(const char *str)
 {
     size_t length = str ? strlen(str) : 0;
@@ -303,6 +315,7 @@ Str_t Str__from_c_string(const char *str)
     return (Str_t){.data=buf, .length=length, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 find_result_t Str__find(const Str_t str, const Str_t pat)
 {
     if (str.length < pat.length) return (find_result_t){.success=0};
@@ -355,6 +368,7 @@ find_result_t Str__find(const Str_t str, const Str_t pat)
     // return 0;
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__replace(Str_t text, Str_t pat, Str_t replacement, int64_t limit)
 {
     text = compacted(text);
@@ -382,6 +396,7 @@ Str_t Str__replace(Str_t text, Str_t pat, Str_t replacement, int64_t limit)
     return (Str_t){.data=str, .length=size, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__quoted(const Str_t text, const char *dsl, bool colorize)
 {
     char *buf;
@@ -421,6 +436,7 @@ Str_t Str__quoted(const Str_t text, const char *dsl, bool colorize)
     return (Str_t){.data=str, .length=size, .stride=1};
 }
 
+__attribute__ ((visibility ("default")))
 Str_Array_t Str__split(const Str_t str, const Str_t split_chars)
 {
     if (str.length == 0) return (Str_Array_t){.stride=sizeof(Str_t)};
@@ -447,6 +463,7 @@ Str_Array_t Str__split(const Str_t str, const Str_t split_chars)
     return strings;
 }
 
+__attribute__ ((visibility ("default")))
 Str_t Str__join(Str_t glue, Str_Array_t pieces)
 {
     if (pieces.length == 0) return (Str_t){.stride=1};
@@ -470,7 +487,7 @@ Str_t Str__join(Str_t glue, Str_Array_t pieces)
     return (Str_t){.data=data, .length=length, .stride=1};
 }
 
-
+__attribute__ ((visibility ("default")))
 Type Str_type = {
     .name="Str",
     .size=sizeof(Str_t),
@@ -506,6 +523,7 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
     return strcmp(*x, *y);
 }
 
+__attribute__ ((visibility ("default")))
 Type CString_type = {
     .name="CString",
     .size=sizeof(char*),
@@ -517,7 +535,6 @@ Type CString_type = {
         .compare=(void*)CString_compare,
     },
 };
-
 
 static CORD Cord_cord(const CORD *c, bool colorize, const Type *type)
 {
@@ -537,6 +554,7 @@ static uint32_t Cord_compare(const char **x, const char **y, const Type *type)
     return CORD_cmp(*x, *y);
 }
 
+__attribute__ ((visibility ("default")))
 Type Cord_type = {
     .name="Cord",
     .size=sizeof(CORD),

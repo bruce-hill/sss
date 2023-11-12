@@ -11,6 +11,7 @@
 #include "functions.h"
 #include "string.h"
 
+__attribute__ ((visibility ("default")))
 void builtin_say(Str_t str, Str_t end)
 {
     if (str.stride == 1) {
@@ -28,6 +29,7 @@ void builtin_say(Str_t str, Str_t end)
     }
 }
 
+__attribute__ ((visibility ("default")))
 void builtin_warn(Str_t str, Str_t end, bool colorize)
 {
     if (colorize) write(STDERR_FILENO, "\x1b[33m", 5);
@@ -47,6 +49,7 @@ void builtin_warn(Str_t str, Str_t end, bool colorize)
     if (colorize) write(STDERR_FILENO, "\x1b[m", 3);
 }
 
+__attribute__ ((visibility ("default")))
 void builtin_fail(const char *fmt, ...)
 {
     va_list args;
@@ -56,6 +59,7 @@ void builtin_fail(const char *fmt, ...)
     raise(SIGABRT);
 }
 
+__attribute__ ((visibility ("default")))
 void builtin_fail_array(Str_t fmt, ...)
 {
     char buf[fmt.length+1];
@@ -70,6 +74,7 @@ void builtin_fail_array(Str_t fmt, ...)
     raise(SIGABRT);
 }
 
+__attribute__ ((visibility ("default")))
 Str_t builtin_last_err()
 {
     const char *str = strerror(errno);
@@ -97,6 +102,7 @@ static inline char *without_colors(const char *str)
     return buf;
 }
 
+__attribute__ ((visibility ("default")))
 void builtin_doctest(const char *label, CORD expr, const char *type, bool use_color, const char *expected, const char *filename, int start, int end)
 {
     static sss_file_t *file = NULL;
@@ -122,7 +128,6 @@ void builtin_doctest(const char *label, CORD expr, const char *type, bool use_co
         }
     }
 }
-
 
 // // Conversion functions:
 // typedef struct {

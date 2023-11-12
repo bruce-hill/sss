@@ -23,6 +23,7 @@ static CORD Bool_cord(const bool *b, bool colorize, const Type *type)
         return *b ? "yes" : "no";
 }
 
+__attribute__ ((visibility ("default")))
 Type Bool_type = {
     .name="Bool",
     .size=sizeof(bool),

@@ -51,6 +51,7 @@ static int32_t Range_compare(range_t *x, range_t *y)
     return (x->stride > y->stride) - (x->stride < y->stride);
 }
 
+__attribute__ ((visibility ("default")))
 Type Range_type = {
     .name="Range",
     .size=sizeof(range_t),

@@ -45,9 +45,6 @@ int32_t generic_compare(const void *x, const void *y, const Type *type);
 bool generic_equal(const void *x, const void *y, const Type *type);
 CORD generic_cord(const void *obj, bool colorize, const Type *type);
 
-uint32_t hash_data(const void *obj, const Type *type);
-int32_t compare_data(const void *x, const void *y, const Type *type);
-bool equal_data(const void *x, const void *y, const Type *type);
 Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn);
 Type *make_named_type(const char *name, Type *t);
 Type *make_pointer_type(const char *sigil, Type *t);

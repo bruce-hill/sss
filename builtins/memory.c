@@ -21,6 +21,7 @@ static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
     return cord;
 }
 
+__attribute__ ((visibility ("default")))
 Type Memory_type = {
     .name="Memory",
     .size=0,

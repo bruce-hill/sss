@@ -46,7 +46,7 @@ static CORD Char_cord(const char *c, bool colorize, const Type *type) {
 // For some reason, the C functions from ctypes.h return integers instead of
 // booleans, and what's worse, the integers are not limited to [0-1]. So,
 // it's necessary to cast them to bools to clamp them to those values.
-#define BOOLIFY(fn) bool Char__ ## fn(char c) { return (bool)fn(c); }
+#define BOOLIFY(fn) __attribute__ ((visibility ("default"))) bool Char__ ## fn(char c) { return (bool)fn(c); }
 BOOLIFY(isalnum)
 BOOLIFY(isalpha)
 BOOLIFY(iscntrl)
@@ -62,16 +62,14 @@ BOOLIFY(isascii)
 BOOLIFY(isblank)
 
 typedef bool (*char_pred_t)(char);
+
+__attribute__ ((visibility ("default")))
 Type Char_type = {
     .name="Char",
     .size=sizeof(char),
     .align=alignof(char),
     .tag=VTableInfo,
     .VTableInfo={.cord=(void*)Char_cord},
-    // .bindings=STATIC_ARRAY((void*)
-    //     toupper, tolower, Char_isalnum, Char_isalpha, Char_iscntrl, Char_isdigit, Char_isgraph, Char_islower,
-    //     Char_isprint, Char_ispunct, Char_isspace, Char_isupper, Char_isxdigit, Char_isascii, Char_isblank,
-    // ),
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

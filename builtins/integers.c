@@ -16,6 +16,7 @@ extern const void *SSS_HASH_VECTOR;
 #define str(a) #a
 
 #define DEFINE_INT_TYPE(c_type, KindOfInt, fmt, min_val, max_val)\
+    __attribute__ ((visibility ("default"))) \
     CORD KindOfInt ## __cord(const c_type *i, bool colorize, const Type *type) { \
         (void)type; \
         CORD c; \
@@ -23,12 +24,14 @@ extern const void *SSS_HASH_VECTOR;
         if (colorize) CORD_sprintf(&c, "\x1b[35m%r\x1b[m", c); \
         return c; \
     } \
+    __attribute__ ((visibility ("default"))) \
     Str_t KindOfInt ## __format(c_type i, int64_t digits) { \
         int len = snprintf(NULL, 0, "%0*" fmt, (int)digits, i); \
         char *str = GC_MALLOC_ATOMIC(len + 1); \
         snprintf(str, len+1, "%0*" fmt, (int)digits, i); \
         return (Str_t){.data=str, .length=len, .stride=1}; \
     } \
+    __attribute__ ((visibility ("default"))) \
     Str_t KindOfInt ## __hex(c_type i, int64_t digits, bool uppercase, bool prefix) { \
         const char *hex_fmt = uppercase ? (prefix ? "0x%0.*lX" : "%0.*lX") : (prefix ? "0x%0.*lx" : "%0.*lx"); \
         int len = snprintf(NULL, 0, hex_fmt, (int)digits, (uint64_t)i); \
@@ -36,6 +39,7 @@ extern const void *SSS_HASH_VECTOR;
         snprintf(str, len+1, hex_fmt, (int)digits, (uint64_t)i); \
         return (Str_t){.data=str, .length=len, .stride=1}; \
     } \
+    __attribute__ ((visibility ("default"))) \
     Str_t KindOfInt ## __octal(c_type i, int64_t digits, bool prefix) { \
         const char *octal_fmt = prefix ? "0o%0.*lo" : "%0.*lo"; \
         int len = snprintf(NULL, 0, octal_fmt, (int)digits, (uint64_t)i); \
@@ -43,11 +47,14 @@ extern const void *SSS_HASH_VECTOR;
         snprintf(str, len+1, octal_fmt, (int)digits, (uint64_t)i); \
         return (Str_t){.data=str, .length=len, .stride=1}; \
     } \
+    __attribute__ ((visibility ("default"))) \
     c_type KindOfInt ## __random(c_type min, c_type max) { \
         uint32_t r = arc4random_uniform((uint32_t)(max - min)); \
         return min + (c_type)r; \
     } \
+    __attribute__ ((visibility ("default"))) \
     c_type KindOfInt##__min = min_val, KindOfInt##__max = max_val; \
+    __attribute__ ((visibility ("default"))) \
     Type KindOfInt##_type = { \
         .name=#KindOfInt, \
         .size=sizeof(c_type), \

@@ -71,6 +71,7 @@ static void maybe_copy_on_write(table_t *t, cow_e which_cow, const Type *type)
     }
 }
 
+__attribute__ ((visibility ("default")))
 void Table_mark_copy_on_write(table_t *t)
 {
     t->entries.copy_on_write = 1;
@@ -78,6 +79,7 @@ void Table_mark_copy_on_write(table_t *t)
 }
 
 // Return address of value or NULL
+__attribute__ ((visibility ("default")))
 void *Table_get_raw(const table_t *t, const void *key, const Type *type)
 {
     if (!t || !key || !t->bucket_info) return NULL;
@@ -99,6 +101,7 @@ void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     return NULL;
 }
 
+__attribute__ ((visibility ("default")))
 void *Table_get(const table_t *t, const void *key, const Type *type)
 {
     for (const table_t *iter = t; iter; iter = iter->fallback) {
@@ -186,6 +189,7 @@ static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type
 }
 
 // Return address of value
+__attribute__ ((visibility ("default")))
 void *Table_set(table_t *t, const void *key, const void *value, const Type *type)
 {
     if (!t || !key) return NULL;
@@ -242,6 +246,7 @@ void *Table_set(table_t *t, const void *key, const void *value, const Type *type
     return entry + VALUE_OFFSET;
 }
 
+__attribute__ ((visibility ("default")))
 void Table_remove(table_t *t, const void *key, const Type *type)
 {
     if (!t || Table_length(t) == 0) return;
@@ -325,6 +330,7 @@ void Table_remove(table_t *t, const void *key, const Type *type)
     hshow(t);
 }
 
+__attribute__ ((visibility ("default")))
 void *Table_entry(const table_t *t, uint32_t n, const Type *type)
 {
     if (n < 1 || n > Table_length(t))
@@ -332,11 +338,13 @@ void *Table_entry(const table_t *t, uint32_t n, const Type *type)
     return GET_ENTRY(t, n-1);
 }
 
+__attribute__ ((visibility ("default")))
 void Table_clear(table_t *t)
 {
     memset(t, 0, sizeof(table_t));
 }
 
+__attribute__ ((visibility ("default")))
 bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 {
     if (Table_length(x) != Table_length(y))
@@ -369,6 +377,7 @@ bool Table_equal(const table_t *x, const table_t *y, const Type *type)
     return true;
 }
 
+__attribute__ ((visibility ("default")))
 int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
 {
     auto table = type->TableInfo;
@@ -390,6 +399,7 @@ int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
     return 0;
 }
 
+__attribute__ ((visibility ("default")))
 uint32_t Table_hash(const table_t *t, const Type *type)
 {
     // Table hashes are computed as:
@@ -423,6 +433,7 @@ uint32_t Table_hash(const table_t *t, const Type *type)
     return hash;
 }
 
+__attribute__ ((visibility ("default")))
 CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
     auto table = type->TableInfo;
@@ -451,6 +462,7 @@ CORD Table_cord(const table_t *t, bool colorize, const Type *type)
     return c;
 }
 
+__attribute__ ((visibility ("default")))
 table_t Table_from_entries(array_t entries, const Type *type)
 {
     table_t t = {.entries=entries};
@@ -465,6 +477,7 @@ table_t Table_from_entries(array_t entries, const Type *type)
 //     (void*) Table_from_entries, Table_get, Table_get_raw, Table_entry, Table_set,
 //     Table_remove, Table_equals, Table_clear);
 
+__attribute__ ((visibility ("default")))
 Type *make_table_type(Type *key, Type *value)
 {
     size_t entry_size = key->size;
