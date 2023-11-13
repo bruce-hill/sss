@@ -101,9 +101,6 @@ gcc_type_t *get_type_gcc_type(env_t *env)
 
 gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
 {
-    if (t->tag == VariantType)
-        return get_type_lvalue(env, Match(t, VariantType)->variant_of);
-
     const char *key = type_to_string_concise(t);
     gcc_lvalue_t *lval = Table_str_get(&env->global->type_lvals, key);
     if (lval) return lval;
@@ -127,6 +124,11 @@ gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
 
 void initialize_type_lvalue(env_t *env, sss_type_t *t)
 {
+    static table_t initialized = {0};
+    if (Table_str_get(&initialized, type_to_string_concise(t)))
+        return;
+    Table_str_set(&initialized, type_to_string_concise(t), t);
+
     gcc_lvalue_t *lval = get_type_lvalue(env, t);
 #define TAG_RVAL 3
 #define INFO_RVAL 4
@@ -144,6 +146,10 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
             gcc_struct_constructor( \
                 env->ctx, NULL, info_type, sizeof((gcc_rvalue_t*[]){__VA_ARGS__})/sizeof(gcc_rvalue_t*), fields, \
                 (gcc_rvalue_t*[]){__VA_ARGS__})); } while (0)
+
+    // From here out, all the initialization of variants is the same as the underlying type
+    while (t->tag == VariantType)
+        t = Match(t, VariantType)->variant_of;
 
     switch (t->tag) {
     case ArrayType: {
@@ -214,9 +220,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
         );
         break;
     }
-    case VariantType: {
-        return;
-    }
+    case VariantType:
     case FunctionType:
     default: {
         compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);
