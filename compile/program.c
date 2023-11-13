@@ -61,7 +61,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_func_t *getenv_fn = Table_str_get(&env->global->funcs, "getenv");
     gcc_rvalue_t *use_color_env_flag = gcc_comparison(
         ctx, NULL, GCC_COMPARISON_EQ, gcc_callx(ctx, NULL, getenv_fn, gcc_str(ctx, "NO_COLOR")),
-        gcc_null(ctx, gcc_get_ptr_type(gcc_type(env->ctx, CHAR))));
+        gcc_null(ctx, gcc_type(env->ctx, STRING)));
     gcc_func_t *isatty_func = gcc_new_func(
         ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, BOOL), "isatty", 1, (gcc_param_t*[]){
             gcc_new_param(ctx, NULL, gcc_type(ctx, INT), "fd"),
