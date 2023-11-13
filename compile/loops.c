@@ -154,7 +154,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_DATA_FIELD)));
 
         // len = array->len
-        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
+        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT64), "_len");
         gcc_assign(*block, NULL, len,
                    gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)));
 
