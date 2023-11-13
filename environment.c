@@ -215,7 +215,7 @@ struct {
         {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str)->Str"},
         {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str)->Str"},
         {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
-        {"Str__slice", "slice", "func(s:Str, first=1, stride=1, length=Int.max)->Str"},
+        {"Array__slice", "slice", "func(s:&Str, range:Range, readonly=no, _type=typeof(s))->Str"},
         {"Str__c_string", "c_string", "func(s:Str)->CString"},
         {"Str__from_c_string", "from_c_string", "func(c:CString)->Str"},
         {"Str__find", "find", "func(s:Str, target:Str)->Str"},
@@ -495,7 +495,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "contains", "Array_contains",
                         heap_strf("func(array:%T, item:&(read-only)%T)->Bool", t, item_t));
             load_method(env, ns, "slice", "Array_slice",
-                        heap_strf("func(array:%T, range:Range, _type=typeof(array))->Bool", t));
+                        heap_strf("func(array:&%T, range:Range, readonly=no, _type=typeof(array))->Bool", t));
         }
     }
     return ns;

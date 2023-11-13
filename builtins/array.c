@@ -166,7 +166,7 @@ public void Array_shuffle(array_t *arr, size_t item_size)
     }
 }
 
-public array_t Array_slice(array_t array, range_t range, const Type *type)
+public array_t Array_slice(array_t *array, range_t range, bool readonly, const Type *type)
 {
     Type *item = type->ArrayInfo.item;
     size_t item_size = item->size;
@@ -178,46 +178,51 @@ public array_t Array_slice(array_t array, range_t range, const Type *type)
 
     if (range.stride == 0) {
         // Zero stride
-        return (array_t){.atomic=array.atomic};
+        return (array_t){.atomic=array->atomic};
     } else if (range.stride < 0) {
-        if (range.first == INT64_MIN) range.first = array.length;
+        if (range.first == INT64_MIN) range.first = array->length;
         if (range.last == INT64_MAX) range.last = 1;
-        if (range.first > array.length) {
+        if (range.first > array->length) {
             // Range starting after array
             int64_t residual = range.first % -range.stride;
-            range.first = array.length - (array.length % -range.stride) + residual;
+            range.first = array->length - (array->length % -range.stride) + residual;
         }
-        if (range.first > array.length) range.first += range.stride;
+        if (range.first > array->length) range.first += range.stride;
         if (range.first < 1) {
             // Range outside array
-            return (array_t){.atomic=array.atomic};
+            return (array_t){.atomic=array->atomic};
         }
     } else {
         if (range.first == INT64_MIN) range.first = 1;
-        if (range.last == INT64_MAX) range.last = array.length;
+        if (range.last == INT64_MAX) range.last = array->length;
         if (range.first < 1) {
             // Range starting before array
             range.first = range.first % range.stride;
         }
         while (range.first < 1) range.first += range.stride;
-        if (range.first > array.length) {
+        if (range.first > array->length) {
             // Range outside array
-            return (array_t){.atomic=array.atomic};
+            return (array_t){.atomic=array->atomic};
         }
     }
 
     int64_t len = (range.last - range.first) / range.stride + 1;
     // If less than zero, set to zero (without a conditional branch)
     len = len & ~(len >> 63);
-    if (len > array.length/labs(range.stride) + 1) len = array.length/labs(range.stride) + 1;
+    if (len > array->length/labs(range.stride) + 1) len = array->length/labs(range.stride) + 1;
     if (len < 0) len = -len;
 
+    // Sometimes, we want to create a readonly slice (e.g. during iteration)
+    // and we don't actually need to set the COW flag because the slice will
+    // never do modifictions
+    array->copy_on_write = !readonly;
+
     return (array_t){
-        .atomic=array.atomic,
-        .data=array.data + item_size*(range.first-1),
+        .atomic=array->atomic,
+        .data=array->data + item_size*(range.first-1),
         .length=len,
-        .stride=(array.stride * range.stride),
-        .copy_on_write=1,
+        .stride=(array->stride * range.stride),
+        .copy_on_write=1, // slice is always copy-on-write
     };
 }
 

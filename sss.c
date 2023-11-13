@@ -113,7 +113,7 @@ int run_repl(gcc_jit_context *ctx)
     }
 
     // Set up `PROGRAM_NAME`
-    sss_type_t *string_t = Type(ArrayType, .item_type=Type(CharType));
+    sss_type_t *string_t = get_type_by_name(env, "Str");
     gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
     Table_str_set(&env->global->bindings, "PROGRAM_NAME",
          new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));

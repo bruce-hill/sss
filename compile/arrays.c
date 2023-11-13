@@ -82,10 +82,10 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
 
 gcc_lvalue_t *array_cow_field(env_t *env, gcc_rvalue_t *arr_ptr)
 {
-    sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
-    gcc_type_t *str_gcc_t = sss_type_to_gcc(env, str_t);
-    gcc_struct_t *array_struct = gcc_type_as_struct(str_gcc_t);
-    return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(str_gcc_t)), NULL,
+    sss_type_t *t = Type(ArrayType, .item_type=Type(CharType)); // Arbitrary array type
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+    gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
+    return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(gcc_t)), NULL,
                                         gcc_get_field(array_struct, ARRAY_COW_FIELD));
 }
 
@@ -120,7 +120,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     sss_type_t *arr_t = get_type(env, arr_ast);
 
     gcc_func_t *func = gcc_block_func(*block);
-    gcc_lvalue_t *arr_var;
+    gcc_lvalue_t *arr_var = NULL;
     if (access == ACCESS_WRITE) {
         arr_var = get_lvalue(env, block, arr_ast, true);
         check_cow(env, block, arr_t, gcc_lvalue_address(arr_var, loc));
@@ -131,12 +131,16 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             if (ptr->is_optional)
                 compiler_err(env, arr_ast, "This is an optional pointer, which can't be safely dereferenced.");
 
-            arr = gcc_rval(gcc_rvalue_dereference(arr, NULL));
+            arr_var = gcc_rvalue_dereference(arr, NULL);
+            arr = gcc_rval(arr_var);
             arr_t = ptr->pointed;
         }
-        gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
-        arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
-        gcc_assign(*block, loc, arr_var, arr);
+
+        if (arr_var == NULL) {
+            gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
+            arr_var = gcc_local(func, loc, array_gcc_t, "_sliced");
+            gcc_assign(*block, loc, arr_var, arr);
+        }
         mark_array_cow(env, block, gcc_lvalue_address(arr_var, loc));
     }
     while (arr_t->tag == VariantType)
@@ -212,25 +216,16 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         }
     }
 
-    // If we're not in the optimized case, fall back to the C function:
-    gcc_rvalue_t *index_val = compile_expr(env, block, index);
-    gcc_type_t *str_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
-    gcc_func_t *slice_fn = get_function(env, "range_slice");
-    gcc_lvalue_t *slice_var = gcc_local(func, loc, array_gcc_t, "_slice");
-    gcc_assign(*block, loc, slice_var, gcc_bitcast(
-        env->ctx, loc,
-        gcc_callx(
-            env->ctx, loc, slice_fn,
-            gcc_bitcast(env->ctx, loc, arr, str_gcc_t),
-            index_val,
-            gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_sizeof(env, get_item_type(arr_t)))),
-        array_gcc_t));
-    // Set COW flag:
-    if (env->should_mark_cow) {
-        gcc_assign(*block, loc, gcc_lvalue_access_field(slice_var, loc, gcc_get_field(gcc_array_struct, ARRAY_CAPACITY_FIELD)),
-                   gcc_rvalue_int16(env->ctx, access == ACCESS_READ ? -1 : 0));
-    }
-    return gcc_rval(slice_var);
+    // If we're not in the optimized case, fall back to the array.slice(range, readonly, _type) method
+    binding_t *slice_binding = get_from_namespace(env, arr_t, "slice");
+    assert(slice_binding);
+    gcc_rvalue_t *range_val = compile_expr(env, block, index);
+    return gcc_callx(
+        env->ctx, loc, slice_binding->func,
+        arr,
+        range_val,
+        gcc_rvalue_bool(env->ctx, (access == ACCESS_READ) || !env->should_mark_cow),
+        get_type_pointer(env, arr_t));
 }
 
 gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access)

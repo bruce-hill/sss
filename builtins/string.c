@@ -266,17 +266,6 @@ public Str_t Str__trimmed(const Str_t s, const Str_t trim_chars, bool trim_left,
     return (Str_t){.data=s.data+start*s.stride, .length=length, .stride=s.stride};
 }
 
-public Str_t Str__slice(const Str_t s, int64_t _first, int64_t _stride, int64_t length)
-{
-    if (_stride > INT16_MAX || _stride < INT16_MIN)
-        errx(1, "Invalid string slice stride: %ld", _stride);
-    int16_t stride = (int16_t)_stride;
-    int64_t first = (int64_t)CLAMP(_first-1, 0, (int64_t)s.length-1),
-                  last = (int64_t)CLAMP(_first + length - 1, 0, (int64_t)s.length-1);
-    int64_t slice_len = (last - first)/stride;
-    return (Str_t){.data=&s.data[first*s.stride], .length=slice_len, .stride=stride};
-}
-
 public const char *Str__c_string(const Str_t str)
 {
     if (str.length == 0)

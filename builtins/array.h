@@ -16,7 +16,7 @@ void Array_shuffle(array_t *arr, size_t item_size);
 void Array_clear(array_t *array);
 void Array_compact(array_t *arr, size_t item_size);
 bool Array_contains(array_t array, void *item, const Type *type);
-array_t Array_slice(array_t array, range_t range, const Type *type);
+array_t Array_slice(array_t *array, range_t range, bool readonly, const Type *type);
 uint32_t Array_hash(const array_t *arr, const Type *type);
 int32_t Array_compare(const array_t *x, const array_t *y, const Type *type);
 bool Array_equal(const array_t *x, const array_t *y, const Type *type);
