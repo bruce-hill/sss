@@ -49,7 +49,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
                     gcc_rvalue_t *is_match = gcc_comparison(
                         env->ctx, NULL, GCC_COMPARISON_EQ,
                         gcc_rvalue_access_field(val, loc, gcc_get_field(tagged_struct, 0)),
-                        gcc_rvalue_from_long(env->ctx, get_tag_type(env, t), member->tag_value));
+                        gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), member->tag_value));
                     gcc_jump_condition(*block, loc, is_match, outcomes.match_block, outcomes.no_match_block);
                     *block = NULL;
                     return outcomes;
@@ -152,7 +152,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 
         gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
 
-        gcc_type_t *tag_gcc_t = get_tag_type(env, base_t);
+        gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
         gcc_type_t *union_gcc_t = get_union_type(env, base_t);
         gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
         gcc_field_t *data_field = gcc_get_field(tagged_struct, 1);

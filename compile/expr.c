@@ -1314,7 +1314,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
                             *right_tag = gcc_new_block(func, fresh("right_tag"));
 
-                gcc_type_t *tag_gcc_t = get_tag_type(env, fielded_t);
+                gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
                 gcc_rvalue_t *correct_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);
@@ -1443,7 +1443,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-            gcc_type_t *tag_gcc_t = get_tag_type(env, member_t);
+            gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
             gcc_rvalue_t *member_val = compile_expr(env, block, in->member);
             gcc_rvalue_t *container_val = compile_expr(env, block, in->container);
             ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE,
@@ -1573,7 +1573,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
             gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-            gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+            gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
             int64_t all_tags = 0;
             auto members = Match(base_variant(t), TaggedUnionType)->members;
             for (int64_t i = 0; i < LENGTH(members); i++) {

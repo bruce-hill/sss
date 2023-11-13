@@ -499,20 +499,6 @@ PARSER(parse_struct_type) {
     return NewAST(ctx->file, start, pos, TypeStruct, .members=args);
 }
 
-static unsigned short int get_tag_bits(ARRAY_OF(int64_t) tag_values)
-{
-    unsigned short int bits = 8;
-    foreach (tag_values, val, _) {
-        if (*val > INT32_MAX && bits < 64)
-            bits = 64;
-        else if (*val > INT16_MAX && bits < 32)
-            bits = 32;
-        else if (*val > INT8_MAX && bits < 16)
-            bits = 16;
-    }
-    return bits;
-}
-
 PARSER(parse_func_type) {
     const char *start = pos;
     if (!match_word(&pos, "func")) return NULL;
@@ -2016,7 +2002,6 @@ PARSER(parse_enum_type) {
     int64_t next_value = 0;
 
     whitespace(&pos);
-    unsigned short int tag_bits = 0;
     for (;;) {
         const char *tag_start = pos;
 
@@ -2072,40 +2057,18 @@ PARSER(parse_enum_type) {
       carry_on:
         const char *next_pos = pos;
         whitespace(&next_pos);
-        if (match(&next_pos, ";")) {
-            whitespace(&next_pos);
-            if (match_word(&next_pos, "bits") && (spaces(&next_pos), match(&next_pos, "="))) {
-                whitespace(&next_pos);
-                char *after = NULL;
-                const char *bits_start = next_pos;
-                tag_bits = strtol(next_pos, &after, 10);
-                if (tag_bits != 64 && tag_bits != 32 && tag_bits != 16 && tag_bits != 8)
-                    parser_err(ctx, bits_start, after, "I only support 64, 32, 16, or 8 bits");
-                if (tag_bits < get_tag_bits(tag_values))
-                    parser_err(ctx, bits_start, after, "This isn't enough bits to hold the largest tag value");
-                next_pos = after;
-                whitespace(&next_pos);
-                match(&next_pos, "|");
-                pos = next_pos;
-                break;
-            }
-        } else if (match(&next_pos, "|")) {
-            whitespace(&next_pos);
-        } else {
+        if (!match(&next_pos, "|"))
             break;
-        }
+        whitespace(&next_pos);
         pos = next_pos;
         ++next_value;
     }
-
-    if (tag_bits == 0)
-        tag_bits = get_tag_bits(tag_values);
 
     whitespace(&pos);
     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this enum definition");
 
     return NewAST(ctx->file, start, pos, TypeTaggedUnion, .tag_names=tag_names, .tag_values=tag_values,
-                        .tag_bits=tag_bits, .tag_args=tag_args);
+                  .tag_args=tag_args);
 }
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)

@@ -244,7 +244,6 @@ struct ast_s {
             ARRAY_OF(const char*) tag_names;
             ARRAY_OF(int64_t) tag_values;
             ARRAY_OF(args_t) tag_args;
-            unsigned short int tag_bits;
         } TypeTaggedUnion;
         struct {
             const char *name;

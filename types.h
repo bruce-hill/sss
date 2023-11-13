@@ -78,7 +78,6 @@ struct sss_type_s {
         } StructType;
         struct {
             ARRAY_OF(sss_tagged_union_member_t) members;
-            unsigned short int tag_bits;
         } TaggedUnionType;
         struct {
             const char *path;

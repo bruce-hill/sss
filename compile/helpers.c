@@ -57,7 +57,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
     }
     case TaggedUnionType: {
         auto tagged = Match(sss_t, TaggedUnionType);
-        ssize_t align = tagged->tag_bits/8;
+        ssize_t align = alignof(int32_t);
         foreach (tagged->members, member, _) {
             if (!member->type) continue;
             ssize_t member_align = gcc_alignof(env, member->type);
@@ -109,7 +109,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     }
     case TaggedUnionType: {
         auto tagged = Match(sss_t, TaggedUnionType);
-        ssize_t size = tagged->tag_bits / 8;
+        ssize_t size = sizeof(int32_t);
         ssize_t union_align = size;
         ssize_t union_size = 0;
         foreach (tagged->members, member, _) {
@@ -128,18 +128,6 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     case ModuleType: return 0;
     case VoidType: case MemoryType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
-    }
-}
-
-gcc_type_t *get_tag_type(env_t *env, sss_type_t *t)
-{
-    auto tagged = Match(base_variant(t), TaggedUnionType);
-    switch (tagged->tag_bits) {
-    case 64: return gcc_type(env->ctx, INT64);
-    case 32: return gcc_type(env->ctx, INT32);
-    case 16: return gcc_type(env->ctx, INT16);
-    case 8: return gcc_type(env->ctx, INT8);
-    default: compiler_err(env, NULL, "Unsupported tagged enum size: %d\n", tagged->tag_bits); 
     }
 }
 
@@ -353,7 +341,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         Table_str_set(&cache, t_str, gcc_t);
         Table_str_set(&opaque_structs, t_str, gcc_t);
         gcc_set_fields(gcc_struct, NULL, 2, (gcc_field_t*[]){
-            gcc_new_field(env->ctx, NULL, get_tag_type(env, t), "tag"),
+            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
             gcc_new_field(env->ctx, NULL, get_union_type(env, t), "__data"),
         });
         Table_str_remove(&opaque_structs, t_str);
@@ -692,7 +680,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
                             *right_tag = gcc_new_block(func, fresh("right_tag"));
 
-                gcc_type_t *tag_gcc_t = get_tag_type(env, base_t);
+                gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
                 gcc_rvalue_t *correct_tag = gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value);
                 gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, tag, correct_tag),
                                    wrong_tag, right_tag);

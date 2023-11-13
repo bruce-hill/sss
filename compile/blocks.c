@@ -56,8 +56,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
             t = Type(StructType, .field_names=EMPTY_ARRAY(const char*),
                      .field_types=EMPTY_ARRAY(sss_type_t*), .field_defaults=EMPTY_ARRAY(ast_t*));
         } else if (type_ast->tag == TypeTaggedUnion) {
-            auto tu = Match(type_ast, TypeTaggedUnion);
-            t = Type(TaggedUnionType, .members=EMPTY_ARRAY(sss_tagged_union_member_t), .tag_bits=tu->tag_bits);
+            t = Type(TaggedUnionType, .members=EMPTY_ARRAY(sss_tagged_union_member_t));
         } else {
             t = parse_type_ast(env, type_ast);
         }
@@ -88,7 +87,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
     gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
     gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
     gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-    gcc_type_t *tag_gcc_t = get_tag_type(env, t);
+    gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
     gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
     gcc_type_t *union_gcc_t = get_union_type(env, t);
     for (int64_t i = 0; i < LENGTH(members); i++) {

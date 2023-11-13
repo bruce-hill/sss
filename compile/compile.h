@@ -36,8 +36,6 @@ const char *fresh(const char *name);
 // Data layout information:
 ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t);
 ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t);
-// Get the type of a tag in a tagged union:
-gcc_type_t *get_tag_type(env_t *env, sss_type_t *t);
 // Get the type of a union in a tagged union:
 gcc_type_t *get_union_type(env_t *env, sss_type_t *t);
 // Convert an SSS type to the GCC JIT representation

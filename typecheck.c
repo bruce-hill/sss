@@ -140,7 +140,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             };
             append(members, member);
         }
-        return Type(TaggedUnionType, .tag_bits=tu->tag_bits, .members=members);
+        return Type(TaggedUnionType, .members=members);
     }
     case TypeTypeAST: {
         auto t = Match(ast, TypeTypeAST);

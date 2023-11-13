@@ -200,7 +200,7 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
         gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-        gcc_type_t *tag_gcc_t = get_tag_type(env, lhs_t);
+        gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
         auto members = Match(lhs_t, TaggedUnionType)->members;
         for (int64_t i = 0; i < LENGTH(members); i++) {
             if (ith(members, i).type && LENGTH(Match(ith(members, i).type, StructType)->field_types) > 0)
