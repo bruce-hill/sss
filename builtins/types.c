@@ -245,6 +245,8 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
             offset += member->type->size;
         }
         c = CORD_cat(c, "}");
+        if (strncmp(type->name, "struct(", strlen("struct(")) != 0)
+            CORD_sprintf(&c, colorize ? "\x1b[1m%s\x1b[m%r" : "%s%r", type->name, c);
         return c;
     }
     case TaggedUnionInfo: {
@@ -280,6 +282,9 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
 
         if (colorize)
             c = CORD_cat(c, "\x1b[m");
+
+        if (strncmp(type->name, "enum(", strlen("enum(")) != 0)
+            CORD_sprintf(&c, colorize ? "\x1b[1m%s\x1b[m.%r" : "%s.%r", type->name, c);
 
         return c;
     }
