@@ -28,6 +28,7 @@ typedef struct Type {
             struct {
                 const char *sigil;
                 struct Type *pointed;
+                bool cyclic;
             } PointerInfo;
             struct {
                 struct Type *item;
@@ -36,6 +37,14 @@ typedef struct Type {
                 struct Type *key, *value;
                 size_t entry_size, value_offset;
             } TableInfo;
+            // struct {
+            //     array_t members; // [{name, type}]
+            //     bool is_pure_data;
+            // } StructInfo;
+            // struct {
+            //     array_t members; // [{tag, name, type}]
+            //     bool is_pure_data;
+            // } EnumInfo;
         };
     };
 } Type;

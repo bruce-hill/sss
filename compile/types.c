@@ -92,6 +92,41 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
             lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
             break;
         }
+        case PointerType: {
+            auto ptr = Match(t, PointerType);
+            gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
+            gcc_field_t *fields[] = {
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "name"),
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "size"),
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "align"),
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "sigil"),
+                gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(type_gcc_t), "pointed"),
+                gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "cyclic"),
+            };
+            gcc_struct_t *gcc_struct = gcc_new_struct_type(env->ctx, NULL, "TableType", sizeof(fields)/sizeof(fields[0]), fields);
+
+            CORD sigil = ptr->is_stack ? (ptr->is_optional ? "&(optional)" : "&") : (ptr->is_optional ? "?" : "@");
+            if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
+
+            gcc_rvalue_t *rvalues[] = {
+                gcc_str(env->ctx, key),
+                gcc_rvalue_size(env->ctx, sizeof(table_t)),
+                gcc_rvalue_size(env->ctx, alignof(table_t)),
+                gcc_rvalue_int32(env->ctx, PointerInfo),
+                gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
+                get_type_pointer(env, ptr->pointed),
+                gcc_rvalue_bool(env->ctx, can_have_cycles(t)),
+            };
+
+            gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("PointerType"));
+            gcc_global_set_initializer_rvalue(
+                global,
+                gcc_struct_constructor(env->ctx, NULL, gcc_struct_as_type(gcc_struct), sizeof(fields)/sizeof(fields[0]), fields, rvalues));
+
+            lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
+            break;
+        }
         case FunctionType:
         default: {
             compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);

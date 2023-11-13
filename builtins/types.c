@@ -21,6 +21,7 @@ public uint32_t generic_hash(const void *obj, const Type *type)
         if (type->VTableInfo.hash)
             return type->VTableInfo.hash(obj, type);
         // fallthrough
+    case PointerInfo:
     default: {
         uint32_t hash;
         halfsiphash((void*)obj, type->size, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
@@ -38,6 +39,7 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
         if (type->VTableInfo.compare)
             return type->VTableInfo.compare(x, y, type);
         // fallthrough
+    case PointerInfo:
     default: return (int32_t)memcmp((void*)x, (void*)y, type->size);
     }
 }
@@ -51,6 +53,7 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
         if (type->VTableInfo.equal)
             return type->VTableInfo.equal(x, y, type);
         // fallthrough
+    case PointerInfo:
     default: return (generic_compare(x, y, type) == 0);
     }
 }
@@ -60,13 +63,39 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     switch (type->tag) {
     case PointerInfo: {
         auto ptr_info = type->PointerInfo;
-        void *ptr = *(void**)obj;
+        static Type ptr_type = {.name="@Memory", .size=sizeof(void*), .align=alignof(void*)};
+        static Type int_type = {.name="Int", .size=sizeof(int64_t), .align=alignof(int64_t)};
+        static Type ptr_to_int_type = {
+            .name="{@Memory=>Int}",
+            .size=sizeof(table_t),
+            .align=alignof(table_t),
+            .tag=TableInfo,
+            .TableInfo={.key=&ptr_type, .value=&int_type, .entry_size=16, .value_offset=8},
+        };
+
+        static int64_t zero = 0;
+        static table_t recursion = {.default_value=&zero};
+
         CORD c;
+        if (ptr_info.cyclic) {
+            int64_t *found = Table_set(&recursion, obj, NULL, &ptr_to_int_type);
+            if (*found) {
+                CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
+                return c;
+            } else {
+                *found = 1;
+            }
+        }
+
+        void *ptr = *(void**)obj;
         if (ptr == NULL) {
             CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
         } else {
-            CORD_sprintf(&c, colorize ? "\x1b[34;1m%s%r\x1b[m" : "%s%r",
+            CORD_sprintf(&c, colorize ? "\x1b[34;1m%s\x1b[m%r" : "%s%r",
                          ptr_info.sigil, generic_cord(ptr, colorize, ptr_info.pointed));
+        }
+        if (ptr_info.cyclic) {
+            Table_remove(&recursion, obj, &ptr_to_int_type);
         }
         return c;
     }
