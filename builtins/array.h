@@ -40,6 +40,6 @@ Type *make_array_type(Type *item_type);
 #define ith_addr(arr, i) ((__typeof(arr[0]))(((array_t*)(arr))->data + (i)*((array_t*)(arr))->stride))
 #define ith(arr, i) (*ith_addr(arr,i))
 #define append(arr, obj) Array_insert((array_t*)(arr), (__typeof(obj)[]){obj}, 0, sizeof(obj))
-#define remove(arr, i) Array_remove((array_t*)(arr), i, 1, sizeof(arr[0][0]))
+#define remove(arr, i) Array_remove((array_t*)(arr), (i)+1, 1, sizeof(arr[0][0]))
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
