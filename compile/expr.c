@@ -707,7 +707,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *str_rval = gcc_str(env->ctx, str);
         gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
         gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT16));
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=Type(CharType)));
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, get_type_by_name(env, "Str"));
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
     }
     case Variant: {
@@ -737,7 +737,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 compiler_err(env, *chunk, "This expression doesn't have a value (it has a Void type), so you can't use it in a string."); 
         }
 
-        sss_type_t *string_t = variant_t ? variant_t : Type(ArrayType, .item_type=Type(CharType));
+        sss_type_t *string_t = variant_t ? variant_t : get_type_by_name(env, "Str");
         gcc_type_t *gcc_t = sss_type_to_gcc(env, string_t);
         gcc_type_t *i16_t = gcc_type(env->ctx, INT16);
         gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
@@ -775,12 +775,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             ast_t *interp_value = interp->value;
             sss_type_t *t = get_type(env, interp_value);
-
-            if (variant_t && !type_eq(t, variant_t) && !get_from_namespace(env, variant_t, heap_strf("#convert-from:%s", type_to_string(t)))
-                && get_from_namespace(env, variant_t, heap_strf("#convert-from:%s", type_to_string(Type(ArrayType, .item_type=Type(CharType)))))) {
-                interp_value = WrapAST(interp_value, Interp, interp_value);
-                t = Type(ArrayType, .item_type=Type(CharType));
-            }
 
             gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp");
             gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
