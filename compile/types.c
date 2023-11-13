@@ -167,15 +167,15 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
         gcc_rvalue_t *member_data = gcc_jit_context_new_array_constructor(
             env->ctx, NULL, member_data_gcc_t, num_fields, member_rvals);
 
-        gcc_lvalue_t *fuckass = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, member_data_gcc_t, fresh("StructFields"));
-        gcc_global_set_initializer_rvalue(fuckass, member_data);
+        gcc_lvalue_t *member_data_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, member_data_gcc_t, fresh("StructFields"));
+        gcc_global_set_initializer_rvalue(member_data_lval, member_data);
         gcc_rvalue_t *members = gcc_struct_constructor(
             env->ctx, NULL, members_gcc_t, 3, (gcc_field_t*[]){
                 gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_DATA_FIELD),
                 gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_LENGTH_FIELD),
                 gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_STRIDE_FIELD),
             }, (gcc_rvalue_t*[]){
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(fuckass, NULL), gcc_get_ptr_type(member_gcc_t)),
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(member_data_lval, NULL), gcc_get_ptr_type(member_gcc_t)),
                 gcc_rvalue_int64(env->ctx, num_fields),
                 gcc_rvalue_int16(env->ctx, sizeof(void*) + sizeof(void*)),
             });
