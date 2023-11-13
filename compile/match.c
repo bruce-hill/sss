@@ -192,7 +192,9 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             gcc_assign(*block, loc, pat_var, pattern_val);
 
             is_match = gcc_callx(env->ctx, loc, get_function(env, "generic_equal"),
-                                 gcc_lvalue_address(val_var, loc), gcc_lvalue_address(pat_var, loc), get_type_pointer(env, t));
+                                 gcc_cast(env->ctx, loc, gcc_lvalue_address(val_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                 gcc_cast(env->ctx, loc, gcc_lvalue_address(pat_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                 get_type_pointer(env, t));
         }
 
         gcc_jump_condition(*block, loc, is_match, outcomes.match_block, outcomes.no_match_block);

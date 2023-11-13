@@ -1674,8 +1674,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         switch (ast->tag) {
         case Equal: case NotEqual: {
             gcc_func_t *generic_equal = get_function(env, "generic_equal");
-            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal, gcc_lvalue_address(lhs_var, loc),
-                                             gcc_lvalue_address(lhs_var, loc),
+            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal,
+                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                              get_type_pointer(env, comparison_type));
             if (ast->tag == NotEqual)
                 return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
@@ -1686,8 +1687,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *generic_compare = get_function(env, "generic_compare");
             return gcc_comparison(env->ctx, loc, cmp,
                                   gcc_callx(env->ctx, loc, generic_compare,
-                                            gcc_lvalue_address(lhs_var, loc),
-                                            gcc_lvalue_address(rhs_var, loc),
+                                            gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                            gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                             get_type_pointer(env, comparison_type)),
                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
         }
@@ -2103,8 +2104,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_assign(*block, loc, lhs_cmp_var, lhs_cmp_val);
                 gcc_assign(*block, loc, rhs_cmp_var, rhs_cmp_val);
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
-                                                     gcc_lvalue_address(lhs_cmp_var, loc),
-                                                     gcc_lvalue_address(rhs_cmp_var, loc),
+                                                     gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_cmp_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                                     gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_cmp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      get_type_pointer(env, comparison_t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
@@ -2114,8 +2115,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, lhs_val, rhs_val);
             } else {
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
-                                                     gcc_lvalue_address(lhs, loc),
-                                                     gcc_lvalue_address(rhs, loc),
+                                                     gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs, loc), gcc_type(env->ctx, VOID_PTR)),
+                                                     gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      get_type_pointer(env, t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
