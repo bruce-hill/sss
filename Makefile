@@ -50,7 +50,7 @@ sss: $(OBJFILES) $(BUILTIN_OBJFILES) $(HFILES) $(LIBFILE) sss.c
 %: %.c $(HFILES)
 	$(CC) $(OSFLAGS) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $^
 
-tags: $(CFILES) $(HFILES) sss.c
+tags: $(CFILES) $(BUILTIN_CFILES) $(HFILES) sss.c
 	ctags $^
 
 clean:
