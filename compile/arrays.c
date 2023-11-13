@@ -80,19 +80,19 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     gcc_assign(*block, NULL, item_home, item_val);
 }
 
-gcc_lvalue_t *array_capacity(env_t *env, gcc_rvalue_t *arr_ptr)
+gcc_lvalue_t *array_cow_field(env_t *env, gcc_rvalue_t *arr_ptr)
 {
     sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     gcc_type_t *str_gcc_t = sss_type_to_gcc(env, str_t);
     gcc_struct_t *array_struct = gcc_type_if_struct(str_gcc_t);
     return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(str_gcc_t)), NULL,
-                                        gcc_get_field(array_struct, ARRAY_CAPACITY_FIELD));
+                                        gcc_get_field(array_struct, ARRAY_COW_FIELD));
 }
 
 void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr)
 {
-    gcc_lvalue_t *capacity = array_capacity(env, arr_ptr);
-    gcc_assign(*block, NULL, capacity, gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT16), -1));
+    gcc_lvalue_t *cow_field = array_cow_field(env, arr_ptr);
+    gcc_assign(*block, NULL, cow_field, gcc_rvalue_bool(env->ctx, 1));
 }
 
 void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t *arr)
@@ -101,7 +101,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_func_t *func = gcc_block_func(*block);
     gcc_block_t *needs_cow = gcc_new_block(func, "needs_cow"),
                 *done = gcc_new_block(func, "done_cow");
-    gcc_rvalue_t *should_cow = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(array_capacity(env, arr)), gcc_zero(env->ctx, gcc_type(env->ctx, INT16)));
+    gcc_rvalue_t *should_cow = gcc_rval(array_cow_field(env, arr));
     gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
     *block = needs_cow;
     // Copy array contents:
@@ -305,8 +305,8 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
             field_addr,
             len,
             gcc_rvalue_uint8(env->ctx, 0), // capacity
-            gcc_rvalue_uint8(env->ctx, (access == ACCESS_READ)), // copy on write
-            gcc_rvalue_uint8(env->ctx, !has_heap_memory(item_t)), // atomic
+            gcc_rvalue_bool(env->ctx, (access == ACCESS_READ)), // copy on write
+            gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)), // atomic
             stride,
         };
 

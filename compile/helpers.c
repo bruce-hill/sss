@@ -279,8 +279,8 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
                 [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
               [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
             [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
-                 [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "copy_on_write"),
-              [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "atomic"),
+                 [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "copy_on_write"),
+              [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "atomic"),
               [ARRAY_STRIDE_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT16), 16, "stride"),
         };
         gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);

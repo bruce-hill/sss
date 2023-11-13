@@ -698,8 +698,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                           str_rval, \
                                           gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT64)), \
                                           gcc_rvalue_uint8(env->ctx, 0), \
-                                          gcc_rvalue_uint8(env->ctx, 0), \
-                                          gcc_rvalue_uint8(env->ctx, 1), \
+                                          gcc_rvalue_bool(env->ctx, 0), \
+                                          gcc_rvalue_bool(env->ctx, 1), \
                                           gcc_cast(env->ctx, loc, stride_rval, gcc_type(env->ctx, INT16)), \
                                       })
     case StringLiteral: {
@@ -1289,6 +1289,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
                 // TODO: Mark COW
                 return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_ENTRIES_FIELD));
+            } else if (streq(access->field, "keys")) {
+                return compile_expr(
+                    env, block, WrapAST(ast, FieldAccess,
+                                        .fielded=WrapAST(access->fielded, FieldAccess, .fielded=access->fielded, .field="entries"),
+                                        .field="key"));
+            } else if (streq(access->field, "values")) {
+                return compile_expr(
+                    env, block, WrapAST(ast, FieldAccess,
+                                        .fielded=WrapAST(access->fielded, FieldAccess, .fielded=access->fielded, .field="entries"),
+                                        .field="value"));
             }
             break;
         }
