@@ -140,7 +140,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
 
 #define SET_INFO(tag, info_type, fields, ...) do { type_rvalues[TAG_RVAL] = gcc_rvalue_int32(env->ctx, tag); \
             type_rvalues[INFO_RVAL] = gcc_union_constructor(\
-            env->ctx, NULL, data_union, type_union_fields[ArrayInfo], \
+            env->ctx, NULL, data_union, type_union_fields[tag], \
             gcc_struct_constructor( \
                 env->ctx, NULL, info_type, sizeof((gcc_rvalue_t*[]){__VA_ARGS__})/sizeof(gcc_rvalue_t*), fields, \
                 (gcc_rvalue_t*[]){__VA_ARGS__})); } while (0)
@@ -191,10 +191,11 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 });
         }
 
+        gcc_type_t *raw_fields_data_type = gcc_jit_context_new_array_type(env->ctx, NULL, struct_member_type, num_fields);
         gcc_rvalue_t *field_data = gcc_jit_context_new_array_constructor(
-            env->ctx, NULL, struct_member_array_type, num_fields, member_rvals);
+            env->ctx, NULL, raw_fields_data_type, num_fields, member_rvals);
 
-        gcc_lvalue_t *struct_fields_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, struct_member_type, fresh("_struct_fields"));
+        gcc_lvalue_t *struct_fields_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, raw_fields_data_type, fresh("_struct_fields"));
         gcc_global_set_initializer_rvalue(struct_fields_lval, field_data);
         gcc_rvalue_t *fields = gcc_struct_constructor(
             env->ctx, NULL, struct_member_array_type, 3, (gcc_field_t*[]){
