@@ -85,16 +85,21 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto arg_names = EMPTY_ARRAY(const char*);
         auto arg_defaults = EMPTY_ARRAY(ast_t*);
         auto arg_types = EMPTY_ARRAY(sss_type_t*);
+        env_t *default_arg_env = file_scope(env);
+        default_arg_env->bindings = new(table_t, .fallback=default_arg_env->bindings);
         for (int64_t i = 0; i < LENGTH(fn->args.types); i++) {
             append(arg_names, ith(fn->args.names, i));
+            sss_type_t *arg_t;
             if (ith(fn->args.types, i)) {
-                append(arg_types, parse_type_ast(env, ith(fn->args.types, i)));
+                arg_t = parse_type_ast(default_arg_env, ith(fn->args.types, i));
+                append(arg_types, arg_t);
                 append(arg_defaults, NULL);
             } else {
-                sss_type_t *arg_t = get_type(env, ith(fn->args.defaults, i));
+                arg_t = get_type(default_arg_env, ith(fn->args.defaults, i));
                 append(arg_types, arg_t);
                 append(arg_defaults, ith(fn->args.defaults, i));
             }
+            Table_str_set(default_arg_env->bindings, ith(fn->args.names, i), new(binding_t, .type=arg_t));
         }
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=file_scope(env));
     }
