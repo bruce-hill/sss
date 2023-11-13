@@ -77,7 +77,7 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
                 gcc_str(env->ctx, key),
                 gcc_rvalue_size(env->ctx, sizeof(table_t)),
                 gcc_rvalue_size(env->ctx, alignof(table_t)),
-                gcc_rvalue_int32(env->ctx, ArrayInfo),
+                gcc_rvalue_int32(env->ctx, TableInfo),
                 get_type_pointer(env, key_type),
                 get_type_pointer(env, value_type),
                 gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
