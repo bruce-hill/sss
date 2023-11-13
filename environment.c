@@ -91,8 +91,9 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt)->Cord"},
     {"CORD_cat_char", "func(x:Cord, c:Char)->Cord"},
     {"CORD_cmp", "func(x:Cord, y:Cord)->Int32"},
-    {"CORD_to_const_char_star", "func(x:Cord)->CString"},
-    {"CORD_to_char_star", "func(x:Cord)->CString"},
+    {"CORD_to_const_char_star", "func(c:Cord)->CString"},
+    {"CORD_to_char_star", "func(c:Cord)->CString"},
+    {"CORD_len", "func(c:Cord)->UInt"},
 };
 
 struct {

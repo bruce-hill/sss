@@ -322,6 +322,9 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         if (type_eq(t, get_type_by_name(env, "CString"))) {
             gcc_t = gcc_type(env->ctx, STRING);
             break;
+        } else if (type_eq(t, get_type_by_name(env, "Cord"))) {
+            gcc_t = gcc_type(env->ctx, STRING);
+            break;
         }
 
         return sss_type_to_gcc(env, Match(t, VariantType)->variant_of);

@@ -834,9 +834,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
         gcc_func_t *cord_to_char_star_fn = get_function(env, "CORD_to_char_star");
         gcc_assign(*block, loc, char_star, gcc_callx(env->ctx, loc, cord_to_char_star_fn, gcc_rval(cord_var)));
-        gcc_func_t *strlen_fn = get_function(env, "strlen");
+        gcc_func_t *cord_len = get_function(env, "CORD_len");
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, "_str_final");
-        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, strlen_fn, gcc_rval(char_star)), i32_t);
+        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, cord_len, gcc_rval(cord_var)), i32_t);
         gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, gcc_rval(char_star), len32, gcc_one(env->ctx, i16_t)));
 #undef APPEND_CORD
         return gcc_rval(str_struct_var);
