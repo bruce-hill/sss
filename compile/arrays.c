@@ -441,8 +441,8 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
         initial_items, // data
         gcc_rvalue_int64(env->ctx, 0), // length
         gcc_rvalue_uint8(env->ctx, 0), // capacity
-        gcc_rvalue_uint8(env->ctx, mark_cow), // copy on write
-        gcc_rvalue_uint8(env->ctx, !has_heap_memory(item_t)), // atomic
+        gcc_rvalue_bool(env->ctx, mark_cow), // copy on write
+        gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)), // atomic
         gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), // stride
     };
     gcc_assign(*block, loc, array_var, gcc_struct_constructor(
