@@ -485,7 +485,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "remove", "Array_remove",
                         heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1]))->Void", t));
             load_method(env, ns, "sort", "Array_sort",
-                        heap_strf("func(array:&%T, _type=typeof(*array))->Void", t));
+                        heap_strf("func(array:&%T, _type=typeof(array[]))->Void", t));
             load_method(env, ns, "shuffle", "Array_shuffle",
                         heap_strf("func(array:&%T, _item_size=sizeof(array[1]))->Void", t));
             load_method(env, ns, "clear", "Array_clear",
@@ -493,7 +493,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "contains", "Array_contains",
                         heap_strf("func(array:%T, item:&(read-only)%T)->Bool", t, item_t));
             load_method(env, ns, "slice", "Array_slice",
-                        heap_strf("func(array:%T, range:Range, _type:typeof(array))->Bool", t));
+                        heap_strf("func(array:%T, range:Range, _type=typeof(array))->Bool", t));
         }
     }
     return ns;
