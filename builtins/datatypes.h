@@ -3,7 +3,7 @@
 
 typedef struct {
     void *data;
-    uint64_t length:42;
+    int64_t length:42;
     uint8_t free:4, copy_on_write:1, atomic:1;
     int16_t stride:16;
 } array_t;

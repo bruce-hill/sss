@@ -242,7 +242,7 @@ gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t)
     if (func) return func;
     auto params = EMPTY_ARRAY(gcc_param_t*);
     auto fn = Match(fn_t, FunctionType);
-    for (size_t i = 0; i < LENGTH(fn->arg_types); i++) {
+    for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
         gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
         const char *arg_name = ith(fn->arg_names, i);
         append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
@@ -338,7 +338,7 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
             populate_tagged_union_constructors(env, t);
     }
     for (uint32_t i = 1; i <= Table_length(ns); i++) {
-        struct { const char *key; binding_t *value; } *entry = Table_entry(ns, i, NULL);
+        struct { const char *key; binding_t *value; } *entry = Table_entry(ns, i);
         if (!Table_str_get(fresh->bindings, entry->key))
             Table_str_set(fresh->bindings, entry->key, entry->value);
     }
@@ -475,7 +475,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(t[]))->?%T", t, key_t, value_t));
             load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T)->Void", t));
             load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write", heap_strf("func(t:&%T)->Void", t));
-            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(read-only)%T, n:Int, _type=typeof(t[]))->?struct(key:%T, value:%T)", t, key_t, value_t));
+            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(read-only)%T, n:Int)->?struct(key:%T, value:%T)", t, key_t, value_t));
         } else if (t->tag == ArrayType) {
             sss_type_t *item_t = Match(t, ArrayType)->item_type;
             load_method(env, ns, "insert", "Array_insert",

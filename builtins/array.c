@@ -28,7 +28,7 @@ public void Array_compact(array_t *arr, size_t item_size)
         if ((size_t)arr->stride == item_size) {
             memcpy(copy, arr->data, arr->length * item_size);
         } else {
-            for (unsigned long i = 0; i < arr->length; i++)
+            for (int64_t i = 0; i < arr->length; i++)
                 memcpy(copy + i*item_size, arr->data + arr->stride*i, item_size);
         }
     }
@@ -103,7 +103,7 @@ public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, siz
     }
     arr->free -= to_insert.length;
     arr->length += to_insert.length;
-    for (unsigned long i = 0; i < to_insert.length; i++)
+    for (int64_t i = 0; i < to_insert.length; i++)
         memcpy((void*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
 }
 
@@ -158,7 +158,7 @@ public void Array_shuffle(array_t *arr, size_t item_size)
         Array_compact(arr, item_size);
 
     char tmp[item_size];
-    for (unsigned long i = arr->length-1; i > 1; i--) {
+    for (int64_t i = arr->length-1; i > 1; i--) {
         int32_t j = arc4random_uniform(i+1);
         memcpy(tmp, arr->data + i*item_size, item_size);
         memcpy((void*)arr->data + i*item_size, arr->data + j*item_size, item_size);
@@ -271,7 +271,7 @@ public CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
 {
     Type *item_type = type->ArrayInfo.item;
     CORD c = "[";
-    for (unsigned long i = 0; i < arr->length; i++) {
+    for (int64_t i = 0; i < arr->length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
         CORD item_cord = generic_cord(arr->data + i*arr->stride, colorize, item_type);
@@ -293,9 +293,9 @@ public uint32_t Array_hash(const array_t *arr, const Type *type)
         size_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
-        unsigned long length = arr->length;
+        int64_t length = arr->length;
         memcpy((p += sizeof(void*)), &length, sizeof(length));
-        for (unsigned long i = 0; i < arr->length; i++) {
+        for (int64_t i = 0; i < arr->length; i++) {
             if (p >= end) {
                 uint32_t chunk_hash;
                 halfsiphash(&hash_batch, sizeof(hash_batch), SSS_HASH_VECTOR, (uint8_t*)&chunk_hash, sizeof(chunk_hash));
@@ -311,7 +311,7 @@ public uint32_t Array_hash(const array_t *arr, const Type *type)
     } else {
         uint32_t hash_batch[16] = {(uint32_t)arr->length};
         uint32_t *p = &hash_batch[1], *end = hash_batch + sizeof(hash_batch)/sizeof(hash_batch[0]);
-        for (unsigned long i = 0; i < arr->length; i++) {
+        for (int64_t i = 0; i < arr->length; i++) {
             if (p >= end) {
                 uint64_t chunk_hash;
                 halfsiphash(&hash_batch, sizeof(hash_batch), SSS_HASH_VECTOR, (uint8_t*)&chunk_hash, sizeof(chunk_hash));

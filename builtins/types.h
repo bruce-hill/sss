@@ -17,7 +17,7 @@ typedef struct Type {
     const char *name;
     size_t size, align;
     struct { // Anonymous tagged union for convenience 
-        enum { VTableInfo, PointerInfo, ArrayInfo, TableInfo } tag;
+        enum { VTableInfo, PointerInfo, ArrayInfo, TableInfo, StructInfo } tag;
         union {
             struct {
                 equal_fn_t equal;
@@ -37,10 +37,10 @@ typedef struct Type {
                 struct Type *key, *value;
                 size_t entry_size, value_offset;
             } TableInfo;
-            // struct {
-            //     array_t members; // [{name, type}]
-            //     bool is_pure_data;
-            // } StructInfo;
+            struct {
+                array_t members; // [{name, type}]
+                bool is_pure_data;
+            } StructInfo;
             // struct {
             //     array_t members; // [{tag, name, type}]
             //     bool is_pure_data;

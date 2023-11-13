@@ -16,14 +16,14 @@ public void builtin_say(Str_t str, Str_t end)
     if (str.stride == 1) {
         write(STDOUT_FILENO, str.data, str.length);
     } else {
-        for (unsigned long i = 0; i < str.length; i++)
+        for (int64_t i = 0; i < str.length; i++)
             write(STDOUT_FILENO, str.data + i*str.stride, 1);
     }
 
     if (end.stride == 1) {
         write(STDOUT_FILENO, end.data, end.length);
     } else {
-        for (unsigned long i = 0; i < end.length; i++)
+        for (int64_t i = 0; i < end.length; i++)
             write(STDOUT_FILENO, end.data + i*end.stride, 1);
     }
 }
@@ -34,14 +34,14 @@ public void builtin_warn(Str_t str, Str_t end, bool colorize)
     if (str.stride == 1) {
         write(STDERR_FILENO, str.data, str.length);
     } else {
-        for (unsigned long i = 0; i < str.length; i++)
+        for (int64_t i = 0; i < str.length; i++)
             write(STDERR_FILENO, str.data + i*str.stride, 1);
     }
 
     if (end.stride == 1) {
         write(STDERR_FILENO, end.data, end.length);
     } else {
-        for (unsigned long i = 0; i < end.length; i++)
+        for (int64_t i = 0; i < end.length; i++)
             write(STDERR_FILENO, end.data + i*end.stride, 1);
     }
     if (colorize) write(STDERR_FILENO, "\x1b[m", 3);
@@ -59,7 +59,7 @@ public void builtin_fail(const char *fmt, ...)
 public void builtin_fail_array(Str_t fmt, ...)
 {
     char buf[fmt.length+1];
-    for (unsigned long i = 0; i < fmt.length; i++)
+    for (int64_t i = 0; i < fmt.length; i++)
         buf[i] = fmt.data[i*fmt.stride];
     buf[fmt.length] = '\0';
 

@@ -1292,7 +1292,7 @@ PARSER(parse_string) {
         match(&pos, "\n");
         size_t first_line = sss_get_line_number(ctx->file, pos);
         size_t indented = sss_get_indent(ctx->file, pos);
-        for (size_t i = first_line; i < ctx->file->lines.length; i++) {
+        for (int64_t i = first_line; i < ctx->file->lines.length; i++) {
             pos = sss_get_line(ctx->file, i-1);
             if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
                 ast_t *ast = NewAST(ctx->file, pos, pos, StringLiteral, .str="\n");
@@ -1719,7 +1719,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     while (LENGTH(terms) > 1) {
         // Find tightest-binding op
         int tightest_op = 0;
-        for (uint64_t i = 1; i < LENGTH(binops); i++) {
+        for (int64_t i = 1; i < LENGTH(binops); i++) {
             if (op_tightness[ith(binops, i)]
                 < op_tightness[ith(binops, tightest_op)]) {
                 tightest_op = i;

@@ -62,7 +62,8 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
             t = parse_type_ast(env, type_ast);
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
+        gcc_lvalue_t *lval = get_type_lvalue(env, t);
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true);
         Table_str_set(env->bindings, name, b);
         env_t *type_env = get_type_env(env, t);
         type_env->bindings->fallback = env->bindings;

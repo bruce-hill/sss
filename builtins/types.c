@@ -17,6 +17,27 @@ public uint32_t generic_hash(const void *obj, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_hash(obj, type);
     case TableInfo: return Table_hash(obj, type);
+    case StructInfo: {
+        auto info = type->StructInfo;
+        if (info.members.length == 0)
+            return 0;
+        else if (info.is_pure_data)
+            goto hash_data;
+
+        uint32_t hash_values[info.members.length] = {};
+        size_t offset = 0;
+        for (int64_t i = 0; i < info.members.length; i++) {
+            typedef struct {const char *name; const Type *type;} struct_member_t;
+            struct_member_t *member = info.members.data + i*info.members.stride;
+            if (member->type->align && (offset % member->type->align))
+                offset += member->type->align - (offset % member->type->align);
+            hash_values[i] = generic_hash(obj + offset, member->type);
+            offset += member->type->size;
+        }
+        uint32_t hash;
+        halfsiphash(hash_values, sizeof(uint32_t)*info.members.length, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+        return hash;
+    }
     case VTableInfo:
         if (!type->VTableInfo.hash)
             goto hash_data;
@@ -36,6 +57,23 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_compare(x, y, type);
     case TableInfo: return Table_compare(x, y, type);
+    case StructInfo: {
+        auto info = type->StructInfo;
+        if (info.is_pure_data)
+            goto compare_data;
+
+        typedef struct {const char *name; const Type *type;} struct_member_t;
+        auto members = (ARRAY_OF(struct_member_t))&info.members;
+        size_t offset = 0;
+        foreach (members, member, last) {
+            if (member->type->align && (offset % member->type->align))
+                offset += member->type->align - (offset % member->type->align);
+            int32_t cmp = generic_compare(x + offset, y + offset, member->type);
+            if (cmp != 0) return cmp;
+            offset += member->type->size;
+        }
+        return 0;
+    }
     case VTableInfo:
         if (!type->VTableInfo.compare)
             goto compare_data;
@@ -52,6 +90,23 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
     switch (type->tag) {
     case ArrayInfo: return Array_equal(x, y, type);
     case TableInfo: return Table_equal(x, y, type);
+    case StructInfo: {
+        auto info = type->StructInfo;
+        if (info.is_pure_data)
+            goto use_generic_compare;
+
+        typedef struct {const char *name; const Type *type;} struct_member_t;
+        auto members = (ARRAY_OF(struct_member_t))&info.members;
+        size_t offset = 0;
+        foreach (members, member, last) {
+            if (member->type->align && (offset % member->type->align))
+                offset += member->type->align - (offset % member->type->align);
+            bool equal = generic_equal(x + offset, y + offset, member->type);
+            if (!equal) return false;
+            offset += member->type->size;
+        }
+        return true;
+    }
     case VTableInfo:
         if (!type->VTableInfo.equal)
             goto use_generic_compare;
@@ -102,6 +157,24 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
         if (ptr_info.cyclic) {
             Table_remove(&recursion, obj, &ptr_to_int_type);
         }
+        return c;
+    }
+    case StructInfo: {
+        auto info = type->StructInfo;
+        CORD c = "{";
+        size_t offset = 0;
+        for (int64_t i = 0; i < info.members.length; i++) {
+            if (i > 0) c = CORD_cat(c, ", ");
+            typedef struct {const char *name; const Type *type;} struct_member_t;
+            struct_member_t *member = info.members.data + i*info.members.stride;
+            if (member->type->align && (offset % member->type->align))
+                offset += member->type->align - (offset % member->type->align);
+            c = CORD_cat(c, member->name);
+            c = CORD_cat(c, "=");
+            c = CORD_cat(c, generic_cord(obj + offset, colorize, member->type));
+            offset += member->type->size;
+        }
+        c = CORD_cat(c, "}");
         return c;
     }
     case ArrayInfo: return Array_cord(obj, colorize, type);

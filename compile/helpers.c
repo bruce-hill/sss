@@ -277,7 +277,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
         gcc_field_t *fields[] = {
                 [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
-              [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT64), 42, "length"),
+              [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
             [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
                  [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "copy_on_write"),
               [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "atomic"),

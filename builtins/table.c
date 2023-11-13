@@ -39,7 +39,7 @@
 #define VALUE_OFFSET (type->TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
 
-#define GET_ENTRY(t, i) ((t)->entries.data + ENTRY_SIZE*(i))
+#define GET_ENTRY(t, i) ((t)->entries.data + (t)->entries.stride*(i))
 
 extern const void *SSS_HASH_VECTOR;
 
@@ -325,7 +325,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     hshow(t);
 }
 
-public void *Table_entry(const table_t *t, uint32_t n, const Type *type)
+public void *Table_entry(const table_t *t, uint32_t n)
 {
     if (n < 1 || n > Table_length(t))
         return NULL;
@@ -515,6 +515,6 @@ void Table_str_remove(table_t *t, const char *key)
 
 void *Table_str_entry(const table_t *t, uint32_t n)
 {
-    return Table_entry(t, n, CStringToVoidStarTable_type);
+    return Table_entry(t, n);
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

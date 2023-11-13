@@ -11,7 +11,7 @@
 table_t Table_from_entries(array_t entries, const Type *type);
 void *Table_get(const table_t *t, const void *key, const Type *type);
 void *Table_get_raw(const table_t *t, const void *key, const Type *type);
-void *Table_entry(const table_t *t, uint32_t n, const Type *type);
+void *Table_entry(const table_t *t, uint32_t n);
 void *Table_set(table_t *t, const void *key, const void *value, const Type *type);
 void Table_remove(table_t *t, const void *key, const Type *type);
 void Table_clear(table_t *t);
