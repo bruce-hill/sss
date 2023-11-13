@@ -81,7 +81,7 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
                 get_type_pointer(env, key_type),
                 get_type_pointer(env, value_type),
                 gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
-                gcc_rvalue_size(env->ctx, gcc_alignof(env, table_entry_type(t))),
+                table_entry_value_offset(env, t),
             };
 
             gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("TableType"));

@@ -112,14 +112,16 @@ static bool Str_equal(const Str_t *x, const Str_t *y)
 static int Str_hash(const Str_t *s, const Type *type)
 {
     (void)type;
+    if (s->length == 0 || !s->data) return 0;
+
     const char *data;
     if (s->stride == -1) {
         data = s->data - s->length + 1;
     } else if (s->stride == 1) {
         data = s->data;
     } else {
-        char buf[s->length];
-        for (unsigned long i = 0; i < s->length; i++)
+        char *buf = alloca(s->length);
+        for (uint64_t i = 0; i < s->length; i++)
             buf[i] = s->data[i*s->stride];
         data = buf;
     }

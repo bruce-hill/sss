@@ -191,24 +191,26 @@ public void *Table_set(table_t *t, const void *key, const void *value, const Typ
     if (!t || !key) return NULL;
     hshow(t);
 
-    if (!t->bucket_info)
-        hashmap_resize_buckets(t, 4, type);
-
     hdebug("Hash of key being set: %u\n", HASH(t, key));
 
     size_t key_size = type->TableInfo.key->size,
            value_size = type->TableInfo.value->size;
-    void *value_home = Table_get_raw(t, key, type);
-    if (value_home) { // Update existing slot
-        // Ensure that `value_home` is still inside t->entries, even if COW occurs
-        ptrdiff_t offset = value_home - t->entries.data;
-        maybe_copy_on_write(t, COW_BUCKETS, type);
-        value_home = t->entries.data + offset;
+    if (!t->bucket_info) {
+        hashmap_resize_buckets(t, 4, type);
+    } else {
+        // Check if we are clobbering a value:
+        void *value_home = Table_get_raw(t, key, type);
+        if (value_home) { // Update existing slot
+            // Ensure that `value_home` is still inside t->entries, even if COW occurs
+            ptrdiff_t offset = value_home - t->entries.data;
+            maybe_copy_on_write(t, COW_BUCKETS, type);
+            value_home = t->entries.data + offset;
 
-        if (value && value_size > 0)
-            memcpy(value_home, value, value_size);
+            if (value && value_size > 0)
+                memcpy(value_home, value, value_size);
 
-        return value_home;
+            return value_home;
+        }
     }
     // Otherwise add a new entry:
 
@@ -234,7 +236,7 @@ public void *Table_set(table_t *t, const void *key, const void *value, const Typ
     memcpy(buf, key, key_size);
     if (value && value_size > 0)
         memcpy(buf + VALUE_OFFSET, value, value_size);
-    Array_insert(&t->entries, buf, t->entries.length + 1, ENTRY_SIZE);
+    Array_insert(&t->entries, buf, 0, ENTRY_SIZE);
 
     uint32_t entry_index = t->entries.length-1;
     void *entry = GET_ENTRY(t, entry_index);
