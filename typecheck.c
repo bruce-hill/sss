@@ -498,11 +498,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Range: {
         return Type(RangeType);
     }
-    case StringJoin: {
-        return Type(ArrayType, .item_type=Type(CharType));
-    }
-    case Interp: case StringLiteral: {
-        return Type(ArrayType, .item_type=Type(CharType));
+    case StringJoin: case Interp: case StringLiteral: {
+        binding_t *b = Table_str_get(&env->global->bindings, "Str");
+        return Match(b->type, TypeType)->type;
     }
     case Var: {
         const char* name = Match(ast, Var)->name;

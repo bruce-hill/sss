@@ -55,7 +55,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_assign(*block, NULL, key_lval, key_val);
 
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
-    gcc_rvalue_t *type_ptr = get_type_rvalue(env, t);
+    gcc_rvalue_t *type_ptr = get_type_pointer(env, t);
     if (autocreate) {
         gcc_param_t *params[] = {
             gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "type"),
@@ -129,7 +129,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                                      info->table_ptr,
                                      gcc_lvalue_address(key_lval, NULL),
                                      gcc_lvalue_address(value_lval, NULL),
-                                     get_type_rvalue(env, info->table_type)));
+                                     get_type_pointer(env, info->table_type)));
 }
 
 // Returns an optional pointer to a value
@@ -167,7 +167,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         env->ctx, loc, get_fn_binding->func,
         gcc_lvalue_address(table_var, loc),
         gcc_lvalue_address(key_lval, loc),
-        get_type_rvalue(env, table_t));
+        get_type_pointer(env, table_t));
     gcc_type_t *val_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, value_t));
     val_ptr = gcc_cast(env->ctx, loc, val_ptr, val_ptr_gcc_t);
 

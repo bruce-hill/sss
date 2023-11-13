@@ -373,7 +373,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         cache_key = "Type";
         gcc_t = Table_str_get(&cache, cache_key);
         if (gcc_t) return gcc_t;
-        gcc_t = gcc_get_ptr_type(get_type_gcc_type(env));
+        gcc_t = get_type_gcc_type(env);
         break;
     }
     case GeneratorType: {
@@ -874,7 +874,7 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
                 env->ctx, NULL, generic_cord_fn,
                 gcc_cast(env->ctx, NULL, gcc_lvalue_address(var, NULL), gcc_type(env->ctx, VOID_PTR)),
                 gcc_rvalue_bool(env->ctx, false),
-                get_type_rvalue(env, t));
+                get_type_pointer(env, t));
             gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_str");
             gcc_assign(*block, NULL, str_var, gcc_callx(env->ctx, NULL, get_function(env, "CORD_to_char_star"), cord_result));
             append(args, gcc_rval(str_var));

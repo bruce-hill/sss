@@ -47,8 +47,6 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
         case RangeType: return "Range";
         case ArrayType: {
             auto array = Match(t, ArrayType);
-            if (array->item_type->tag == CharType)
-                return "Str";
             return CORD_cat("[", CORD_cat(type_to_cord(array->item_type, expanded, flags), "]"));
         }
         case TableType: {

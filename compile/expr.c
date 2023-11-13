@@ -461,7 +461,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     target.table,
                     gcc_lvalue_address(target.key, loc),
                     gcc_lvalue_address(val_lval, loc),
-                    get_type_rvalue(env, target.table_type)
+                    get_type_pointer(env, target.table_type)
                 );
                 gcc_eval(*block, loc, call);
             } else {
@@ -827,7 +827,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             APPEND_CORD(*block, gcc_callx(
                 env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, gcc_lvalue_address(interp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false),
-                get_type_rvalue(env, t)));
+                get_type_pointer(env, t)));
         }
         loc = ast_loc(env, ast);
         gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
@@ -1676,7 +1676,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *generic_equal = get_function(env, "generic_equal");
             gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal, gcc_lvalue_address(lhs_var, loc),
                                              gcc_lvalue_address(lhs_var, loc),
-                                             get_type_rvalue(env, comparison_type));
+                                             get_type_pointer(env, comparison_type));
             if (ast->tag == NotEqual)
                 return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
             else
@@ -1688,7 +1688,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                   gcc_callx(env->ctx, loc, generic_compare,
                                             gcc_lvalue_address(lhs_var, loc),
                                             gcc_lvalue_address(rhs_var, loc),
-                                            get_type_rvalue(env, comparison_type)),
+                                            get_type_pointer(env, comparison_type)),
                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
         }
         }
@@ -2105,7 +2105,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
                                                      gcc_lvalue_address(lhs_cmp_var, loc),
                                                      gcc_lvalue_address(rhs_cmp_var, loc),
-                                                     get_type_rvalue(env, comparison_t));
+                                                     get_type_pointer(env, comparison_t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
             }
@@ -2116,7 +2116,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
                                                      gcc_lvalue_address(lhs, loc),
                                                      gcc_lvalue_address(rhs, loc),
-                                                     get_type_rvalue(env, t));
+                                                     get_type_pointer(env, t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
             }
@@ -2220,7 +2220,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
 #define DOCTEST(label, t, val_ptr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
            gcc_str(env->ctx, label), \
-           gcc_callx(env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, val_ptr, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true), get_type_rvalue(env, t)), \
+           gcc_callx(env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, val_ptr, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true), get_type_pointer(env, t)), \
            gcc_str(env->ctx, type_to_string_concise(t)), \
            use_color, \
            test->output ? gcc_str(env->ctx, test->output) : gcc_null(env->ctx, gcc_type(env->ctx, STRING)), \

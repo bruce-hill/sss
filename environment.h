@@ -45,7 +45,7 @@ typedef struct {
     table_t bindings; // name -> binding_t*
     table_t funcs; // name -> func
     table_t type_namespaces; // type_string -> member_name -> binding_t*
-    table_t type_rvals; // type_string -> gcc_rvalue_t*
+    table_t type_lvals; // type_string -> gcc_lvalue_t*
     table_t def_types; // ast_t* -> binding_t*
     table_t ast_functions; // ast_t* -> func_context_t*
     table_t module_types; // inode -> sss_type_t*

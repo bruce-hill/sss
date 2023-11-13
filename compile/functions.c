@@ -84,7 +84,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
             env->ctx, loc, get_fn_binding->func,
             gcc_lvalue_address(cache, loc),
             gcc_lvalue_address(arg_tuple, loc), // key
-            get_type_rvalue(env, cache_t),
+            get_type_pointer(env, cache_t),
     ));
     gcc_block_t *if_cached = gcc_new_block(func, fresh("cached")),
                 *if_not_cached = gcc_new_block(func, fresh("not_cached"));
@@ -115,7 +115,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
                  gcc_callx(env->ctx, loc, remove_fn_binding->func,
                            gcc_lvalue_address(cache, loc),
                            gcc_null(env->ctx, gcc_get_ptr_type(arg_tuple_gcc_t)),
-                           get_type_rvalue(env, cache_t)
+                           get_type_pointer(env, cache_t)
                  ));
         gcc_jump(block, loc, populate_cache);
         block = populate_cache;
@@ -129,7 +129,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
                        gcc_lvalue_address(cache, loc), // table
                        gcc_lvalue_address(arg_tuple, loc), // key
                        gcc_lvalue_address(cached_var, loc), // value
-                       get_type_rvalue(env, cache_t) // type
+                       get_type_pointer(env, cache_t) // type
              ));
     gcc_return(block, loc, gcc_rval(cached_var));
     return inner_func;

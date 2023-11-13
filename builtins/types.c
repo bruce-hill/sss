@@ -73,7 +73,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     case ArrayInfo: return Array_cord(obj, colorize, type);
     case TableInfo: return Table_cord(obj, colorize, type);
     case VTableInfo: return type->VTableInfo.cord(obj, colorize, type);
-    default: errx(1, "Unreachable");
+    default: errx(1, "Invalid type tag: %d", type->tag);
     }
 }
 

@@ -67,10 +67,10 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
-    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Int32"},
-    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Bool"},
-    {"generic_hash", "func(obj:&(read-only)Memory, type:Type)->UInt32"},
-    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
+    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Int32"},
+    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Bool"},
+    {"generic_hash", "func(obj:&(read-only)Memory, type:&(read-only)Type)->UInt32"},
+    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
 
     // Builtins:
     {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
@@ -272,11 +272,11 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     // Declare types first:
     for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
+        gcc_lvalue_t *type_lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol);
         binding_t *b = new(binding_t,
                            .type=Type(TypeType, t),
-                           .rval=gcc_lvalue_address(
-                               gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol),
-                               NULL));
+                           .lval=type_lval,
+                           .rval=gcc_rval(type_lval));
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
     }
 
