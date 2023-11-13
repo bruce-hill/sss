@@ -31,6 +31,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     ast_t *iter = for_->iter;
     sss_type_t *iter_t = get_type(env, iter);
 
+    if (base_value_type(iter_t)->tag == TableType) {
+        iter = WrapAST(iter, FieldAccess, .fielded=iter, .field="entries");
+        iter_t = get_type(env, iter);
+    }
+
     if (iter_t->tag == GeneratorType) {
         switch (for_->iter->tag) {
         case For: {
@@ -172,51 +177,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // Now populate .next block
         gcc_assign(for_next, NULL, item_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(item_ptr), stride));
-
-        // goto is_done ? end : between
-        gcc_jump_condition(for_next, NULL, is_done, for_end,
-                           for_between ? for_between : for_body);
-
-        // between:
-        if (for_between)
-            gcc_assign(for_between, NULL, item_shadow, item_rval);
-
-        break;
-    }
-    case TableType: {
-        // entry_ptr = table->entries
-        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
-        item_t = table_entry_type(iter_t);
-        gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
-        gcc_lvalue_t *entry_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_entry_ptr");
-        gcc_assign(*block, NULL, entry_ptr,
-                   gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_ENTRIES_FIELD)),
-                            gcc_get_ptr_type(gcc_item_t)));
-
-        // len = table->count
-        gcc_lvalue_t *len = gcc_local(func, NULL, gcc_type(env->ctx, INT32), "_len");
-        gcc_assign(*block, NULL, len,
-                   gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(iter_rval, NULL, gcc_get_field(array_struct, TABLE_COUNT_FIELD)), gcc_type(env->ctx, INT32)));
-
-        item_shadow = gcc_local(func, NULL, gcc_item_t, "_item");
-
-        // goto (index > len) ? end : body
-        gcc_rvalue_t *is_done = gcc_comparison(env->ctx, NULL, GCC_COMPARISON_GT, gcc_rval(index_var),
-                                               gcc_cast(env->ctx, NULL, gcc_rval(len), gcc_type(env->ctx, INT64)));
-        gcc_jump_condition(*block, NULL, is_done, for_empty ? for_empty : for_end,
-                           for_first ? for_first : for_body);
-        *block = NULL;
-
-        // Now populate top of loop body (with variable bindings)
-        // item = *entry_ptr (or item = entry_ptr)
-        gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(entry_ptr), NULL));
-        gcc_assign(for_body, NULL, item_shadow, item_rval);
-        if (for_first)
-            gcc_assign(for_first, NULL, item_shadow, item_rval);
-
-        // Now populate .next block
-        gcc_assign(for_next, NULL, entry_ptr, pointer_offset(env, gcc_get_ptr_type(gcc_item_t), gcc_rval(entry_ptr),
-                                                             gcc_rvalue_int32(env->ctx, gcc_sizeof(env, item_t))));
 
         // goto is_done ? end : between
         gcc_jump_condition(for_next, NULL, is_done, for_end,

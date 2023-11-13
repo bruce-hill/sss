@@ -276,39 +276,29 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     case ArrayType: {
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
         gcc_field_t *fields[] = {
-            [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
-            [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
+                [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
+              [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT64), 42, "length"),
             [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
-            [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "copy_on_write"),
-            [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "atomic"),
-            [ARRAY_STRIDE_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT16), "stride"),
+                 [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "copy_on_write"),
+              [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 1, "atomic"),
+              [ARRAY_STRIDE_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT16), 16, "stride"),
         };
         gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(array);
         break;
     }
     case TableType: {
-        gcc_type_t *u32 = gcc_type(env->ctx, UINT32);
         auto table = Match(t, TableType);
         if (table->key_type->tag == VoidType || table->value_type->tag == VoidType)
             compiler_err(env, NULL, "Tables can't hold Void types");
 
-        gcc_field_t *bucket_fields[] = {
-            gcc_new_field(env->ctx, NULL, u32, "index1"),
-            gcc_new_field(env->ctx, NULL, u32, "next1"),
-        };
-        gcc_struct_t *bucket = gcc_new_struct_type(env->ctx, NULL, "Bucket", 2, bucket_fields);
-
         gcc_struct_t *gcc_struct = gcc_opaque_struct(env->ctx, NULL, "Table");
+        gcc_type_t *entries_array_gcc_t = sss_type_to_gcc(env, Type(ArrayType, table_entry_type(t)));
         gcc_field_t *fields[] = {
-            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "entries"),
-            [TABLE_BUCKETS_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(bucket)), "buckets"),
+            [TABLE_ENTRIES_FIELD]=gcc_new_field(env->ctx, NULL, entries_array_gcc_t, "entries"),
+            [TABLE_BUCKETS_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "bucket_info"),
             [TABLE_FALLBACK_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(gcc_struct_as_type(gcc_struct)), "fallback"),
             [TABLE_DEFAULT_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, table->value_type)), "default_value"),
-            [TABLE_CAPACITY_FIELD]=gcc_new_field(env->ctx, NULL, u32, "capacity"),
-            [TABLE_COUNT_FIELD]=gcc_new_field(env->ctx, NULL, u32, "count"),
-            [TABLE_LASTFREE_FIELD]=gcc_new_field(env->ctx, NULL, u32, "lastfree_index1"),
-            [TABLE_COW_FIELD]=gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "copy_on_write"),
         };
         gcc_set_fields(gcc_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
         gcc_t = gcc_struct_as_type(gcc_struct);

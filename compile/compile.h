@@ -22,10 +22,6 @@
 #define TABLE_BUCKETS_FIELD 1
 #define TABLE_FALLBACK_FIELD 2
 #define TABLE_DEFAULT_FIELD 3
-#define TABLE_CAPACITY_FIELD 4
-#define TABLE_COUNT_FIELD 5
-#define TABLE_LASTFREE_FIELD 6
-#define TABLE_COW_FIELD 7
 
 #define ARRAY_DATA_FIELD 0
 #define ARRAY_LENGTH_FIELD 1
@@ -119,7 +115,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
 gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t);
 gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *table_ast, ast_t *key_ast, gcc_rvalue_t **key_rval_out, bool raw);
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast, bool autocreate);
-gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
+gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast);
 void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr);
 
 // ============================== ranges.c ==============================

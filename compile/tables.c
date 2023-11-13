@@ -175,7 +175,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     return gcc_rval(value_lval);
 }
 
-gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow)
+gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto table = Match(ast, Table);
     sss_type_t *t = get_type(env, ast);
@@ -188,12 +188,9 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
 
     gcc_loc_t *loc = ast_loc(env, ast);
     gcc_lvalue_t *table_var = gcc_local(func, loc, gcc_t, "_table");
+    gcc_assign(*block, loc, table_var, gcc_struct_constructor(env->ctx, loc, gcc_t, 0, NULL, NULL));
 
-    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-    gcc_assign(*block, loc, table_var,
-        gcc_struct_constructor(env->ctx, loc, gcc_t, 1,
-            (gcc_field_t*[]){gcc_get_field(gcc_struct, TABLE_COW_FIELD)},
-            (gcc_rvalue_t*[]){gcc_rvalue_bool(env->ctx, mark_cow ? 1 : 0)}));
+    // TODO: need to mark cow?
 
     env_t env2 = *env;
     env2.comprehension_callback = (void*)add_table_entry;

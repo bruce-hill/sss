@@ -126,11 +126,12 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
     case ArrayType: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
-        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)), gcc_type(env->ctx, INT64));
+        return gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
     }
     case TableType: {
         gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
-        return gcc_cast(env->ctx, NULL, gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_COUNT_FIELD)), gcc_type(env->ctx, INT64));
+        gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
+        return compile_len(env, block, Type(ArrayType, table_entry_type(t)), entries);
     }
     case VariantType: {
         return compile_len(env, block, Match(t, VariantType)->variant_of, obj);
@@ -844,7 +845,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_array(env, block, ast, true);
     }
     case Table: {
-        return compile_table(env, block, ast, true);
+        return compile_table(env, block, ast);
     }
     case TableEntry: {
         env->comprehension_callback(env, block, ast, env->comprehension_userdata);
@@ -1132,7 +1133,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (value->tag == Array)
             rval = compile_array(env, block, value, false);
         else if (value->tag == Table)
-            rval = compile_table(env, block, value, false);
+            rval = compile_table(env, block, value);
         else
             rval = compile_expr(env, block, value);
         sss_type_t *t = get_type(env, value);
@@ -1177,7 +1178,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case Table: {
             // Don't mark &{..=>..} literals as COW, since there are no other possible aliases yet
             gcc_lvalue_t *var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_table");
-            gcc_assign(*block, loc, var, compile_table(env, block, value, false));
+            gcc_assign(*block, loc, var, compile_table(env, block, value));
             return gcc_lvalue_address(var, loc);
         }
         default: {
@@ -1274,63 +1275,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case TableType: {
             if (streq(access->field, "length")) {
-                gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_COUNT_FIELD);
-                return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
+                return compile_expr(
+                    env, block, WrapAST(ast, FieldAccess,
+                                        .fielded=WrapAST(access->fielded, FieldAccess, .fielded=access->fielded, .field="entries"),
+                                        .field="length"));
             } else if (streq(access->field, "default")) {
-                gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, fielded_t);
-                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_DEFAULT_FIELD));
+                gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_DEFAULT_FIELD));
             } else if (streq(access->field, "fallback")) {
-                gcc_type_t *hashmap_gcc_t = sss_type_to_gcc(env, fielded_t);
-                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(hashmap_gcc_t), TABLE_FALLBACK_FIELD));
-            } else if (streq(access->field, "keys")) {
-                sss_type_t *item_t = Match(fielded_t, TableType)->key_type;
-                gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=item_t));
-                gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-                gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
-                size_t entry_size = gcc_sizeof(env, table_entry_type(fielded_t));
-                return gcc_struct_constructor(
-                    env->ctx, loc, gcc_t, 4,
-                    (gcc_field_t*[]){
-                        gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
-                    },
-                    (gcc_rvalue_t*[]){
-                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD)),
-                                 gcc_get_ptr_type(sss_type_to_gcc(env, item_t))), // items
-                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
-                                 gcc_type(env->ctx, INT32)), // len
-                        gcc_rvalue_int16(env->ctx, entry_size), // stride
-                        gcc_rvalue_int16(env->ctx, -1), // capacity
-                    });
-            } else if (streq(access->field, "values")) {
-                sss_type_t *key_t = Match(fielded_t, TableType)->key_type;
-                sss_type_t *value_t = Match(fielded_t, TableType)->value_type;
-                gcc_type_t *gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=value_t));
-                gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
-                gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
-
-                gcc_rvalue_t *items_ptr = gcc_cast(
-                    env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD)),
-                    gcc_type(env->ctx, STRING));
-                items_ptr = pointer_offset(env, gcc_get_ptr_type(sss_type_to_gcc(env, value_t)), items_ptr, gcc_rvalue_size(env->ctx, gcc_sizeof(env, key_t)));
-                size_t entry_size = gcc_sizeof(env, table_entry_type(fielded_t));
-                return gcc_struct_constructor(
-                    env->ctx, loc, gcc_t, 4,
-                    (gcc_field_t*[]){
-                        gcc_get_field(gcc_struct, ARRAY_DATA_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_LENGTH_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_STRIDE_FIELD),
-                        gcc_get_field(gcc_struct, ARRAY_CAPACITY_FIELD),
-                    },
-                    (gcc_rvalue_t*[]){
-                        items_ptr, // items
-                        gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(table_struct, TABLE_COUNT_FIELD)),
-                                 gcc_type(env->ctx, INT32)), // len
-                        gcc_rvalue_int16(env->ctx, entry_size), // stride
-                        gcc_rvalue_int16(env->ctx, -1), // capacity
-                    });
+                gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_FALLBACK_FIELD));
+            } else if (streq(access->field, "entries")) {
+                gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
+                // TODO: Mark COW
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_ENTRIES_FIELD));
             }
             break;
         }

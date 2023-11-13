@@ -316,7 +316,9 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
         goto class_lookup;
     }
     case TableType: {
-        if (streq(field_name, "length"))
+        if (streq(field_name, "entries"))
+            return Type(ArrayType, .item_type=table_entry_type(t));
+        else if (streq(field_name, "length"))
             return INT_TYPE;
         else if (streq(field_name, "default"))
             return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_readonly=true);

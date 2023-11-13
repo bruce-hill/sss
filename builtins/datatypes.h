@@ -5,7 +5,7 @@ typedef struct {
     void *data;
     uint64_t length:42;
     uint8_t free:4, copy_on_write:1, atomic:1;
-    uint16_t stride:16;
+    int16_t stride:16;
 } array_t;
 
 typedef struct {

@@ -191,11 +191,9 @@ public void *Table_set(table_t *t, const void *key, const void *value, const Typ
     if (!t || !key) return NULL;
     hshow(t);
 
-    hdebug("Hash of key being set: %u\n", HASH(t, key));
-
     size_t key_size = type->TableInfo.key->size,
            value_size = type->TableInfo.value->size;
-    if (!t->bucket_info) {
+    if (!t->bucket_info || t->bucket_info->count == 0) {
         hashmap_resize_buckets(t, 4, type);
     } else {
         // Check if we are clobbering a value:

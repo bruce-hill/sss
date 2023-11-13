@@ -119,5 +119,6 @@ bool can_leave_uninitialized(sss_type_t *t);
 bool can_have_cycles(sss_type_t *t);
 sss_type_t *table_entry_type(sss_type_t *table_t);
 sss_type_t *base_variant(sss_type_t *t);
+sss_type_t *base_value_type(sss_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

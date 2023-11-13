@@ -245,6 +245,18 @@ sss_type_t *value_type(sss_type_t *t)
     return t;
 }
 
+sss_type_t *base_value_type(sss_type_t *t)
+{
+    for (;;) {
+        if (t->tag == PointerType)
+            t = Match(t, PointerType)->pointed;
+        else if (t->tag == VariantType)
+            t = Match(t, VariantType)->variant_of;
+        else break;
+    }
+    return t;
+}
+
 sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
 {
     if (!a) return b;
