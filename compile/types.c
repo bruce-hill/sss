@@ -220,6 +220,47 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
         );
         break;
     }
+    case TaggedUnionType: {
+        auto info = Match(t, TaggedUnionType);
+        int64_t num_members = LENGTH(info->members);
+        gcc_rvalue_t *member_rvals[num_members] = {};
+        for (int64_t i = 0; i < num_members; i++) {
+            auto member = ith(info->members, i);
+            member_rvals[i] = gcc_struct_constructor(
+                env->ctx, NULL, tu_member_type, 3, (gcc_field_t*[]){
+                    gcc_get_field(gcc_type_as_struct(tu_member_type), 0),
+                    gcc_get_field(gcc_type_as_struct(tu_member_type), 1),
+                    gcc_get_field(gcc_type_as_struct(tu_member_type), 2),
+                }, (gcc_rvalue_t*[]){
+                    gcc_rvalue_int32(env->ctx, member.tag_value),
+                    gcc_str(env->ctx, member.name),
+                    member.type ? get_type_pointer(env, member.type) : gcc_null(env->ctx, gcc_get_ptr_type(type_gcc_type)),
+                });
+        }
+
+        gcc_type_t *raw_fields_data_type = gcc_jit_context_new_array_type(env->ctx, NULL, tu_member_type, num_members);
+        gcc_rvalue_t *field_data = gcc_jit_context_new_array_constructor(
+            env->ctx, NULL, raw_fields_data_type, num_members, member_rvals);
+
+        gcc_lvalue_t *tu_fields_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, raw_fields_data_type, fresh("_tagged_union_members"));
+        gcc_global_set_initializer_rvalue(tu_fields_lval, field_data);
+        gcc_rvalue_t *fields = gcc_struct_constructor(
+            env->ctx, NULL, tu_member_array_type, 3, (gcc_field_t*[]){
+                gcc_get_field(gcc_type_as_struct(tu_member_array_type), ARRAY_DATA_FIELD),
+                gcc_get_field(gcc_type_as_struct(tu_member_array_type), ARRAY_LENGTH_FIELD),
+                gcc_get_field(gcc_type_as_struct(tu_member_array_type), ARRAY_STRIDE_FIELD),
+            }, (gcc_rvalue_t*[]){
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(tu_fields_lval, NULL), gcc_get_ptr_type(tu_member_type)),
+                gcc_rvalue_int64(env->ctx, num_members),
+                gcc_rvalue_int16(env->ctx, 8*3),
+            });
+
+        SET_INFO(TaggedUnionInfo, tagged_union_info, tagged_union_info_fields,
+            fields,
+            gcc_rvalue_bool(env->ctx, false), // TODO: determine if it is pure memory or not
+        );
+        break;
+    }
     case VariantType:
     case FunctionType:
     default: {
