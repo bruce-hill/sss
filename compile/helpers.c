@@ -872,7 +872,7 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
             gcc_assign(*block, NULL, var, rval);
             gcc_rvalue_t *cord_result = gcc_callx(
                 env->ctx, NULL, generic_cord_fn,
-                gcc_lvalue_address(var, NULL),
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(var, NULL), gcc_type(env->ctx, VOID_PTR)),
                 gcc_rvalue_bool(env->ctx, false),
                 get_type_rvalue(env, t));
             gcc_lvalue_t *str_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_str");

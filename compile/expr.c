@@ -825,7 +825,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 continue;
             }
             APPEND_CORD(*block, gcc_callx(
-                env->ctx, loc, generic_cord_fn, gcc_lvalue_address(interp_var, loc),
+                env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, gcc_lvalue_address(interp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false),
                 get_type_rvalue(env, t)));
         }

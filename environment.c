@@ -67,10 +67,10 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
-    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&Type)->Int32"},
-    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&Type)->Bool"},
-    {"generic_hash", "func(obj:&(read-only)Memory, type:&Type)->UInt32"},
-    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&Type)->Cord"},
+    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Int32"},
+    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Bool"},
+    {"generic_hash", "func(obj:&(read-only)Memory, type:Type)->UInt32"},
+    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
 
     // Builtins:
     {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
