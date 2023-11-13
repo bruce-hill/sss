@@ -18,11 +18,12 @@ public uint32_t generic_hash(const void *obj, const Type *type)
     case ArrayInfo: return Array_hash(obj, type);
     case TableInfo: return Table_hash(obj, type);
     case VTableInfo:
-        if (type->VTableInfo.hash)
-            return type->VTableInfo.hash(obj, type);
-        // fallthrough
+        if (!type->VTableInfo.hash)
+            goto hash_data;
+        return type->VTableInfo.hash(obj, type);
     case PointerInfo:
     default: {
+      hash_data:;
         uint32_t hash;
         halfsiphash((void*)obj, type->size, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
         return hash;
@@ -36,11 +37,13 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
     case ArrayInfo: return Array_compare(x, y, type);
     case TableInfo: return Table_compare(x, y, type);
     case VTableInfo:
-        if (type->VTableInfo.compare)
-            return type->VTableInfo.compare(x, y, type);
-        // fallthrough
+        if (!type->VTableInfo.compare)
+            goto compare_data;
+        return type->VTableInfo.compare(x, y, type);
     case PointerInfo:
-    default: return (int32_t)memcmp((void*)x, (void*)y, type->size);
+    default:
+      compare_data:
+        return (int32_t)memcmp((void*)x, (void*)y, type->size);
     }
 }
 
@@ -50,11 +53,13 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
     case ArrayInfo: return Array_equal(x, y, type);
     case TableInfo: return Table_equal(x, y, type);
     case VTableInfo:
-        if (type->VTableInfo.equal)
-            return type->VTableInfo.equal(x, y, type);
-        // fallthrough
+        if (!type->VTableInfo.equal)
+            goto use_generic_compare;
+        return type->VTableInfo.equal(x, y, type);
     case PointerInfo:
-    default: return (generic_compare(x, y, type) == 0);
+    default:
+      use_generic_compare:
+        return (generic_compare(x, y, type) == 0);
     }
 }
 
