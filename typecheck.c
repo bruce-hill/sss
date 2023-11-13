@@ -621,7 +621,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             sss_type_t *index_t = get_type(env, indexing->index);
             switch (index_t->tag) {
             case RangeType: return indexed_t;
-            case IntType: case CharType: case CStringCharType:
+            case IntType: case CharType:
                 return Match(indexed_t, ArrayType)->item_type;
             default: compiler_err(env, indexing->index, "I only know how to index lists using integers, not %T", index_t);
             }

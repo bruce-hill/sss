@@ -19,7 +19,7 @@ struct sss_type_s {
     enum {
         UnknownType,
         AbortType, VoidType, MemoryType,
-        BoolType, CharType, CStringCharType,
+        BoolType, CharType,
         IntType, NumType,
         TypeType,
         RangeType,
@@ -36,7 +36,7 @@ struct sss_type_s {
 
     union {
         struct {
-        } UnknownType, AbortType, VoidType, MemoryType, BoolType, CharType, CStringCharType;
+        } UnknownType, AbortType, VoidType, MemoryType, BoolType, CharType;
         struct {
             const char* units;
             uint16_t bits;

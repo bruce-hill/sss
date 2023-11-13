@@ -105,7 +105,7 @@ struct {
     {{.tag=RangeType}, "Range", "Range_type", NULL},
     {{.tag=TypeType}, "Type", "Type_type", NULL},
     {{.tag=VoidType}, "Void", "Void_type", NULL},
-    {{.tag=AbortType}, "Void", "Abort_type", NULL},
+    {{.tag=AbortType}, "Abort", "Abort_type", NULL},
 
 #define BUILTIN_INT(t, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
@@ -213,14 +213,14 @@ struct {
         {"Str__ends_with", "ends_with", "func(s:Str)->Bool"},
         {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str)->Str"},
         {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str)->Str"},
-        {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
+        // {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
         {"Str__slice", "slice", "func(s:Str, first=1, stride=1, length=Int.max)->Str"},
         {"Str__c_string", "c_string", "func(s:Str)->CString"},
         {"Str__from_c_string", "from_c_string", "func(c:CString)->Str"},
         {"Str__find", "find", "func(s:Str, target:Str)->Str"},
         {"Str__replace", "replace", "func(s:Str, target:Str, replacement:Str, limit=Int.max)->Str"},
         {"Str__quoted", "quoted", "func(s:Str)->Str"},
-        {"Str__split", "split", "func(s:Str, split_chars=[`, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
+        // {"Str__split", "split", "func(s:Str, split_chars=[`, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
         {"Str__join", "join", "func(glue:Str, pieces:[Str])->Str"},
         {NULL, NULL, NULL},
     }},
@@ -283,7 +283,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     // Then declare type methods:
     for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
-        for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; i++) {
+        for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; j++) {
             auto member = builtin_types[i].bindings[j];
             ast_t *type_ast = parse_type_str(member.type);
             if (!type_ast)
@@ -392,6 +392,12 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
 binding_t *get_binding(env_t *env, const char *name)
 {
     return Table_str_get(env->bindings, name);
+}
+
+sss_type_t *get_type_by_name(env_t *env, const char *name)
+{
+    binding_t *b = get_binding(env, name);
+    return b && b->type->tag == TypeType ? Match(b->type, TypeType)->type : NULL;
 }
 
 binding_t *get_local_binding(env_t *env, const char *name)

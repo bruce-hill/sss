@@ -253,7 +253,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         }
         break;
     }
-    case CharType: case CStringCharType: gcc_t = gcc_type(env->ctx, CHAR); break;
+    case CharType: gcc_t = gcc_type(env->ctx, CHAR); break;
     case BoolType: gcc_t = gcc_type(env->ctx, BOOL); break;
     case NumType: gcc_t = Match(t, NumType)->bits == 32 ? gcc_type(env->ctx, FLOAT) : gcc_type(env->ctx, DOUBLE); break;
     case VoidType: case MemoryType: case AbortType: gcc_t = gcc_type(env->ctx, VOID); break;
@@ -461,14 +461,6 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
         && can_promote(Match(actual, PointerType)->pointed, needed)) {
         *val = gcc_rval(gcc_rvalue_dereference(*val, NULL));
         return promote(env, Match(needed, PointerType)->pointed, val, needed);
-    // C String -> String promotion:
-    } else if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType)))) {
-        binding_t *b = get_from_namespace(env, needed, "from_pointer");
-        *val = gcc_callx(env->ctx, NULL, b->func, *val);
-    // String -> C String promotion:
-    } else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType)))) {
-        binding_t *b = get_from_namespace(env, actual, "c_string");
-        *val = gcc_callx(env->ctx, NULL, b->func, *val);
     // Tuple -> Named struct promotion
     } else if (actual->tag == StructType && base_variant(needed)->tag == StructType) { // Struct promotion
         gcc_type_t *actual_gcc_t = sss_type_to_gcc(env, actual);
@@ -813,7 +805,6 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
         free(buf);
     }
 
-    gcc_func_t *fail = get_function(env, "fail");
     gcc_func_t *func = gcc_block_func(*block);
     gcc_lvalue_t *fmt_var = gcc_local(func, NULL, gcc_type(env->ctx, STRING), "_fmt");
     gcc_block_t *use_color = gcc_new_block(func, fresh("use_color")),
@@ -861,8 +852,11 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
             gcc_rvalue_t *rval = va_arg(ap, gcc_rvalue_t*);
 
             // Insert strings directly:
-            if (type_eq(t, Type(ArrayType, .item_type=Type(CharType)))) {
-                gcc_func_t *to_c_str = get_from_namespace(env, t, "c_string")->func;
+            sss_type_t *str_type = get_type_by_name(env, "Str");
+            if (type_eq(t, str_type)) {
+                binding_t *b = get_from_namespace(env, t, "c_string");
+                gcc_func_t *to_c_str = b ? b->func : NULL;
+                assert(to_c_str);
                 append(args, gcc_callx(env->ctx, NULL, to_c_str, rval));
                 continue;
             }
@@ -890,6 +884,10 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
     }
     va_end(ap);
 
+
+
+    gcc_func_t *fail = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(env->ctx, VOID),
+                                    "builtin_fail", 1, (gcc_param_t*[]){gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, STRING), "fmt")}, 1);
     gcc_rvalue_t *failure = gcc_jit_context_new_call(env->ctx, NULL, fail, LENGTH(args), args[0]);
     gcc_eval(*block, NULL, failure);
     gcc_jump(*block, NULL, *block);

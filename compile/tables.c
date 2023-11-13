@@ -162,7 +162,6 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     gcc_lvalue_t *key_lval = gcc_local(func, loc, sss_type_to_gcc(env, key_t), "_key");
     gcc_assign(*block, loc, key_lval, key_val);
     if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
-    flatten_arrays(env, block, key_t, gcc_lvalue_address(key_lval, loc));
     gcc_rvalue_t *val_ptr = gcc_callx(
         env->ctx, loc, get_fn_binding->func,
         gcc_lvalue_address(table_var, loc),

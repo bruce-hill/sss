@@ -29,7 +29,6 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             return name;
         }
         case CharType: return "Char";
-        case CStringCharType: return "CStringChar";
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
@@ -313,7 +312,7 @@ sss_type_t *with_units(sss_type_t *t, const char* units)
 bool is_integral(sss_type_t *t)
 {
     t = base_variant(t);
-    return t->tag == IntType || t->tag == CharType || t->tag == CStringCharType;
+    return t->tag == IntType || t->tag == CharType;
 }
 
 bool is_floating_point(sss_type_t *t)
@@ -335,7 +334,7 @@ typedef enum {
 static inline magnitude_e type_min_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: case CharType: case CStringCharType: return MAG_ZERO;
+    case BoolType: case CharType: return MAG_ZERO;
     case IntType: {
         if (Match(t, IntType)->is_unsigned) return MAG_ZERO;
         switch (Match(t, IntType)->bits) {
@@ -356,7 +355,7 @@ static inline int type_max_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
     case BoolType: return MAG1;
-    case CharType: case CStringCharType: return MAG2;
+    case CharType: return MAG2;
     case IntType: {
         bool is_unsigned = Match(t, IntType)->is_unsigned;
         switch (Match(t, IntType)->bits) {
@@ -504,12 +503,6 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         return true;
     }
 
-    // String <-> c string promotion
-    if (type_eq(actual, Type(PointerType, .pointed=Type(CStringCharType))) && type_eq(needed, Type(ArrayType, .item_type=Type(CharType))))
-        return true;
-    else if (type_eq(actual, Type(ArrayType, .item_type=Type(CharType))) && type_eq(needed, Type(PointerType, .pointed=Type(CStringCharType))))
-        return true;
-
     if (actual->tag == StructType && base_variant(needed)->tag == StructType) {
         auto actual_struct = Match(actual, StructType);
         auto needed_struct = Match(base_variant(needed), StructType);
@@ -531,7 +524,7 @@ bool can_leave_uninitialized(sss_type_t *t)
 {
     switch (t->tag) {
     case PointerType: return Match(t, PointerType)->is_optional;
-    case ArrayType: case IntType: case NumType: case CharType: case CStringCharType: case BoolType: case RangeType:
+    case ArrayType: case IntType: case NumType: case CharType: case BoolType: case RangeType:
         return true;
     case StructType: {
         auto struct_ = Match(t, StructType);
