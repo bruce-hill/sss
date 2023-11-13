@@ -48,8 +48,6 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t);
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t);
 // Check whether a value is truthy or not
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
-// Compare two values (returns [-1,0,1])
-gcc_rvalue_t *compare_values(env_t *env, sss_type_t *t, gcc_rvalue_t *a, gcc_rvalue_t *b);
 // A ternary expression (a ? b : c)
 gcc_rvalue_t *ternary(gcc_block_t **block, gcc_rvalue_t *condition, gcc_type_t *gcc_t, gcc_rvalue_t *true_val, gcc_rvalue_t *false_val);
 // Check if an AST can be an lvalue
