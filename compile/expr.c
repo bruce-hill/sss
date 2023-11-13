@@ -1248,7 +1248,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case ArrayType: {
-            if (streq(access->field, "LENGTH")) {
+            if (streq(access->field, "length")) {
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
                 gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
                 gcc_field_t *field = gcc_get_field(array_struct, ARRAY_LENGTH_FIELD);
@@ -1257,7 +1257,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case RangeType: {
-            if (streq(access->field, "LENGTH")) {
+            if (streq(access->field, "length")) {
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
                 return range_len(env, gcc_t, obj);
             } else if (streq(access->field, "first")) {
@@ -1273,7 +1273,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             break;
         }
         case TableType: {
-            if (streq(access->field, "LENGTH")) {
+            if (streq(access->field, "length")) {
                 gcc_field_t *field = gcc_get_field(gcc_type_if_struct(sss_type_to_gcc(env, fielded_t)), TABLE_COUNT_FIELD);
                 return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
             } else if (streq(access->field, "default")) {
