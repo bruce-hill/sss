@@ -115,8 +115,13 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
 
 gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
 {
-    gcc_lvalue_t *lval = get_type_lvalue(env, t);
-    assert(lval);
+    const char *key = type_to_string_concise(t);
+    gcc_lvalue_t *lval = Table_str_get(&env->global->type_lvals, key);
+    if (!lval) {
+        lval = get_type_lvalue(env, t);
+        // Auto-initialize types when we get the pointer via this route
+        initialize_type_lvalue(env, t);
+    }
     return gcc_lvalue_address(lval, NULL);
 }
 
