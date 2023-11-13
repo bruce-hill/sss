@@ -265,12 +265,12 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
                 CORD_sprintf(&c, colorize ? "\x1b[36m%s\x1b[m" : "%s", member->name);
                 if (member->type && member->type->size > 0)
                     c = CORD_cat(c, generic_cord(obj + offset, colorize, member->type));
-                return c;
+                goto finished;
             }
         }
 
         CORD c = colorize ? "\x1b[36m" : "";
-        for (int64_t i = 0; i < info.members.length; i++) {
+        for (int64_t i = 0; tag && i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
             if (tag & member->tag) {
                 CORD_sprintf(&c, "%r|%s", c, member->name);
@@ -283,8 +283,9 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
         if (colorize)
             c = CORD_cat(c, "\x1b[m");
 
+      finished:
         if (strncmp(type->name, "enum(", strlen("enum(")) != 0)
-            CORD_sprintf(&c, colorize ? "\x1b[1m%s\x1b[m.%r" : "%s.%r", type->name, c);
+            CORD_sprintf(&c, colorize ? "\x1b[36m%s\x1b[m.%r" : "%s.%r", type->name, c);
 
         return c;
     }
