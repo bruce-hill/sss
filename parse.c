@@ -47,7 +47,7 @@ static const char *keywords[] = {
     "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
-    "and", "alias", "_mix_", "_min_", "_max_", "include",
+    "and", "alias", "_mix_", "_min_", "_max_",
     NULL,
 };
 
@@ -103,7 +103,6 @@ static PARSER(parse_predeclaration);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
-static PARSER(parse_include);
 static PARSER(parse_linker);
 static PARSER(parse_ellipsis);
 static ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast);
@@ -1705,8 +1704,8 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             whitespace(&next);
         ast_t *rhs = tag == Cast ? parse_type(ctx, next) : parse_term(ctx, next);
         if (!rhs && tag == Range) {
-            ast_t *prev = ith(terms, LENGTH(terms)-1);
-            terms[0][LENGTH(terms)-1] = NewAST(ctx->file, next, next, Range, .first=prev);
+            ast_t **prev_addr = ith_addr(terms, LENGTH(terms)-1);
+            *prev_addr = NewAST(ctx->file, next, next, Range, .first=*prev_addr);
             continue;
         }
         if (!rhs) break;
@@ -1868,7 +1867,6 @@ PARSER(parse_statement) {
         || (stmt=parse_def(ctx, pos))
         || (stmt=parse_doctest(ctx, pos))
         || (stmt=parse_linker(ctx,pos))
-        || (stmt=parse_include(ctx,pos))
         || (stmt=parse_use(ctx,pos)))
         return stmt;
 
@@ -2308,25 +2306,6 @@ PARSER(parse_use) {
         parser_err(ctx, start, pos, "No such file exists: \"%s\"", path);
     while (match(&pos, ";")) continue;
     return NewAST(ctx->file, start, pos, Use, .path=resolved_path);
-}
-
-PARSER(parse_include) {
-    const char *start = pos;
-    if (!match_word(&pos, "include")) return NULL;
-    spaces(&pos);
-    if (!match(&pos, "\"")) return NULL;
-    size_t path_len = strcspn(pos, "\"\n\r");
-    if (path_len < 1)
-        parser_err(ctx, start, pos, "There is no filename here to include");
-    char *path = heap_strn(pos, path_len);
-    pos += path_len;
-    char *resolved_path = resolve_path(path, ctx->file->filename);
-    if (!resolved_path)
-        parser_err(ctx, start, pos, "No such file exists: \"%s\"", path);
-    expect_closing(ctx, &pos, "\"", "I wasn't able to find the rest of this import string");
-    sss_file_t *file = sss_load_file(resolved_path);
-    ast_t *ast = parse_file(file, ctx->on_err);
-    return NewAST(ctx->file, start, pos, Block, .statements=Match(ast, Block)->statements, .keep_scope=true);
 }
 
 PARSER(parse_linker) {

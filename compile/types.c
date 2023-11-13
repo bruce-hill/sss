@@ -19,6 +19,9 @@
 gcc_rvalue_t *get_type_rvalue(env_t *env, sss_type_t *t)
 {
     switch (t->tag) {
+        case VoidType: return get_binding(env, "Void")->rval;
+        case MemoryType: return get_binding(env, "Memory")->rval;
+        case AbortType: return get_binding(env, "Abort")->rval;
         case BoolType: return get_binding(env, "Bool")->rval;
         case CharType: return get_binding(env, "Char")->rval;
         case IntType: {
@@ -33,7 +36,9 @@ gcc_rvalue_t *get_type_rvalue(env_t *env, sss_type_t *t)
             const char *name = info->bits == 64 ? "Num" : "Num32";
             return get_binding(env, name)->rval;
         }
-        default: errx(1, "Not implemented");
+        default: {
+            errx(1, "Not implemented");
+        }
     }
 }
 
