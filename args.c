@@ -15,7 +15,7 @@
 ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(const char*) arg_names, ARRAY_OF(sss_type_t*) arg_types, ARRAY_OF(ast_t*) arg_defaults)
 {
     int64_t num_args = LENGTH(arg_types);
-    arg_info_t arg_infos[num_args] = {};
+    arg_info_t *arg_infos = GC_MALLOC(num_args * sizeof(arg_info_t));
     int64_t next_arg = 0;
 
     table_t arg_positions = {}; // name -> int64_t
@@ -72,7 +72,8 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
         info->is_default = true;
     }
 
-    return (ARRAY_OF(arg_info_t))new(array_t, .data=arg_infos, .length=num_args, .stride=sizeof(arg_info_t));
+    auto arg_info_array = (ARRAY_OF(arg_info_t))new(array_t, .data=arg_infos, .length=num_args, .stride=sizeof(arg_info_t));
+    return arg_info_array;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

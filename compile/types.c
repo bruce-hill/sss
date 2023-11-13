@@ -92,6 +92,7 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
             lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
             break;
         }
+        case FunctionType:
         default: {
             compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);
         }

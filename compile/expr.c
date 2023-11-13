@@ -2243,7 +2243,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         sss_type_t *t = get_type(env, expr);
-        gcc_lvalue_t *expression_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_expr");
         if (t->tag == VoidType || t->tag == AbortType) {
             if (test->output)
                 compiler_err(env, ast, "There shouldn't be any output for a Void expression like this");
@@ -2251,8 +2250,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             assert(is_discardable(env, ast));
             gcc_rvalue_t *val = compile_expr(env, block, expr);
             if (!*block || !val) return NULL;
-            gcc_assign(*block, ast_loc(env, expr), expression_var, val);
-            val = gcc_rval(expression_var);
 
             // For declarations, assignment, and updates, even though it
             // doesn't evaluate to a value, it's helpful to print out the new
@@ -2265,30 +2262,37 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 ast_t *lhs_ast = expr->__data.AddUpdate.lhs;
                 // END UNSAFE
                 sss_type_t *lhs_t = get_type(env, lhs_ast);
+                gcc_lvalue_t *expression_var = gcc_local(func, loc, sss_type_to_gcc(env, lhs_t), "_expr");
+                gcc_assign(*block, ast_loc(env, expr), expression_var, val);
                 DOCTEST(heap_strf("%#W =", lhs_ast), lhs_t, gcc_lvalue_address(expression_var, loc));
                 break;
             }
             case Assign: {
                 auto assign = Match(expr, Assign);
+                auto members = EMPTY_ARRAY(ast_t*);
+                for (int64_t i = 0; i < LENGTH(assign->targets); i++) {
+                    append(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
+                }
+                sss_type_t *lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
+                gcc_lvalue_t *expression_var = gcc_local(func, loc, sss_type_to_gcc(env, lhs_t), "_expr");
+                gcc_assign(*block, ast_loc(env, expr), expression_var, val);
+
                 ast_t *first = ith(assign->targets, 0);
                 if (LENGTH(assign->targets) == 1) {
-                    sss_type_t *lhs_t = get_type(env, first);
-                    gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=ARRAY(lhs_t), .field_names=ARRAY((const char*)"_1")));
+                    sss_type_t *single_lhs_t = get_type(env, first);
+                    gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=ARRAY(single_lhs_t), .field_names=ARRAY((const char*)"_1")));
                     gcc_lvalue_t *field_lval = gcc_lvalue_access_field(
                         expression_var, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
-                    DOCTEST(heap_strf("%#W =", first), lhs_t, gcc_lvalue_address(field_lval, loc));
+                    DOCTEST(heap_strf("%#W =", first), single_lhs_t, gcc_lvalue_address(field_lval, loc));
                 } else {
                     ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
-                    auto members = EMPTY_ARRAY(ast_t*);
-                    for (int64_t i = 0; i < LENGTH(assign->targets); i++) {
-                        append(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
-                    }
-                    sss_type_t *lhs_t = get_type(env, WrapAST(expr, Struct, .members=members));
                     DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), lhs_t, gcc_lvalue_address(expression_var, loc));
                 }
                 break;
             }
-            default: break;
+            default:
+                gcc_eval(*block, loc, val);
+                break;
             }
 
             return NULL;

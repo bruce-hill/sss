@@ -310,6 +310,11 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         Table_str_set(&env->global->funcs, fn.symbol, func);
     }
 
+    Table_str_set(&env->global->bindings, "say",
+                  new(binding_t, .type=parse_type_ast(env, parse_type_str("func(str:Str, end=\"\\n\")->Void")),
+                      .func=get_function(env, "builtin_say"),
+                      .rval=gcc_get_func_address(get_function(env, "builtin_say"), NULL)));
+
     return env;
 }
 
