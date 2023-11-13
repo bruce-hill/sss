@@ -20,7 +20,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
     gcc_type_t *range_t = sss_type_to_gcc(env, Type(RangeType));
-    gcc_struct_t *range_struct = gcc_type_if_struct(range_t);
+    gcc_struct_t *range_struct = gcc_type_as_struct(range_t);
     assert(range_struct);
     auto range = Match(ast, Range);
     gcc_rvalue_t *values[] = {
@@ -50,7 +50,7 @@ gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast)
 
 gcc_rvalue_t *range_len(env_t *env, gcc_type_t *gcc_t, gcc_rvalue_t *range)
 {
-    gcc_struct_t *range_struct = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *range_struct = gcc_type_as_struct(gcc_t);
     assert(range_struct);
     gcc_rvalue_t *first = gcc_rvalue_access_field(range, NULL, gcc_get_field(range_struct, 0)),
                  *step = gcc_rvalue_access_field(range, NULL, gcc_get_field(range_struct, 1)),
@@ -81,7 +81,7 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
     member_val = gcc_rval(member_var);
 
     gcc_type_t *gcc_range_t = sss_type_to_gcc(env, get_type(env, range));
-    gcc_struct_t *range_struct = gcc_type_if_struct(gcc_range_t);
+    gcc_struct_t *range_struct = gcc_type_as_struct(gcc_range_t);
     gcc_lvalue_t *range_var = gcc_local(func, loc, gcc_range_t, "_range");
     gcc_assign(*block, loc, range_var, compile_range(env, block, range));
 

@@ -16,194 +16,99 @@
 #include "../types.h"
 #include "../util.h"
 
+// Values here are static so they can be referenced later
+static gcc_field_t *type_struct_fields[5],
+                   *type_union_fields[6],
+                   // Per-type union members:
+                   *vtable_info_fields[4],
+                   *pointer_info_fields[3],
+                   *array_info_fields[1],
+                   *table_info_fields[4],
+                   *struct_info_fields[2],
+                   *tagged_union_info_fields[2];
+static gcc_type_t *type_gcc_type = NULL, *data_union = NULL,
+                  *vtable_info = NULL, *pointer_info = NULL,
+                  *array_info = NULL, *table_info = NULL, *struct_info = NULL,
+                  *tagged_union_info = NULL,
+                  *struct_member_type = NULL, *struct_member_array_type = NULL,
+                  *tu_member_type = NULL, *tu_member_array_type = NULL;
+
+gcc_type_t *get_type_gcc_type(env_t *env)
+{
+    if (type_gcc_type != NULL)
+        return type_gcc_type;
+
+    gcc_struct_t *type_struct = gcc_opaque_struct(env->ctx, NULL, "Type");
+    type_gcc_type = gcc_struct_as_type(type_struct);
+
+#define FIELD(name, type) gcc_new_field(env->ctx, NULL, type, name)
+#define STRUCT(name, fields) gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, name, sizeof(fields)/sizeof(fields[0]), fields))
+
+    vtable_info_fields[0] = FIELD("equal", gcc_type(env->ctx, VOID_PTR));
+    vtable_info_fields[1] = FIELD("compare", gcc_type(env->ctx, VOID_PTR));
+    vtable_info_fields[2] = FIELD("hash", gcc_type(env->ctx, VOID_PTR));
+    vtable_info_fields[3] = FIELD("cord", gcc_type(env->ctx, VOID_PTR));
+    vtable_info = STRUCT("VTableInfo", vtable_info_fields);
+
+    pointer_info_fields[0] = FIELD("sigil", gcc_type(env->ctx, STRING));
+    pointer_info_fields[1] = FIELD("pointed", gcc_get_ptr_type(type_gcc_type));
+    pointer_info_fields[2] = FIELD("cyclic", gcc_type(env->ctx, BOOL));
+    pointer_info = STRUCT("PointerInfo", pointer_info_fields);
+
+    array_info_fields[0] = FIELD("item", gcc_get_ptr_type(type_gcc_type));
+    array_info = STRUCT("ArrayInfo", array_info_fields);
+
+    table_info_fields[0] = FIELD("key", gcc_get_ptr_type(type_gcc_type));
+    table_info_fields[1] = FIELD("value", gcc_get_ptr_type(type_gcc_type));
+    table_info_fields[2] = FIELD("entry_size", gcc_type(env->ctx, SIZE));
+    table_info_fields[3] = FIELD("value_offset", gcc_type(env->ctx, SIZE));
+    table_info = STRUCT("TableInfo", table_info_fields);
+
+    gcc_field_t *sfields[] = {FIELD("name", gcc_type(env->ctx, STRING)), FIELD("type", gcc_get_ptr_type(type_gcc_type))};
+    struct_member_type = STRUCT("StructField", sfields);
+    struct_member_array_type = make_array_gcc_type(env, struct_member_type);
+    struct_info_fields[0] = FIELD("fields", struct_member_array_type);
+    struct_info_fields[1] = FIELD("is_pure_data", gcc_type(env->ctx, BOOL));
+    struct_info = STRUCT("StructInfo", struct_info_fields);
+
+    gcc_field_t *tufields[] = {FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("name", gcc_type(env->ctx, STRING)), FIELD("type", gcc_get_ptr_type(type_gcc_type))};
+    tu_member_type = STRUCT("TaggedUnionField", tufields);
+    tu_member_array_type = make_array_gcc_type(env, tu_member_type);
+    tagged_union_info_fields[0] = FIELD("members", tu_member_array_type);
+    tagged_union_info_fields[1] = FIELD("is_pure_data", gcc_type(env->ctx, BOOL));
+    tagged_union_info = STRUCT("TaggedUnionInfo", tagged_union_info_fields);
+
+    type_union_fields[VTableInfo] = FIELD("VTableInfo", vtable_info);
+    type_union_fields[PointerInfo] = FIELD("PointerInfo", pointer_info);
+    type_union_fields[ArrayInfo] = FIELD("ArrayInfo", array_info);
+    type_union_fields[TableInfo] = FIELD("TableInfo", table_info);
+    type_union_fields[StructInfo] = FIELD("StructInfo", struct_info);
+    type_union_fields[TaggedUnionInfo] = FIELD("TaggedUnionInfo", tagged_union_info);
+    data_union = gcc_union(env->ctx, NULL, "TypeInfoUnion", sizeof(type_union_fields)/sizeof(type_union_fields[0]), type_union_fields);
+
+    type_struct_fields[0] = FIELD("name", gcc_type(env->ctx, STRING));
+    type_struct_fields[1] = FIELD("size", gcc_type(env->ctx, SIZE));
+    type_struct_fields[2] = FIELD("align", gcc_type(env->ctx, SIZE));
+    type_struct_fields[3] = FIELD("tag", gcc_type(env->ctx, INT32));
+    type_struct_fields[4] = FIELD("info", data_union);
+    gcc_set_fields(type_struct, NULL, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields);
+
+#undef STRUCT
+#undef FIELD
+
+    return type_gcc_type;
+}
+
 gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
 {
+    if (t->tag == VariantType)
+        return get_type_lvalue(env, Match(t, VariantType)->variant_of);
+
     const char *key = type_to_string_concise(t);
     gcc_lvalue_t *lval = Table_str_get(&env->global->type_lvals, key);
     if (lval) return lval;
-
-    binding_t *b = get_binding(env, key);
-    if (b && b->lval && b->type->tag == TypeType)
-        return b->lval;
-    else if (b)
-        compiler_err(env, NULL, "Missing lvalue or wrong type: %s : %T", key, b->type);
-
-    switch (t->tag) {
-    case ArrayType: {
-        sss_type_t *item_type = Match(t, ArrayType)->item_type;
-        gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
-        gcc_field_t *fields[] = {
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "name"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "size"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "align"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(type_gcc_t), "item_type"),
-        };
-        gcc_struct_t *gcc_struct = gcc_new_struct_type(env->ctx, NULL, "ArrayType", sizeof(fields)/sizeof(fields[0]), fields);
-
-        gcc_rvalue_t *rvalues[] = {
-            gcc_str(env->ctx, key),
-            gcc_rvalue_size(env->ctx, sizeof(array_t)),
-            gcc_rvalue_size(env->ctx, alignof(array_t)),
-            gcc_rvalue_int32(env->ctx, ArrayInfo),
-            get_type_pointer(env, item_type),
-        };
-
-        gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("ArrayType"));
-        gcc_global_set_initializer_rvalue(
-            global,
-            gcc_struct_constructor(env->ctx, NULL, gcc_struct_as_type(gcc_struct), sizeof(fields)/sizeof(fields[0]), fields, rvalues));
-
-        lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
-        break;
-    }
-    case TableType: {
-        sss_type_t *key_type = Match(t, TableType)->key_type;
-        sss_type_t *value_type = Match(t, TableType)->value_type;
-        gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
-        gcc_field_t *fields[] = {
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "name"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "size"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "align"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(type_gcc_t), "key_type"),
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(type_gcc_t), "value_type"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "entry_size"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "value_offset"),
-        };
-        gcc_struct_t *gcc_struct = gcc_new_struct_type(env->ctx, NULL, "TableType", sizeof(fields)/sizeof(fields[0]), fields);
-
-        gcc_rvalue_t *rvalues[] = {
-            gcc_str(env->ctx, key),
-            gcc_rvalue_size(env->ctx, sizeof(table_t)),
-            gcc_rvalue_size(env->ctx, alignof(table_t)),
-            gcc_rvalue_int32(env->ctx, TableInfo),
-            get_type_pointer(env, key_type),
-            get_type_pointer(env, value_type),
-            gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
-            table_entry_value_offset(env, t),
-        };
-
-        gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("TableType"));
-        gcc_global_set_initializer_rvalue(
-            global,
-            gcc_struct_constructor(env->ctx, NULL, gcc_struct_as_type(gcc_struct), sizeof(fields)/sizeof(fields[0]), fields, rvalues));
-
-        lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
-        break;
-    }
-    case PointerType: {
-        auto ptr = Match(t, PointerType);
-        gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
-        gcc_field_t *fields[] = {
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "name"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "size"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "align"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "sigil"),
-            gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(type_gcc_t), "pointed"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "cyclic"),
-        };
-        gcc_struct_t *gcc_struct = gcc_new_struct_type(env->ctx, NULL, "TableType", sizeof(fields)/sizeof(fields[0]), fields);
-
-        CORD sigil = ptr->is_stack ? (ptr->is_optional ? "&(optional)" : "&") : (ptr->is_optional ? "?" : "@");
-        if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
-
-        gcc_rvalue_t *rvalues[] = {
-            gcc_str(env->ctx, key),
-            gcc_rvalue_size(env->ctx, sizeof(table_t)),
-            gcc_rvalue_size(env->ctx, alignof(table_t)),
-            gcc_rvalue_int32(env->ctx, PointerInfo),
-            gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
-            get_type_pointer(env, ptr->pointed),
-            gcc_rvalue_bool(env->ctx, can_have_cycles(t)),
-        };
-
-        gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("PointerType"));
-        gcc_global_set_initializer_rvalue(
-            global,
-            gcc_struct_constructor(env->ctx, NULL, gcc_struct_as_type(gcc_struct), sizeof(fields)/sizeof(fields[0]), fields, rvalues));
-
-        lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
-        break;
-    }
-    case StructType: {
-        auto struct_info = Match(t, StructType);
-        int64_t num_fields = LENGTH(struct_info->field_types);
-
-        gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
-        sss_type_t *member_t = Type(
-            StructType, .field_names=ARRAY((const char*)"name", "type"),
-            .field_types=ARRAY(get_type_by_name(env, "CString"), Type(PointerType, .pointed=Type(TypeType))));
-        sss_type_t *members_t = Type(ArrayType, member_t);
-        gcc_type_t *members_gcc_t = sss_type_to_gcc(env, members_t);
-        gcc_field_t *fields[] = {
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, STRING), "name"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "size"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, SIZE), "align"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, INT32), "tag"),
-            gcc_new_field(env->ctx, NULL, members_gcc_t, "members"),
-            gcc_new_field(env->ctx, NULL, gcc_type(env->ctx, BOOL), "is_pure_data"),
-        };
-        gcc_struct_t *gcc_struct = gcc_new_struct_type(env->ctx, NULL, "StructType", sizeof(fields)/sizeof(fields[0]), fields);
-
-        gcc_type_t *member_gcc_t = sss_type_to_gcc(env, member_t);
-
-        gcc_rvalue_t *member_rvals[num_fields] = {};
-        for (int64_t i = 0; i < num_fields; i++) {
-            const char *name = ith(struct_info->field_names, i);
-            if (!name) name = heap_strf("_%d", i+1);
-            member_rvals[i] = gcc_struct_constructor(
-                env->ctx, NULL, member_gcc_t, 2, (gcc_field_t*[]){
-                    gcc_get_field(gcc_type_if_struct(member_gcc_t), 0),
-                    gcc_get_field(gcc_type_if_struct(member_gcc_t), 1),
-                }, (gcc_rvalue_t*[]){
-                    gcc_str(env->ctx, name),
-                    get_type_pointer(env, ith(struct_info->field_types, i)),
-                });
-        }
-
-        gcc_type_t *member_data_gcc_t = gcc_jit_context_new_array_type(env->ctx, NULL, member_gcc_t, num_fields);
-        gcc_rvalue_t *member_data = gcc_jit_context_new_array_constructor(
-            env->ctx, NULL, member_data_gcc_t, num_fields, member_rvals);
-
-        gcc_lvalue_t *member_data_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, member_data_gcc_t, fresh("StructFields"));
-        gcc_global_set_initializer_rvalue(member_data_lval, member_data);
-        gcc_rvalue_t *members = gcc_struct_constructor(
-            env->ctx, NULL, members_gcc_t, 3, (gcc_field_t*[]){
-                gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_DATA_FIELD),
-                gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_LENGTH_FIELD),
-                gcc_get_field(gcc_type_if_struct(members_gcc_t), ARRAY_STRIDE_FIELD),
-            }, (gcc_rvalue_t*[]){
-                gcc_cast(env->ctx, NULL, gcc_lvalue_address(member_data_lval, NULL), gcc_get_ptr_type(member_gcc_t)),
-                gcc_rvalue_int64(env->ctx, num_fields),
-                gcc_rvalue_int16(env->ctx, sizeof(void*) + sizeof(void*)),
-            });
-
-        gcc_rvalue_t *rvalues[] = {
-            gcc_str(env->ctx, key),
-            gcc_rvalue_size(env->ctx, sizeof(table_t)),
-            gcc_rvalue_size(env->ctx, alignof(table_t)),
-            gcc_rvalue_int32(env->ctx, StructInfo),
-            members,
-            gcc_rvalue_bool(env->ctx, false), // TODO: determine if it is pure memory or not
-        };
-
-        gcc_lvalue_t *global = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_struct_as_type(gcc_struct), fresh("StructType"));
-        gcc_global_set_initializer_rvalue(
-            global,
-            gcc_struct_constructor(env->ctx, NULL, gcc_struct_as_type(gcc_struct), sizeof(fields)/sizeof(fields[0]), fields, rvalues));
-
-        lval = gcc_rvalue_dereference(gcc_cast(env->ctx, NULL, gcc_lvalue_address(global, NULL), gcc_get_ptr_type(type_gcc_t)), NULL);
-        break;
-    }
-    case FunctionType:
-    default: {
-        compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);
-    }
-    }
-
-    assert(lval);
+    gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
+    lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, type_gcc_t, fresh("Type"));
     Table_str_set(&env->global->type_lvals, key, lval);
     return lval;
 }
@@ -213,6 +118,108 @@ gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
     gcc_lvalue_t *lval = get_type_lvalue(env, t);
     assert(lval);
     return gcc_lvalue_address(lval, NULL);
+}
+
+void initialize_type_lvalue(env_t *env, sss_type_t *t)
+{
+    gcc_lvalue_t *lval = get_type_lvalue(env, t);
+#define TAG_RVAL 3
+#define INFO_RVAL 4
+    gcc_rvalue_t *type_rvalues[5] = {
+        gcc_str(env->ctx, type_to_string_concise(t)),
+        gcc_rvalue_size(env->ctx, gcc_sizeof(env, t)),
+        gcc_rvalue_size(env->ctx, gcc_alignof(env, t)),
+        NULL, // tag
+        NULL, // info
+    };
+
+#define SET_INFO(tag, info_type, fields, ...) do { type_rvalues[TAG_RVAL] = gcc_rvalue_int32(env->ctx, tag); \
+            type_rvalues[INFO_RVAL] = gcc_union_constructor(\
+            env->ctx, NULL, data_union, type_union_fields[ArrayInfo], \
+            gcc_struct_constructor( \
+                env->ctx, NULL, info_type, sizeof((gcc_rvalue_t*[]){__VA_ARGS__})/sizeof(gcc_rvalue_t*), fields, \
+                (gcc_rvalue_t*[]){__VA_ARGS__})); } while (0)
+
+    switch (t->tag) {
+    case ArrayType: {
+        sss_type_t *item_type = Match(t, ArrayType)->item_type;
+        SET_INFO(ArrayInfo, array_info, array_info_fields, get_type_pointer(env, item_type));
+        break;
+    }
+    case TableType: {
+        sss_type_t *key_type = Match(t, TableType)->key_type;
+        sss_type_t *value_type = Match(t, TableType)->value_type;
+        SET_INFO(TableInfo, table_info, table_info_fields,
+                 get_type_pointer(env, key_type),
+                 get_type_pointer(env, value_type),
+                 gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
+                 table_entry_value_offset(env, t),
+        );
+        break;
+    }
+    case PointerType: {
+        auto ptr = Match(t, PointerType);
+        CORD sigil = ptr->is_stack ? (ptr->is_optional ? "&(optional)" : "&") : (ptr->is_optional ? "?" : "@");
+        if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
+
+        SET_INFO(TableInfo, pointer_info, pointer_info_fields,
+                 gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
+                 get_type_pointer(env, ptr->pointed),
+                 gcc_rvalue_bool(env->ctx, can_have_cycles(t)),
+        );
+        break;
+    }
+    case StructType: {
+        auto info = Match(t, StructType);
+        int64_t num_fields = LENGTH(info->field_types);
+        gcc_rvalue_t *member_rvals[num_fields] = {};
+        for (int64_t i = 0; i < num_fields; i++) {
+            const char *name = ith(info->field_names, i);
+            if (!name) name = heap_strf("_%d", i+1);
+            member_rvals[i] = gcc_struct_constructor(
+                env->ctx, NULL, struct_member_type, 2, (gcc_field_t*[]){
+                    gcc_get_field(gcc_type_as_struct(struct_member_type), 0),
+                    gcc_get_field(gcc_type_as_struct(struct_member_type), 1),
+                }, (gcc_rvalue_t*[]){
+                    gcc_str(env->ctx, name),
+                    get_type_pointer(env, ith(info->field_types, i)),
+                });
+        }
+
+        gcc_rvalue_t *field_data = gcc_jit_context_new_array_constructor(
+            env->ctx, NULL, struct_member_array_type, num_fields, member_rvals);
+
+        gcc_lvalue_t *struct_fields_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, struct_member_type, fresh("_struct_fields"));
+        gcc_global_set_initializer_rvalue(struct_fields_lval, field_data);
+        gcc_rvalue_t *fields = gcc_struct_constructor(
+            env->ctx, NULL, struct_member_array_type, 3, (gcc_field_t*[]){
+                gcc_get_field(gcc_type_as_struct(struct_member_array_type), ARRAY_DATA_FIELD),
+                gcc_get_field(gcc_type_as_struct(struct_member_array_type), ARRAY_LENGTH_FIELD),
+                gcc_get_field(gcc_type_as_struct(struct_member_array_type), ARRAY_STRIDE_FIELD),
+            }, (gcc_rvalue_t*[]){
+                gcc_cast(env->ctx, NULL, gcc_lvalue_address(struct_fields_lval, NULL), gcc_get_ptr_type(struct_member_type)),
+                gcc_rvalue_int64(env->ctx, num_fields),
+                gcc_rvalue_int16(env->ctx, sizeof(void*) + sizeof(void*)),
+            });
+
+        SET_INFO(StructInfo, struct_info, struct_info_fields,
+            fields,
+            gcc_rvalue_bool(env->ctx, false), // TODO: determine if it is pure memory or not
+        );
+        break;
+    }
+    case VariantType: {
+        return;
+    }
+    case FunctionType:
+    default: {
+        compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);
+    }
+    }
+
+    gcc_global_set_initializer_rvalue(
+        lval,
+        gcc_struct_constructor(env->ctx, NULL, type_gcc_type, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

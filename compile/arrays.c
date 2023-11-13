@@ -47,7 +47,7 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
     if (!*block) return;
 
     gcc_type_t *gcc_t = sss_type_to_gcc(env, info->array_type);
-    gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *struct_t = gcc_type_as_struct(gcc_t);
     gcc_lvalue_t *array = gcc_rvalue_dereference(info->array_ptr, NULL);
     gcc_lvalue_t *data_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, ARRAY_DATA_FIELD));
     gcc_lvalue_t *length_field = gcc_lvalue_access_field(array, NULL, gcc_get_field(struct_t, ARRAY_LENGTH_FIELD));
@@ -84,7 +84,7 @@ gcc_lvalue_t *array_cow_field(env_t *env, gcc_rvalue_t *arr_ptr)
 {
     sss_type_t *str_t = Type(ArrayType, .item_type=Type(CharType));
     gcc_type_t *str_gcc_t = sss_type_to_gcc(env, str_t);
-    gcc_struct_t *array_struct = gcc_type_if_struct(str_gcc_t);
+    gcc_struct_t *array_struct = gcc_type_as_struct(str_gcc_t);
     return gcc_rvalue_dereference_field(gcc_cast(env->ctx, NULL, arr_ptr, gcc_get_ptr_type(str_gcc_t)), NULL,
                                         gcc_get_field(array_struct, ARRAY_COW_FIELD));
 }
@@ -142,7 +142,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     while (arr_t->tag == VariantType)
         arr_t = Match(arr_t, VariantType)->variant_of;
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, arr_t);
-    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+    gcc_struct_t *gcc_array_struct = gcc_type_as_struct(array_gcc_t);
     gcc_rvalue_t *arr = gcc_rval(arr_var);
 
     // Specially optimized case for creating slices using range literals
@@ -252,10 +252,10 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         return NULL;
 
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_type);
-    gcc_struct_t *gcc_array_struct = gcc_type_if_struct(array_gcc_t);
+    gcc_struct_t *gcc_array_struct = gcc_type_as_struct(array_gcc_t);
 
     gcc_type_t *item_gcc_t = sss_type_to_gcc(env, item_t);
-    gcc_struct_t *gcc_item_struct = gcc_type_if_struct(item_gcc_t);
+    gcc_struct_t *gcc_item_struct = gcc_type_as_struct(item_gcc_t);
 
     auto struct_type = Match(base_variant(item_t), StructType);
     for (int64_t i = 0, len = LENGTH(struct_type->field_names); i < len; i++) {
@@ -291,7 +291,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         gcc_rvalue_t *stride = gcc_rvalue_access_field(arr_val, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *slice_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=field_type));
-        gcc_struct_t *slice_struct = gcc_type_if_struct(slice_gcc_t);
+        gcc_struct_t *slice_struct = gcc_type_as_struct(slice_gcc_t);
         gcc_field_t *fields[] = {
             gcc_get_field(slice_struct, ARRAY_DATA_FIELD),
             gcc_get_field(slice_struct, ARRAY_LENGTH_FIELD),
@@ -390,7 +390,7 @@ gcc_lvalue_t *array_index(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_func_t *func = gcc_block_func(*block);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, arr_t);
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
-    gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
     gcc_loc_t *loc = ast_loc(env, arr_ast);
     gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
     gcc_lvalue_t *index_var = gcc_local(func, loc, i64_t, "_index");
@@ -417,7 +417,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
 
     gcc_loc_t *loc = ast_loc(env, ast);
     gcc_lvalue_t *array_var = gcc_local(func, loc, gcc_t, "_array");
-    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
 
     sss_type_t *item_t = get_item_type(t);
     if (item_t->tag == VoidType)
@@ -485,7 +485,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
     if (!item_type) return;
     // If necessary, flatten first:
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *struct_t = gcc_type_as_struct(gcc_t);
     gcc_func_t *func = gcc_block_func(*block);
     gcc_rvalue_t *stride_field = gcc_rval(gcc_rvalue_dereference_field(array_ptr, NULL, gcc_get_field(struct_t, ARRAY_STRIDE_FIELD)));
     gcc_block_t *needs_flattening = gcc_new_block(func, fresh("needs_flattening")),

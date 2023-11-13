@@ -44,16 +44,16 @@ static gcc_rvalue_t *math_binop_rec(
 
         sss_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
         gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
-        gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
+        gcc_struct_t *result_array_struct = gcc_type_as_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
-        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_as_struct(lhs_gcc_t);
         gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
-        gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
+        gcc_struct_t *rhs_array_struct = gcc_type_as_struct(rhs_gcc_t);
         gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
@@ -126,11 +126,11 @@ static gcc_rvalue_t *math_binop_rec(
         }
         sss_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
         gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
-        gcc_struct_t *result_array_struct = gcc_type_if_struct(result_gcc_t);
+        gcc_struct_t *result_array_struct = gcc_type_as_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
 
         gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_t);
-        gcc_struct_t *array_struct = gcc_type_if_struct(array_gcc_t);
+        gcc_struct_t *array_struct = gcc_type_as_struct(array_gcc_t);
         gcc_rvalue_t *len = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *stride16 = gcc_rvalue_access_field(array, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD));
 
@@ -198,7 +198,7 @@ static gcc_rvalue_t *math_binop_rec(
         // For tagged unions, Foo.One + Foo.Two --> bitwise or of the tags
         // TODO: confirm no values
         gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, lhs_t);
-        gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+        gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
         gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
         gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
         auto members = Match(lhs_t, TaggedUnionType)->members;
@@ -251,7 +251,7 @@ static gcc_rvalue_t *math_binop_rec(
 
     auto struct_ = Match(struct_t, StructType);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, struct_t);
-    gcc_struct_t *struct_gcc_t = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *struct_gcc_t = gcc_type_as_struct(gcc_t);
     auto fields = EMPTY_ARRAY(gcc_field_t*);
     auto members = EMPTY_ARRAY(gcc_rvalue_t*);
     for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
@@ -346,12 +346,12 @@ void math_update_rec(
         //     update(&lhs->data[i], &rhs->data[i]);
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
-        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_as_struct(lhs_gcc_t);
         gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
-        gcc_struct_t *rhs_array_struct = gcc_type_if_struct(rhs_gcc_t);
+        gcc_struct_t *rhs_array_struct = gcc_type_as_struct(rhs_gcc_t);
         gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
@@ -389,7 +389,7 @@ void math_update_rec(
         // for (i = 0; i < lhs->len; i++)
         //     update(&lhs->data[i], rhs)
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
-        gcc_struct_t *lhs_array_struct = gcc_type_if_struct(lhs_gcc_t);
+        gcc_struct_t *lhs_array_struct = gcc_type_as_struct(lhs_gcc_t);
         gcc_rvalue_t *len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *stride = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
@@ -419,7 +419,7 @@ void math_update_rec(
             compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %T and %T", lhs_t, rhs_t);
 
         auto struct_ = Match(lhs_t, StructType);
-        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+        gcc_struct_t *struct_t = gcc_type_as_struct(gcc_t);
         for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
             sss_type_t *field_t = ith(struct_->field_types, i);
@@ -429,7 +429,7 @@ void math_update_rec(
         }
     } else if (lhs_t->tag == StructType) {
         auto struct_ = Match(lhs_t, StructType);
-        gcc_struct_t *struct_t = gcc_type_if_struct(gcc_t);
+        gcc_struct_t *struct_t = gcc_type_as_struct(gcc_t);
         for (int64_t i = 0, len = LENGTH(struct_->field_types); i < len; i++) {
             gcc_field_t *field = gcc_get_field(struct_t, i);
             sss_type_t *field_t = ith(struct_->field_types, i);

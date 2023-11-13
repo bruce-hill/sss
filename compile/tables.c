@@ -233,7 +233,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
         if (!type_eq(Match(fallback_t, PointerType)->pointed, t))
             compiler_err(env, fallback, "This fallback has type %T, which doesn't match the table's type: %T", fallback_t, t);
 
-        gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
+        gcc_struct_t *table_struct = gcc_type_as_struct(gcc_t);
         gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_FALLBACK_FIELD)),
                    compile_expr(env, block, fallback));
     }
@@ -245,7 +245,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, table->default_value, "This default value has type %T, which doesn't match the table's value type: %T",
                         default_t, value_t);
 
-        gcc_struct_t *table_struct = gcc_type_if_struct(gcc_t);
+        gcc_struct_t *table_struct = gcc_type_as_struct(gcc_t);
         gcc_assign(*block, loc, gcc_lvalue_access_field(table_var, NULL, gcc_get_field(table_struct, TABLE_DEFAULT_FIELD)),
                    compile_expr(env, block, WrapAST(table->default_value, HeapAllocate, .value=table->default_value)));
     }

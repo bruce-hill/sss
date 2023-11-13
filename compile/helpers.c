@@ -153,57 +153,19 @@ gcc_type_t *get_union_type(env_t *env, sss_type_t *t)
     return union_gcc_t;
 }
 
-static gcc_type_t *get_type_gcc_type(env_t *env)
+gcc_type_t *make_array_gcc_type(env_t *env, gcc_type_t *item_type)
 {
-    static gcc_type_t *type_gcc_type = NULL;
-    if (type_gcc_type != NULL)
-        return type_gcc_type;
-
-#define FIELD(name, type) gcc_new_field(env->ctx, NULL, type, name)
-#define STRUCT(name, ...) gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, name, sizeof((gcc_field_t*[]){__VA_ARGS__})/sizeof(gcc_field_t*), (gcc_field_t*[]){__VA_ARGS__}))
-#define UNION(name, ...) gcc_union(env->ctx, NULL, name, sizeof((gcc_field_t*[]){__VA_ARGS__})/sizeof(gcc_field_t*), (gcc_field_t*[]){__VA_ARGS__})
-
-    gcc_struct_t *type_struct = gcc_opaque_struct(env->ctx, NULL, "Type");
-    type_gcc_type = gcc_struct_as_type(type_struct);
-    
-    gcc_type_t *type_info_union_t = UNION(
-        "TypeInfo",
-        FIELD("VTableInfo", STRUCT(
-                "VTableInfo",
-                FIELD("equal", gcc_type(env->ctx, VOID_PTR)), 
-                FIELD("compare", gcc_type(env->ctx, VOID_PTR)), 
-                FIELD("hash", gcc_type(env->ctx, VOID_PTR)), 
-                FIELD("cord", gcc_type(env->ctx, VOID_PTR)),
-        )),
-        FIELD("PointerInfo", STRUCT(
-                "PointerInfo",
-                FIELD("sigil", gcc_type(env->ctx, STRING)), 
-                FIELD("pointed", gcc_get_ptr_type(type_gcc_type))
-        )),
-        FIELD("ArrayInfo", STRUCT(
-                "ArrayInfo",
-                FIELD("item", gcc_get_ptr_type(type_gcc_type))
-        )),
-        FIELD("TableInfo", STRUCT(
-                "TableInfo",
-                FIELD("key", gcc_get_ptr_type(type_gcc_type)),
-                FIELD("value", gcc_get_ptr_type(type_gcc_type)),
-                FIELD("entry_size", gcc_type(env->ctx, SIZE)),
-                FIELD("value_offset", gcc_type(env->ctx, SIZE)))));
-
-    gcc_field_t *fields[] = { 
-        FIELD("name", gcc_type(env->ctx, STRING)),
-        FIELD("size", gcc_type(env->ctx, SIZE)),
-        FIELD("align", gcc_type(env->ctx, SIZE)),
-        FIELD("info", STRUCT("TypeInfo", FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("__data", type_info_union_t))),
+    gcc_field_t *fields[] = {
+            [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(item_type), "items"),
+          [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
+        [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
+             [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "copy_on_write"),
+          [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "atomic"),
+          [ARRAY_STRIDE_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT16), 16, "stride"),
     };
-#undef UNION
-#undef STRUCT
-#undef FIELD
-    gcc_set_fields(type_struct, NULL, sizeof(fields)/sizeof(fields[0]), fields);
-    return type_gcc_type;
+    gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);
+    return gcc_struct_as_type(array);
 }
-
 
 // This must be memoized because GCC JIT doesn't do structural equality
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
@@ -263,16 +225,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
     }
     case ArrayType: {
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
-        gcc_field_t *fields[] = {
-                [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, item_type)), "items"),
-              [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
-            [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
-                 [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "copy_on_write"),
-              [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "atomic"),
-              [ARRAY_STRIDE_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT16), 16, "stride"),
-        };
-        gcc_struct_t *array = gcc_new_struct_type(env->ctx, NULL, fresh("Array"), sizeof(fields)/sizeof(fields[0]), fields);
-        gcc_t = gcc_struct_as_type(array);
+        gcc_t = make_array_gcc_type(env, sss_type_to_gcc(env, item_type));
         break;
     }
     case TableType: {
@@ -455,8 +408,8 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
         auto needed_fields = EMPTY_ARRAY(gcc_field_t*);
         auto field_vals = EMPTY_ARRAY(gcc_rvalue_t*);
         for (int64_t i = 0; i < LENGTH(actual_field_types); i++) {
-            append(needed_fields, gcc_get_field(gcc_type_if_struct(needed_gcc_t), i));
-            gcc_rvalue_t *field_val = gcc_rvalue_access_field(*val, NULL, gcc_get_field(gcc_type_if_struct(actual_gcc_t), i));
+            append(needed_fields, gcc_get_field(gcc_type_as_struct(needed_gcc_t), i));
+            gcc_rvalue_t *field_val = gcc_rvalue_access_field(*val, NULL, gcc_get_field(gcc_type_as_struct(actual_gcc_t), i));
             if (!promote(env, ith(actual_field_types, i), &field_val, ith(needed_field_types, i)))
                 return false;
             append(field_vals, field_val);
@@ -633,7 +586,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             auto fielded_struct = Match(base_t, StructType);
             for (int64_t i = 0, len = LENGTH(fielded_struct->field_names); i < len; i++) {
                 if (streq(ith(fielded_struct->field_names, i), access->field)) {
-                    gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
+                    gcc_struct_t *gcc_struct = gcc_type_as_struct(sss_type_to_gcc(env, base_t));
                     gcc_field_t *field = gcc_get_field(gcc_struct, i);
                     return gcc_lvalue_access_field(fielded_lval, loc, field);
                 }
@@ -655,13 +608,13 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
             if (streq(access->field, "default")) {
                 // if (get_type(env, access->fielded)->tag != PointerType)
                 //     compiler_err(env, ast, "The .default field can't be assigned to on a local value-typed variable."); 
-                gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
+                gcc_struct_t *gcc_struct = gcc_type_as_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_DEFAULT_FIELD);
                 return gcc_lvalue_access_field(fielded_lval, loc, field);
             } else if (streq(access->field, "fallback")) {
                 // if (get_type(env, access->fielded)->tag != PointerType)
                 //     compiler_err(env, ast, "The .fallback field can't be assigned to on a local value-typed variable."); 
-                gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, table_t));
+                gcc_struct_t *gcc_struct = gcc_type_as_struct(sss_type_to_gcc(env, table_t));
                 gcc_field_t *field = gcc_get_field(gcc_struct, TABLE_FALLBACK_FIELD);
                 return gcc_lvalue_access_field(fielded_lval, loc, field);
             } else {
@@ -673,7 +626,7 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
                 auto member = ith(tagged->members, i);
                 if (!streq(access->field, member.name)) continue;
 
-                gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
+                gcc_struct_t *tagged_struct = gcc_type_as_struct(sss_type_to_gcc(env, base_t));
                 gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
                 gcc_rvalue_t *tag = gcc_rval(gcc_lvalue_access_field(fielded_lval, NULL, tag_field));
                 gcc_func_t *func = gcc_block_func(*block);

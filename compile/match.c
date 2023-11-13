@@ -45,7 +45,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             auto tu_t = Match(base_variant(t), TaggedUnionType);
             foreach (tu_t->members, member, _) {
                 if (streq(member->name, name)) {
-                    gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
+                    gcc_struct_t *tagged_struct = gcc_type_as_struct(sss_type_to_gcc(env, t));
                     gcc_rvalue_t *is_match = gcc_comparison(
                         env->ctx, NULL, GCC_COMPARISON_EQ,
                         gcc_rvalue_access_field(val, loc, gcc_get_field(tagged_struct, 0)),
@@ -103,7 +103,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         }
 
         auto struct_info = Match(base_variant(t), StructType);
-        gcc_struct_t *gcc_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
+        gcc_struct_t *gcc_struct = gcc_type_as_struct(sss_type_to_gcc(env, t));
 
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
@@ -150,7 +150,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         if (!member.type)
             compiler_err(env, pattern, "This tagged union member doesn't have any value");
 
-        gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, base_t));
+        gcc_struct_t *tagged_struct = gcc_type_as_struct(sss_type_to_gcc(env, base_t));
 
         gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
         gcc_type_t *union_gcc_t = get_union_type(env, base_t);

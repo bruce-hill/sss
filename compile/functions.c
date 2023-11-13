@@ -73,7 +73,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
     gcc_assign(block, loc, arg_tuple, gcc_struct_constructor(env->ctx, loc, arg_tuple_gcc_t, 0, NULL, NULL));
     auto arg_rvals = EMPTY_ARRAY(gcc_rvalue_t*);
     for (int64_t i = 0; i < LENGTH(arg_names); i++) {
-        gcc_assign(block, loc, gcc_lvalue_access_field(arg_tuple, loc, gcc_get_field(gcc_type_if_struct(arg_tuple_gcc_t), i)),
+        gcc_assign(block, loc, gcc_lvalue_access_field(arg_tuple, loc, gcc_get_field(gcc_type_as_struct(arg_tuple_gcc_t), i)),
                    gcc_param_as_rvalue(gcc_func_get_param(func, i)));
         append(arg_rvals, gcc_param_as_rvalue(gcc_func_get_param(func, i)));
     }

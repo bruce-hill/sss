@@ -125,11 +125,11 @@ gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rv
     switch (t->tag) {
     case ArrayType: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+        gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
         return gcc_rvalue_access_field(obj, NULL, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
     }
     case TableType: {
-        gcc_struct_t *table_struct = gcc_type_if_struct(sss_type_to_gcc(env, t));
+        gcc_struct_t *table_struct = gcc_type_as_struct(sss_type_to_gcc(env, t));
         gcc_rvalue_t *entries = gcc_rvalue_access_field(obj, NULL, gcc_get_field(table_struct, TABLE_ENTRIES_FIELD));
         return compile_len(env, block, Type(ArrayType, table_entry_type(t)), entries);
     }
@@ -219,7 +219,7 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
                      t, LENGTH(struct_type->field_names), LENGTH(args));
 
     gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-    gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+    gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
     size_t num_fields = gcc_field_count(gcc_struct);
     if (!(num_fields == (size_t)LENGTH(struct_type->field_names)))
         compiler_err(env, ast, "Something went wrong with this struct!");
@@ -476,7 +476,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_type_t *values_gcc_t = sss_type_to_gcc(env, values_tuple);
         gcc_field_t *fields[len];
         for (int64_t i = 0; i < len; i++)
-            fields[i] = gcc_get_field(gcc_type_if_struct(values_gcc_t), i);
+            fields[i] = gcc_get_field(gcc_type_as_struct(values_gcc_t), i);
         return gcc_struct_constructor(env->ctx, loc, values_gcc_t, len, fields, rvals[0]);
     }
     case Do: {
@@ -688,12 +688,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 #define STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval) \
         gcc_struct_constructor(env->ctx, loc, gcc_t, 6, (gcc_field_t*[]){ \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_DATA_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_LENGTH_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_CAPACITY_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_COW_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_ATOMIC_FIELD), \
-                                          gcc_get_field(gcc_type_if_struct(gcc_t), ARRAY_STRIDE_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_DATA_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_LENGTH_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_CAPACITY_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_COW_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_ATOMIC_FIELD), \
+                                          gcc_get_field(gcc_type_as_struct(gcc_t), ARRAY_STRIDE_FIELD), \
                                       }, (gcc_rvalue_t*[]){ \
                                           str_rval, \
                                           gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT64)), \
@@ -793,7 +793,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_type_t *i32 = gcc_type(env->ctx, INT32);
                 gcc_lvalue_t *i = gcc_local(func, loc, i32, "_i");
                 gcc_assign(*block, loc, i, gcc_zero(env->ctx, i32));
-                gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+                gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
                 gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
                 gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
                 gcc_rvalue_t *stride = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i32_t);
@@ -937,7 +937,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *var = gcc_local(func, loc, expr_gcc_t, fresh("type_value"));
         gcc_field_t *fields[LENGTH(field_types)];
         for (int64_t i = 0; i < LENGTH(field_types); i++)
-            fields[i] = gcc_get_field(gcc_type_if_struct(expr_gcc_t), i);
+            fields[i] = gcc_get_field(gcc_type_as_struct(expr_gcc_t), i);
         if (LENGTH(field_types) > 0)
             gcc_assign(*block, loc, var, gcc_struct_constructor(
                     env->ctx, loc, expr_gcc_t, LENGTH(field_types), fields, field_values[0]));
@@ -1236,7 +1236,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case StructType: {
             gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
-            gcc_struct_t *gcc_struct = gcc_type_if_struct(gcc_t);
+            gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
             auto struct_type = Match(fielded_t, StructType);
             for (int64_t i = 0, len = LENGTH(struct_type->field_names); i < len; i++) {
                 const char *field_name = ith(struct_type->field_names, i);
@@ -1251,7 +1251,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         case ArrayType: {
             if (streq(access->field, "length")) {
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
-                gcc_struct_t *array_struct = gcc_type_if_struct(gcc_t);
+                gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
                 gcc_field_t *field = gcc_get_field(array_struct, ARRAY_LENGTH_FIELD);
                 return gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, field), gcc_type(env->ctx, INT64));
             }
@@ -1262,13 +1262,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_type_t *gcc_t = sss_type_to_gcc(env, fielded_t);
                 return range_len(env, gcc_t, obj);
             } else if (streq(access->field, "first")) {
-                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_struct_t *range_struct = gcc_type_as_struct(sss_type_to_gcc(env, fielded_t));
                 return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 0));
             } else if (streq(access->field, "step")) {
-                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_struct_t *range_struct = gcc_type_as_struct(sss_type_to_gcc(env, fielded_t));
                 return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 1));
             } else if (streq(access->field, "last")) {
-                gcc_struct_t *range_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_struct_t *range_struct = gcc_type_as_struct(sss_type_to_gcc(env, fielded_t));
                 return gcc_rvalue_access_field(obj, NULL, gcc_get_field(range_struct, 2));
             }
             break;
@@ -1281,14 +1281,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                         .field="length"));
             } else if (streq(access->field, "default")) {
                 gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
-                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_DEFAULT_FIELD));
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_as_struct(table_gcc_t), TABLE_DEFAULT_FIELD));
             } else if (streq(access->field, "fallback")) {
                 gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
-                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_FALLBACK_FIELD));
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_as_struct(table_gcc_t), TABLE_FALLBACK_FIELD));
             } else if (streq(access->field, "entries")) {
                 gcc_type_t *table_gcc_t = sss_type_to_gcc(env, fielded_t);
                 // TODO: Mark COW
-                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_if_struct(table_gcc_t), TABLE_ENTRIES_FIELD));
+                return gcc_rvalue_access_field(obj, loc, gcc_get_field(gcc_type_as_struct(table_gcc_t), TABLE_ENTRIES_FIELD));
             } else if (streq(access->field, "keys")) {
                 return compile_expr(
                     env, block, WrapAST(ast, FieldAccess,
@@ -1308,7 +1308,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 auto member = ith(tagged->members, i);
                 if (!streq(access->field, member.name)) continue;
 
-                gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, fielded_t));
+                gcc_struct_t *tagged_struct = gcc_type_as_struct(sss_type_to_gcc(env, fielded_t));
                 gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
                 gcc_rvalue_t *tag = gcc_rvalue_access_field(obj, NULL, tag_field);
                 gcc_block_t *wrong_tag = gcc_new_block(func, fresh("wrong_tag")),
@@ -1441,7 +1441,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     .args=ARRAY(in->member)));
         } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
-            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+            gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
             gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
             gcc_rvalue_t *member_val = compile_expr(env, block, in->member);
@@ -1498,7 +1498,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if (gcc_sizeof(env, cast_t) < size)
                 compiler_err(env, ast, "This tagged enum cannot be converted to %T without loss of precision", cast_t);
 
-            gcc_struct_t *tagged_struct = gcc_type_if_struct(sss_type_to_gcc(env, src_t));
+            gcc_struct_t *tagged_struct = gcc_type_as_struct(sss_type_to_gcc(env, src_t));
             gcc_field_t *tag_field = gcc_get_field(tagged_struct, 0);
             gcc_rvalue_t *tag = gcc_rvalue_access_field(val, NULL, tag_field);
             return gcc_cast(env->ctx, loc, tag, sss_type_to_gcc(env, cast_t));
@@ -1571,7 +1571,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
         } else if (base_variant(t)->tag == TaggedUnionType) {
             gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
-            gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+            gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
             gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
             gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
             int64_t all_tags = 0;
@@ -2250,7 +2250,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     sss_type_t *single_lhs_t = get_type(env, first);
                     gcc_type_t *gcc_struct_t = sss_type_to_gcc(env, Type(StructType, .field_types=ARRAY(single_lhs_t), .field_names=ARRAY((const char*)"_1")));
                     gcc_lvalue_t *field_lval = gcc_lvalue_access_field(
-                        expression_var, loc, gcc_get_field(gcc_type_if_struct(gcc_struct_t), 0));
+                        expression_var, loc, gcc_get_field(gcc_type_as_struct(gcc_struct_t), 0));
                     DOCTEST(heap_strf("%#W =", first), single_lhs_t, gcc_lvalue_address(field_lval, loc));
                 } else {
                     ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);

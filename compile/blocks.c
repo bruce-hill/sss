@@ -61,6 +61,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
             t = parse_type_ast(env, type_ast);
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
+
         gcc_lvalue_t *lval = get_type_lvalue(env, t);
         binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true);
         Table_str_set(env->bindings, name, b);
@@ -85,7 +86,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
     env = get_type_env(env, t);
     auto members = Match(base_variant(t), TaggedUnionType)->members;
     gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
-    gcc_struct_t *gcc_tagged_s = gcc_type_if_struct(gcc_tagged_t);
+    gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
     gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
     gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
     gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
@@ -103,7 +104,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
             gcc_rvalue_t *field_rvals[LENGTH(names)] = {};
             for (int64_t i = 0; i < LENGTH(names); i++) {
                 params[i] = gcc_new_param(env->ctx, NULL, sss_type_to_gcc(env, ith(types, i)), ith(names, i));
-                fields[i] = gcc_get_field(gcc_type_if_struct(member_gcc_t), i);
+                fields[i] = gcc_get_field(gcc_type_as_struct(member_gcc_t), i);
                 field_rvals[i] = gcc_param_as_rvalue(params[i]);
             }
             gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_ALWAYS_INLINE, sss_type_to_gcc(env, t),
@@ -188,7 +189,7 @@ void populate_def_members(env_t *env, ast_t *def)
             populate_tagged_union_constructors(env, t);
         }
 
-        binding->rval = gcc_str(env->ctx, name);
+        initialize_type_lvalue(env, t);
         auto definitions = Match(def, TypeDef)->definitions;
         foreach (definitions, def, _)
             populate_def_members(inner_env, *def);

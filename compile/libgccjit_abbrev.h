@@ -101,7 +101,7 @@ typedef enum gcc_jit_types gcc_types_e;
 #define gcc_compatible_types gcc_jit_compatible_types
 #define gcc_type_size gcc_jit_type_get_size
 #define gcc_array_type gcc_jit_context_new_array_type
-#define gcc_new_field gcc_jit_context_new_field
+#define gcc_new_field(ctx, loc, type, name) (assert(ctx && type && name), gcc_jit_context_new_field(ctx, loc, type, name))
 #define gcc_bitfield gcc_jit_context_new_bitfield
 #define gcc_field_as_obj gcc_jit_field_as_object
 #define gcc_new_struct_type gcc_jit_context_new_struct_type
@@ -266,7 +266,7 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_type_is_integral gcc_jit_type_is_integral
 #define gcc_type_if_pointer gcc_jit_type_is_pointer
 #define gcc_type_dyncast_vector gcc_jit_type_dyncast_vector
-#define gcc_type_if_struct gcc_jit_type_is_struct
+#define gcc_type_as_struct gcc_jit_type_is_struct
 #define gcc_vector_type_get_num_units gcc_jit_vector_type_get_num_units
 #define gcc_vector_type_get_element_type gcc_jit_vector_type_get_element_type
 #define gcc_type_unqualified gcc_jit_type_unqualified

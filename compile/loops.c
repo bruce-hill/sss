@@ -146,7 +146,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
     switch (base_variant(iter_t)->tag) {
     case ArrayType: {
         // item_ptr = array->items
-        gcc_struct_t *array_struct = gcc_type_if_struct(gcc_iter_t);
+        gcc_struct_t *array_struct = gcc_type_as_struct(gcc_iter_t);
         item_t = Match(base_variant(iter_t), ArrayType)->item_type;
         gcc_type_t *gcc_item_t = sss_type_to_gcc(env, item_t);
         gcc_lvalue_t *item_ptr = gcc_local(func, NULL, gcc_get_ptr_type(gcc_item_t), "_item_ptr");
@@ -193,7 +193,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, NULL, iter_var, iter_rval);
         iter_rval = gcc_rval(iter_var);
         // x = range.first
-        gcc_struct_t *range_struct = gcc_type_if_struct(gcc_iter_t);
+        gcc_struct_t *range_struct = gcc_type_as_struct(gcc_iter_t);
         assert(range_struct);
         gcc_lvalue_t *x_var = gcc_local(func, NULL, i64, "_x");
         gcc_assign(*block, NULL, x_var,
@@ -306,7 +306,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
         // next:
         // iter = iter->next
-        gcc_struct_t *iter_struct = gcc_type_if_struct(gcc_iter_t);
+        gcc_struct_t *iter_struct = gcc_type_as_struct(gcc_iter_t);
         assert(iter_struct);
         gcc_assign(for_next, NULL, iter_var,
                    gcc_rval(

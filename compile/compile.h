@@ -40,6 +40,8 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t);
 gcc_type_t *get_union_type(env_t *env, sss_type_t *t);
 // Convert an SSS type to the GCC JIT representation
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t);
+// Get the GCC type for an SSS-style array of the given GCC type
+gcc_type_t *make_array_gcc_type(env_t *env, gcc_type_t *item_type);
 // Check whether a value is truthy or not
 void check_truthiness(env_t *env, gcc_block_t **block, ast_t *obj, gcc_block_t *if_truthy, gcc_block_t *if_falsey);
 // A ternary expression (a ? b : c)
@@ -132,5 +134,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
 // ============================== types.c ===============================
 gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *type);
 gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *type);
+gcc_type_t *get_type_gcc_type(env_t *env);
+void initialize_type_lvalue(env_t *env, sss_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
