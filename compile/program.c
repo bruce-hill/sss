@@ -23,7 +23,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
 
     sss_type_t *str_t = get_type_by_name(env, "Str");
-    sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
     gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
 
     // Set up `USE_COLOR`
