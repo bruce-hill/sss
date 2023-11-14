@@ -99,7 +99,7 @@ public int32_t Str__compare(const Str_t *x, const Str_t *y)
 {
     int64_t length = x->length < y->length ? x->length : y->length;
     for (int64_t i = 0; i < length; i++) {
-        char xc = x->data[i], yc = y->data[i];
+        char xc = x->data[i*x->stride], yc = y->data[i*y->stride];
         if (xc != yc)
             return (xc > yc) ? 1 : -1;
     }
@@ -117,9 +117,7 @@ public int Str__hash(const Str_t *s, const Type *type)
     if (s->length == 0 || !s->data) return 0;
 
     const char *data;
-    if (s->stride == -1) {
-        data = s->data - s->length + 1;
-    } else if (s->stride == 1) {
+    if (s->stride == 1) {
         data = s->data;
     } else {
         char *buf = alloca(s->length);
