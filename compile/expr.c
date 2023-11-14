@@ -2253,6 +2253,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 break;
             }
             default:
+                // Print the source code
+                gcc_rvalue_t *null_str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+                gcc_eval(*block, loc,
+                    gcc_callx(env->ctx, loc, doctest_fn, null_str, null_str, null_str,
+                              use_color, null_str, gcc_str(env->ctx, filename),
+                              gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)));
                 gcc_eval(*block, loc, val);
                 break;
             }
