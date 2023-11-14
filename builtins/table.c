@@ -43,6 +43,8 @@
 
 extern const void *SSS_HASH_VECTOR;
 
+Type *CStringToVoidStarTable_type;
+
 static inline void hshow(const table_t *t)
 {
     hdebug("{");
@@ -474,36 +476,6 @@ public table_t Table_from_entries(array_t entries, const Type *type)
     return t;
 }
 
-// static array_t table_bindings = STATIC_ARRAY(
-//     (void*) Table_from_entries, Table_get, Table_get_raw, Table_entry, Table_set,
-//     Table_remove, Table_equals, Table_clear);
-
-public Type *make_table_type(Type *key, Type *value)
-{
-    size_t entry_size = key->size;
-    if (key->align > 1 && entry_size % key->align)
-        entry_size += key->align - (entry_size % key->align); // padding
-    size_t value_offset = entry_size;
-    entry_size += key->size;
-    size_t max_align = MAX(key->align, value->align);
-    if (max_align > 1 && entry_size % max_align)
-        entry_size += max_align - (entry_size % max_align); // padding
-
-    const char *key_name = key->name,
-               *value_name = value->name;
-
-    return new(Type,
-        .name=heap_strf("{%s=>%s}", key_name, value_name),
-        .size=sizeof(table_t),
-        .align=alignof(table_t),
-        .tag=TableInfo,
-        .TableInfo={.key=key,.value=value, .entry_size=entry_size, .value_offset=value_offset},
-        // .bindings=table_bindings,
-    );
-}
-
-Type *CStringToVoidStarTable_type;
-
 void *Table_str_get(const table_t *t, const char *key)
 {
     void **ret = Table_get(t, &key, CStringToVoidStarTable_type);
@@ -535,4 +507,5 @@ void *Table_str_entry(const table_t *t, uint32_t n)
 {
     return Table_entry(t, n);
 }
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

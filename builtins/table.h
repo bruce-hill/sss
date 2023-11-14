@@ -31,4 +31,4 @@ void Table_str_remove(table_t *t, const char *key);
 
 #define Table_length(t) ((t)->entries.length)
 
-Type *make_table_type(Type *key, Type *value);
+// vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1

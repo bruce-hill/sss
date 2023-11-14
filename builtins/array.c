@@ -331,17 +331,4 @@ public uint32_t Array_hash(const array_t *arr, const Type *type)
     }
 }
 
-public Type *make_array_type(Type *item_type)
-{
-    const char *item_name = item_type->name;
-    return new(Type,
-        .name=heap_strf("[%s]", item_name),
-        .size=sizeof(array_t),
-        .align=alignof(array_t),
-        .tag=ArrayInfo,
-        .ArrayInfo={item_type},
-        // .bindings=array_bindings,
-    );
-}
-
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

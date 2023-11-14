@@ -22,8 +22,6 @@ int32_t Array_compare(const array_t *x, const array_t *y, const Type *type);
 bool Array_equal(const array_t *x, const array_t *y, const Type *type);
 CORD Array_cord(const array_t *arr, bool colorize, const Type *type);
 
-Type *make_array_type(Type *item_type);
-
 #define ARRAY_OF(t) t**
 #define EMPTY_ARRAY(t) (t**)new(array_t)
 #define LENGTH(arr) (((array_t*)(arr))->length)

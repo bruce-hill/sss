@@ -354,7 +354,14 @@ int main(int argc, char *argv[])
             .pointed=&Memory_type,
         },
     };
-    CStringToVoidStarTable_type = make_table_type(&CString_type, &MemoryPointer_type);
+    CStringToVoidStarTable_type = (Type[]){{
+        .name="{CString=>@Memory}",
+        .size=sizeof(table_t),
+        .align=alignof(table_t),
+        .tag=TableInfo,
+        .TableInfo={.key=&CString_type,.value=&MemoryPointer_type,
+            .entry_size=16, .value_offset=8},
+    }};
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {
