@@ -79,7 +79,8 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
     }
 
     binding_t *get_fn_binding = get_from_namespace(env, cache_t, "get");
-    gcc_lvalue_t *cached_ptr = gcc_local(func, loc, gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret)), "_cached_ptr");
+    gcc_type_t *cached_ptr_t = gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret));
+    gcc_lvalue_t *cached_ptr = gcc_local(func, loc, cached_ptr_t, "_cached_ptr");
     gcc_assign(block, loc, cached_ptr, gcc_callx(
             env->ctx, loc, get_fn_binding->func,
             gcc_lvalue_address(cache, loc),
@@ -89,7 +90,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
     gcc_block_t *if_cached = gcc_new_block(func, fresh("cached")),
                 *if_not_cached = gcc_new_block(func, fresh("not_cached"));
     gcc_jump_condition(block, loc,
-                       gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(cached_ptr), gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, fn_info->ret)))),
+                       gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, gcc_rval(cached_ptr), gcc_null(env->ctx, cached_ptr_t)),
                        if_cached, if_not_cached);
 
     block = if_cached;

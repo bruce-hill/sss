@@ -507,12 +507,12 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                          FN(NAMES("t", "key", "_type"),
                             TYPES(RO_REF(t), RO_REF(key_t), type_t),
                             DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
-                            OPT(t)));
+                            OPT(value_t)));
             _load_method(env, ns, "get_raw", "Table_get_raw",
                          FN(NAMES("t", "key", "_type"),
                             TYPES(RO_REF(t), RO_REF(key_t), type_t),
                             DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
-                            OPT(t)));
+                            OPT(value_t)));
             _load_method(env, ns, "clear", "Table_get_clear",
                          FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
             _load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write",
