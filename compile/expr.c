@@ -1463,7 +1463,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto value = Match(ast, SizeOf)->value;
         sss_type_t *t = get_type(env, value);
         ssize_t size = gcc_sizeof(env, t);
-        return gcc_int64(env->ctx, size);
+        return gcc_rvalue_uint64(env->ctx, size);
     }
     case Cast: {
         auto cast = Match(ast, Cast);
@@ -1797,7 +1797,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *b = get_from_namespace(env, array_t, "insert_all");
         assert(b);
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-        gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, Match(array_t, ArrayType)->item_type));
+        gcc_rvalue_t *item_size = gcc_rvalue_uint64(env->ctx, gcc_sizeof(env, Match(array_t, ArrayType)->item_type));
         if (t_lhs->tag == ArrayType) {
             gcc_lvalue_t *lval = get_lvalue(env, block, concat->lhs, false);
             gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);

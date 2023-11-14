@@ -474,7 +474,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(PointerType, .pointed=Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value)), .is_stack=true, .is_readonly=true);
     }
     case SizeOf: {
-        return INT_TYPE;
+        return Type(IntType, .is_unsigned=true, .bits=64);
     }
     case HeapAllocate: {
         sss_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);
