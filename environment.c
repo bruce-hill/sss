@@ -500,7 +500,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "contains", "Array_contains",
                         heap_strf("func(array:%T, item:&(read-only)%T)->Bool", t, item_t));
             load_method(env, ns, "slice", "Array_slice",
-                        heap_strf("func(array:&%T, range:Range, readonly=no, _type=typeof(array))->Bool", t));
+                        heap_strf("func(array:&%T, range:Range, readonly=no, _type=typeof(array))->%T", t, t));
         }
     }
     return ns;
