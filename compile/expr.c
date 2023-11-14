@@ -1353,8 +1353,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             t = Match(t, VariantType)->variant_of;
 
         if (t->tag == PointerType && !indexing->index) {
-            if (indexing->index)
-                compiler_err(env, ast, "The value being indexed here is a pointer, you must use [] instead of [index]");
             sss_type_t *t = get_type(env, ast); // Check this is a pointer type
             gcc_rvalue_t *obj = compile_expr(env, block, indexing->indexed);
             if (t->tag == ArrayType && env->should_mark_cow)
