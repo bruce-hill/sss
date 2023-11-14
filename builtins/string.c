@@ -32,7 +32,7 @@ static Str_t compacted(const Str_t str)
     return (Str_t){.data=buf, .length=str.length, .stride=1};
 }
 
-static CORD Str_cord(const Str_t *s, bool colorize, const Type *type)
+public CORD Str__cord(const Str_t *s, bool colorize, const Type *type)
 {
     (void)type;
     char *data = s->data;
@@ -63,7 +63,7 @@ static CORD Str_cord(const Str_t *s, bool colorize, const Type *type)
         }
         c = CORD_cat(c, "\"\x1b[m");
         if (strcmp(type->name, "Str") != 0)
-            CORD_sprintf(&c, "\x1b[0;1m%s::%r", type->name, c);
+            CORD_sprintf(&c, "\x1b[0;1m%s::\x1b[m%r", type->name, c);
         return c;
     } else {
         CORD c = "\"";
@@ -93,7 +93,7 @@ static CORD Str_cord(const Str_t *s, bool colorize, const Type *type)
     }
 }
 
-static int Str_compare(const Str_t *x, const Str_t *y)
+public int32_t Str__compare(const Str_t *x, const Str_t *y)
 {
     int64_t length = x->length < y->length ? x->length : y->length;
     for (int64_t i = 0; i < length; i++) {
@@ -104,12 +104,12 @@ static int Str_compare(const Str_t *x, const Str_t *y)
     return (x->length > y->length) - (x->length < y->length);
 }
 
-static bool Str_equal(const Str_t *x, const Str_t *y)
+public bool Str__equal(const Str_t *x, const Str_t *y)
 {
-    return (Str_compare(x, y) == 0);
+    return (Str__compare(x, y) == 0);
 }
 
-static int Str_hash(const Str_t *s, const Type *type)
+public int Str__hash(const Str_t *s, const Type *type)
 {
     (void)type;
     if (s->length == 0 || !s->data) return 0;
@@ -467,17 +467,17 @@ public Type Str_type = {
     .align=alignof(Str_t),
     .tag=VTableInfo,
     .VTableInfo={
-        .cord=(void*)Str_cord,
-        .compare=(void*)Str_compare,
-        .equal=(void*)Str_equal,
-        .hash=(void*)Str_hash,
+        .cord=(void*)Str__cord,
+        .compare=(void*)Str__compare,
+        .equal=(void*)Str__equal,
+        .hash=(void*)Str__hash,
     },
 };
 
 static CORD CString_cord(const char **s, bool colorize, const Type *type)
 {
     Str_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
-    return Str_cord(&str, colorize, type);
+    return Str__cord(&str, colorize, type);
 }
 
 static uint32_t CString_hash(const char **s, const Type *type)

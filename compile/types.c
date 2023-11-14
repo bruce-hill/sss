@@ -148,8 +148,27 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 (gcc_rvalue_t*[]){__VA_ARGS__})); } while (0)
 
     // From here out, all the initialization of variants is the same as the underlying type
-    while (t->tag == VariantType)
+    sss_type_t *str_t = get_type_by_name(env, "Str");
+    bool is_str = false;
+    while (t->tag == VariantType) {
         t = Match(t, VariantType)->variant_of;
+        if (t == str_t) is_str = true;
+    }
+
+    if (is_str) {
+#define FUNC_PTR(name) gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, name), NULL), gcc_type(env->ctx, VOID_PTR))
+        SET_INFO(VTableInfo, vtable_info, vtable_info_fields,
+                 FUNC_PTR("Str__equal"),
+                 FUNC_PTR("Str__compare"),
+                 FUNC_PTR("Str__hash"),
+                 FUNC_PTR("Str__cord"),
+        );
+#undef FUNC_PTR
+        gcc_global_set_initializer_rvalue(
+            lval,
+            gcc_struct_constructor(env->ctx, NULL, type_gcc_type, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+        return;
+    }
 
     switch (t->tag) {
     case ArrayType: {

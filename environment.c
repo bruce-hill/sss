@@ -223,6 +223,11 @@ struct {
         {"Str__quoted", "quoted", "func(s:Str)->Str"},
         {"Str__split", "split", "func(s:Str, split_chars=[\\x2C, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
         {"Str__join", "join", "func(glue:Str, pieces:[Str])->Str"},
+
+        {"Str__equal", "equals", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Bool"},
+        {"Str__compare", "compare", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Int32"},
+        {"Str__hash", "hash", "func(s:&(read-only)Str, _type=typeof(s[]))->UInt32"},
+        {"Str__cord", "cord", "func(s:&(read-only)Str, colorize:Bool, _type=typeof(s[]))->Cord"},
         {NULL, NULL, NULL},
     }},
 
@@ -294,6 +299,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
             if (member_type->tag == FunctionType) {
                 gcc_func_t *func = import_function(env, member.symbol, member_type);
                 set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .func=func, .rval=gcc_get_func_address(func, NULL)));
+                Table_str_set(&env->global->funcs, member.symbol, func);
             } else {
                 gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
                 gcc_lvalue_t *lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, member_gcc_type, member.symbol);
