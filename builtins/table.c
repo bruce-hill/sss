@@ -80,6 +80,7 @@ public void Table_mark_copy_on_write(table_t *t)
 // Return address of value or NULL
 public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
 {
+    assert(type->tag == TableInfo);
     if (!t || !key || !t->bucket_info) return NULL;
 
     uint32_t hash = HASH(t, key);
@@ -101,6 +102,7 @@ public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
 
 public void *Table_get(const table_t *t, const void *key, const Type *type)
 {
+    assert(type->tag == TableInfo);
     for (const table_t *iter = t; iter; iter = iter->fallback) {
         void *ret = Table_get_raw(iter, key, type);
         if (ret) return ret;
@@ -187,6 +189,7 @@ static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type
 // Return address of value
 public void *Table_reserve(table_t *t, const void *key, const void *value, const Type *type)
 {
+    assert(type->tag == TableInfo);
     if (!t || !key) return NULL;
     hshow(t);
 
@@ -243,11 +246,13 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
 
 public void Table_set(table_t *t, const void *key, const void *value, const Type *type)
 {
+    assert(type->tag == TableInfo);
     (void)Table_reserve(t, key, value, type);
 }
 
 public void Table_remove(table_t *t, const void *key, const Type *type)
 {
+    assert(type->tag == TableInfo);
     if (!t || Table_length(t) == 0) return;
 
     // TODO: this work doesn't need to be done if the key is already missing
@@ -354,6 +359,7 @@ public void Table_clear(table_t *t)
 
 public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 {
+    assert(type->tag == TableInfo);
     if (Table_length(x) != Table_length(y))
         return false;
     
@@ -369,7 +375,7 @@ public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
         void *x_value = x_key + VALUE_OFFSET;
         void *y_value = Table_get_raw(y, x_key, type);
         if (!y_value) return false;
-        if (!Table_equal(x_value, y_value, value_type))
+        if (!generic_equal(x_value, y_value, value_type))
             return false;
     }
 
@@ -386,6 +392,7 @@ public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 
 public int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
 {
+    assert(type->tag == TableInfo);
     auto table = type->TableInfo;
     Type entry_type = *table.key;
     entry_type.size = ENTRY_SIZE;
@@ -407,6 +414,7 @@ public int32_t Table_compare(const table_t *x, const table_t *y, const Type *typ
 
 public uint32_t Table_hash(const table_t *t, const Type *type)
 {
+    assert(type->tag == TableInfo);
     // Table hashes are computed as:
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
     // Where fallback and default hash to zero if absent
@@ -440,6 +448,7 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
 
 public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
+    assert(type->tag == TableInfo);
     auto table = type->TableInfo;
     size_t value_offset = table.value_offset;
     CORD c = "{";
@@ -468,6 +477,7 @@ public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 
 public table_t Table_from_entries(array_t entries, const Type *type)
 {
+    assert(type->tag == TableInfo);
     table_t t = {.entries=entries};
     for (uint32_t i = 0; i < Table_length(&t); i++) {
         hdebug("Rehashing %u\n", i);
