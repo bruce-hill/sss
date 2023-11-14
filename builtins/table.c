@@ -201,7 +201,7 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
         if (value_home) { // Update existing slot
             // Ensure that `value_home` is still inside t->entries, even if COW occurs
             ptrdiff_t offset = value_home - t->entries.data;
-            maybe_copy_on_write(t, COW_BUCKETS, type);
+            maybe_copy_on_write(t, COW_BOTH, type);
             value_home = t->entries.data + offset;
 
             if (value && value_size > 0)
