@@ -34,7 +34,7 @@ CORD Array_cord(const array_t *arr, bool colorize, const Type *type);
     .data=(__typeof(x)[]){x, __VA_ARGS__}, \
     .length=(sizeof((__typeof(x)[]){x, __VA_ARGS__})) / sizeof(x), \
     .stride=sizeof(x)})
-#define foreach(arr, var, last) for (__typeof(arr[0]) var = arr[0], last = ith_addr(arr, LENGTH(arr)-1); var <= last; var = ((void*)var) + ((array_t*)(arr))->stride)
+#define foreach(arr, var, last) for (__typeof(arr[0]) var = arr[0], last = ith_addr(arr, LENGTH(arr)-1); var && var <= last; var = ((void*)var) + ((array_t*)(arr))->stride)
 #define ith_addr(arr, i) ((__typeof(arr[0]))(((array_t*)(arr))->data + (i)*((array_t*)(arr))->stride))
 #define ith(arr, i) (*ith_addr(arr,i))
 #define append(arr, obj) Array_insert((array_t*)(arr), (__typeof(obj)[]){obj}, 0, sizeof(obj))
