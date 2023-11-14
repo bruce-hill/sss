@@ -26,16 +26,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
     gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
 
-    // Set up `PROGRAM_NAME`
-    gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_string_t, "PROGRAM_NAME");
-    Table_str_set(&env->global->bindings, "PROGRAM_NAME",
-               new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
-
-    // Set up `ARGS`
-    gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
-    gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, args_gcc_t, "ARGS");
-    Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
-
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(ctx, BOOL), "USE_COLOR");
     Table_str_set(&env->global->bindings, "USE_COLOR",
@@ -51,13 +41,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         "main", 2, main_params, 0);
     gcc_block_t *main_block = gcc_new_block(main_func, fresh("main"));
 
-    // // Initialize `PROGRAM_NAME`
-    // gcc_func_t *prog_name_func = gcc_new_func(
-    //     ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_string_t, "first_arg", 1, (gcc_param_t*[]){
-    //     gcc_new_param(ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
-    //     }, 0);
-    // gcc_assign(main_block, NULL, program_name, gcc_callx(ctx, NULL, prog_name_func, gcc_param_as_rvalue(main_params[1])));
-
     gcc_func_t *getenv_fn = Table_str_get(&env->global->funcs, "getenv");
     gcc_rvalue_t *use_color_env_flag = gcc_comparison(
         ctx, NULL, GCC_COMPARISON_EQ, gcc_callx(ctx, NULL, getenv_fn, gcc_str(ctx, "NO_COLOR")),
@@ -69,17 +52,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_assign(main_block, NULL, use_color,
         gcc_binary_op(ctx, NULL, GCC_BINOP_LOGICAL_AND, gcc_type(ctx, BOOL), use_color_env_flag,
                       gcc_callx(ctx, NULL, isatty_func, gcc_rvalue_int(ctx, STDOUT_FILENO))));
-
-    // // Initialize `ARGS`
-    // gcc_func_t *arg_func = gcc_new_func(
-    //     ctx, NULL, GCC_FUNCTION_IMPORTED, args_gcc_t, "arg_list", 2, (gcc_param_t*[]){
-    //     gcc_new_param(ctx, NULL, gcc_type(ctx, INT), "argc"),
-    //     gcc_new_param(ctx, NULL, gcc_get_ptr_type(gcc_string_t), "argv"),
-    //     }, 0);
-    // gcc_rvalue_t *arg_list = gcc_callx(ctx, NULL, arg_func, 
-    //                                    gcc_param_as_rvalue(main_params[0]),
-    //                                    gcc_param_as_rvalue(main_params[1]));
-    // gcc_assign(main_block, NULL, args, arg_list);
 
     // Seed the RNG used for random floats
     gcc_func_t *arc4_rng = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_type(ctx, UINT32), "arc4random", 0, NULL, false);
@@ -111,25 +83,7 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
 
-    // Externals:
-    // sss_type_t *str_t = get_type_by_name(env, "Str");
-    // sss_type_t *str_array_t = Type(ArrayType, .item_type=str_t);
-    // gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
-
-    // // Set up `PROGRAM_NAME`
-    // gcc_lvalue_t *program_name = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_string_t, "PROGRAM_NAME");
-    // Table_str_set(&env->global->bindings, "PROGRAM_NAME",
-    //      new(binding_t, .rval=gcc_rval(program_name), .type=str_t, .visible_in_closures=true));
-
-    // // Set up `ARGS`
-    // gcc_type_t *args_gcc_t = sss_type_to_gcc(env, str_array_t);
-    // gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, args_gcc_t, "ARGS");
-    // Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=str_array_t, .visible_in_closures=true));
-
     // Set up `USE_COLOR`
-    // gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, gcc_type(ctx, BOOL), "USE_COLOR");
-    // Table_str_set(&env->global->bindings, "USE_COLOR",
-    //      new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
     Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rvalue_bool(ctx, true), .type=Type(BoolType), .visible_in_closures=true));
 

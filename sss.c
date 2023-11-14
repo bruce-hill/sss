@@ -112,17 +112,6 @@ int run_repl(gcc_jit_context *ctx)
         printf("     note: importing with 'use' isn't supported yet\n\n\n");
     }
 
-    // Set up `PROGRAM_NAME`
-    sss_type_t *string_t = get_type_by_name(env, "Str");
-    gcc_lvalue_t *program_name = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(ctx, STRING), "PROGRAM_NAME");
-    Table_str_set(&env->global->bindings, "PROGRAM_NAME",
-         new(binding_t, .rval=gcc_rval(program_name), .type=string_t, .visible_in_closures=true));
-
-    // Set up `ARGS`
-    gcc_type_t *args_gcc_t = sss_type_to_gcc(env, Type(ArrayType, .item_type=string_t));
-    gcc_lvalue_t *args = gcc_global(ctx, NULL, GCC_GLOBAL_EXPORTED, args_gcc_t, "ARGS");
-    Table_str_set(&env->global->bindings, "ARGS", new(binding_t, .rval=gcc_rval(args), .type=Type(ArrayType, .item_type=string_t), .visible_in_closures=true));
-
     // Set up `USE_COLOR`
     gcc_lvalue_t *use_color_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_EXPORTED, gcc_type(env->ctx, BOOL), "USE_COLOR");
     gcc_jit_global_set_initializer_rvalue(use_color_var, gcc_rvalue_bool(ctx, use_color));
