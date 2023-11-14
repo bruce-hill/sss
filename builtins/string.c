@@ -39,57 +39,59 @@ public CORD Str__cord(const Str_t *s, bool colorize, const Type *type)
     // Note: it's important to have unicode strings not get broken up with
     // escapes, otherwise they won't print right.
     if (colorize) {
-        CORD c = "\x1b[35m\"";
-        for (uint32_t i = 0; i < s->length; i++) {
-            switch (data[i]) {
+        CORD cord = "\x1b[35m\"";
+        for (int32_t i = 0; i < s->length; i++) {
+            char c = data[i*s->stride];
+            switch (c) {
 #define BACKSLASHED(esc) "\x1b[35m\\\x1b[1m" esc "\x1b[0;34m"
-            case '\a': c = CORD_cat(c, BACKSLASHED("a")); break;
-            case '\b': c = CORD_cat(c, BACKSLASHED("b")); break;
-            case '\x1b': c = CORD_cat(c, BACKSLASHED("e")); break;
-            case '\f': c = CORD_cat(c, BACKSLASHED("f")); break;
-            case '\n': c = CORD_cat(c, BACKSLASHED("n")); break;
-            case '\r': c = CORD_cat(c, BACKSLASHED("r")); break;
-            case '\t': c = CORD_cat(c, BACKSLASHED("t")); break;
-            case '\v': c = CORD_cat(c, BACKSLASHED("v")); break;
-            case '"': c = CORD_cat(c, BACKSLASHED("\"")); break;
-            case '\\': c = CORD_cat(c, BACKSLASHED("\\")); break;
+            case '\a': cord = CORD_cat(cord, BACKSLASHED("a")); break;
+            case '\b': cord = CORD_cat(cord, BACKSLASHED("b")); break;
+            case '\x1b': cord = CORD_cat(cord, BACKSLASHED("e")); break;
+            case '\f': cord = CORD_cat(cord, BACKSLASHED("f")); break;
+            case '\n': cord = CORD_cat(cord, BACKSLASHED("n")); break;
+            case '\r': cord = CORD_cat(cord, BACKSLASHED("r")); break;
+            case '\t': cord = CORD_cat(cord, BACKSLASHED("t")); break;
+            case '\v': cord = CORD_cat(cord, BACKSLASHED("v")); break;
+            case '"': cord = CORD_cat(cord, BACKSLASHED("\"")); break;
+            case '\\': cord = CORD_cat(cord, BACKSLASHED("\\")); break;
             case '\x00' ... '\x06': case '\x0E' ... '\x1A':
             case '\x1C' ... '\x1F': case '\x7F' ... '\x7F':
-                CORD_sprintf(&c, "%r" BACKSLASHED("x%02X"), c, data[i]);
+                CORD_sprintf(&cord, "%r" BACKSLASHED("x%02X"), cord, c);
                 break;
-            default: c = CORD_cat_char(c, data[i]); break;
+            default: cord = CORD_cat_char(cord, c); break;
 #undef BACKSLASHED
             }
         }
-        c = CORD_cat(c, "\"\x1b[m");
+        cord = CORD_cat(cord, "\"\x1b[m");
         if (strcmp(type->name, "Str") != 0)
-            CORD_sprintf(&c, "\x1b[0;1m%s::\x1b[m%r", type->name, c);
-        return c;
+            CORD_sprintf(&cord, "\x1b[0;1m%s::\x1b[m%r", type->name, cord);
+        return cord;
     } else {
-        CORD c = "\"";
-        for (uint32_t i = 0; i < s->length; i++) {
-            switch (data[i]) {
-            case '\a': c = CORD_cat(c, "\\a"); break;
-            case '\b': c = CORD_cat(c, "\\b"); break;
-            case '\x1b': c = CORD_cat(c, "\\e"); break;
-            case '\f': c = CORD_cat(c, "\\f"); break;
-            case '\n': c = CORD_cat(c, "\\n"); break;
-            case '\r': c = CORD_cat(c, "\\r"); break;
-            case '\t': c = CORD_cat(c, "\\t"); break;
-            case '\v': c = CORD_cat(c, "\\v"); break;
-            case '"': c = CORD_cat(c, "\\\""); break;
-            case '\\': c = CORD_cat(c, "\\\\"); break;
+        CORD cord = "\"";
+        for (int32_t i = 0; i < s->length; i++) {
+            char c = data[i*s->stride];
+            switch (c) {
+            case '\a': cord = CORD_cat(cord, "\\a"); break;
+            case '\b': cord = CORD_cat(cord, "\\b"); break;
+            case '\x1b': cord = CORD_cat(cord, "\\e"); break;
+            case '\f': cord = CORD_cat(cord, "\\f"); break;
+            case '\n': cord = CORD_cat(cord, "\\n"); break;
+            case '\r': cord = CORD_cat(cord, "\\r"); break;
+            case '\t': cord = CORD_cat(cord, "\\t"); break;
+            case '\v': cord = CORD_cat(cord, "\\v"); break;
+            case '"': cord = CORD_cat(cord, "\\\""); break;
+            case '\\': cord = CORD_cat(cord, "\\\\"); break;
             case '\x00' ... '\x06': case '\x0E' ... '\x1A':
             case '\x1C' ... '\x1F': case '\x7F' ... '\x7F':
-                CORD_sprintf(&c, "%r\\x%02X", c, data[i]);
+                CORD_sprintf(&cord, "%r\\x%02X", cord, c);
                 break;
-            default: c = CORD_cat_char(c, data[i]); break;
+            default: cord = CORD_cat_char(cord, c); break;
             }
         }
-        c = CORD_cat_char(c, '"');
+        cord = CORD_cat_char(cord, '"');
         if (strcmp(type->name, "Str") != 0)
-            CORD_sprintf(&c, "%s::%r", type->name, c);
-        return c;
+            CORD_sprintf(&cord, "%s::%r", type->name, cord);
+        return cord;
     }
 }
 
