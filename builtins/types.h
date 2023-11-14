@@ -54,8 +54,4 @@ int32_t generic_compare(const void *x, const void *y, const Type *type);
 bool generic_equal(const void *x, const void *y, const Type *type);
 CORD generic_cord(const void *obj, bool colorize, const Type *type);
 
-Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn);
-Type *make_named_type(const char *name, Type *t);
-Type *make_pointer_type(const char *sigil, Type *t);
-
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -322,42 +322,7 @@ public Type Type_type = {
     .VTableInfo={.cord=(void*)Type_cord},
 };
 
-public Type *make_type(const char *name, size_t size, size_t align, void *compare_fn, void *equal_fn, void *hash_fn, void *cord_fn)
-{
-    return new(Type,
-        .name=name,
-        .size=size,
-        .align=align,
-        .tag=VTableInfo,
-        .VTableInfo={
-            .compare=compare_fn,
-            .equal=equal_fn,
-            .hash=hash_fn,
-            .cord=cord_fn,
-        },
-    );
-}
-
 public Type Void_type = {.name="Void", .size=0, .align=0};
 public Type Abort_type = {.name="Abort", .size=0, .align=0};
-
-public Type *make_pointer_type(const char *sigil, Type *t)
-{
-    return new(Type,
-        .name=heap_strf("%s%s", sigil, t->name),
-        .size=sizeof(void*),
-        .align=alignof(void*),
-        .tag=PointerInfo,
-        .PointerInfo={sigil, t},
-    );
-}
-
-public Type *make_named_type(const char *name, Type *t)
-{
-    Type *named = GC_MALLOC_ATOMIC(sizeof(Type));
-    *named = *t;
-    named->name = name;
-    return named;
-}
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
