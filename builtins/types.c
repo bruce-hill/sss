@@ -3,6 +3,7 @@
 #include <gc.h>
 #include <string.h>
 #include <stdalign.h>
+#include <stdlib.h>
 #include <sys/param.h>
 
 #include "array.h"
@@ -239,8 +240,14 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
             struct_member_t *member = info.members.data + i*info.members.stride;
             if (member->type->align > 1 && (offset % member->type->align))
                 offset += member->type->align - (offset % member->type->align);
-            c = CORD_cat(c, member->name);
-            c = CORD_cat(c, "=");
+
+            // Print the field name only if it's not an anonymous field ("_%ld" format)
+            char *end;
+            if (member->name[0] != '_' || strtol(member->name+1, &end, 10) != i+1 || *end) {
+                c = CORD_cat(c, member->name);
+                c = CORD_cat(c, "=");
+            }
+
             c = CORD_cat(c, generic_cord(obj + offset, colorize, member->type));
             offset += member->type->size;
         }
