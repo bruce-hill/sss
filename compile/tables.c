@@ -66,8 +66,8 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
         gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
                                         gcc_get_ptr_type(value_gcc_t), "Table_set", sizeof(params)/sizeof(params[0]), params, 0);
         gcc_assign(*block, NULL, dest,
-                   gcc_callx(env->ctx, NULL, func, type_ptr, table, gcc_lvalue_address(key_lval, NULL),
-                             gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))));
+                   gcc_callx(env->ctx, NULL, func, table, gcc_lvalue_address(key_lval, NULL),
+                             gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t)), type_ptr));
         return gcc_rvalue_dereference(gcc_rval(dest), NULL);
     } else {
         gcc_param_t *params[] = {
@@ -78,7 +78,7 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
         gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
                                         gcc_get_ptr_type(value_gcc_t), "Table_get_raw", sizeof(params)/sizeof(params[0]), params, 0);
         gcc_assign(*block, NULL, dest,
-                   gcc_callx(env->ctx, NULL, func, type_ptr, table, gcc_lvalue_address(key_lval, NULL)));
+                   gcc_callx(env->ctx, NULL, func, table, gcc_lvalue_address(key_lval, NULL), type_ptr));
         gcc_block_t *if_missing = gcc_new_block(func, fresh("if_missing")),
                     *done = gcc_new_block(func, fresh("done"));
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(dest), gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))),
