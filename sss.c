@@ -319,6 +319,8 @@ int main(int argc, char *argv[])
 
     const char *gcc_flags[] = {
         "-ftrapv", "-freg-struct-return",
+        // Best guess at how to get proper inlining of precompiled files:
+        "-flto", "-ffat-lto-objects"
     };
     for (size_t i = 0; i < sizeof(gcc_flags)/sizeof(gcc_flags[0]); i++)
         gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
@@ -326,6 +328,7 @@ int main(int argc, char *argv[])
     const char *driver_flags[] = {
         "-lgc", "-lcord", "-lm", "-L.", "-l:libsss.so."SSS_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
+        "-Wl,-flto",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)
         gcc_add_driver_opt(ctx, driver_flags[i]);
