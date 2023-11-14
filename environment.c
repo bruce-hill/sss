@@ -242,10 +242,12 @@ struct {
     }},
 };
 
-gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t)
+gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t, bool keep)
 {
-    gcc_func_t *func = Table_str_get(&env->global->funcs, name);
-    if (func) return func;
+    if (keep) {
+        gcc_func_t *func = Table_str_get(&env->global->funcs, name);
+        if (func) return func;
+    }
     auto params = EMPTY_ARRAY(gcc_param_t*);
     auto fn = Match(fn_t, FunctionType);
     for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
@@ -254,8 +256,9 @@ gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t)
         append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
     }
     gcc_type_t *t_ret = sss_type_to_gcc(env, fn->ret);
-    func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, LENGTH(params), params[0], 0);
-    Table_str_set(&env->global->funcs, name, func);
+    gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, t_ret, name, LENGTH(params), params[0], 0);
+    if (keep)
+        Table_str_set(&env->global->funcs, name, func);
     return func;
 }
 
@@ -297,7 +300,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
                 compiler_err(env, NULL, "Couldn't parse builtin type for %s.%s: `%s`", builtin_types[i].type_name, member.sss_name, member.type);
             sss_type_t *member_type = parse_type_ast(env, type_ast);
             if (member_type->tag == FunctionType) {
-                gcc_func_t *func = import_function(env, member.symbol, member_type);
+                gcc_func_t *func = import_function(env, member.symbol, member_type, false);
                 set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .func=func, .rval=gcc_get_func_address(func, NULL)));
                 Table_str_set(&env->global->funcs, member.symbol, func);
             } else {
@@ -314,7 +317,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         if (!type_ast)
             compiler_err(env, NULL, "Couldn't parse builtin type for %s: `%s`", fn.symbol, fn.type);
         sss_type_t *fn_type = parse_type_ast(env, type_ast);
-        gcc_func_t *func = import_function(env, fn.symbol, fn_type);
+        gcc_func_t *func = import_function(env, fn.symbol, fn_type, true);
         Table_str_set(&env->global->funcs, fn.symbol, func);
     }
 
@@ -456,11 +459,16 @@ binding_t *get_ast_binding(env_t *env, ast_t *ast)
 
 }
 
+static inline void _load_method(env_t *env, table_t *ns, const char *name, const char *symbol, sss_type_t *t)
+{
+    gcc_func_t *func = import_function(env, symbol, t, false);
+    Table_str_set(ns, name, new(binding_t, .type=t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+}
+
 static inline void load_method(env_t *env, table_t *ns, const char *name, const char *symbol, const char *type_string)
 {
     sss_type_t *t = parse_type_ast(env, parse_type_str(type_string));
-    gcc_func_t *func = import_function(env, symbol, t);
-    Table_str_set(ns, name, new(binding_t, .type=t, .func=func, .rval=gcc_get_func_address(func, NULL)));
+    _load_method(env, ns, name, symbol, t);
 }
 
 table_t *get_namespace(env_t *env, sss_type_t *t)

@@ -83,7 +83,7 @@ binding_t *get_binding(env_t *env, const char *name);
 sss_type_t *get_type_by_name(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);
-gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t);
+gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t, bool keep);
 binding_t *get_ast_binding(env_t *env, ast_t *ast);
 env_t *get_type_env(env_t *env, sss_type_t *t);
 table_t *get_namespace(env_t *env, sss_type_t *t);
