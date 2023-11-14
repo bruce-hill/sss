@@ -465,12 +465,6 @@ static inline void _load_method(env_t *env, table_t *ns, const char *name, const
     Table_str_set(ns, name, new(binding_t, .type=t, .func=func, .rval=gcc_get_func_address(func, NULL)));
 }
 
-static inline void load_method(env_t *env, table_t *ns, const char *name, const char *symbol, const char *type_string)
-{
-    sss_type_t *t = parse_type_ast(env, parse_type_str(type_string));
-    _load_method(env, ns, name, symbol, t);
-}
-
 table_t *get_namespace(env_t *env, sss_type_t *t)
 {
     while (t->tag == PointerType)
@@ -481,36 +475,102 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
         ns = new(table_t, .fallback=env->file_bindings);
         Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
 
+#define REF(x) Type(PointerType, .is_stack=true, .pointed=x)
+#define RO_REF(x) Type(PointerType, .is_stack=true, .is_readonly=true, .pointed=x)
+#define OPT(x) Type(PointerType, .is_optional=true, .pointed=x)
+#define FN(names, types, defaults, ret_type) Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=ret_type)
+#define TYPEOF_DEREF(var) FakeAST(TypeOf, FakeAST(Index, FakeAST(Var, var)))
+#define NAMES(...) ARRAY((const char*)__VA_ARGS__)
+#define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
+#define DEFTS(...) ARRAY((ast_t*)__VA_ARGS__)
+        sss_type_t *void_t = Type(VoidType);
+        sss_type_t *type_t = RO_REF(Type(TypeType, t));
         if (t->tag == TableType) {
             sss_type_t *key_t = Match(t, TableType)->key_type;
             sss_type_t *value_t = Match(t, TableType)->value_type;
-            load_method(env, ns, "remove", "Table_remove", heap_strf("func(t:&%T, key:&(read-only)%T, _type=typeof(t[]))->Void", t, key_t));
-            load_method(env, ns, "set", "Table_set", heap_strf("func(t:&%T, key:&(read-only)%T, value:&(read-only)%T, _type=typeof(t[]))->Void", t, key_t, value_t));
-            load_method(env, ns, "reserve", "Table_reserve", heap_strf("func(t:&%T, key:&(read-only)%T, value=!%T, _type=typeof(t[]))->@%T", t, key_t, value_t, value_t));
-            load_method(env, ns, "get", "Table_get", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(t[]))->?%T", t, key_t, value_t));
-            load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(t[]))->?%T", t, key_t, value_t));
-            load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T)->Void", t));
-            load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write", heap_strf("func(t:&%T)->Void", t));
-            load_method(env, ns, "entry", "Table_entry", heap_strf("func(t:&(read-only)%T, n:Int)->?struct(key:%T, value:%T)", t, key_t, value_t));
+            _load_method(env, ns, "remove", "Table_remove",
+                         FN(NAMES("t", "key", "_type"),
+                            TYPES(REF(t), RO_REF(key_t), type_t),
+                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            void_t));
+            _load_method(env, ns, "set", "Table_set",
+                         FN(NAMES("t", "key", "value", "_type"),
+                            TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), type_t),
+                            DEFTS(NULL, NULL, NULL, TYPEOF_DEREF("t")),
+                            void_t));
+            _load_method(env, ns, "reserve", "Table_reserve",
+                         FN(NAMES("t", "key", "value", "_type"),
+                            TYPES(REF(t), RO_REF(key_t), OPT(value_t), type_t),
+                            DEFTS(NULL, NULL, NULL, TYPEOF_DEREF("t")),
+                            Type(PointerType, value_t)));
+            _load_method(env, ns, "get", "Table_get",
+                         FN(NAMES("t", "key", "_type"),
+                            TYPES(RO_REF(t), RO_REF(key_t), type_t),
+                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            OPT(t)));
+            _load_method(env, ns, "get_raw", "Table_get_raw",
+                         FN(NAMES("t", "key", "_type"),
+                            TYPES(RO_REF(t), RO_REF(key_t), type_t),
+                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            OPT(t)));
+            _load_method(env, ns, "clear", "Table_get_clear",
+                         FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
+            _load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write",
+                         FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
         } else if (t->tag == ArrayType) {
             sss_type_t *item_t = Match(t, ArrayType)->item_type;
-            load_method(env, ns, "insert", "Array_insert",
-                        heap_strf("func(array:&%T, item:&(read-only)%T, index=0, _item_size=sizeof(item))->Void", t, item_t));
-            load_method(env, ns, "insert_all", "Array_insert_all",
-                        heap_strf("func(array:&%T, to_insert:%T, index=0, _item_size=sizeof(array[1]))->Void", t, t));
-            load_method(env, ns, "remove", "Array_remove",
-                        heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1]))->Void", t));
-            load_method(env, ns, "sort", "Array_sort",
-                        heap_strf("func(array:&%T, _type=typeof(array[]))->Void", t));
-            load_method(env, ns, "shuffle", "Array_shuffle",
-                        heap_strf("func(array:&%T, _item_size=sizeof(array[1]))->Void", t));
-            load_method(env, ns, "clear", "Array_clear",
-                        heap_strf("func(array:&%T)->Void", t));
-            load_method(env, ns, "contains", "Array_contains",
-                        heap_strf("func(array:%T, item:&(read-only)%T)->Bool", t, item_t));
-            load_method(env, ns, "slice", "Array_slice",
-                        heap_strf("func(array:&%T, range:Range, readonly=no, _type=typeof(array))->%T", t, t));
+            sss_type_t *i64 = Type(IntType, .bits=64);
+            sss_type_t *size = Type(IntType, .is_unsigned=true, .bits=64);
+            ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array"), .index=FakeAST(Int, .precision=64, .i=1)));
+            _load_method(env, ns, "insert", "Array_insert",
+                         FN(NAMES("array", "item", "index", "_item_size"),
+                            TYPES(REF(t), RO_REF(item_t), i64, size),
+                            DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
+                            void_t));
+            _load_method(env, ns, "insert_all", "Array_insert_all",
+                         FN(NAMES("array", "to_insert", "index", "_item_size"),
+                            TYPES(REF(t), t, i64, size),
+                            DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
+                            void_t));
+            _load_method(env, ns, "remove", "Array_remove",
+                         FN(NAMES("array", "index", "count", "_item_size"),
+                            TYPES(REF(t), i64, i64, size),
+                            DEFTS(NULL, FakeAST(Int, .precision=64, .i=-1), FakeAST(Int, .precision=64, .i=1), item_size),
+                            void_t));
+            _load_method(env, ns, "contains", "Array_contains",
+                         FN(NAMES("array", "item", "_type"),
+                            TYPES(REF(t), RO_REF(item_t), type_t),
+                            DEFTS(NULL, NULL, TYPEOF_DEREF("array")),
+                            Type(BoolType)));
+            _load_method(env, ns, "sort", "Array_sort",
+                         FN(NAMES("array", "_type"),
+                            TYPES(REF(t), type_t),
+                            DEFTS(NULL, TYPEOF_DEREF("array")),
+                            void_t));
+            _load_method(env, ns, "shuffle", "Array_shuffle",
+                         FN(NAMES("array", "_item_size"),
+                            TYPES(REF(t), size),
+                            DEFTS(NULL, item_size),
+                            void_t));
+            _load_method(env, ns, "clear", "Array_clear",
+                         FN(NAMES("array"),
+                            TYPES(REF(t)),
+                            DEFTS(NULL),
+                            void_t));
+            _load_method(env, ns, "slice", "Array_slice",
+                         FN(NAMES("array", "range", "readonly", "_type"),
+                            TYPES(REF(t), Type(RangeType), Type(BoolType), type_t),
+                            DEFTS(NULL, NULL, FakeAST(Bool, false), TYPEOF_DEREF("array")),
+                            t));
         }
+#undef REF
+#undef RO_REF
+#undef OPT
+#undef FN
+#undef TYPEOF_DEREF
+#undef NAMES
+#undef TYPES
+#undef DEFTS
     }
     return ns;
 }
