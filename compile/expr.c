@@ -1457,7 +1457,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
         sss_type_t *t = get_type(env, value);
-        return gcc_str(env->ctx, type_to_typeof_string(t));
+        return get_type_pointer(env, t);
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;
