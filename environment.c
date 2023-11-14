@@ -478,6 +478,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             sss_type_t *value_t = Match(t, TableType)->value_type;
             load_method(env, ns, "remove", "Table_remove", heap_strf("func(t:&%T, key:&(read-only)%T, _type=typeof(t[]))->Void", t, key_t));
             load_method(env, ns, "set", "Table_set", heap_strf("func(t:&%T, key:&(read-only)%T, value:&(read-only)%T, _type=typeof(t[]))->Void", t, key_t, value_t));
+            load_method(env, ns, "reserve", "Table_reserve", heap_strf("func(t:&%T, key:&(read-only)%T, value=!%T, _type=typeof(t[]))->@%T", t, key_t, value_t, value_t));
             load_method(env, ns, "get", "Table_get", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(t[]))->?%T", t, key_t, value_t));
             load_method(env, ns, "get_raw", "Table_get_raw", heap_strf("func(t:&(read-only)%T, key:&(read-only)%T, _type=typeof(t[]))->?%T", t, key_t, value_t));
             load_method(env, ns, "clear", "Table_clear", heap_strf("func(t:&%T)->Void", t));

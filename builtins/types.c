@@ -209,7 +209,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
 
         CORD c;
         if (ptr_info.cyclic) {
-            int64_t *found = Table_set(&recursion, obj, NULL, &ptr_to_int_type);
+            int64_t *found = Table_reserve(&recursion, obj, NULL, &ptr_to_int_type);
             if (*found) {
                 CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
                 return c;

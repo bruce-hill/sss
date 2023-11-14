@@ -186,7 +186,7 @@ static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type
 }
 
 // Return address of value
-public void *Table_set(table_t *t, const void *key, const void *value, const Type *type)
+public void *Table_reserve(table_t *t, const void *key, const void *value, const Type *type)
 {
     if (!t || !key) return NULL;
     hshow(t);
@@ -240,6 +240,11 @@ public void *Table_set(table_t *t, const void *key, const void *value, const Typ
     void *entry = GET_ENTRY(t, entry_index);
     Table_set_bucket(t, entry, entry_index, type);
     return entry + VALUE_OFFSET;
+}
+
+public void Table_set(table_t *t, const void *key, const void *value, const Type *type)
+{
+    (void)Table_reserve(t, key, value, type);
 }
 
 public void Table_remove(table_t *t, const void *key, const Type *type)
@@ -503,9 +508,14 @@ void *Table_str_get_raw(const table_t *t, const char *key)
     return ret ? *ret : NULL;
 }
 
-void *Table_str_set(table_t *t, const char *key, const void *value)
+void *Table_str_reserve(table_t *t, const char *key, const void *value)
 {
-    return Table_set(t, &key, &value, CStringToVoidStarTable_type);
+    return Table_reserve(t, &key, &value, CStringToVoidStarTable_type);
+}
+
+void Table_str_set(table_t *t, const char *key, const void *value)
+{
+    Table_set(t, &key, &value, CStringToVoidStarTable_type);
 }
 
 void Table_str_remove(table_t *t, const char *key)

@@ -57,28 +57,15 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
     gcc_rvalue_t *type_ptr = get_type_pointer(env, t);
     if (autocreate) {
-        gcc_param_t *params[] = {
-            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "type"),
-            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, t)), "t"),
-            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(needed_key_gcc_t), "key"),
-            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(value_gcc_t), "value"),
-        };
-        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
-                                        gcc_get_ptr_type(value_gcc_t), "Table_set", sizeof(params)/sizeof(params[0]), params, 0);
+        gcc_func_t *set_fn = get_from_namespace(env, t, "reserve")->func;
         gcc_assign(*block, NULL, dest,
-                   gcc_callx(env->ctx, NULL, func, table, gcc_lvalue_address(key_lval, NULL),
+                   gcc_callx(env->ctx, NULL, set_fn, table, gcc_lvalue_address(key_lval, NULL),
                              gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t)), type_ptr));
         return gcc_rvalue_dereference(gcc_rval(dest), NULL);
     } else {
-        gcc_param_t *params[] = {
-            gcc_new_param(env->ctx, NULL, gcc_type(env->ctx, VOID_PTR), "type"),
-            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(sss_type_to_gcc(env, t)), "t"),
-            gcc_new_param(env->ctx, NULL, gcc_get_ptr_type(needed_key_gcc_t), "key"),
-        };
-        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED,
-                                        gcc_get_ptr_type(value_gcc_t), "Table_get_raw", sizeof(params)/sizeof(params[0]), params, 0);
+        gcc_func_t *get_raw_fn = get_from_namespace(env, t, "get_raw")->func;
         gcc_assign(*block, NULL, dest,
-                   gcc_callx(env->ctx, NULL, func, table, gcc_lvalue_address(key_lval, NULL), type_ptr));
+                   gcc_callx(env->ctx, NULL, get_raw_fn, table, gcc_lvalue_address(key_lval, NULL), type_ptr));
         gcc_block_t *if_missing = gcc_new_block(func, fresh("if_missing")),
                     *done = gcc_new_block(func, fresh("done"));
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(dest), gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))),
