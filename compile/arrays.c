@@ -223,7 +223,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     gcc_rvalue_t *range_val = compile_expr(env, block, index);
     return gcc_callx(
         env->ctx, loc, slice_binding->func,
-        arr,
+        gcc_lvalue_address(arr_var, loc),
         range_val,
         gcc_rvalue_bool(env->ctx, (access == ACCESS_READ) || !env->should_mark_cow),
         get_type_pointer(env, arr_t));
