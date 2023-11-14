@@ -56,15 +56,13 @@ static inline void hshow(const table_t *t)
     hdebug("}\n");
 }
 
-typedef enum { COW_NONE = 0, COW_ENTRIES = 1, COW_BUCKETS = 2, COW_BOTH = 3 } cow_e;
-
-static void maybe_copy_on_write(table_t *t, cow_e which_cow, const Type *type)
+static void maybe_copy_on_write(table_t *t, const Type *type)
 {
-    if (t->entries.copy_on_write && (which_cow & COW_ENTRIES)) {
+    if (t->entries.copy_on_write) {
         Array_compact(&t->entries, type->TableInfo.entry_size);
     }
 
-    if (t->bucket_info && t->bucket_info->copy_on_write && (which_cow & COW_BUCKETS)) {
+    if (t->bucket_info && t->bucket_info->copy_on_write) {
         size_t size = sizeof(bucket_info_t) + t->bucket_info->count*sizeof(bucket_t);
         t->bucket_info = memcpy(GC_MALLOC(size), t->bucket_info, size);
         t->bucket_info->copy_on_write = 0;
@@ -201,7 +199,7 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
         if (value_home) { // Update existing slot
             // Ensure that `value_home` is still inside t->entries, even if COW occurs
             ptrdiff_t offset = value_home - t->entries.data;
-            maybe_copy_on_write(t, COW_BOTH, type);
+            maybe_copy_on_write(t, type);
             value_home = t->entries.data + offset;
 
             if (value && value_size > 0)
@@ -228,7 +226,7 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
         }
     }
 
-    maybe_copy_on_write(t, COW_BOTH, type);
+    maybe_copy_on_write(t, type);
 
     char buf[ENTRY_SIZE] = {};
     memcpy(buf, key, key_size);
@@ -252,7 +250,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     if (!t || Table_length(t) == 0) return;
 
     // TODO: this work doesn't need to be done if the key is already missing
-    maybe_copy_on_write(t, COW_BOTH, type);
+    maybe_copy_on_write(t, type);
 
     // If unspecified, pop a random key:
     if (!key) {
