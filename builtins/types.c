@@ -325,4 +325,13 @@ public Type Type_type = {
 public Type Void_type = {.name="Void", .size=0, .align=0};
 public Type Abort_type = {.name="Abort", .size=0, .align=0};
 
+public CORD Func_cord(const void *fn, bool colorize, const Type *type)
+{
+    (void)fn;
+    CORD c = type->name;
+    if (colorize)
+        CORD_sprintf(&c, "\x1b[32;1m%r\x1b[m", c);
+    return c;
+}
+
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

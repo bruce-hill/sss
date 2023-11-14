@@ -71,6 +71,7 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Bool"},
     {"generic_hash", "func(obj:&(read-only)Memory, type:&(read-only)Type)->UInt32"},
     {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
+    {"Func_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
 
     // Builtins:
     {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
