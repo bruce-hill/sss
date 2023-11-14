@@ -540,7 +540,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                             void_t));
             _load_method(env, ns, "contains", "Array_contains",
                          FN(NAMES("array", "item", "_type"),
-                            TYPES(REF(t), RO_REF(item_t), type_t),
+                            TYPES(RO_REF(t), RO_REF(item_t), type_t),
                             DEFTS(NULL, NULL, TYPEOF_DEREF("array")),
                             Type(BoolType)));
             _load_method(env, ns, "sort", "Array_sort",
