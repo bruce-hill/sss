@@ -155,7 +155,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     if (index->tag == Range) {
         auto range = Match(index, Range);
         if (!range->step || (range->step->tag == Int && Match(range->step, Int)->i == 1)) {
-            gcc_type_t *i64_t = gcc_type(env->ctx, INT32);
+            gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
 #define SUB(a,b) gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, a, b)
             gcc_rvalue_t *old_items = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD));
             gcc_rvalue_t *offset;
@@ -167,10 +167,10 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
             gcc_lvalue_t *offset_var = gcc_local(func, loc, i64_t, "_offset");
             gcc_assign(*block, loc, offset_var, offset);
             // Bit hack to branchlessly set offset to zero when it would otherwise be negative:
-            // offset &= ~(offset >> 31)
+            // offset &= ~(offset >> 63)
             gcc_update(*block, loc, offset_var, GCC_BINOP_BITWISE_AND,
                gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, i64_t,
-                   gcc_binary_op(env->ctx, loc, GCC_BINOP_RSHIFT, i64_t, offset, gcc_rvalue_int32(env->ctx, 31))));
+                   gcc_binary_op(env->ctx, loc, GCC_BINOP_RSHIFT, i64_t, offset, gcc_rvalue_int64(env->ctx, 63))));
             gcc_rvalue_t *old_stride = gcc_rvalue_access_field(arr, loc, gcc_get_field(gcc_array_struct, ARRAY_STRIDE_FIELD));
             offset = gcc_rval(offset_var);
 
