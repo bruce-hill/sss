@@ -399,7 +399,7 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
     if (actual->tag == PointerType && !Match(actual, PointerType)->is_optional
         && can_promote(Match(actual, PointerType)->pointed, needed)) {
         *val = gcc_rval(gcc_rvalue_dereference(*val, NULL));
-        return promote(env, Match(needed, PointerType)->pointed, val, needed);
+        return promote(env, Match(actual, PointerType)->pointed, val, needed);
     // Tuple -> Named struct promotion
     } else if (actual->tag == StructType && base_variant(needed)->tag == StructType) { // Struct promotion
         gcc_type_t *actual_gcc_t = sss_type_to_gcc(env, actual);
