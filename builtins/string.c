@@ -476,14 +476,14 @@ public Type Str_type = {
 
 static CORD CString_cord(const char **s, bool colorize, const Type *type)
 {
-    Str_t str = {.data=(char*)*s, .length=strlen(*s), .stride=1};
+    Str_t str = {.data=(char*)*s, .length=*s ? strlen(*s) : 0, .stride=1};
     return Str__cord(&str, colorize, type);
 }
 
 static uint32_t CString_hash(const char **s, const Type *type)
 {
     (void)type;
-    if (!s) return 0;
+    if (!*s) return 0;
     uint32_t hash;
     halfsiphash(*s, strlen(*s)+1, SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
     assert(strlen(*s) > 0);
@@ -493,6 +493,8 @@ static uint32_t CString_hash(const char **s, const Type *type)
 static uint32_t CString_compare(const char **x, const char **y, const Type *type)
 {
     (void)type;
+    if (!*x || !*y)
+        return (!*x) - (!*y);
     return strcmp(*x, *y);
 }
 
