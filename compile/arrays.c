@@ -64,7 +64,8 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
             gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
         gcc_func_t *gc_realloc_func = get_function(env, "GC_realloc");
         gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
-                                           gcc_rval(data_field), new_size);
+                                           gcc_cast(env->ctx, NULL, gcc_rval(data_field), gcc_type(env->ctx, VOID_PTR)),
+                                           new_size);
         gcc_assign(*block, NULL, data_field,
                    gcc_cast(env->ctx, NULL, new_data, gcc_get_ptr_type(sss_type_to_gcc(env, item_type))));
     }
