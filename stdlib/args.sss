@@ -46,7 +46,8 @@ type Spec := struct(flag_infos:{Str=>struct(canonical:Str, needs_value:Bool)}, p
 
         args := @args
         while args.length > 0
-            arg := args.pop(1)
+            arg := args[1]
+            args.remove(1)
             if arg == "-"
                 positional.insert(arg)
             else if arg.starts_with('\-')
@@ -70,7 +71,7 @@ type Spec := struct(flag_infos:{Str=>struct(canonical:Str, needs_value:Bool)}, p
                     "=".join(arg[3..].split("=")[2..])
                 else if info.needs_value
                     if args.length > 0
-                        args.pop(1)
+                        args.remove(1)
                     else
                         return ArgumentResult.MissingValue(flag)
                 else
@@ -100,7 +101,7 @@ type Spec := struct(flag_infos:{Str=>struct(canonical:Str, needs_value:Bool)}, p
                             char_index += 1
                             val
                         else if args.length > 0
-                            args.pop(1)
+                            args.remove(1)
                         else
                             return ArgumentResult.MissingValue(flag)
                     else
@@ -116,7 +117,8 @@ type Spec := struct(flag_infos:{Str=>struct(canonical:Str, needs_value:Bool)}, p
 
         for name in spec.positional_args
             stop if positional.length == 0
-            flags[name] = positional.pop(1)
+            flags[name] = positional[1]
+            positional[1].remove()
 
         return ArgumentResult.Success(flags=flags[], positional=positional[])
 

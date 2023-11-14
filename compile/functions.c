@@ -110,7 +110,7 @@ static gcc_func_t *add_cache(env_t *env, gcc_loc_t *loc, sss_type_t *fn_t, gcc_f
                            populate_cache, needs_pop);
 
         block = needs_pop;
-        binding_t *remove_fn_binding = get_from_namespace(env, cache_t, "pop");
+        binding_t *remove_fn_binding = get_from_namespace(env, cache_t, "remove");
         gcc_eval(block, loc,
                  gcc_callx(env->ctx, loc, remove_fn_binding->func,
                            gcc_lvalue_address(cache, loc),
