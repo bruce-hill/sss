@@ -56,8 +56,8 @@ public Type Range_type = {
     .name="Range",
     .size=sizeof(range_t),
     .align=alignof(range_t),
-    .tag=VTableInfo,
-    .VTableInfo={
+    .tag=CustomInfo,
+    .CustomInfo={
         .cord=(void*)Range_cord,
         .compare=(void*)Range_compare,
     },

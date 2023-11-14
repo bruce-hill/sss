@@ -52,8 +52,8 @@ extern const void *SSS_HASH_VECTOR;
         .name=#KindOfInt, \
         .size=sizeof(c_type), \
         .align=alignof(c_type), \
-        .tag=VTableInfo, \
-        .VTableInfo={.cord=(void*)KindOfInt ## __cord}, \
+        .tag=CustomInfo, \
+        .CustomInfo={.cord=(void*)KindOfInt ## __cord}, \
     };
 
 DEFINE_INT_TYPE(int64_t,  Int,    "ld", INT64_MIN, INT64_MAX);

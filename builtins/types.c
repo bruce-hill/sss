@@ -67,10 +67,10 @@ public uint32_t generic_hash(const void *obj, const Type *type)
         halfsiphash(&tag, sizeof(tag), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
         return hash;
     }
-    case VTableInfo:
-        if (!type->VTableInfo.hash)
+    case CustomInfo:
+        if (!type->CustomInfo.hash)
             goto hash_data;
-        return type->VTableInfo.hash(obj, type);
+        return type->CustomInfo.hash(obj, type);
     case PointerInfo:
     default: {
       hash_data:;
@@ -121,10 +121,10 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
         }
         return 0;
     }
-    case VTableInfo:
-        if (!type->VTableInfo.compare)
+    case CustomInfo:
+        if (!type->CustomInfo.compare)
             goto compare_data;
-        return type->VTableInfo.compare(x, y, type);
+        return type->CustomInfo.compare(x, y, type);
     case PointerInfo:
     default:
       compare_data:
@@ -178,10 +178,10 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
         }
         return true;
     }
-    case VTableInfo:
-        if (!type->VTableInfo.equal)
+    case CustomInfo:
+        if (!type->CustomInfo.equal)
             goto use_generic_compare;
-        return type->VTableInfo.equal(x, y, type);
+        return type->CustomInfo.equal(x, y, type);
     case PointerInfo:
     default:
       use_generic_compare:
@@ -298,10 +298,10 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
     case ArrayInfo: return Array_cord(obj, colorize, type);
     case TableInfo: return Table_cord(obj, colorize, type);
-    case VTableInfo:
-        if (!type->VTableInfo.cord)
+    case CustomInfo:
+        if (!type->CustomInfo.cord)
             builtin_fail("No cord function provided for type: %s!\n", type->name);
-        return type->VTableInfo.cord(obj, colorize, type);
+        return type->CustomInfo.cord(obj, colorize, type);
     default: errx(1, "Invalid type tag: %d", type->tag);
     }
 }
@@ -318,8 +318,8 @@ static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 
 public Type Type_type = {
     .name="Type",
-    .tag=VTableInfo,
-    .VTableInfo={.cord=(void*)Type_cord},
+    .tag=CustomInfo,
+    .CustomInfo={.cord=(void*)Type_cord},
 };
 
 public Type Void_type = {.name="Void", .size=0, .align=0};

@@ -47,8 +47,8 @@ public Type Num_type = {
     .name="Num",
     .size=sizeof(double),
     .align=alignof(double),
-    .tag=VTableInfo,
-    .VTableInfo={.cord=(void*)Num_cord},
+    .tag=CustomInfo,
+    .CustomInfo={.cord=(void*)Num_cord},
 };
 
 static CORD Num32_cord(float *f, bool colorize, const Type *type) { 
@@ -88,8 +88,8 @@ Type Num32_type = {
     .name="Num32",
     .size=sizeof(float),
     .align=alignof(float),
-    .tag=VTableInfo,
-    .VTableInfo={.cord=(void*)Num32_cord},
+    .tag=CustomInfo,
+    .CustomInfo={.cord=(void*)Num32_cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

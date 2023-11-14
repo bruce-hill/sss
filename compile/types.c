@@ -48,7 +48,7 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     vtable_info_fields[1] = FIELD("compare", gcc_type(env->ctx, VOID_PTR));
     vtable_info_fields[2] = FIELD("hash", gcc_type(env->ctx, VOID_PTR));
     vtable_info_fields[3] = FIELD("cord", gcc_type(env->ctx, VOID_PTR));
-    vtable_info = STRUCT("VTableInfo", vtable_info_fields);
+    vtable_info = STRUCT("CustomInfo", vtable_info_fields);
 
     pointer_info_fields[0] = FIELD("sigil", gcc_type(env->ctx, STRING));
     pointer_info_fields[1] = FIELD("pointed", gcc_get_ptr_type(type_gcc_type));
@@ -78,7 +78,7 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     tagged_union_info_fields[1] = FIELD("is_pure_data", gcc_type(env->ctx, BOOL));
     tagged_union_info = STRUCT("TaggedUnionInfo", tagged_union_info_fields);
 
-    type_union_fields[VTableInfo] = FIELD("VTableInfo", vtable_info);
+    type_union_fields[CustomInfo] = FIELD("CustomInfo", vtable_info);
     type_union_fields[PointerInfo] = FIELD("PointerInfo", pointer_info);
     type_union_fields[ArrayInfo] = FIELD("ArrayInfo", array_info);
     type_union_fields[TableInfo] = FIELD("TableInfo", table_info);
@@ -155,7 +155,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
         // Special case: if we're dealing with a string variant, use the string metamethods:
         if (t == str_t) {
 #define FUNC_PTR(name) gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, name), NULL), gcc_type(env->ctx, VOID_PTR))
-            SET_INFO(VTableInfo, vtable_info, vtable_info_fields,
+            SET_INFO(CustomInfo, vtable_info, vtable_info_fields,
                      FUNC_PTR("Str__equal"),
                      FUNC_PTR("Str__compare"),
                      FUNC_PTR("Str__hash"),

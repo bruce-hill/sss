@@ -26,8 +26,8 @@ public Type Memory_type = {
     .name="Memory",
     .size=0,
     .align=0,
-    .tag=VTableInfo,
-    .VTableInfo={.cord=(void*)Memory_cord},
+    .tag=CustomInfo,
+    .CustomInfo={.cord=(void*)Memory_cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

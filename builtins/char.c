@@ -67,8 +67,8 @@ public Type Char_type = {
     .name="Char",
     .size=sizeof(char),
     .align=alignof(char),
-    .tag=VTableInfo,
-    .VTableInfo={.cord=(void*)Char_cord},
+    .tag=CustomInfo,
+    .CustomInfo={.cord=(void*)Char_cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -17,14 +17,14 @@ typedef struct Type {
     const char *name;
     size_t size, align;
     struct { // Anonymous tagged union for convenience 
-        enum { VTableInfo, PointerInfo, ArrayInfo, TableInfo, StructInfo, TaggedUnionInfo } tag;
+        enum { CustomInfo, PointerInfo, ArrayInfo, TableInfo, StructInfo, TaggedUnionInfo } tag;
         union {
             struct {
                 equal_fn_t equal;
                 compare_fn_t compare;
                 hash_fn_t hash;
                 cord_fn_t cord;
-            } VTableInfo;
+            } CustomInfo;
             struct {
                 const char *sigil;
                 struct Type *pointed;
