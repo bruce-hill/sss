@@ -152,6 +152,7 @@ void populate_def_members(env_t *env, ast_t *def)
             auto struct_def = Match(type_ast, TypeStruct);
             for (int64_t i = 0, len = LENGTH(struct_def->members.names); i < len; i++) {
                 const char *name = ith(struct_def->members.names, i);
+                if (!name) name = heap_strf("_%lu", i+1);
                 if (Table_str_get(&used_names, name))
                     compiler_err(env, def, "This struct has a duplicated field name: '%s'", name);
                 Table_str_set(&used_names, name, (void*)true);
