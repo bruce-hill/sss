@@ -297,16 +297,22 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     // instead of O(N)
     uint32_t last_entry = t->entries.length-1;
     if (bucket->index != last_entry) {
+        hdebug("Removing key/value from the middle of the entries array\n");
+
+        // Find the bucket that points to the last entry's index:
         uint32_t i = HASH(t, GET_ENTRY(t, last_entry));
-        hdebug("Removing key/value from the middle of the entries array by swapping with bucket %u\n", i);
         while (t->bucket_info->buckets[i].index != last_entry)
             i = t->bucket_info->buckets[i].next_bucket;
+        // Update the bucket to point to the last entry's new home (the space
+        // where the removed entry currently sits):
         t->bucket_info->buckets[i].index = bucket->index;
 
+        // Clobber the entry being removed (in the middle of the array) with
+        // the last entry:
         memcpy(GET_ENTRY(t, bucket->index), GET_ENTRY(t, last_entry), ENTRY_SIZE);
     }
 
-    // Zero out the entry to be safe:
+    // Last entry is being removed, so clear it out to be safe:
     memset(GET_ENTRY(t, last_entry), 0, ENTRY_SIZE);
 
     Array_remove(&t->entries, t->entries.length, 1, ENTRY_SIZE);
