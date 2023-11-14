@@ -489,7 +489,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
             load_method(env, ns, "insert", "Array_insert",
                         heap_strf("func(array:&%T, item:&(read-only)%T, index=0, _item_size=sizeof(item))->Void", t, item_t));
             load_method(env, ns, "insert_all", "Array_insert_all",
-                        heap_strf("func(array:&%T, to_insert:&(read-only)%T, index=0, _item_size=sizeof(array[1]))->Void", t, t));
+                        heap_strf("func(array:&%T, to_insert:%T, index=0, _item_size=sizeof(array[1]))->Void", t, t));
             load_method(env, ns, "remove", "Array_remove",
                         heap_strf("func(array:&%T, index=-1, count=1, _item_size=sizeof(array[1]))->Void", t));
             load_method(env, ns, "sort", "Array_sort",
