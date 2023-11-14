@@ -24,7 +24,7 @@
 #include "table.h"
 #include "types.h"
 
-//#define DEBUG_TABLES
+// #define DEBUG_TABLES
 
 #ifdef DEBUG_TABLES
 #define hdebug(fmt, ...) printf("\x1b[2m" fmt "\x1b[m" __VA_OPT__(,) __VA_ARGS__)
@@ -114,7 +114,6 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
     assert(t->bucket_info);
     hshow(t);
     const void *key = entry;
-    hdebug("Set bucket '%s'\n", *(char**)key);
     bucket_t *buckets = t->bucket_info->buckets;
     uint32_t hash = HASH(t, key);
     hdebug("Hash value (mod %u) = %u\n", t->bucket_info->count, hash);
@@ -254,6 +253,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
 
     // If unspecified, pop a random key:
     if (!key) {
+        hdebug("Popping random key\n");
         uint32_t index = arc4random_uniform(t->entries.length);
         key = GET_ENTRY(t, index);
     }
@@ -274,11 +274,12 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     //    maybe update lastfree_index1 to removed bucket's index
 
     uint32_t hash = HASH(t, key);
+    hdebug("Removing key with hash %u\n", hash);
     bucket_t *bucket, *prev = NULL;
     for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
         if (EQUAL(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
             bucket = &t->bucket_info->buckets[i];
-            hdebug("Found key to delete\n");
+            hdebug("Found key to delete in bucket %u\n", i);
             goto found_it;
         }
         if (t->bucket_info->buckets[i].next_bucket == END_OF_CHAIN)
@@ -290,20 +291,23 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
   found_it:;
     assert(bucket->occupied);
 
-    uint32_t last_index = t->entries.length-1;
-    if (bucket->index == last_index) {
-        hdebug("Popping last key/value\n");
-        memset(GET_ENTRY(t, last_index), 0, ENTRY_SIZE);
-    } else {
-        hdebug("Removing key/value from middle\n");
-        uint32_t i = HASH(t, GET_ENTRY(t, last_index));
-        while (t->bucket_info->buckets[i].next_bucket != last_index)
+    // Always remove the last entry. If we need to remove some other entry,
+    // swap the other entry into the last position and then remove the last
+    // entry. This disturbs the ordering of the table, but keeps removal O(1)
+    // instead of O(N)
+    uint32_t last_entry = t->entries.length-1;
+    if (bucket->index != last_entry) {
+        uint32_t i = HASH(t, GET_ENTRY(t, last_entry));
+        hdebug("Removing key/value from the middle of the entries array by swapping with bucket %u\n", i);
+        while (t->bucket_info->buckets[i].index != last_entry)
             i = t->bucket_info->buckets[i].next_bucket;
         t->bucket_info->buckets[i].index = bucket->index;
 
-        memcpy(GET_ENTRY(t, bucket->index), GET_ENTRY(t, last_index), ENTRY_SIZE);
-        memset(GET_ENTRY(t, last_index), 0, ENTRY_SIZE);
+        memcpy(GET_ENTRY(t, bucket->index), GET_ENTRY(t, last_entry), ENTRY_SIZE);
     }
+
+    // Zero out the entry to be safe:
+    memset(GET_ENTRY(t, last_entry), 0, ENTRY_SIZE);
 
     Array_remove(&t->entries, t->entries.length, 1, ENTRY_SIZE);
 
