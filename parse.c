@@ -1279,7 +1279,7 @@ PARSER(parse_string) {
         int64_t first_line = sss_get_line_number(ctx->file, pos);
         int64_t indented = sss_get_indent(ctx->file, pos);
         for (int64_t i = first_line; i < ctx->file->lines.length; i++) {
-            pos = sss_get_line(ctx->file, i-1);
+            pos = sss_get_line(ctx->file, i);
             if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
                 ast_t *ast = NewAST(ctx->file, pos, pos, StringLiteral, .str="\n");
                 append(chunks, ast);
