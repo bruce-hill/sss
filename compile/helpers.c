@@ -369,7 +369,7 @@ gcc_rvalue_t *compile_ast_to_type(env_t *env, gcc_block_t **block, ast_t *ast, s
     }
 
     gcc_rvalue_t *rval = compile_expr(env, block, ast);
-    if (type_eq(actual, needed))
+    if (type_eq(actual, needed) || !rval)
         return rval;
 
     // Value to readonly stack reference:

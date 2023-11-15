@@ -221,7 +221,7 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_lvalue_set_register_name gcc_jit_lvalue_set_register_name
 #define gcc_local gcc_jit_function_new_local
 #define gcc_eval(block, ...) gcc_jit_block_add_eval((assert(block), block), __VA_ARGS__)
-#define gcc_assign gcc_jit_block_add_assignment
+#define gcc_assign(block, loc, var, val) (assert((block) && (var) && (val)), gcc_jit_block_add_assignment((block), (loc), (var), (val)))
 #define gcc_update gcc_jit_block_add_assignment_op
 #define gcc_comment gcc_jit_block_add_comment
 #define gcc_jump_condition gcc_jit_block_end_with_conditional

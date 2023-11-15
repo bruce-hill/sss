@@ -1730,7 +1730,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         gcc_func_t *func = gcc_block_func(*block);
         gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
-        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
+        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
         gcc_assign(*block, loc, result, lhs_val);
         lhs_val = gcc_rval(result);
         if (is_integral(lhs_t) && is_integral(rhs_t)) {
