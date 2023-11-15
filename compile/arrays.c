@@ -231,9 +231,6 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
 
 gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access)
 {
-    if (streq(field_name, "length"))
-        return NULL;
-
     sss_type_t *array_type = get_type(env, ast);
     gcc_loc_t *loc = ast_loc(env, ast);
     if (array_type->tag == PointerType) {
@@ -242,6 +239,11 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
             compiler_err(env, ast, "This value can't be sliced, because it may or may not be null.");
         return array_field_slice(env, block, WrapAST(ast, Index, .indexed=ast), field_name, access);
     }
+
+    // Methods take priority over field slices (e.g. if your array has structs
+    // with a .insert, array.insert should still be the method, not a field slice)
+    if (streq(field_name, "length") || get_from_namespace(env, array_type, field_name))
+        return NULL;
 
     sss_type_t *item_t = get_item_type(array_type);
     if (!item_t || item_t->tag != StructType)

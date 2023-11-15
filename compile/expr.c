@@ -1184,8 +1184,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
-        gcc_rvalue_t *slice = array_field_slice(env, block, access->fielded, access->field, ACCESS_READ);
-        if (slice) return slice;
+        // TODO: move this lower in the code
+        if (base_value_type(get_type(env, access->fielded))->tag == ArrayType) {
+            gcc_rvalue_t *slice = array_field_slice(env, block, access->fielded, access->field, ACCESS_READ);
+            if (slice) return slice;
+        }
 
         (void)get_type(env, ast); // typecheck
         sss_type_t *fielded_t = get_type(env, access->fielded);
