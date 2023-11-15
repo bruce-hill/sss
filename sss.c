@@ -24,6 +24,16 @@ const char *PROGRAM_PATH = "sss";
 
 #define endswith(str,end) (strlen(str) >= strlen(end) && strcmp((str) + strlen(str) - strlen(end), end) == 0)
 
+static void enable_link_time_optimization(gcc_jit_context *ctx)
+{
+    static bool enabled = false;
+    if (enabled) return;
+    enabled = true;
+    gcc_jit_context_add_command_line_option(ctx, "-flto");
+    gcc_jit_context_add_command_line_option(ctx, "-ffat-lto-objects");
+    gcc_add_driver_opt(ctx, "-Wl,-flto");
+}
+
 int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
 {
     if (verbose)
@@ -319,8 +329,6 @@ int main(int argc, char *argv[])
 
     const char *gcc_flags[] = {
         "-ftrapv", "-freg-struct-return",
-        // Best guess at how to get proper inlining of precompiled files:
-        "-flto", "-ffat-lto-objects"
     };
     for (size_t i = 0; i < sizeof(gcc_flags)/sizeof(gcc_flags[0]); i++)
         gcc_jit_context_add_command_line_option(ctx, gcc_flags[i]);
@@ -328,7 +336,6 @@ int main(int argc, char *argv[])
     const char *driver_flags[] = {
         "-lgc", "-lcord", "-lm", "-L.", "-l:libsss.so."SSS_VERSION,
         "-Wl,-rpath", "-Wl,$ORIGIN",
-        "-Wl,-flto",
     };
     for (size_t i = 0; i < sizeof(driver_flags)/sizeof(driver_flags[0]); i++)
         gcc_add_driver_opt(ctx, driver_flags[i]);
@@ -391,17 +398,22 @@ int main(int argc, char *argv[])
         } else if (strncmp(argv[i], "-O", 2) == 0) { // Optimization level
             if (streq(argv[i]+2, "fast")) {
                 tail_calls = true;
+                enable_link_time_optimization(ctx);
                 gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, 3);
                 gcc_jit_context_add_command_line_option(ctx, argv[i]);
             } else {
                 int opt = atoi(argv[i]+2);
-                tail_calls = opt >= 2;
+                tail_calls = (opt >= 2);
+                if (opt >= 2)
+                    enable_link_time_optimization(ctx);
                 gcc_jit_context_set_int_option(ctx, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, opt);
             }
             continue;
         } else if (strncmp(argv[i], "-G", 2) == 0) { // GCC Flag
-            if (streq(argv[i]+2, "Ofast") || streq(argv[i]+2, "O2") || streq(argv[i]+2,"O3"))
+            if (streq(argv[i]+2, "Ofast") || streq(argv[i]+2, "O2") || streq(argv[i]+2,"O3")) {
                 tail_calls = true;
+                enable_link_time_optimization(ctx);
+            }
             gcc_jit_context_add_command_line_option(ctx, heap_strf("-%s", argv[i]+2));
             continue;
         } else if (streq(argv[i], "-e") || streq(argv[i], "--eval")) {
