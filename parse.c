@@ -343,7 +343,7 @@ bool comment(const char **pos) {
 
 bool indent(parse_ctx_t *ctx, const char **out) {
     const char *pos = *out;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
     whitespace(&pos);
     if (sss_get_line_number(ctx->file, pos) == sss_get_line_number(ctx->file, *out))
         return false;
@@ -356,9 +356,9 @@ bool indent(parse_ctx_t *ctx, const char **out) {
     return false;
 }
 
-bool match_indentation(const char **out, size_t target) {
+bool match_indentation(const char **out, int64_t target) {
     const char *pos = *out;
-    for (size_t indentation = 0; indentation < target; ) {
+    for (int64_t indentation = 0; indentation < target; ) {
         switch (*pos) {
         case ' ': indentation += 1; ++pos; break;
         case '\t': indentation += 4; ++pos; break;
@@ -916,7 +916,7 @@ ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos,
 PARSER(parse_if) {
     // if <expr> [matches <pattern> (; <pattern>)* <body> (matches ...)*] [else <body>]
     const char *start = pos;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
 
     if (match_word(&pos, "unless")) {
         ast_t *subj = optional_ast(ctx, &pos, parse_declaration);
@@ -1006,7 +1006,7 @@ PARSER(parse_do) {
     // do [label] [<indent>] body [else else-body]
     const char *start = pos;
     if (!match_word(&pos, "do")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
     const char* label = get_id(&pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'do'"); 
     ast_t *else_body = NULL;
@@ -1068,7 +1068,7 @@ PARSER(parse_for) {
     // for [k,] v in iter [do] [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "for")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
     ast_t *index = expect_ast(ctx, start, &pos, parse_var, "I expected an iteration variable for this 'for'");
     spaces(&pos);
     ast_t *value = NULL;
@@ -1128,7 +1128,7 @@ PARSER(parse_repeat) {
     // repeat [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "repeat")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'repeat'"); 
     whitespace(&pos);
     ast_t *between = NULL;
@@ -1143,7 +1143,7 @@ PARSER(parse_while) {
     // while condition [do] [<indent>] body [<nodent> between [<indent>] body]
     const char *start = pos;
     if (!match_word(&pos, "while")) return NULL;
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
     ast_t *condition = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
     match(&pos, "do"); // optional
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'while'"); 
@@ -1272,12 +1272,12 @@ PARSER(parse_string) {
     auto chunks = EMPTY_ARRAY(ast_t*);
     if (*pos == '\r' || *pos == '\n') {
         char special[] = {'\n','\r',interp_char,escape_char,'\0'};
-        size_t starting_indent = sss_get_indent(ctx->file, pos); 
+        int64_t starting_indent = sss_get_indent(ctx->file, pos); 
         // indentation-delimited string
         match(&pos, "\r");
         match(&pos, "\n");
-        size_t first_line = sss_get_line_number(ctx->file, pos);
-        size_t indented = sss_get_indent(ctx->file, pos);
+        int64_t first_line = sss_get_line_number(ctx->file, pos);
+        int64_t indented = sss_get_indent(ctx->file, pos);
         for (int64_t i = first_line; i < ctx->file->lines.length; i++) {
             pos = sss_get_line(ctx->file, i-1);
             if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
@@ -1915,7 +1915,7 @@ PARSER(parse_extended_expr) {
 }
 
 PARSER(parse_block) {
-    size_t block_indent = sss_get_indent(ctx->file, pos);
+    int64_t block_indent = sss_get_indent(ctx->file, pos);
     const char *start = pos;
     whitespace(&pos);
     auto statements = EMPTY_ARRAY(ast_t*);
@@ -1941,12 +1941,12 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-static ARRAY_OF(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, size_t starting_indent)
+static ARRAY_OF(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, int64_t starting_indent)
 {
     const char *start = *pos;
     whitespace(pos);
     auto definitions = EMPTY_ARRAY(ast_t*);
-    size_t indent = sss_get_indent(ctx->file, *pos);
+    int64_t indent = sss_get_indent(ctx->file, *pos);
     if (indent > starting_indent) {
         for (;;) {
             const char *next = *pos;
@@ -1976,7 +1976,7 @@ PARSER(parse_type_def) {
     const char *start = pos;
     if (!match_word(&pos, "type")) return NULL;
 
-    size_t starting_indent = sss_get_indent(ctx->file, pos);
+    int64_t starting_indent = sss_get_indent(ctx->file, pos);
 
     const char *name = get_id(&pos);
     if (!name) return NULL;

@@ -70,7 +70,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
     size_t file_size = 0, line_cap = 0;
     char *file_buf = NULL, *line_buf = NULL;
     FILE *mem = open_memstream(&file_buf, &file_size);
-    ssize_t line_len = 0;
+    int64_t line_len = 0;
     array_t lines = {.stride=sizeof(sss_line_t), .atomic=1};
     while ((line_len = getline(&line_buf, &line_cap, file)) >= 0) {
         sss_line_t line_info = {.offset=file_size, .indent=0, .is_empty=false};
@@ -96,7 +96,7 @@ static sss_file_t *_load_file(const char* filename, FILE *file)
         // Convert to relative path (if applicable)
         char buf[PATH_MAX];
         char *cwd = getcwd(buf, sizeof(buf));
-        size_t cwd_len = strlen(cwd);
+        int64_t cwd_len = strlen(cwd);
         if (strncmp(cwd, filename, cwd_len) == 0 && filename[cwd_len] == '/')
             relative_filename = &filename[cwd_len+1];
     }
@@ -124,14 +124,14 @@ public sss_file_t *sss_spoof_file(const char* filename, const char *text)
 //
 // Given a pointer, determine which line number it points to (1-indexed)
 //
-public size_t sss_get_line_number(sss_file_t *f, const char *p)
+public int64_t sss_get_line_number(sss_file_t *f, const char *p)
 {
     // Binary search:
-    ssize_t lo = 0, hi = (ssize_t)f->lines.length-1;
+    int64_t lo = 0, hi = (int64_t)f->lines.length-1;
     if (p < f->text) return 0;
-    size_t offset = (ssize_t)(p - f->text);
+    int64_t offset = (int64_t)(p - f->text);
     while (lo <= hi) {
-        ssize_t mid = (lo + hi) / 2;
+        int64_t mid = (lo + hi) / 2;
         sss_line_t *line = ((sss_line_t*)(f->lines.data + mid*f->lines.stride));
         if (line->offset == offset)
             return mid + 1;
@@ -140,25 +140,25 @@ public size_t sss_get_line_number(sss_file_t *f, const char *p)
         else if (line->offset > offset)
             hi = mid - 1;
     }
-    return (size_t)lo; // Return the line number whose line starts closest before p
+    return lo; // Return the line number whose line starts closest before p
 }
 
 //
 // Given a pointer, determine which line column it points to.
 //
-public size_t sss_get_line_column(sss_file_t *f, const char *p)
+public int64_t sss_get_line_column(sss_file_t *f, const char *p)
 {
-    size_t line_no = sss_get_line_number(f, p);
+    int64_t line_no = sss_get_line_number(f, p);
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_no-1)*f->lines.stride));
-    return 1 + (size_t)(p - (f->text + line->offset));
+    return 1 + (int64_t)(p - (f->text + line->offset));
 }
 
 //
 // Given a pointer, get the indentation of the line it's on.
 //
-public size_t sss_get_indent(sss_file_t *f, const char *p)
+public int64_t sss_get_indent(sss_file_t *f, const char *p)
 {
-    ssize_t line_no = sss_get_line_number(f, p);
+    int64_t line_no = sss_get_line_number(f, p);
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_no-1)*f->lines.stride));
     return line->indent;
 }
@@ -166,9 +166,9 @@ public size_t sss_get_indent(sss_file_t *f, const char *p)
 //
 // Return a pointer to the line with the specified line number (1-indexed)
 //
-public const char *sss_get_line(sss_file_t *f, size_t line_number)
+public const char *sss_get_line(sss_file_t *f, int64_t line_number)
 {
-    if (line_number == 0 || line_number > (size_t)f->lines.length) return NULL;
+    if (line_number == 0 || line_number > (int64_t)f->lines.length) return NULL;
     sss_line_t *line = ((sss_line_t*)(f->lines.data + (line_number-1)*f->lines.stride));
     return f->text + line->offset;
 }
@@ -200,7 +200,7 @@ static int fputc_column(FILE *out, char c, char print_char, int *column)
 //
 // Print a span from a file
 //
-public int fprint_span(FILE *out, sss_file_t *file, const char *start, const char *end, const char *hl_color, size_t context_lines, bool use_color)
+public int fprint_span(FILE *out, sss_file_t *file, const char *start, const char *end, const char *hl_color, int64_t context_lines, bool use_color)
 {
     if (!file) return 0;
 
@@ -233,19 +233,19 @@ public int fprint_span(FILE *out, sss_file_t *file, const char *start, const cha
     if (context_lines == 0)
         return fprintf(out, "%s%.*s%s", hl_color, (int)(end - start), start, normal_color);
 
-    ssize_t start_line = sss_get_line_number(file, start),
+    int64_t start_line = sss_get_line_number(file, start),
             end_line = sss_get_line_number(file, end);
 
-    ssize_t first_line = start_line - (context_lines - 1),
+    int64_t first_line = start_line - (context_lines - 1),
             last_line = end_line + (context_lines - 1);
 
     if (first_line < 1) first_line = 1;
     if (last_line > file->lines.length) last_line = file->lines.length;
 
     int digits = 1;
-    for (size_t i = last_line; i > 0; i /= 10) ++digits;
+    for (int64_t i = last_line; i > 0; i /= 10) ++digits;
 
-    for (ssize_t line_no = first_line; line_no <= last_line; ++line_no) {
+    for (int64_t line_no = first_line; line_no <= last_line; ++line_no) {
         if (line_no > first_line + 5 && line_no < last_line - 5) {
             if (use_color)
                 printed += fprintf(out, "\x1b[0;2;3;4m     ... %ld lines omitted ...     \x1b[m\n", (last_line - first_line) - 11);
