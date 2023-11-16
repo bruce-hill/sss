@@ -517,6 +517,10 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
         return true;
     }
 
+    // If we have a DSL, it should be possible to use it as a Str
+    if (is_variant_of(actual, needed))
+        return true;
+
     if (actual->tag == StructType && base_variant(needed)->tag == StructType) {
         auto actual_struct = Match(actual, StructType);
         auto needed_struct = Match(base_variant(needed), StructType);
@@ -624,6 +628,72 @@ sss_type_t *base_variant(sss_type_t *t)
     while (t->tag == VariantType)
         t = Match(t, VariantType)->variant_of;
     return t;
+}
+
+bool is_variant_of(sss_type_t *t, sss_type_t *base)
+{
+    for (; t->tag == VariantType; t = Match(t, VariantType)->variant_of) {
+        if (type_eq(Match(t, VariantType)->variant_of, base))
+            return true;
+    }
+    return false;
+}
+
+sss_type_t *replace_type(sss_type_t *t, sss_type_t *target, sss_type_t *replacement)
+{
+    if (type_eq(t, target))
+        return replacement;
+
+#define COPY(t) memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t))
+#define REPLACED_MEMBER(t, tag, member) ({ t = memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t)); Match((struct sss_type_s*)(t), tag)->member = replace_type((t), target, replacement); t; })
+    switch (t->tag) {
+        case TypeType: return REPLACED_MEMBER(t, TypeType, type);
+        case ArrayType: return REPLACED_MEMBER(t, ArrayType, item_type);
+        case TableType: {
+            t = REPLACED_MEMBER(t, TableType, key_type);
+            t = REPLACED_MEMBER(t, TableType, value_type);
+            return t;
+        }
+        case FunctionType: {
+            auto fn = Match(t, FunctionType);
+            auto arg_types = EMPTY_ARRAY(sss_type_t*);
+            foreach (fn->arg_types, arg_t, _) {
+                append(arg_types, replace_type(*arg_t, target, replacement));
+            }
+            t = COPY(t);
+            Match((struct sss_type_s*)t, FunctionType)->ret = replace_type(Match(t, FunctionType)->ret, target, replacement);
+            Match((struct sss_type_s*)t, FunctionType)->arg_types = arg_types;
+            return t;
+        }
+        case StructType: {
+            auto struct_ = Match(t, StructType);
+            auto field_types = EMPTY_ARRAY(sss_type_t*);
+            foreach (struct_->field_types, field_t, _) {
+                append(field_types, replace_type(*field_t, target, replacement));
+            }
+            t = COPY(t);
+            Match((struct sss_type_s*)t, StructType)->field_types = field_types;
+            return t;
+        }
+        case PointerType: return REPLACED_MEMBER(t, PointerType, pointed);
+        case GeneratorType: return REPLACED_MEMBER(t, GeneratorType, generated);
+        case TaggedUnionType: {
+            auto tagged = Match(t, TaggedUnionType);
+            auto members = EMPTY_ARRAY(sss_tagged_union_member_t);
+            foreach (tagged->members, member, _) {
+                sss_tagged_union_member_t new_member = *member;
+                new_member.type = replace_type(new_member.type, target, replacement);
+                append(members, new_member);
+            }
+            t = COPY(t);
+            Match((struct sss_type_s*)t, TaggedUnionType)->members = members;
+            return t;
+        }
+        case VariantType: return REPLACED_MEMBER(t, VariantType, variant_of);
+        default: return t;
+    }
+#undef COPY
+#undef REPLACED_MEMBER
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

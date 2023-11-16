@@ -591,7 +591,29 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
     // (we don't want module.Struct.__cord to return module.__cord, even
     // though the namespace may have that set as a fallback so that code
     // module.Struct can reference things inside the module's namespace)
-    return Table_str_get_raw(ns, name);
+    binding_t *b = Table_str_get_raw(ns, name);
+
+    // If value isn't found, look up the value on the thing this type is a
+    // variant of and convert that type to the variant type (e.g. on a DSL
+    // variant of Str, bind "uppercased" to Str.uppercased, but with the type
+    // `func(s:DSL)->DSL`)
+    if (!b && t->tag == VariantType) {
+        sss_type_t *base = Match(t, VariantType)->variant_of;
+      next_base:;
+        binding_t *base_b = get_from_namespace(env, base, name);
+        if (base_b) {
+            // If this is a variant of a type with a method, lazily include its methods
+            // For example, `type DSL := Str` should get the method: uppercased:func(s:DSL)->DSL
+            b = new(binding_t);
+            *b = *base_b;
+            b->type = replace_type(b->type, base, t);
+            set_in_namespace(env, t, name, b);
+        } else if (base->tag == VariantType) {
+            base = Match(base, VariantType)->variant_of;
+            goto next_base;
+        }
+    }
+    return b;
 }
 
 void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value)
