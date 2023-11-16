@@ -645,7 +645,7 @@ sss_type_t *replace_type(sss_type_t *t, sss_type_t *target, sss_type_t *replacem
         return replacement;
 
 #define COPY(t) memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t))
-#define REPLACED_MEMBER(t, tag, member) ({ t = memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t)); Match((struct sss_type_s*)(t), tag)->member = replace_type((t), target, replacement); t; })
+#define REPLACED_MEMBER(t, tag, member) ({ t = memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t)); Match((struct sss_type_s*)(t), tag)->member = replace_type(Match((t), tag)->member, target, replacement); t; })
     switch (t->tag) {
         case TypeType: return REPLACED_MEMBER(t, TypeType, type);
         case ArrayType: return REPLACED_MEMBER(t, ArrayType, item_type);
