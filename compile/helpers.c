@@ -395,6 +395,13 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
     if (!can_promote(actual, needed))
         return false;
 
+    if (actual->tag == FunctionType) {
+        *val = gcc_cast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
+        return true;
+    } else if (type_eq(actual, needed)) {
+        return true;
+    }
+
     // Automatic dereferencing:
     if (actual->tag == PointerType && !Match(actual, PointerType)->is_optional
         && can_promote(Match(actual, PointerType)->pointed, needed)) {
@@ -418,9 +425,12 @@ bool promote(env_t *env, sss_type_t *actual, gcc_rvalue_t **val, sss_type_t *nee
             append(field_vals, field_val);
         }
         *val = gcc_struct_constructor(env->ctx, NULL, needed_gcc_t, LENGTH(needed_fields), needed_fields[0], field_vals[0]);
-    // Casting
-    } else if (!type_eq(actual, needed) || actual->tag == FunctionType) {
+    // Casting (numeric promotion)
+    } else if (actual->tag == IntType || actual->tag == NumType) {
         *val = gcc_cast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
+    // Bitcasting
+    } else {
+        *val = gcc_bitcast(env->ctx, NULL, *val, sss_type_to_gcc(env, needed));
     }
     return true;
 }
