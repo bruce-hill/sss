@@ -717,7 +717,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, variant->type, "This is not a variant type, it's %T", variant_t);
 
         sss_type_t *variant_of_t = Match(variant_t, VariantType)->variant_of;
-        if (variant_of_t->tag == ArrayType && variant->value->tag == StringJoin) {
+        if (variant->value->tag == StringJoin) {
             ast = variant->value;
         } else {
             sss_type_t *val_t = get_type(env, variant->value);
@@ -774,15 +774,55 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
 
             ast_t *interp_value = interp->value;
-            sss_type_t *t = get_type(env, interp_value);
+            sss_type_t *interp_t = get_type(env, interp_value);
 
-            gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, t), "_interp");
+            gcc_lvalue_t *interp_var = gcc_local(func, loc, sss_type_to_gcc(env, interp_t), "_interp");
             gcc_assign(*block, loc, interp_var, compile_expr(env, block, interp_value));
             gcc_rvalue_t *obj = gcc_rval(interp_var);
 
-            // TODO: safe string interpolation
+            // Safe string interpolation:
+            if (!type_eq(interp_t, string_t)) {
+                gcc_func_t *convert_fn = NULL;
+                table_t *ns = get_namespace(env, interp_t);
+                for (int64_t i = 1; i <= Table_length(ns); i++) {
+                    struct {const char *name; binding_t *binding;} *entry = Table_entry(ns, i);
+                    if (strncmp(entry->name, "as_", 3) != 0 || entry->binding->type->tag != FunctionType)
+                        continue;
+                    auto fn = Match(entry->binding->type, FunctionType);
+                    if (!type_eq(fn->ret, string_t) || LENGTH(fn->arg_types) != 1
+                        || !can_promote(interp_t, ith(fn->arg_types, 0)))
+                        continue;
+                    assert(promote(env, interp_t, &obj, ith(fn->arg_types, 0)));
+                    convert_fn = entry->binding->func;
+                    goto convert;
+                }
+                table_t *str_ns = get_namespace(env, string_t);
+                for (int64_t i = 1; i <= Table_length(str_ns); i++) {
+                    struct {const char *name; binding_t *binding;} *entry = Table_entry(str_ns, i);
+                    if (strncmp(entry->name, "from_", 5) != 0 || entry->binding->type->tag != FunctionType)
+                        continue;
+                    auto fn = Match(entry->binding->type, FunctionType);
+                    if (!type_eq(fn->ret, string_t) || LENGTH(fn->arg_types) != 1
+                        || !can_promote(interp_t, ith(fn->arg_types, 0)))
+                        continue;
+                    assert(promote(env, interp_t, &obj, ith(fn->arg_types, 0)));
+                    convert_fn = entry->binding->func;
+                    goto convert;
+                }
 
-            if (!interp->quote_string && type_eq(t, string_t)) {
+              convert:;
+                if (convert_fn) {
+                    gcc_lvalue_t *converted = gcc_local(func, loc, gcc_t, "_converted");
+                    gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, convert_fn, obj));
+                    obj = gcc_rval(converted);
+                    interp_t = string_t;
+                } else if (!type_eq(string_t, get_type_by_name(env, "Str"))) {
+                    compiler_err(env, *chunk, "You are trying to interpolate a %T value, but you didn't define a conversion function to convert those to %T",
+                                 interp_t, string_t);
+                }
+            }
+
+            if (!interp->quote_string && type_eq(interp_t, string_t)) {
                 // i = 1
                 gcc_lvalue_t *i = gcc_local(func, loc, i64_t, "_i");
                 gcc_assign(*block, loc, i, gcc_zero(env->ctx, i64_t));
@@ -821,7 +861,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             APPEND_CORD(*block, gcc_callx(
                 env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, gcc_lvalue_address(interp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false),
-                get_type_pointer(env, t)));
+                get_type_pointer(env, interp_t)));
         }
         loc = ast_loc(env, ast);
         gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
