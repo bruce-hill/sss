@@ -178,6 +178,7 @@ int printf_pointer_size(const struct printf_info *info, size_t n, int argtypes[n
 int printf_type(FILE *stream, const struct printf_info *info, const void *const args[])
 {
     sss_type_t *t = *(sss_type_t**)args[0];
+    if (!t) return fputs("(null)", stream);
     table_t expanded = {0};
     stringify_flags_e flags = info->alt ? ARG_NAMES : DEFAULT;
     CORD c = type_to_cord(t, &expanded, flags);
