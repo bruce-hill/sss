@@ -705,7 +705,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case StringLiteral: {
         const char* str = Match(ast, StringLiteral)->str;
         gcc_rvalue_t *str_rval = gcc_str(env->ctx, str);
-        gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT32), strlen(str));
+        gcc_rvalue_t *len_rval = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, INT64), strlen(str));
         gcc_rvalue_t *stride_rval = gcc_one(env->ctx, gcc_type(env->ctx, INT16));
         gcc_type_t *gcc_t = sss_type_to_gcc(env, get_type_by_name(env, "Str"));
         return STRING_STRUCT(env, gcc_t, str_rval, len_rval, stride_rval);
@@ -740,11 +740,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *string_t = variant_t ? variant_t : get_type_by_name(env, "Str");
         gcc_type_t *gcc_t = sss_type_to_gcc(env, string_t);
         gcc_type_t *i16_t = gcc_type(env->ctx, INT16);
-        gcc_type_t *i32_t = gcc_type(env->ctx, INT32);
+        gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
 
         // Optimize the case of empty strings
         if (LENGTH(chunks) == 0) {
-            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i32_t), gcc_one(env->ctx, i16_t));
+            return STRING_STRUCT(env, gcc_t, gcc_null(env->ctx, gcc_type(env->ctx, STRING)), gcc_zero(env->ctx, i64_t), gcc_one(env->ctx, i16_t));
         } else if (LENGTH(chunks) == 1 && ith(chunks, 0)->tag == StringLiteral) {
             // Optimize the case of a single string literal
             return compile_expr(env, block, ith(chunks, 0));
@@ -784,13 +784,12 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             if (!interp->quote_string && type_eq(t, string_t)) {
                 // i = 1
-                gcc_type_t *i32 = gcc_type(env->ctx, INT32);
-                gcc_lvalue_t *i = gcc_local(func, loc, i32, "_i");
-                gcc_assign(*block, loc, i, gcc_zero(env->ctx, i32));
+                gcc_lvalue_t *i = gcc_local(func, loc, i64_t, "_i");
+                gcc_assign(*block, loc, i, gcc_zero(env->ctx, i64_t));
                 gcc_struct_t *array_struct = gcc_type_as_struct(gcc_t);
                 gcc_rvalue_t *items = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
                 gcc_rvalue_t *len = gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD));
-                gcc_rvalue_t *stride = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i32_t);
+                gcc_rvalue_t *stride = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(obj, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i64_t);
 
                 gcc_block_t *add_next_item = gcc_new_block(func, fresh("next_item")),
                             *done = gcc_new_block(func, fresh("done"));
@@ -807,10 +806,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         env->ctx, loc, cord_cat_char_fn,
                         gcc_rval(cord_var),
                         gcc_rval(gcc_array_access(env->ctx, loc, items,
-                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i32_t, gcc_rval(i), gcc_cast(env->ctx, loc, stride, i32_t))))));
+                                                  gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, gcc_rval(i), gcc_cast(env->ctx, loc, stride, i64_t))))));
                 
                 // i += 1
-                gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i32_t));
+                gcc_update(add_next_item, loc, i, GCC_BINOP_PLUS, gcc_one(env->ctx, i64_t));
                 // if (i < len) goto add_next_item;
                 gcc_jump_condition(add_next_item, loc, 
                               gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, gcc_rval(i), len),
@@ -830,8 +829,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(*block, loc, char_star, gcc_callx(env->ctx, loc, cord_to_char_star_fn, gcc_rval(cord_var)));
         gcc_func_t *cord_len = get_function(env, "CORD_len");
         gcc_lvalue_t *str_struct_var = gcc_local(func, loc, gcc_t, "_str_final");
-        gcc_rvalue_t *len32 = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, cord_len, gcc_rval(cord_var)), i32_t);
-        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, gcc_rval(char_star), len32, gcc_one(env->ctx, i16_t)));
+        gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, cord_len, gcc_rval(cord_var)), i64_t);
+        gcc_assign(*block, loc, str_struct_var, STRING_STRUCT(env, gcc_t, gcc_rval(char_star), len64, gcc_one(env->ctx, i16_t)));
 #undef APPEND_CORD
         return gcc_rval(str_struct_var);
     }
