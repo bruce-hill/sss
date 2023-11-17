@@ -43,7 +43,7 @@ public CORD Str__cord(const Str_t *s, bool colorize, const Type *type)
         for (int32_t i = 0; i < s->length; i++) {
             char c = data[i*s->stride];
             switch (c) {
-#define BACKSLASHED(esc) "\x1b[35m\\\x1b[1m" esc "\x1b[0;34m"
+#define BACKSLASHED(esc) "\x1b[34m\\\x1b[1m" esc "\x1b[0;35m"
             case '\a': cord = CORD_cat(cord, BACKSLASHED("a")); break;
             case '\b': cord = CORD_cat(cord, BACKSLASHED("b")); break;
             case '\x1b': cord = CORD_cat(cord, BACKSLASHED("e")); break;
