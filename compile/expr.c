@@ -882,10 +882,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             predeclare_def_funcs(env, *stmt);
 
         defer_t *prev_deferred = env->deferred;
-
-        auto field_names = EMPTY_ARRAY(const char*);
-        auto field_types = EMPTY_ARRAY(sss_type_t*);
-        auto field_values = EMPTY_ARRAY(gcc_rvalue_t*);
         foreach (members, member, _) {
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
@@ -900,41 +896,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                            new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
-                append(field_names, Match(decl->var, Var)->name);
-                append(field_types, t);
-                append(field_values, gcc_rval(lval));
             } else if ((*member)->tag == TypeDef) {
-                auto def = Match(*member, TypeDef);
-                sss_type_t *ft = get_namespace_type(env, def->definitions);
-                append(field_names, def->name);
-                append(field_types, ft);
-                gcc_rvalue_t *rval = compile_expr(env, block, *member);
-                append(field_values, rval);
-            } else if ((*member)->tag == FunctionDef) {
-                auto def = Match(*member, FunctionDef);
                 compile_statement(env, block, *member);
-                binding_t *b = get_binding(env, def->name);
-                append(field_names, def->name);
-                append(field_types, b->type);
-                append(field_values, b->rval);
+            } else if ((*member)->tag == FunctionDef) {
+                compile_statement(env, block, *member);
             } else {
                 compile_statement(env, block, *member);
             }
         }
 
         insert_defers(env, block, prev_deferred);
-
-        gcc_func_t *func = gcc_block_func(*block);
-        sss_type_t *expr_t = Type(StructType, .field_names=field_names, .field_types=field_types);
-        gcc_type_t *expr_gcc_t = sss_type_to_gcc(env, expr_t);
-        gcc_lvalue_t *var = gcc_local(func, loc, expr_gcc_t, fresh("type_value"));
-        gcc_field_t *fields[LENGTH(field_types)];
-        for (int64_t i = 0; i < LENGTH(field_types); i++)
-            fields[i] = gcc_get_field(gcc_type_as_struct(expr_gcc_t), i);
-        if (LENGTH(field_types) > 0)
-            gcc_assign(*block, loc, var, gcc_struct_constructor(
-                    env->ctx, loc, expr_gcc_t, LENGTH(field_types), fields, field_values[0]));
-        return gcc_rval(var);
+        return NULL;
     }
     case Struct: {
         auto struct_ = Match(ast, Struct);

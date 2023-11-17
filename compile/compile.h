@@ -136,5 +136,6 @@ gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *type);
 gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *type);
 gcc_type_t *get_type_gcc_type(env_t *env);
 void initialize_type_lvalue(env_t *env, sss_type_t *t);
+void mark_type_lvalue_initialized(env_t *env, sss_type_t *t);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

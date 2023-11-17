@@ -289,6 +289,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
                            .rval=gcc_rval(type_lval));
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
         Table_str_set(&env->global->type_lvals, type_to_string_concise(t), type_lval);
+        mark_type_lvalue_initialized(env, t);
     }
 
     // Then declare type methods:

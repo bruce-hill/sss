@@ -122,10 +122,18 @@ gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
     return gcc_lvalue_address(lval, NULL);
 }
 
+static table_t initialized_type_lvals = {0};
+void mark_type_lvalue_initialized(env_t *env, sss_type_t *t)
+{
+    (void)env;
+    Table_str_set(&initialized_type_lvals, type_to_string_concise(t), t);
+}
+
 void initialize_type_lvalue(env_t *env, sss_type_t *t)
 {
-    if (Table_str_get(&env->global->type_lvals, type_to_string_concise(t)))
+    if (Table_str_get(&initialized_type_lvals, type_to_string_concise(t)))
         return;
+    mark_type_lvalue_initialized(env, t);
 
     gcc_lvalue_t *lval = get_type_lvalue(env, t);
 #define TAG_RVAL 3
