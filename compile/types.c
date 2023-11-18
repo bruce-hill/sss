@@ -139,7 +139,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
 #define TAG_RVAL 3
 #define INFO_RVAL 4
     gcc_rvalue_t *type_rvalues[5] = {
-        gcc_str(env->ctx, type_to_string_concise(t)),
+        gcc_str(env->ctx, type_to_string_concise(t->tag == TypeType ? Match(t, TypeType)->type : t)),
         gcc_rvalue_size(env->ctx, gcc_sizeof(env, t)),
         gcc_rvalue_size(env->ctx, gcc_alignof(env, t)),
         NULL, // tag
@@ -292,6 +292,15 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Func_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
+        );
+        break;
+    }
+    case TypeType: {
+        SET_INFO(CustomInfo, custom_info, custom_info_fields,
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Type_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
         );
         break;
     }

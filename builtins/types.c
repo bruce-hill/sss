@@ -308,13 +308,13 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
 }
 
-static CORD Type_cord(Type **t, bool colorize, const Type *typetype)
+public CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 {
-    (void)typetype;
+    (void)t;
     if (!colorize)
-        return CORD_from_char_star((*t)->name);
+        return CORD_from_char_star(typetype->name);
     CORD c;
-    CORD_sprintf(&c, "\x1b[36;1m%s\x1b[m", (*t)->name);
+    CORD_sprintf(&c, "\x1b[36;1m%s\x1b[m", typetype->name);
     return c;
 }
 
