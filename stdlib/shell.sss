@@ -6,7 +6,7 @@ type _POpenFile := Memory
 type Sh := Str
     func run(sh:Sh)->struct(output:Str,status:Int32)
         f := extern popen((bitcast sh as Str).c_string(), &`r):?_POpenFile or return {output="", status=-1i32}
-        output := extern sss_readfile(&f, Int64.max):Str
+        output := extern sss_readfile(&f, Int.max):Str
         status := extern pclose(f):Int32
         if status >= 0
             status = (status / 256i32) and 0xFFi32
@@ -39,7 +39,7 @@ type Sh := Str
                 ` 
         ] as Sh
 
-    convert i:Int64 as Sh
+    convert i:Int as Sh
         return bitcast "$i" as Sh
 
     convert n:Num as Sh

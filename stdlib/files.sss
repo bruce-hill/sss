@@ -3,9 +3,9 @@
 time := use time.sss
 
 type FileInfo := struct(
-    device, rdevice, inode, mode, links, user, group:Int64
-    size,block_size:Int64<bytes>
-    block_count:Int64
+    device, rdevice, inode, mode, links, user, group:Int
+    size,block_size:Int<bytes>
+    block_count:Int
     accessed, modified, moved:time.Timestamp
 )
 
@@ -28,7 +28,7 @@ type File := struct(raw_c_file:?_CFile)
         file := f.raw_c_file or fail "File has already been closed"
         return extern sss_fstat(file):FileInfo
 
-    read := extern sss_readfile:func(f:@File,bytes=Int64.max)->Str
+    read := extern sss_readfile:func(f:@File,bytes=Int.max)->Str
 
     func write(f:@File, text:Str)->Result
         file := f.raw_c_file or fail "File has already been closed"
@@ -96,9 +96,9 @@ func spoof(text:Str)->@File
 type Glob := Str
     func expand(g:Glob)->[Str]
         type glob_t := struct(
-            gl_pathc:Int64
+            gl_pathc:Int
             gl_pathv:?@CStringChar
-            gl_offs:Int64
+            gl_offs:Int
             gl_flags:Int32
         )
         type GlobResult := enum(SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3)

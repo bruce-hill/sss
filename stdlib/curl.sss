@@ -35,24 +35,24 @@ type NetRC := enum(Ignored=0 | Optional=1 | Required=2)
 type Header := enum(
       WRITEDATA(data:?Memory)=10001
     | URL(url:@CStringChar)=10002
-    | PORT(port:Int64)=3
+    | PORT(port:Int)=3
     | PROXY(proxy:@CStringChar)=10004
     | USERPWD(userpwd:@CStringChar)=10005
     | PROXYUSERPWD(proxyuserpwd:@CStringChar)=10006
     | RANGE(range:@CStringChar)=10007
     | READDATA(data:?Memory)=10009
     | ERRORBUFFER(buf:@Char)=10010
-    | WRITEFUNCTION(fn:func(@Char,Int64,Int64,?Memory)->Int64)=20011
-    | READFUNCTION(fn:func(@Char,Int64,Int64,?Memory)->Int64)=20012
-    | TIMEOUT(timeout:Int64)=13
-    | INFILESIZE(size:Int64)=14
+    | WRITEFUNCTION(fn:func(@Char,Int,Int,?Memory)->Int)=20011
+    | READFUNCTION(fn:func(@Char,Int,Int,?Memory)->Int)=20012
+    | TIMEOUT(timeout:Int)=13
+    | INFILESIZE(size:Int)=14
     | POSTFIELDS(fields:@CStringChar)=10015
     | REFERER(name:@CStringChar)=10016
     | FTPPORT(port:@CStringChar)=10017
     | USERAGENT(agent:@CStringChar)=10018
-    | LOW_SPEED_LIMIT(limit:Int64)=19
-    | LOW_SPEED_TIME(time:Int64)=20
-    | RESUME_FROM(from:Int64)=21
+    | LOW_SPEED_LIMIT(limit:Int)=19
+    | LOW_SPEED_TIME(time:Int)=20
+    | RESUME_FROM(from:Int)=21
     | COOKIE(cookie:@CStringChar)=10022
     | HTTPHEADER(header:[@CStringChar])=10023
     | SSLCERT(cert:@CStringChar)=10025
@@ -61,9 +61,9 @@ type Header := enum(
     | QUOTE(quote:[@CStringChar])=10028
     | HEADERDATA(data:?Memory)=10029
     | COOKIEFILE(file:@CStringChar)=10031
-    | SSLVERSION(version:Int64)=32
-    | TIMECONDITION(condition:Int64)=33
-    | TIMEVALUE(value:Int64)=34
+    | SSLVERSION(version:Int)=32
+    | TIMECONDITION(condition:Int)=33
+    | TIMEVALUE(value:Int)=34
     | CUSTOMREQUEST(request:@CStringChar)=10036
     | STDERR(dat:@Memory)=10037
     | POSTQUOTE(quote:[@CStringChar])=10039
@@ -81,8 +81,8 @@ type Header := enum(
     | TRANSFERTEXT(transfer:Bool)=53
     | XFERINFODATA(data:?Memory)=10057
     | AUTOREFERER(name:Bool)=58
-    | PROXYPORT(port:Int64)=59
-    | POSTFIELDSIZE(field_size:Int64)=60
+    | PROXYPORT(port:Int)=59
+    | POSTFIELDSIZE(field_size:Int)=60
     | HTTPPROXYTUNNEL(tunnel:Bool)=61
     | INTERFACE(interface:@CStringChar)=10062
     | KRBLEVEL(level:@CStringChar)=10063
@@ -169,7 +169,7 @@ type Header := enum(
     | OPENSOCKETDATA=10164
     | COPYPOSTFIELDS=10165
     | PROXY_TRANSFER_MODE=166
-    | SEEKFUNCTION(fn:func(?Memory,Int64,Int32)->Int32)=20167
+    | SEEKFUNCTION(fn:func(?Memory,Int,Int32)->Int32)=20167
     | SEEKDATA(data:?Memory)=10168
     | CRLFILE=10169
     | ISSUERCERT=10170
@@ -325,7 +325,7 @@ type Header := enum(
 
 type _CURL := Memory
 
-func _write(data:@Char, size:Int64, nmemb:Int64, buf:@Str)->Int64
+func _write(data:@Char, size:Int, nmemb:Int, buf:@Str)->Int
     buf ++= (bitcast {data,(size * nmemb) as Int32,1i16,0i16} as Str)
     return size*nmemb
 
@@ -361,7 +361,7 @@ func get(url:Str, headers=[:Header])->Result
     buf := &""
     code := _curl(headers ++ [
         Header.URL(url),
-        Header.WRITEFUNCTION(bitcast _write as func(@Char,Int64,Int64,?Memory)->Int64),
+        Header.WRITEFUNCTION(bitcast _write as func(@Char,Int,Int,?Memory)->Int),
         Header.WRITEDATA(bitcast buf as ?Memory),
     ])
 

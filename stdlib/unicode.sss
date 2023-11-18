@@ -108,7 +108,7 @@ type CodePoint := struct(n:Int32)
 type uninorm_t := struct()
 type UTF8 := Str
     convert str:Str as UTF8
-        u8_check := extern u8_check:func(@CStringChar,Int64)->?CStringChar
+        u8_check := extern u8_check:func(@CStringChar,Int)->?CStringChar
         err := u8_check(str.c_string(), str.length)
         fail "Invalid UTF8!" unless err == !CStringChar
         return bitcast str as UTF8
@@ -120,37 +120,37 @@ type UTF8 := Str
         return (bitcast u as Str).c_string()
 
     func is_valid_utf8(u:UTF8)->Bool
-        u8_check := extern u8_check:func(@CStringChar,Int64)->?CStringChar
+        u8_check := extern u8_check:func(@CStringChar,Int)->?CStringChar
         err := u8_check(u.c_string(), u.length)
         return err == !CStringChar
 
     func normalized(u:UTF8)->UTF8
         len := 0
-        u8_normalize := (extern u8_normalize:func(&uninorm_t,@CStringChar,Int64,?CStringChar,&Int64)->?CStringChar)
+        u8_normalize := (extern u8_normalize:func(&uninorm_t,@CStringChar,Int,?CStringChar,&Int)->?CStringChar)
         buf := u8_normalize((extern &uninorm_nfd:uninorm_t), u.c_string(), u.length, !CStringChar, &len) or fail "Couldn't normalize string: $u"
         defer (extern free:func(@CStringChar)->Void)(buf)
-        gc_alloc := extern GC_malloc_atomic:func(Int64)->@CStringChar
-        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int64)->@CStringChar
+        gc_alloc := extern GC_malloc_atomic:func(Int)->@CStringChar
+        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int)->@CStringChar
         data := memcpy(gc_alloc(len+1), buf, len+1)
         return bitcast ({data=data, length=(len as Int32), stride=1i16, capacity=0i16}) as UTF8
 
     func compare_utf8(s1, s2:UTF8)->Int32
-        u8_normcmp := extern u8_normcmp:func(@CStringChar,Int64,@CStringChar,Int64,&uninorm_t,&Int32)->Int32
+        u8_normcmp := extern u8_normcmp:func(@CStringChar,Int,@CStringChar,Int,&uninorm_t,&Int32)->Int32
         ret := 0i32
         _ := u8_normcmp(s1.c_string(), s1.length, s2.c_string(), s2.length, (extern &uninorm_nfd:uninorm_t), &ret)
         return ret
 
-    func multibyte_length(u:UTF8)->Int64
-        return (extern u8_mbsnlen:func(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
+    func multibyte_length(u:UTF8)->Int
+        return (extern u8_mbsnlen:func(@CStringChar,Int)->Int32)(u.c_string(), u.length)
 
-    func width(u:UTF8)->Int64
+    func width(u:UTF8)->Int
         setlocale := extern setlocale:func(Int32,?CStringChar)->@CStringChar
-        return (extern u8_width:func(@CStringChar,Int64,@CStringChar)->Int32)(u.c_string(), u.length, setlocale(0i32,!CStringChar))
+        return (extern u8_width:func(@CStringChar,Int,@CStringChar)->Int32)(u.c_string(), u.length, setlocale(0i32,!CStringChar))
 
     func first_codepoint(u:UTF8)->CodePoint
-        len := (extern u8_mblen:func(@CStringChar,Int64)->Int32)(u.c_string(), u.length)
+        len := (extern u8_mblen:func(@CStringChar,Int)->Int32)(u.c_string(), u.length)
         ret := 0i32
-        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int64,&Int32,&Int64)->?Int32
+        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int,&Int32,&Int)->?Int32
         first_len := 1
         _ := u8_to_u32(u[1..len].c_string(), len, &ret, &first_len)
         return CodePoint{ret}
@@ -158,18 +158,18 @@ type UTF8 := Str
     func codepoints(u:UTF8)->[CodePoint]
         ret := [CodePoint{0i32} for _ in 1..u.multibyte_length()]
         len := ret.length
-        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int64,?CodePoint,&Int64)->?Int32
+        u8_to_u32 := extern u8_to_u32:func(@CStringChar,Int,?CodePoint,&Int)->?Int32
         _ := u8_to_u32(u.c_string(), u.length, (bitcast ret as struct(data:@CodePoint,length:Int32,stride:Int16,capacity:Int16)).data, &len)
         return ret
 
     func from_codepoints(codepoints:[CodePoint])->UTF8
-        u32_to_u8 := extern u32_to_u8:func(@CodePoint,Int64,?Int32,@Int64)->?CStringChar
+        u32_to_u8 := extern u32_to_u8:func(@CodePoint,Int,?Int32,@Int)->?CStringChar
         data_ptr := (bitcast codepoints as struct(data:?CodePoint,length:Int32,stride:Int16,capacity:Int16)).data or return UTF8::""
         len := @0
         buf := u32_to_u8(data_ptr, codepoints.length, !Int32, len) or fail "Couldn't get UTF8 string from codepoints: $codepoints"
         defer (extern free:func(@CStringChar)->Void)(buf)
-        gc_alloc := extern GC_malloc_atomic:func(Int64)->@CStringChar
-        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int64)->@CStringChar
+        gc_alloc := extern GC_malloc_atomic:func(Int)->@CStringChar
+        memcpy := extern memcpy:func(@CStringChar,@CStringChar,Int)->@CStringChar
         data := memcpy(gc_alloc(len[] + 1), buf, len[] + 1)
         return bitcast ({data=data, length=(len[] as Int32), stride=1i16, capacity=0i16}) as UTF8
 
