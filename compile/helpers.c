@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <stdalign.h>
 #include <stdint.h>
+#include <sys/param.h>
 
 #include "../ast.h"
 #include "../builtins/array.h"
@@ -349,7 +350,8 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed)
     auto needed_int = Match(needed, IntType);
     auto int_ast = Match(*ast, Int);
     if (streq(needed_int->units, int_ast->units)) {
-        *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=needed_int->bits, .is_unsigned=needed_int->is_unsigned, .units=needed_int->units);
+        *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=MIN(int_ast->precision, needed_int->bits),
+                       .is_unsigned=needed_int->is_unsigned && (int_ast->i >= 0), .units=needed_int->units);
         return true;
     } else {
         return false;

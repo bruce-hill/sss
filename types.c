@@ -1,5 +1,8 @@
 // Logic for handling sss_type_t types
 #include <gc/cord.h>
+#include <stdint.h>
+#include <limits.h>
+#include <math.h>
 
 #include "builtins/table.h"
 #include "types.h"
@@ -342,63 +345,60 @@ bool is_numeric(sss_type_t *t)
     return t->tag == IntType || t->tag == NumType;
 }
 
-typedef enum {
-    MAG_INAPPLICABLE = 0, MAG_ZERO, MAG1, MAG2, MAG3, MAG4, MAG5, MAG6, MAG7, MAG8, MAG9, MAG10, MAG11, MAG12,
-} magnitude_e;
-
-static inline magnitude_e type_min_magnitude(sss_type_t *t)
+static inline double type_min_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: case CharType: return MAG_ZERO;
+    case BoolType: return (double)false;
+    case CharType: return (double)CHAR_MIN;
     case IntType: {
-        if (Match(t, IntType)->is_unsigned) return MAG_ZERO;
+        if (Match(t, IntType)->is_unsigned) return 0;
         switch (Match(t, IntType)->bits) {
-        case 8: return MAG1;
-        case 16: return MAG2;
-        case 32: return MAG3;
-        case 64: return MAG4;
-        default: return MAG_INAPPLICABLE;
+        case 8: return (double)INT8_MIN;
+        case 16: return (double)INT16_MIN;
+        case 32: return (double)INT32_MIN;
+        case 64: return (double)INT64_MIN;
+        default: return NAN;
         }
     }
-    case NumType: return Match(t, NumType)->bits == 32 ? MAG5 : MAG6;
+    case NumType: return -1./0.;
     case VariantType: return type_min_magnitude(Match(t, VariantType)->variant_of);
-    default: return MAG_INAPPLICABLE;
+    default: return NAN;
     }
 }
 
-static inline int type_max_magnitude(sss_type_t *t)
+static inline double type_max_magnitude(sss_type_t *t)
 {
     switch (t->tag) {
-    case BoolType: return MAG1;
-    case CharType: return MAG2;
+    case BoolType: return (double)true;
+    case CharType: return (double)CHAR_MAX;
     case IntType: {
         bool is_unsigned = Match(t, IntType)->is_unsigned;
         switch (Match(t, IntType)->bits) {
-        case 8: return is_unsigned ? MAG4 : MAG3;
-        case 16: return is_unsigned ? MAG6 : MAG5;
-        case 32: return is_unsigned ? MAG8 : MAG7;
-        case 64: return is_unsigned ? MAG10 : MAG9;
-        default: return MAG_INAPPLICABLE;
+        case 8: return is_unsigned ? (double)UINT8_MAX : (double)INT8_MAX;
+        case 16: return is_unsigned ? (double)UINT16_MAX : (double)INT16_MAX;
+        case 32: return is_unsigned ? (double)UINT32_MAX : (double)INT32_MAX;
+        case 64: return is_unsigned ? (double)UINT64_MAX : (double)INT64_MAX;
+        default: return NAN;
         }
     }
-    case NumType: return Match(t, NumType)->bits == 32 ? MAG11 : MAG12;
+    case NumType: return 1./0.;
     case VariantType: return type_max_magnitude(Match(t, VariantType)->variant_of);
-    default: return MAG_INAPPLICABLE;
+    default: return NAN;
     }
 }
 
 precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b)
 {
-    magnitude_e a_min = type_min_magnitude(a),
-                b_min = type_min_magnitude(b),
-                a_max = type_max_magnitude(a),
-                b_max = type_max_magnitude(b);
+    double a_min = type_min_magnitude(a),
+           b_min = type_min_magnitude(b),
+           a_max = type_max_magnitude(a),
+           b_max = type_max_magnitude(b);
 
-    if (a_min == MAG_INAPPLICABLE || b_min == MAG_INAPPLICABLE || a_max == MAG_INAPPLICABLE || b_max == MAG_INAPPLICABLE)
+    if (isnan(a_min) || isnan(b_min) || isnan(a_max) || isnan(b_max))
         return NUM_PRECISION_INCOMPARABLE;
     else if (a_min == b_min && a_max == b_max) return NUM_PRECISION_EQUAL;
-    else if (a_min <= b_min && a_max <= b_max) return NUM_PRECISION_LESS;
-    else if (a_min >= b_min && a_max >= b_max) return NUM_PRECISION_MORE;
+    else if (a_min <= b_min && b_max <= a_max) return NUM_PRECISION_MORE;
+    else if (b_min <= a_min && a_max <= b_max) return NUM_PRECISION_LESS;
     else return NUM_PRECISION_INCOMPARABLE;
 }
 
