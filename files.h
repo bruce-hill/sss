@@ -12,8 +12,8 @@
 
 typedef struct {
     int64_t offset;
-    uint64_t indent:63;
-    uint8_t is_empty:1;
+    int64_t indent:63;
+    bool is_empty:1;
 } sss_line_t;
 
 typedef struct {
