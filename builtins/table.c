@@ -48,7 +48,7 @@ Type *CStringToVoidStarTable_type;
 static inline void hshow(const table_t *t)
 {
     hdebug("{");
-    for (uint32_t i = 0; t->bucket_info && i < t->bucket_info->count; i++) {
+    for (int64_t i = 0; t->bucket_info && i < t->bucket_info->count; i++) {
         if (i > 0) hdebug(" ");
         if (t->bucket_info->buckets[i].occupied)
             hdebug("[%d]=%d(%d)", i, t->bucket_info->buckets[i].index, t->bucket_info->buckets[i].next_bucket);
@@ -87,7 +87,7 @@ public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     hshow(t);
     hdebug("Getting value with initial probe at %u\n", hash);
     bucket_t *buckets = t->bucket_info->buckets;
-    for (uint32_t i = hash; buckets[i].occupied; i = buckets[i].next_bucket) {
+    for (int64_t i = (int64_t)hash; buckets[i].occupied; i = buckets[i].next_bucket) {
         hdebug("Checking against key in bucket %u\n", i);
         void *entry = GET_ENTRY(t, buckets[i].index);
         if (EQUAL(entry, key)) {
@@ -167,7 +167,7 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
     hshow(t);
 }
 
-static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type *type)
+static void hashmap_resize_buckets(table_t *t, int64_t new_capacity, const Type *type)
 {
     hdebug("About to resize from %u to %u\n", t->bucket_info ? t->bucket_info->count : 0, new_capacity);
     hshow(t);
@@ -177,7 +177,7 @@ static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type
     t->bucket_info->count = new_capacity;
     t->bucket_info->last_free = new_capacity-1;
     // Rehash:
-    for (uint32_t i = 0; i < Table_length(t); i++) {
+    for (int64_t i = 0; i < Table_length(t); i++) {
         hdebug("Rehashing %u\n", i);
         Table_set_bucket(t, GET_ENTRY(t, i), i, type);
     }
@@ -216,7 +216,7 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
 
     // Resize buckets if necessary
     if (t->entries.length >= t->bucket_info->count) {
-        uint32_t newsize = t->bucket_info->count + MIN(t->bucket_info->count, 64);
+        int64_t newsize = t->bucket_info->count + MIN(t->bucket_info->count, 64);
         hashmap_resize_buckets(t, newsize, type);
     }
 
@@ -238,7 +238,7 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
         memcpy(buf + VALUE_OFFSET, value, value_size);
     Array_insert(&t->entries, buf, 0, ENTRY_SIZE);
 
-    uint32_t entry_index = t->entries.length-1;
+    int64_t entry_index = t->entries.length-1;
     void *entry = GET_ENTRY(t, entry_index);
     Table_set_bucket(t, entry, entry_index, type);
     return entry + VALUE_OFFSET;
@@ -283,7 +283,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     uint32_t hash = HASH(t, key);
     hdebug("Removing key with hash %u\n", hash);
     bucket_t *bucket, *prev = NULL;
-    for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
+    for (int64_t i = (int64_t)hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
         if (EQUAL(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
             bucket = &t->bucket_info->buckets[i];
             hdebug("Found key to delete in bucket %u\n", i);
@@ -302,12 +302,12 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     // swap the other entry into the last position and then remove the last
     // entry. This disturbs the ordering of the table, but keeps removal O(1)
     // instead of O(N)
-    uint32_t last_entry = t->entries.length-1;
+    int64_t last_entry = t->entries.length-1;
     if (bucket->index != last_entry) {
         hdebug("Removing key/value from the middle of the entries array\n");
 
         // Find the bucket that points to the last entry's index:
-        uint32_t i = HASH(t, GET_ENTRY(t, last_entry));
+        int64_t i = (int64_t)HASH(t, GET_ENTRY(t, last_entry));
         while (t->bucket_info->buckets[i].index != last_entry)
             i = t->bucket_info->buckets[i].next_bucket;
         // Update the bucket to point to the last entry's new home (the space
@@ -324,7 +324,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
 
     Array_remove(&t->entries, t->entries.length, 1, ENTRY_SIZE);
 
-    uint32_t bucket_to_clear;
+    int64_t bucket_to_clear;
     if (prev) { // Middle (or end) of a chain
         hdebug("Removing from middle of a chain\n");
         bucket_to_clear = (bucket - t->bucket_info->buckets);
@@ -345,7 +345,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     hshow(t);
 }
 
-public void *Table_entry(const table_t *t, uint32_t n)
+public void *Table_entry(const table_t *t, int64_t n)
 {
     if (n < 1 || n > Table_length(t))
         return NULL;
@@ -370,7 +370,7 @@ public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
         return false;
 
     const Type *value_type = type->TableInfo.value;
-    for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
+    for (int64_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
         void *y_value = Table_get_raw(y, x_key, type);
@@ -403,7 +403,7 @@ public int32_t Table_compare(const table_t *x, const table_t *y, const Type *typ
     int32_t cmp = Array_compare(&x_entries, &y_entries, &entry_type);
     if (cmp != 0) return cmp;
     assert(Table_length(x) == Table_length(y));
-    for (uint32_t i = 0, length = Table_length(x); i < length; i++) {
+    for (int64_t i = 0, length = Table_length(x); i < length; i++) {
         void *value_x = x_entries.data + i*table.entry_size + table.value_offset;
         void *value_y = y_entries.data + i*table.entry_size + table.value_offset;
         int32_t cmp = generic_compare(value_x, value_y, table.value);
@@ -422,7 +422,7 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
     size_t value_offset = table.value_offset;
 
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
-    for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
+    for (int64_t i = 0, length = Table_length(t); i < length; i++) {
         void *entry = GET_ENTRY(t, i);
         key_hashes ^= generic_hash(entry, table.key);
         value_hashes ^= generic_hash(entry + value_offset, table.value);
@@ -452,7 +452,7 @@ public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
     auto table = type->TableInfo;
     size_t value_offset = table.value_offset;
     CORD c = "{";
-    for (uint32_t i = 0, length = Table_length(t); i < length; i++) {
+    for (int64_t i = 0, length = Table_length(t); i < length; i++) {
         if (i > 0)
             c = CORD_cat(c, ", ");
         void *entry = GET_ENTRY(t, i);
@@ -479,7 +479,7 @@ public table_t Table_from_entries(array_t entries, const Type *type)
 {
     assert(type->tag == TableInfo);
     table_t t = {.entries=entries};
-    for (uint32_t i = 0; i < Table_length(&t); i++) {
+    for (int64_t i = 0; i < Table_length(&t); i++) {
         hdebug("Rehashing %u\n", i);
         Table_set_bucket(&t, GET_ENTRY(&t, i), i, type);
     }
@@ -513,7 +513,7 @@ void Table_str_remove(table_t *t, const char *key)
     return Table_remove(t, &key, CStringToVoidStarTable_type);
 }
 
-void *Table_str_entry(const table_t *t, uint32_t n)
+void *Table_str_entry(const table_t *t, int64_t n)
 {
     return Table_entry(t, n);
 }

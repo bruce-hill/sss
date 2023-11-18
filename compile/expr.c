@@ -542,7 +542,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env_t *defer_env = fresh_scope(env);
         defer_env->bindings->fallback = env->bindings->fallback;
         gcc_func_t *func = gcc_block_func(*block);
-        for (uint32_t i = 1; i <= Table_length(env->bindings); i++) {
+        for (int64_t i = 1; i <= Table_length(env->bindings); i++) {
             struct {const char *key; binding_t *value;} *entry = Table_str_entry(env->bindings, i);
             gcc_lvalue_t *cached = gcc_local(func, loc, sss_type_to_gcc(env, entry->value->type), entry->key);
             if (!entry->value->rval) continue;
