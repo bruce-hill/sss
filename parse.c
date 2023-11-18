@@ -1270,7 +1270,7 @@ PARSER(parse_string) {
         spaces(&pos);
 
     auto chunks = EMPTY_ARRAY(ast_t*);
-    if (*pos == '\r' || *pos == '\n') {
+    if (*pos == '\r' || *pos == '\n') { // Multiline string
         char special[] = {'\n','\r',interp_char,escape_char,'\0'};
         int64_t starting_indent = sss_get_indent(ctx->file, pos); 
         // indentation-delimited string
@@ -1278,11 +1278,13 @@ PARSER(parse_string) {
         match(&pos, "\n");
         int64_t first_line = sss_get_line_number(ctx->file, pos);
         int64_t indented = sss_get_indent(ctx->file, pos);
-        for (int64_t i = first_line; i < ctx->file->lines.length; i++) {
-            pos = sss_get_line(ctx->file, i);
-            if (strchrnul(pos, '\n') == pos + strspn(pos, " \t\r")) {
-                ast_t *ast = NewAST(ctx->file, pos, pos, StringLiteral, .str="\n");
+        pos = sss_get_line(ctx->file, first_line);
+        while (pos < ctx->file->text + ctx->file->len) {
+            const char *eol = strchrnul(pos, '\n');
+            if (eol == pos + strspn(pos, " \t\r")) { // Empty line
+                ast_t *ast = NewAST(ctx->file, pos, eol, StringLiteral, .str="\n");
                 append(chunks, ast);
+                pos = eol + 1;
                 continue;
             }
             if (!match_indentation(&pos, starting_indent))
@@ -1297,7 +1299,7 @@ PARSER(parse_string) {
                 parser_err(ctx, pos, strchrnul(pos, '\n'), "I was expecting this to have %lu extra indentation beyond %lu",
                            (indented - starting_indent), starting_indent);
 
-            for (const char *eol = strchrnul(pos, '\n'); pos < eol+1; ) {
+            while (pos < eol+1) {
                 size_t len = strcspn(pos, special);
                 if (pos[len] == '\r') ++len;
                 if (pos[len] == '\n') ++len;
@@ -1332,9 +1334,8 @@ PARSER(parse_string) {
                 chunks[0][LENGTH(chunks)-1] = NewAST(ctx->file, last_chunk->start, last_chunk->end-1, StringLiteral, .str=trimmed);
             }
         }
-    } else {
+    } else { // Inline string
         char special[] = {'\n','\r',open,close,interp_char,escape_char,'\0'};
-        // Inline string:
         int depth = 1;
         while (depth > 0 && *pos) {
             size_t len = strcspn(pos, special);
