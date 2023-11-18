@@ -782,38 +782,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             // Safe string interpolation:
             if (!type_eq(interp_t, string_t)) {
-                gcc_func_t *convert_fn = NULL;
-                table_t *ns = get_namespace(env, interp_t);
-                for (int64_t i = 1; i <= Table_length(ns); i++) {
-                    struct {const char *name; binding_t *binding;} *entry = Table_entry(ns, i);
-                    if (strncmp(entry->name, "as_", 3) != 0 || entry->binding->type->tag != FunctionType)
-                        continue;
-                    auto fn = Match(entry->binding->type, FunctionType);
-                    if (!type_eq(fn->ret, string_t) || LENGTH(fn->arg_types) != 1
-                        || !can_promote(interp_t, ith(fn->arg_types, 0)))
-                        continue;
-                    assert(promote(env, interp_t, &obj, ith(fn->arg_types, 0)));
-                    convert_fn = entry->binding->func;
-                    goto convert;
-                }
-                table_t *str_ns = get_namespace(env, string_t);
-                for (int64_t i = 1; i <= Table_length(str_ns); i++) {
-                    struct {const char *name; binding_t *binding;} *entry = Table_entry(str_ns, i);
-                    if (strncmp(entry->name, "from_", 5) != 0 || entry->binding->type->tag != FunctionType)
-                        continue;
-                    auto fn = Match(entry->binding->type, FunctionType);
-                    if (!type_eq(fn->ret, string_t) || LENGTH(fn->arg_types) != 1
-                        || !can_promote(interp_t, ith(fn->arg_types, 0)))
-                        continue;
-                    assert(promote(env, interp_t, &obj, ith(fn->arg_types, 0)));
-                    convert_fn = entry->binding->func;
-                    goto convert;
-                }
+                binding_t *interp_binding = get_from_namespace(env, interp_t, heap_strf("#convert-to:%s", type_to_string(string_t)));
+                if (!interp_binding)
+                    interp_binding = get_from_namespace(env, string_t, heap_strf("#convert-from:%s", type_to_string(interp_t)));
 
-              convert:;
-                if (convert_fn) {
+                if (interp_binding && interp_binding->func) {
                     gcc_lvalue_t *converted = gcc_local(func, loc, gcc_t, "_converted");
-                    gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, convert_fn, obj));
+                    gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, interp_binding->func, obj));
                     obj = gcc_rval(converted);
                     interp_t = string_t;
                 } else if (!type_eq(string_t, get_type_by_name(env, "Str"))) {
