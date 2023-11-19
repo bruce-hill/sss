@@ -38,7 +38,7 @@ say "Fn: $(func(x,y:Int) x + y )"
 
 >>> "  one two  ".trimmed()
 === "one two"
->>> "  one two  ".trimmed(chars=" on")
+>>> "  one two  ".trimmed(trim_chars=[` , `o, `n])
 === "e tw"
 >>> "  one two  ".trimmed(trim_left=no)
 === "  one two"
