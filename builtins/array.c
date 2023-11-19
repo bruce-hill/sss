@@ -20,12 +20,12 @@ extern const void *SSS_HASH_VECTOR;
 
 // Replace the array's .data pointer with a new pointer to a copy of the
 // data that is compacted and has a stride of exactly `item_size`
-public void Array_compact(array_t *arr, size_t item_size)
+public void Array_compact(array_t *arr, int64_t item_size)
 {
     void *copy = NULL;
     if (arr->length > 0) {
         copy = arr->atomic ? GC_MALLOC_ATOMIC(arr->length * item_size) : GC_MALLOC(arr->length * item_size);
-        if ((size_t)arr->stride == item_size) {
+        if ((int64_t)arr->stride == item_size) {
             memcpy(copy, arr->data, arr->length * item_size);
         } else {
             for (int64_t i = 0; i < arr->length; i++)
@@ -42,7 +42,7 @@ public void Array_compact(array_t *arr, size_t item_size)
     };
 }
 
-public void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size)
+public void Array_insert(array_t *arr, const void *item, int64_t index, int64_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -53,7 +53,7 @@ public void Array_insert(array_t *arr, const void *item, int64_t index, size_t i
         arr->free = 4;
         arr->data = arr->atomic ? GC_MALLOC_ATOMIC(arr->free * item_size) : GC_MALLOC(arr->free * item_size);
         arr->stride = item_size;
-    } else if (arr->free < 1 || (size_t)arr->stride != item_size) {
+    } else if (arr->free < 1 || (int64_t)arr->stride != item_size) {
         arr->free = MAX(15, MIN(1, arr->length/4));
         void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int64_t i = 0; i < index-1; i++)
@@ -70,12 +70,13 @@ public void Array_insert(array_t *arr, const void *item, int64_t index, size_t i
         if (index != arr->length+1)
             memmove((void*)arr->data + index*item_size, arr->data + (index-1)*item_size, (arr->length - index)*item_size);
     }
+    assert(arr->free > 0);
     --arr->free;
     ++arr->length;
     memcpy((void*)arr->data + (index-1)*item_size, item, item_size);
 }
 
-public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size)
+public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, int64_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -85,7 +86,7 @@ public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, siz
     if (!arr->data) {
         arr->free = to_insert.length;
         arr->data = arr->atomic ? GC_MALLOC_ATOMIC(item_size*arr->free) : GC_MALLOC(item_size*arr->free);
-    } else if ((int64_t)arr->free < (int64_t)to_insert.length || (size_t)arr->stride != item_size) {
+    } else if ((int64_t)arr->free < (int64_t)to_insert.length || (int64_t)arr->stride != item_size) {
         arr->free = to_insert.length;
         void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length + arr->free) * item_size) : GC_MALLOC((arr->length + arr->free) * item_size);
         for (int64_t i = 0; i < index-1; i++)
@@ -107,7 +108,7 @@ public void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, siz
         memcpy((void*)arr->data + (index-1 + i)*item_size, to_insert.data + i*to_insert.stride, item_size);
 }
 
-public void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size)
+public void Array_remove(array_t *arr, int64_t index, int64_t count, int64_t item_size)
 {
     if (index < 1) index = arr->length - index + 1;
 
@@ -121,7 +122,7 @@ public void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item
     if (index + count > arr->length) {
         if (arr->free >= 0)
             arr->free += count;
-    } else if (arr->copy_on_write || (size_t)arr->stride != item_size) {
+    } else if (arr->copy_on_write || (int64_t)arr->stride != item_size) {
         void *copy = arr->atomic ? GC_MALLOC_ATOMIC((arr->length-1) * item_size) : GC_MALLOC((arr->length-1) * item_size);
         for (int64_t src = 1, dest = 1; src <= (int64_t)arr->length; src++) {
             if (src < index || src >= index + count) {
@@ -142,19 +143,19 @@ public void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item
 public void Array_sort(array_t *arr, const Type *type)
 {
     const Type *item_type = type->ArrayInfo.item;
-    size_t item_size = item_type->size;
+    int64_t item_size = item_type->size;
     if (item_type->align > 1 && item_size % item_type->align)
         item_size += item_type->align - (item_size % item_type->align); // padding
 
-    if (arr->copy_on_write || (size_t)arr->stride != item_size)
+    if (arr->copy_on_write || (int64_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
     qsort_r(arr->data, arr->length, item_size, (void*)generic_compare, (void*)item_type);
 }
 
-public void Array_shuffle(array_t *arr, size_t item_size)
+public void Array_shuffle(array_t *arr, int64_t item_size)
 {
-    if (arr->copy_on_write || (size_t)arr->stride != item_size)
+    if (arr->copy_on_write || (int64_t)arr->stride != item_size)
         Array_compact(arr, item_size);
 
     char tmp[item_size];
@@ -169,7 +170,7 @@ public void Array_shuffle(array_t *arr, size_t item_size)
 public array_t Array_slice(array_t *array, range_t range, bool readonly, const Type *type)
 {
     Type *item = type->ArrayInfo.item;
-    size_t item_size = item->size;
+    int64_t item_size = item->size;
 
     if (range.stride > INT16_MAX)
         range.stride = INT16_MAX;
@@ -248,7 +249,7 @@ public int32_t Array_compare(const array_t *x, const array_t *y, const Type *typ
 
     Type *item = type->ArrayInfo.item;
     if (item->tag == PointerInfo || (item->tag == CustomInfo && item->CustomInfo.compare == NULL)) { // data comparison
-        size_t item_size = item->size;
+        int64_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
             int32_t cmp = (int32_t)memcmp(x->data, y->data, MIN(x->length, y->length)*item_size);
             if (cmp != 0) return cmp;
@@ -295,7 +296,7 @@ public uint32_t Array_hash(const array_t *arr, const Type *type)
     // hashes the last chunk down to a uint32_t.
     Type *item = type->ArrayInfo.item;
     if (item->tag == PointerInfo || (item->tag == CustomInfo && item->CustomInfo.hash == NULL)) { // Raw data hash
-        size_t item_size = item->size;
+        int64_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size];
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
         int64_t length = arr->length;

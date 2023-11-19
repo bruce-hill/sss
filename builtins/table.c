@@ -34,12 +34,14 @@
 
 // Helper accessors for type functions/values:
 #define HASH(t, k) (generic_hash((k), type->TableInfo.key) % ((t)->bucket_info->count))
-#define EQUAL(x, y) (generic_equal((x), (y), type->TableInfo.key))
+#define EQUAL_KEYS(x, y) (generic_equal((x), (y), type->TableInfo.key))
 #define ENTRY_SIZE (type->TableInfo.entry_size)
 #define VALUE_OFFSET (type->TableInfo.value_offset)
 #define END_OF_CHAIN UINT32_MAX
 
 #define GET_ENTRY(t, i) ((t)->entries.data + (t)->entries.stride*(i))
+
+#define memcpy(dest, src, size) ({ FILE *f = fopen("log.txt", "a"); fprintf(f, "%s:%d Writing to %p\n", __FILE__, __LINE__, dest); fclose(f); memcpy(dest, src, size); })
 
 extern const void *SSS_HASH_VECTOR;
 
@@ -48,7 +50,7 @@ Type *CStringToVoidStarTable_type;
 static inline void hshow(const table_t *t)
 {
     hdebug("{");
-    for (int64_t i = 0; t->bucket_info && i < t->bucket_info->count; i++) {
+    for (uint32_t i = 0; t->bucket_info && i < t->bucket_info->count; i++) {
         if (i > 0) hdebug(" ");
         if (t->bucket_info->buckets[i].occupied)
             hdebug("[%d]=%d(%d)", i, t->bucket_info->buckets[i].index, t->bucket_info->buckets[i].next_bucket);
@@ -65,7 +67,7 @@ static void maybe_copy_on_write(table_t *t, const Type *type)
     }
 
     if (t->bucket_info && t->bucket_info->copy_on_write) {
-        size_t size = sizeof(bucket_info_t) + t->bucket_info->count*sizeof(bucket_t);
+        int64_t size = sizeof(bucket_info_t) + t->bucket_info->count*sizeof(bucket_t);
         t->bucket_info = memcpy(GC_MALLOC(size), t->bucket_info, size);
         t->bucket_info->copy_on_write = 0;
     }
@@ -87,10 +89,10 @@ public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     hshow(t);
     hdebug("Getting value with initial probe at %u\n", hash);
     bucket_t *buckets = t->bucket_info->buckets;
-    for (int64_t i = (int64_t)hash; buckets[i].occupied; i = buckets[i].next_bucket) {
+    for (uint32_t i = hash; buckets[i].occupied; i = buckets[i].next_bucket) {
         hdebug("Checking against key in bucket %u\n", i);
         void *entry = GET_ENTRY(t, buckets[i].index);
-        if (EQUAL(entry, key)) {
+        if (EQUAL_KEYS(entry, key)) {
             hdebug("Found key!\n");
             return entry + VALUE_OFFSET;
         }
@@ -152,7 +154,7 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
         buckets[t->bucket_info->last_free] = *bucket;
     } else { // Collided with the start of a chain
         hdebug("Hit start of a chain\n");
-        int32_t end_of_chain = hash;
+        uint32_t end_of_chain = hash;
         while (buckets[end_of_chain].next_bucket != END_OF_CHAIN)
             end_of_chain = buckets[end_of_chain].next_bucket;
         hdebug("Appending to chain\n");
@@ -167,13 +169,13 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
     hshow(t);
 }
 
-static void hashmap_resize_buckets(table_t *t, int64_t new_capacity, const Type *type)
+static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type *type)
 {
     hdebug("About to resize from %u to %u\n", t->bucket_info ? t->bucket_info->count : 0, new_capacity);
     hshow(t);
-    size_t alloc_size = sizeof(bucket_info_t) + (size_t)(new_capacity)*sizeof(bucket_t);
+    int64_t alloc_size = sizeof(bucket_info_t) + (int64_t)(new_capacity)*sizeof(bucket_t);
     t->bucket_info = GC_MALLOC_ATOMIC(alloc_size);
-    memset(t->bucket_info->buckets, 0, (size_t)new_capacity * sizeof(bucket_t));
+    memset(t->bucket_info->buckets, 0, (int64_t)new_capacity * sizeof(bucket_t));
     t->bucket_info->count = new_capacity;
     t->bucket_info->last_free = new_capacity-1;
     // Rehash:
@@ -193,8 +195,8 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
     if (!t || !key) return NULL;
     hshow(t);
 
-    size_t key_size = type->TableInfo.key->size,
-           value_size = type->TableInfo.value->size;
+    int64_t key_size = type->TableInfo.key->size,
+            value_size = type->TableInfo.value->size;
     if (!t->bucket_info || t->bucket_info->count == 0) {
         hashmap_resize_buckets(t, 4, type);
     } else {
@@ -215,8 +217,8 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
     // Otherwise add a new entry:
 
     // Resize buckets if necessary
-    if (t->entries.length >= t->bucket_info->count) {
-        int64_t newsize = t->bucket_info->count + MIN(t->bucket_info->count, 64);
+    if (t->entries.length >= (int64_t)t->bucket_info->count) {
+        uint32_t newsize = t->bucket_info->count + MIN(t->bucket_info->count, 64);
         hashmap_resize_buckets(t, newsize, type);
     }
 
@@ -236,6 +238,8 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
     memcpy(buf, key, key_size);
     if (value && value_size > 0)
         memcpy(buf + VALUE_OFFSET, value, value_size);
+    else
+        memset(buf + VALUE_OFFSET, 0, value_size);
     Array_insert(&t->entries, buf, 0, ENTRY_SIZE);
 
     int64_t entry_index = t->entries.length-1;
@@ -283,8 +287,8 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     uint32_t hash = HASH(t, key);
     hdebug("Removing key with hash %u\n", hash);
     bucket_t *bucket, *prev = NULL;
-    for (int64_t i = (int64_t)hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
-        if (EQUAL(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
+    for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
+        if (EQUAL_KEYS(GET_ENTRY(t, t->bucket_info->buckets[i].index), key)) {
             bucket = &t->bucket_info->buckets[i];
             hdebug("Found key to delete in bucket %u\n", i);
             goto found_it;
@@ -307,7 +311,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
         hdebug("Removing key/value from the middle of the entries array\n");
 
         // Find the bucket that points to the last entry's index:
-        int64_t i = (int64_t)HASH(t, GET_ENTRY(t, last_entry));
+        uint32_t i = HASH(t, GET_ENTRY(t, last_entry));
         while (t->bucket_info->buckets[i].index != last_entry)
             i = t->bucket_info->buckets[i].next_bucket;
         // Update the bucket to point to the last entry's new home (the space
@@ -394,22 +398,23 @@ public int32_t Table_compare(const table_t *x, const table_t *y, const Type *typ
 {
     assert(type->tag == TableInfo);
     auto table = type->TableInfo;
-    Type entry_type = *table.key;
-    entry_type.size = ENTRY_SIZE;
+    struct {
+        const char *name;
+        const Type *type;
+    } member_data[] = {{"key", table.key}, {"value", table.value}};
+    Type entry_type = {
+        .name="Entry",
+        .size=ENTRY_SIZE,
+        .align=MAX(table.key->align, table.value->align),
+        .tag=StructInfo,
+        .StructInfo={
+            .members=(array_t){.data=member_data, .length=2, .stride=sizeof(member_data[0])},
+        }
+    };
     array_t x_entries = x->entries, y_entries = y->entries;
     Array_sort(&x_entries, &entry_type);
     Array_sort(&y_entries, &entry_type);
-
-    int32_t cmp = Array_compare(&x_entries, &y_entries, &entry_type);
-    if (cmp != 0) return cmp;
-    assert(Table_length(x) == Table_length(y));
-    for (int64_t i = 0, length = Table_length(x); i < length; i++) {
-        void *value_x = x_entries.data + i*table.entry_size + table.value_offset;
-        void *value_y = y_entries.data + i*table.entry_size + table.value_offset;
-        int32_t cmp = generic_compare(value_x, value_y, table.value);
-        if (cmp != 0) return cmp;
-    }
-    return 0;
+    return Array_compare(&x_entries, &y_entries, &entry_type);
 }
 
 public uint32_t Table_hash(const table_t *t, const Type *type)
@@ -419,7 +424,7 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
     // hash(#t, xor(hash(k) for k in t.keys), xor(hash(v) for v in t.values), hash(t.fallback), hash(t.default))
     // Where fallback and default hash to zero if absent
     auto table = type->TableInfo;
-    size_t value_offset = table.value_offset;
+    int64_t value_offset = table.value_offset;
 
     uint32_t key_hashes = 0, value_hashes = 0, fallback_hash = 0, default_hash = 0;
     for (int64_t i = 0, length = Table_length(t); i < length; i++) {
@@ -450,7 +455,7 @@ public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
 {
     assert(type->tag == TableInfo);
     auto table = type->TableInfo;
-    size_t value_offset = table.value_offset;
+    int64_t value_offset = table.value_offset;
     CORD c = "{";
     for (int64_t i = 0, length = Table_length(t); i < length; i++) {
         if (i > 0)

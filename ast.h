@@ -90,7 +90,6 @@ struct ast_s {
         struct {
             int64_t i;
             uint8_t precision;
-            bool is_unsigned;
             const char * units;
         } Int;
         struct {

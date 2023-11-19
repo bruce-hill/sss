@@ -65,7 +65,7 @@ if IS_MAIN_PROGRAM
     say "Threadpool test temporarily disabled"
     // func do_work(v:?Memory)->?Memory
     //     i := (bitcast (v or fail) as @Int)[]
-    //     extern usleep(UInt64.random(10))
+    //     extern usleep(Int.random(10))
     //     ret := "Worker $(Thread.self()) got $i"
     //     return @ret
 
@@ -86,7 +86,7 @@ if IS_MAIN_PROGRAM
     //             say "Result: $(bitcast s as @Str)"
     //             outputs.insert(bitcast s as @Str)
     //         else
-    //             extern usleep(10u64)
+    //             extern usleep(10)
 
     //     say "Finished"
     //     >>> outputs[]

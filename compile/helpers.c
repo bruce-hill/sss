@@ -159,7 +159,7 @@ gcc_type_t *make_array_gcc_type(env_t *env, gcc_type_t *item_type)
     gcc_field_t *fields[] = {
             [ARRAY_DATA_FIELD]=gcc_new_field(env->ctx, NULL, gcc_get_ptr_type(item_type), "items"),
           [ARRAY_LENGTH_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT64), 42, "length"),
-        [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, UINT8), 4, "free"),
+        [ARRAY_CAPACITY_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT8), 4, "free"),
              [ARRAY_COW_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "copy_on_write"),
           [ARRAY_ATOMIC_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, BOOL), 1, "atomic"),
           [ARRAY_STRIDE_FIELD]=gcc_bitfield(env->ctx, NULL, gcc_type(env->ctx, INT16), 16, "stride"),
@@ -183,24 +183,13 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 
     switch (t->tag) {
     case IntType: {
-        if (Match(t, IntType)->is_unsigned) {
-            switch (Match(t, IntType)->bits) {
-            case 64: gcc_t = gcc_type(env->ctx, UINT64); break;
-            case 32: gcc_t = gcc_type(env->ctx, UINT32); break;
-            case 16: gcc_t = gcc_type(env->ctx, UINT16); break;
-            case 8: gcc_t = gcc_type(env->ctx, UINT8); break;
-            case 0: gcc_t = gcc_type(env->ctx, UINT32); break;
-            default: compiler_err(env, NULL, "I couldn't get a GCC type for an unsigned integer with %d bits", Match(t, IntType)->bits);
-            }
-        } else {
-            switch (Match(t, IntType)->bits) {
-            case 64: gcc_t = gcc_type(env->ctx, INT64); break;
-            case 32: gcc_t = gcc_type(env->ctx, INT32); break;
-            case 16: gcc_t = gcc_type(env->ctx, INT16); break;
-            case 8: gcc_t = gcc_type(env->ctx, INT8); break;
-            case 0: gcc_t = gcc_type(env->ctx, INT); break;
-            default: compiler_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
-            }
+        switch (Match(t, IntType)->bits) {
+        case 64: gcc_t = gcc_type(env->ctx, INT64); break;
+        case 32: gcc_t = gcc_type(env->ctx, INT32); break;
+        case 16: gcc_t = gcc_type(env->ctx, INT16); break;
+        case 8: gcc_t = gcc_type(env->ctx, INT8); break;
+        case 0: gcc_t = gcc_type(env->ctx, INT); break;
+        default: compiler_err(env, NULL, "I couldn't get a GCC type for an integer with %d bits", Match(t, IntType)->bits);
         }
         break;
     }
@@ -351,7 +340,7 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed)
     auto int_ast = Match(*ast, Int);
     if (streq(needed_int->units, int_ast->units)) {
         *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=MIN(int_ast->precision, needed_int->bits),
-                       .is_unsigned=needed_int->is_unsigned && (int_ast->i >= 0), .units=needed_int->units);
+                       .units=needed_int->units);
         return true;
     } else {
         return false;

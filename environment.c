@@ -60,16 +60,16 @@ static sss_type_t sss_cord_t = {
 };
 
 struct {const char *symbol, *type; } builtin_functions[] = {
-    {"GC_malloc", "func(size:UInt)->@Memory"},
-    {"GC_malloc_atomic", "func(size:UInt)->@Memory"},
-    {"GC_realloc", "func(data:?Memory, size:UInt)->@Memory"},
-    {"memcpy", "func(dest:@Memory, src:@Memory, size:UInt)->@Memory"},
+    {"GC_malloc", "func(size:Int)->@Memory"},
+    {"GC_malloc_atomic", "func(size:Int)->@Memory"},
+    {"GC_realloc", "func(data:?Memory, size:Int)->@Memory"},
+    {"memcpy", "func(dest:@Memory, src:@Memory, size:Int)->@Memory"},
     {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
     {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Int32"},
     {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Bool"},
-    {"generic_hash", "func(obj:&(read-only)Memory, type:&(read-only)Type)->UInt32"},
+    {"generic_hash", "func(obj:&(read-only)Memory, type:&(read-only)Type)->Int32"},
     {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
     {"Func_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
     {"Type_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
@@ -90,12 +90,12 @@ struct {const char *symbol, *type; } builtin_functions[] = {
 
     // Cord functions:
     {"CORD_cat", "func(x:Cord, y:Cord)->Cord"},
-    {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:UInt)->Cord"},
+    {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:Int)->Cord"},
     {"CORD_cat_char", "func(x:Cord, c:Char)->Cord"},
     {"CORD_cmp", "func(x:Cord, y:Cord)->Int32"},
     {"CORD_to_const_char_star", "func(c:Cord)->CString"},
     {"CORD_to_char_star", "func(c:Cord)->CString"},
-    {"CORD_len", "func(c:Cord)->UInt"},
+    {"CORD_len", "func(c:Cord)->Int"},
 };
 
 struct {
@@ -121,8 +121,6 @@ struct {
         {NULL, NULL, NULL}, \
     }}
     BUILTIN_INT(Int, .bits=64), BUILTIN_INT(Int32, .bits=32), BUILTIN_INT(Int16, .bits=16), BUILTIN_INT(Int8, .bits=8),
-    BUILTIN_INT(UInt, .bits=64, .is_unsigned=true), BUILTIN_INT(UInt32, .bits=32, .is_unsigned=true),
-    BUILTIN_INT(UInt16, .bits=16, .is_unsigned=true), BUILTIN_INT(UInt8, .bits=8, .is_unsigned=true),
 #undef BUILTIN_INT
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
@@ -228,7 +226,7 @@ struct {
 
         {"Str__equal", "equals", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Bool"},
         {"Str__compare", "compare", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Int32"},
-        {"Str__hash", "hash", "func(s:&(read-only)Str, _type=typeof(s[]))->UInt32"},
+        {"Str__hash", "hash", "func(s:&(read-only)Str, _type=typeof(s[]))->Int32"},
         {"Str__cord", "cord", "func(s:&(read-only)Str, colorize:Bool, _type=typeof(s[]))->Cord"},
         {NULL, NULL, NULL},
     }},
@@ -523,21 +521,20 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
         } else if (t->tag == ArrayType) {
             sss_type_t *item_t = Match(t, ArrayType)->item_type;
             sss_type_t *i64 = Type(IntType, .bits=64);
-            sss_type_t *size = Type(IntType, .is_unsigned=true, .bits=64);
             ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array"), .index=FakeAST(Int, .precision=64, .i=1)));
             _load_method(env, ns, "insert", "Array_insert",
                          FN(NAMES("array", "item", "index", "_item_size"),
-                            TYPES(REF(t), RO_REF(item_t), i64, size),
+                            TYPES(REF(t), RO_REF(item_t), i64, i64),
                             DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
                             void_t));
             _load_method(env, ns, "insert_all", "Array_insert_all",
                          FN(NAMES("array", "to_insert", "index", "_item_size"),
-                            TYPES(REF(t), t, i64, size),
+                            TYPES(REF(t), t, i64, i64),
                             DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
                             void_t));
             _load_method(env, ns, "remove", "Array_remove",
                          FN(NAMES("array", "index", "count", "_item_size"),
-                            TYPES(REF(t), i64, i64, size),
+                            TYPES(REF(t), i64, i64, i64),
                             DEFTS(NULL, FakeAST(Int, .precision=64, .i=-1), FakeAST(Int, .precision=64, .i=1), item_size),
                             void_t));
             _load_method(env, ns, "contains", "Array_contains",
@@ -552,7 +549,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                             void_t));
             _load_method(env, ns, "shuffle", "Array_shuffle",
                          FN(NAMES("array", "_item_size"),
-                            TYPES(REF(t), size),
+                            TYPES(REF(t), i64),
                             DEFTS(NULL, item_size),
                             void_t));
             _load_method(env, ns, "clear", "Array_clear",

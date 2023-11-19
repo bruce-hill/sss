@@ -17,9 +17,9 @@ say ""
 say "$i" for i in 100..102
 
 func retry()->Bool
-    r := UInt32.random(max=4u32)
+    r := Int32.random(max=4i32)
     say "rng = $r"
-    return r != 0u32
+    return r != 0i32
 
 say "doop\n" while retry()
 

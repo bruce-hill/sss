@@ -8,13 +8,13 @@
 #include "range.h"
 #include "types.h"
 
-void Array_insert(array_t *arr, const void *item, int64_t index, size_t item_size);
-void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, size_t item_size);
-void Array_remove(array_t *arr, int64_t index, int64_t count, size_t item_size);
+void Array_insert(array_t *arr, const void *item, int64_t index, int64_t item_size);
+void Array_insert_all(array_t *arr, array_t to_insert, int64_t index, int64_t item_size);
+void Array_remove(array_t *arr, int64_t index, int64_t count, int64_t item_size);
 void Array_sort(array_t *arr, const Type *type);
-void Array_shuffle(array_t *arr, size_t item_size);
+void Array_shuffle(array_t *arr, int64_t item_size);
 void Array_clear(array_t *array);
-void Array_compact(array_t *arr, size_t item_size);
+void Array_compact(array_t *arr, int64_t item_size);
 bool Array_contains(array_t array, void *item, const Type *type);
 array_t Array_slice(array_t *array, range_t range, bool readonly, const Type *type);
 uint32_t Array_hash(const array_t *arr, const Type *type);

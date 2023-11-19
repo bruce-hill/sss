@@ -1,10 +1,12 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct {
     void *data;
     int64_t length:42;
-    uint8_t free:4, copy_on_write:1, atomic:1;
+    uint8_t free:4;
+    bool copy_on_write:1, atomic:1;
     int16_t stride:16;
 } array_t;
 
@@ -15,7 +17,7 @@ typedef struct {
 
 typedef struct {
     uint32_t count:32, last_free:31;
-    uint8_t copy_on_write:1;
+    bool copy_on_write:1;
     bucket_t buckets[0];
 } bucket_info_t;
 

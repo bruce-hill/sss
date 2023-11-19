@@ -291,7 +291,7 @@ public Str_t Str__from_c_string(const char *str)
     char *buf = GC_MALLOC_ATOMIC(length + 1);
     memcpy(buf, str, length+1);
     buf[length+1] = '\0';
-    return (Str_t){.data=buf, .length=length, .stride=1};
+    return (Str_t){.data=buf, .length=(int64_t)length, .stride=1};
 }
 
 public find_result_t Str__find(const Str_t str, const Str_t pat)
@@ -355,7 +355,7 @@ public Str_t Str__replace(Str_t text, Str_t pat, Str_t replacement, int64_t limi
     size_t size;
     FILE *mem = open_memstream(&buf, &size);
     for (const char *pos = text.data; ; --limit) {
-        const char *match = limit == 0 ? NULL : memmem(pos, (size_t)text.length - (size_t)(pos - text.data), pat.data, pat.length);
+        const char *match = limit == 0 ? NULL : memmem(pos, (int64_t)text.length - (int64_t)(pos - text.data), pat.data, pat.length);
         if (match) {
             fwrite(pos, 1, (size_t)(match - pos), mem);
             fwrite(replacement.data, 1, replacement.length, mem);
@@ -416,7 +416,7 @@ public Str_Array_t Str__split(const Str_t str, const Str_t split_chars)
 {
     if (str.length == 0) return (Str_Array_t){.stride=sizeof(Str_t)};
     Str_Array_t strings = {.stride=sizeof(Str_t)};
-    size_t capacity = 0;
+    int64_t capacity = 0;
     bool separators[256] = {0};
     for (int64_t i = 0; i < split_chars.length; i++)
         separators[(int)split_chars.data[split_chars.stride*i]] = true;

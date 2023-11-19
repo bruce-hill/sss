@@ -81,26 +81,26 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         int64_t min = INT64_MIN, max = INT64_MAX;
         switch (intval->precision) {
         case 32:
-            min = intval->is_unsigned ? 0 : INT32_MIN;
-            max = intval->is_unsigned ? UINT32_MAX : INT32_MAX;
+            min = INT32_MIN;
+            max = INT32_MAX;
             break;
         case 16:
-            min = intval->is_unsigned ? 0 : INT16_MIN;
-            max = intval->is_unsigned ? UINT16_MAX : INT16_MAX;
+            min = INT16_MIN;
+            max = INT16_MAX;
             break;
         case 8:
-            min = intval->is_unsigned ? 0 : INT8_MIN;
-            max = intval->is_unsigned ? UINT8_MAX : INT8_MAX;
+            min = INT8_MIN;
+            max = INT8_MAX;
             break;
         default: break;
         }
 
         if (i < min)
-            compiler_err(env, ast, "This integer literal is too small to fit in a %d bit %s integer: %ld",
-                         intval->precision, intval->is_unsigned ? "unsigned" : "signed", i);
+            compiler_err(env, ast, "This integer literal is too small to fit in a %d bit integer: %ld",
+                         intval->precision, i);
         else if (i > max)
-            compiler_err(env, ast, "This integer literal is too big to fit in a %d bit %s integer: %ld",
-                         intval->precision, intval->is_unsigned ? "unsigned" : "signed", i);
+            compiler_err(env, ast, "This integer literal is too big to fit in a %d bit integer: %ld",
+                         intval->precision, i);
 
         return gcc_rvalue_from_long(env->ctx, gcc_t, i);
     }
@@ -697,7 +697,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                       }, (gcc_rvalue_t*[]){ \
                                           str_rval, \
                                           gcc_cast(env->ctx, loc, len_rval, gcc_type(env->ctx, INT64)), \
-                                          gcc_rvalue_uint8(env->ctx, 0), \
+                                          gcc_rvalue_int8(env->ctx, 0), \
                                           gcc_rvalue_bool(env->ctx, 0), \
                                           gcc_rvalue_bool(env->ctx, 1), \
                                           gcc_cast(env->ctx, loc, stride_rval, gcc_type(env->ctx, INT16)), \
@@ -1121,7 +1121,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ssize_t gcc_size = gcc_sizeof(env, t);
         if (t->tag == ArrayType)
             gcc_size += 4; // Hidden "capacity" field
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), gcc_size);
+        gcc_rvalue_t *size = gcc_rvalue_int64(env->ctx, gcc_size);
         gcc_type_t *gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, t));
         gcc_lvalue_t *tmp = gcc_local(func, loc, gcc_t, "_heap_allocated");
         gcc_func_t *alloc_func = get_function(env, has_heap_memory(t) ? "GC_malloc" : "GC_malloc_atomic");
@@ -1448,7 +1448,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto value = Match(ast, SizeOf)->value;
         sss_type_t *t = get_type(env, value);
         ssize_t size = gcc_sizeof(env, t);
-        return gcc_rvalue_uint64(env->ctx, size);
+        return gcc_rvalue_int64(env->ctx, size);
     }
     case Cast: {
         auto cast = Match(ast, Cast);
@@ -1782,7 +1782,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *b = get_from_namespace(env, array_t, "insert_all");
         assert(b);
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-        gcc_rvalue_t *item_size = gcc_rvalue_uint64(env->ctx, gcc_sizeof(env, Match(array_t, ArrayType)->item_type));
+        gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, Match(array_t, ArrayType)->item_type));
         if (t_lhs->tag == ArrayType) {
             gcc_lvalue_t *lval = get_lvalue(env, block, concat->lhs, false);
             gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);

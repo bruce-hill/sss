@@ -60,9 +60,5 @@ DEFINE_INT_TYPE(int64_t,  Int,    "ld", INT64_MIN, INT64_MAX);
 DEFINE_INT_TYPE(int32_t,  Int32,  "d",  INT32_MIN, INT32_MAX);
 DEFINE_INT_TYPE(int16_t,  Int16,  "d",  INT16_MIN, INT16_MAX);
 DEFINE_INT_TYPE(int8_t,   Int8,   "d",  INT8_MIN,  INT8_MAX);
-DEFINE_INT_TYPE(uint64_t, UInt,   "lu", 0,         UINT64_MAX);
-DEFINE_INT_TYPE(uint32_t, UInt32, "u",  0,         UINT32_MAX);
-DEFINE_INT_TYPE(uint16_t, UInt16, "u",  0,         UINT16_MAX);
-DEFINE_INT_TYPE(uint8_t,  UInt8,  "u",  0,         UINT8_MAX);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

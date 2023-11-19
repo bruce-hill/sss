@@ -26,7 +26,7 @@ gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t)
     size_t value_align = gcc_alignof(env, Match(t, TableType)->value_type);
     size_t value_offset = key_size;
     if (value_align > 0 && value_offset % value_align != 0) value_offset = (value_offset - (value_offset % value_align) + value_align);
-    return gcc_rvalue_size(env->ctx, value_offset);
+    return gcc_rvalue_int64(env->ctx, value_offset);
 }
 
 void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr)

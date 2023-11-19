@@ -23,12 +23,12 @@ type Queue := struct(head=[:?Memory], tail=[:?Memory], head_mutex=Mutex.new(), t
             return Value(val)
         
     func dequeue(q:&Queue)->?Memory
-        backoff := 1u64
+        backoff := 1
         repeat if q.try_dequeue() matches Value(?v)
             return v
         else
             extern usleep(backoff)
-            if backoff < 1000u64 then backoff *= 2u64
+            if backoff < 1000 then backoff *= 2
         fail "Unreachable"
 
 new := Queue.new

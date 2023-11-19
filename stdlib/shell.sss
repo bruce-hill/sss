@@ -14,7 +14,7 @@ type Sh := Str
 
     func run_with(sh:Sh, input:Str)->Int32
         f := extern popen("$sh".c_string(), &`w):?_POpenFile or return -1i32
-        extern fwrite(input.c_string(), 1u64, input.length as UInt64, f)
+        extern fwrite(input.c_string(), 1, input.length, f)
         status := extern pclose(f):Int32
         if status >= 0
             status = (status / 256i32) and 0xFFi32

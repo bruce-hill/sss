@@ -28,7 +28,7 @@ static gcc_rvalue_t *math_binop_rec(
 
     gcc_func_t *func = gcc_block_func(*block);
 
-    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+    gcc_type_t *i64 = gcc_type(env->ctx, INT64);
     gcc_type_t *i16 = gcc_type(env->ctx, INT16);
 
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
@@ -49,24 +49,23 @@ static gcc_rvalue_t *math_binop_rec(
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_as_struct(lhs_gcc_t);
-        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(lhs, loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_as_struct(rhs_gcc_t);
-        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_rvalue_t *len = ternary(block,
-                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
-                                    i32, lhs_len32, rhs_len32);
+                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len, rhs_len),
+                                    i64, lhs_len, rhs_len);
 
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
         gcc_func_t *alloc_func = Table_str_get(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
-        gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
-        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
+        gcc_rvalue_t *size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, item_t));
+        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64, size, len);
         gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
         gcc_assign(*block, loc, result, gcc_struct_constructor(
                 env->ctx, loc, result_gcc_t, 4,
@@ -84,15 +83,15 @@ static gcc_rvalue_t *math_binop_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
-        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i64, "_offset");
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
 
         gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32))), NULL)
+#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i64))), NULL)
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(lhs, NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
         gcc_rvalue_t *lhs_item = gcc_rval(ITEM(lhs_t, lhs_item_ptr, lhs_stride16));
         gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
@@ -104,7 +103,7 @@ static gcc_rvalue_t *math_binop_rec(
         gcc_rvalue_t *item = math_binop_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, 
                                             Match(rhs_t, ArrayType)->item_type, rhs_item);
         gcc_assign(*block, NULL, result_item, item);
-        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
         return gcc_rval(result);
@@ -141,9 +140,8 @@ static gcc_rvalue_t *math_binop_rec(
         sss_type_t *item_t = Match(result_t, ArrayType)->item_type;
         gcc_func_t *alloc_func = Table_str_get(&env->global->funcs, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
         gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
-        gcc_type_t *gcc_size = gcc_type(env->ctx, SIZE);
-        gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_size, (long)(gcc_sizeof(env, item_t)));
-        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, gcc_size, size, gcc_cast(env->ctx, loc, len, gcc_size));
+        gcc_rvalue_t *size = gcc_rvalue_int64(env->ctx, (long)(gcc_sizeof(env, item_t)));
+        size = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64, size, len);
         gcc_rvalue_t *initial_items = gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
         gcc_assign(*block, loc, result, gcc_struct_constructor(
                 env->ctx, loc, result_gcc_t, 4, (gcc_field_t*[]){
@@ -156,8 +154,8 @@ static gcc_rvalue_t *math_binop_rec(
                     initial_items, len, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), gcc_rvalue_int16(env->ctx, 0),
                 }));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
-        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i64, "_offset");
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
 
         gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
@@ -178,7 +176,7 @@ static gcc_rvalue_t *math_binop_rec(
             item = math_binop_rec(env, block, ast, array_item_t, array_item, op, scalar_t, scalar);
 
         gcc_assign(*block, NULL, result_item, item);
-        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
         return gcc_rval(result);
@@ -332,7 +330,7 @@ void math_update_rec(
     else if (!streq(type_units(lhs_t), type_units(rhs_t)) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
         compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %T and %T", lhs_t, rhs_t);
 
-    gcc_type_t *i32 = gcc_type(env->ctx, INT32);
+    gcc_type_t *i64 = gcc_type(env->ctx, INT64);
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
         check_cow(env, block, lhs_t, gcc_lvalue_address(lhs, loc));
 
@@ -347,31 +345,31 @@ void math_update_rec(
 
         gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
         gcc_struct_t *lhs_array_struct = gcc_type_as_struct(lhs_gcc_t);
-        gcc_rvalue_t *lhs_len32 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *lhs_len = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *lhs_stride16 = gcc_rvalue_access_field(gcc_rval(lhs), loc, gcc_get_field(lhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_type_t *rhs_gcc_t = sss_type_to_gcc(env, rhs_t);
         gcc_struct_t *rhs_array_struct = gcc_type_as_struct(rhs_gcc_t);
-        gcc_rvalue_t *rhs_len32 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
+        gcc_rvalue_t *rhs_len = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_LENGTH_FIELD));
         gcc_rvalue_t *rhs_stride16 = gcc_rvalue_access_field(rhs, loc, gcc_get_field(rhs_array_struct, ARRAY_STRIDE_FIELD));
 
         gcc_rvalue_t *len = ternary(block,
-                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len32, rhs_len32),
-                                    i32, lhs_len32, rhs_len32);
+                                    gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LE, lhs_len, rhs_len),
+                                    i64, lhs_len, rhs_len);
         gcc_func_t *func = gcc_block_func(*block);
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
-        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i64, "_offset");
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
 
         gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
                            loop_body, loop_end);
 
         *block = loop_body;
-#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i32, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i32))), NULL)
+#define ITEM(t, item_ptr, stride) gcc_rvalue_dereference(pointer_offset(env, sss_type_to_gcc(env, Type(PointerType, .pointed=Match(t, ArrayType)->item_type)), item_ptr, gcc_binary_op(env->ctx, NULL, GCC_BINOP_MULT, i64, gcc_rval(offset), gcc_cast(env->ctx, NULL, stride, i64))), NULL)
         gcc_rvalue_t *lhs_item_ptr = gcc_rvalue_access_field(gcc_rval(lhs), NULL, gcc_get_field(lhs_array_struct, ARRAY_DATA_FIELD));
         gcc_lvalue_t *lhs_item = ITEM(lhs_t, lhs_item_ptr, lhs_stride16);
         gcc_rvalue_t *rhs_item_ptr = gcc_rvalue_access_field(rhs, NULL, gcc_get_field(rhs_array_struct, ARRAY_DATA_FIELD));
@@ -379,7 +377,7 @@ void math_update_rec(
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item,
                         op, Match(rhs_t, ArrayType)->item_type, rhs_item);
-        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
     } else if (lhs_t->tag == ArrayType) {
@@ -398,8 +396,8 @@ void math_update_rec(
                     *loop_body = gcc_new_block(func, fresh("loop_body")),
                     *loop_end = gcc_new_block(func, fresh("loop_end"));
 
-        gcc_lvalue_t *offset = gcc_local(func, NULL, i32, "_offset");
-        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i32));
+        gcc_lvalue_t *offset = gcc_local(func, NULL, i64, "_offset");
+        gcc_assign(*block, NULL, offset, gcc_zero(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
 
         gcc_jump_condition(loop_condition, loc, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_LT, gcc_rval(offset), len),
@@ -411,7 +409,7 @@ void math_update_rec(
 #undef ITEM
 
         math_update_rec(env, block, ast, Match(lhs_t, ArrayType)->item_type, lhs_item, op, rhs_t, rhs);
-        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i32));
+        gcc_update(*block, NULL, offset, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
     } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {

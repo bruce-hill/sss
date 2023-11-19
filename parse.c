@@ -458,20 +458,15 @@ PARSER(parse_int) {
 
     match(&pos, "_");
     int64_t precision = 64;
-    bool is_unsigned = false;
     if (match(&pos, "i64")) precision = 64;
     else if (match(&pos, "i32")) precision = 32;
     else if (match(&pos, "i16")) precision = 16;
     else if (match(&pos, "i8")) precision = 8;
-    else if (match(&pos, "u64")) { precision = 64; is_unsigned = true; }
-    else if (match(&pos, "u32")) { precision = 32; is_unsigned = true; }
-    else if (match(&pos, "u16")) { precision = 16; is_unsigned = true; }
-    else if (match(&pos, "u8")) { precision = 8; is_unsigned = true; }
 
     // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
     const char* units = match_units(&pos);
-    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units, .is_unsigned=is_unsigned);
+    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units);
 }
 
 PARSER(parse_table_type) {

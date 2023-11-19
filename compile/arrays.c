@@ -58,10 +58,9 @@ static void add_array_item(env_t *env, gcc_block_t **block, ast_t *item, array_i
 
     if (info->dynamic_size) {
         // array.items = GC_realloc(array.items, item_size*array.length)
-        gcc_type_t *gcc_size_t = gcc_type(env->ctx, SIZE);
         gcc_rvalue_t *new_size = gcc_binary_op(
-            env->ctx, NULL, GCC_BINOP_MULT, gcc_size_t, gcc_cast(env->ctx, NULL, gcc_rval(length_field), gcc_size_t),
-            gcc_rvalue_from_long(env->ctx, gcc_size_t, (long)gcc_sizeof(env, item_type)));
+            env->ctx, NULL, GCC_BINOP_MULT, gcc_type(env->ctx, INT64), gcc_rval(length_field),
+            gcc_rvalue_int64(env->ctx, (long)gcc_sizeof(env, item_type)));
         gcc_func_t *gc_realloc_func = get_function(env, "GC_realloc");
         gcc_rvalue_t *new_data = gcc_callx(env->ctx, NULL, gc_realloc_func, 
                                            gcc_cast(env->ctx, NULL, gcc_rval(data_field), gcc_type(env->ctx, VOID_PTR)),
@@ -109,7 +108,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_func_t *cow_fn = get_function(env, "array_cow");
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
                                      gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_size(env->ctx, gcc_sizeof(env, get_item_type(arr_t))),
+                                     gcc_rvalue_int64(env->ctx, gcc_sizeof(env, get_item_type(arr_t))),
                                      gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t))));
     gcc_jump(*block, NULL, done);
     *block = done;
@@ -277,7 +276,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         // items = &(array.items->field)
         gcc_field_t *items_field = gcc_get_field(gcc_array_struct, ARRAY_DATA_FIELD);
         gcc_rvalue_t *items = gcc_rvalue_access_field(arr_val, loc, items_field);
-        gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, (size_t)i);
+        gcc_field_t *struct_field = gcc_get_field(gcc_item_struct, i);
         gcc_lvalue_t *field = gcc_rvalue_dereference_field(items, loc, struct_field);
         gcc_rvalue_t *field_addr = gcc_lvalue_address(field, loc);
 
@@ -302,7 +301,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         gcc_rvalue_t *rvals[] = {
             field_addr,
             len,
-            gcc_rvalue_uint8(env->ctx, 0), // capacity
+            gcc_rvalue_int8(env->ctx, 0), // capacity
             gcc_rvalue_bool(env->ctx, (access == ACCESS_READ)), // copy on write
             gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)), // atomic
             stride,
@@ -423,7 +422,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
 
     gcc_func_t *alloc_func = get_function(env, has_heap_memory(item_t) ? "GC_malloc" : "GC_malloc_atomic");
     int64_t min_length = array->items ? LENGTH(array->items) : 0;
-    gcc_rvalue_t *size = gcc_rvalue_from_long(env->ctx, gcc_type(env->ctx, SIZE), (long)(gcc_sizeof(env, item_t) * min_length));
+    gcc_rvalue_t *size = gcc_rvalue_int64(env->ctx, (long)(gcc_sizeof(env, item_t) * min_length));
     gcc_type_t *gcc_item_ptr_t = sss_type_to_gcc(env, Type(PointerType, .pointed=item_t));
     gcc_rvalue_t *initial_items = min_length == 0 ? 
         gcc_null(env->ctx, gcc_item_ptr_t) : gcc_cast(env->ctx, loc, gcc_callx(env->ctx, loc, alloc_func, size), gcc_item_ptr_t);
@@ -438,7 +437,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
     gcc_rvalue_t *field_values[] = {
         initial_items, // data
         gcc_rvalue_int64(env->ctx, 0), // length
-        gcc_rvalue_uint8(env->ctx, 0), // capacity
+        gcc_rvalue_int8(env->ctx, 0), // capacity
         gcc_rvalue_bool(env->ctx, mark_cow), // copy on write
         gcc_rvalue_bool(env->ctx, !has_heap_memory(item_t)), // atomic
         gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), // stride
@@ -496,7 +495,7 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
     gcc_eval(*block, NULL, gcc_callx(
             env->ctx, NULL, flatten,
             gcc_cast(env->ctx, NULL, array_ptr, gcc_get_type(env->ctx, GCC_T_VOID_PTR)),
-            gcc_rvalue_size(env->ctx, gcc_sizeof(env, item_type)),
+            gcc_rvalue_int64(env->ctx, gcc_sizeof(env, item_type)),
             gcc_rvalue_bool(env->ctx, !has_heap_memory(item_type))));
 
     gcc_jump(*block, NULL, already_flat);

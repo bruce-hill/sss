@@ -24,7 +24,7 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
         case BoolType: return "Bool";
         case IntType: {
             auto int_ = Match(t, IntType);
-            CORD name = int_->is_unsigned ? "UInt" : "Int";
+            CORD name = "Int";
             if (int_->bits != 64)
                 CORD_sprintf(&name, "%r%d", name, int_->bits);
             if (int_->units)
@@ -279,7 +279,7 @@ sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
         case NUM_PRECISION_LESS: return b;
         case NUM_PRECISION_INCOMPARABLE: {
             if (a->tag == IntType && b->tag == IntType && Match(a, IntType)->bits < 64)
-                return Type(IntType, .bits=Match(a, IntType)->bits * 2, .is_unsigned=false);
+                return Type(IntType, .bits=Match(a, IntType)->bits * 2);
             return NULL;
         }
         }
@@ -305,7 +305,7 @@ const char* type_units(sss_type_t *t)
 sss_type_t *with_units(sss_type_t *t, const char* units)
 {
     switch (t->tag) {
-    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits, .is_unsigned=Match(t, IntType)->is_unsigned);
+    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits);
     case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
     case StructType: {
         auto s = Match(t, StructType);
@@ -351,7 +351,6 @@ static inline double type_min_magnitude(sss_type_t *t)
     case BoolType: return (double)false;
     case CharType: return (double)CHAR_MIN;
     case IntType: {
-        if (Match(t, IntType)->is_unsigned) return 0;
         switch (Match(t, IntType)->bits) {
         case 8: return (double)INT8_MIN;
         case 16: return (double)INT16_MIN;
@@ -372,12 +371,11 @@ static inline double type_max_magnitude(sss_type_t *t)
     case BoolType: return (double)true;
     case CharType: return (double)CHAR_MAX;
     case IntType: {
-        bool is_unsigned = Match(t, IntType)->is_unsigned;
         switch (Match(t, IntType)->bits) {
-        case 8: return is_unsigned ? (double)UINT8_MAX : (double)INT8_MAX;
-        case 16: return is_unsigned ? (double)UINT16_MAX : (double)INT16_MAX;
-        case 32: return is_unsigned ? (double)UINT32_MAX : (double)INT32_MAX;
-        case 64: return is_unsigned ? (double)UINT64_MAX : (double)INT64_MAX;
+        case 8: return (double)INT8_MAX;
+        case 16: return (double)INT16_MAX;
+        case 32: return (double)INT32_MAX;
+        case 64: return (double)INT64_MAX;
         default: return NAN;
         }
     }

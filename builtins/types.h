@@ -15,7 +15,7 @@ typedef CORD (*cord_fn_t)(const void*, bool, const struct Type*);
 
 typedef struct Type {
     const char *name;
-    size_t size, align;
+    int64_t size, align;
     struct { // Anonymous tagged union for convenience 
         enum { CustomInfo, PointerInfo, ArrayInfo, TableInfo, StructInfo, TaggedUnionInfo } tag;
         union {
@@ -35,7 +35,7 @@ typedef struct Type {
             } ArrayInfo;
             struct {
                 struct Type *key, *value;
-                size_t entry_size, value_offset;
+                int64_t entry_size, value_offset;
             } TableInfo;
             struct {
                 array_t members; // [{name, type}]

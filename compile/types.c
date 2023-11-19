@@ -60,8 +60,8 @@ gcc_type_t *get_type_gcc_type(env_t *env)
 
     table_info_fields[0] = FIELD("key", gcc_get_ptr_type(type_gcc_type));
     table_info_fields[1] = FIELD("value", gcc_get_ptr_type(type_gcc_type));
-    table_info_fields[2] = FIELD("entry_size", gcc_type(env->ctx, SIZE));
-    table_info_fields[3] = FIELD("value_offset", gcc_type(env->ctx, SIZE));
+    table_info_fields[2] = FIELD("entry_size", gcc_type(env->ctx, INT64));
+    table_info_fields[3] = FIELD("value_offset", gcc_type(env->ctx, INT64));
     table_info = STRUCT("TableInfo", table_info_fields);
 
     gcc_field_t *sfields[] = {FIELD("name", gcc_type(env->ctx, STRING)), FIELD("type", gcc_get_ptr_type(type_gcc_type))};
@@ -87,8 +87,8 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     data_union = gcc_union(env->ctx, NULL, "TypeInfoUnion", sizeof(type_union_fields)/sizeof(type_union_fields[0]), type_union_fields);
 
     type_struct_fields[0] = FIELD("name", gcc_type(env->ctx, STRING));
-    type_struct_fields[1] = FIELD("size", gcc_type(env->ctx, SIZE));
-    type_struct_fields[2] = FIELD("align", gcc_type(env->ctx, SIZE));
+    type_struct_fields[1] = FIELD("size", gcc_type(env->ctx, INT64));
+    type_struct_fields[2] = FIELD("align", gcc_type(env->ctx, INT64));
     type_struct_fields[3] = FIELD("tag", gcc_type(env->ctx, INT32));
     type_struct_fields[4] = FIELD("info", data_union);
     gcc_set_fields(type_struct, NULL, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields);
@@ -140,8 +140,8 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
 #define INFO_RVAL 4
     gcc_rvalue_t *type_rvalues[5] = {
         gcc_str(env->ctx, type_to_string_concise(t->tag == TypeType ? Match(t, TypeType)->type : t)),
-        gcc_rvalue_size(env->ctx, gcc_sizeof(env, t)),
-        gcc_rvalue_size(env->ctx, gcc_alignof(env, t)),
+        gcc_rvalue_int64(env->ctx, gcc_sizeof(env, t)),
+        gcc_rvalue_int64(env->ctx, gcc_alignof(env, t)),
         NULL, // tag
         NULL, // info
     };
@@ -187,7 +187,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
         SET_INFO(TableInfo, table_info, table_info_fields,
                  get_type_pointer(env, key_type),
                  get_type_pointer(env, value_type),
-                 gcc_rvalue_size(env->ctx, gcc_sizeof(env, table_entry_type(t))),
+                 gcc_rvalue_int64(env->ctx, gcc_sizeof(env, table_entry_type(t))),
                  table_entry_value_offset(env, t),
         );
         break;

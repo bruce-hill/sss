@@ -451,10 +451,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         units = unit_derive(units, NULL, env->derived_units);
 
         switch (i->precision) {
-        case 64: return Type(IntType, .units=units, .bits=64, .is_unsigned=i->is_unsigned);
-        case 32: return Type(IntType, .units=units, .bits=32, .is_unsigned=i->is_unsigned);
-        case 16: return Type(IntType, .units=units, .bits=16, .is_unsigned=i->is_unsigned);
-        case 8: return Type(IntType, .units=units, .bits=8, .is_unsigned=i->is_unsigned);
+        case 64: case 32: case 16: case 8:
+            return Type(IntType, .units=units, .bits=i->precision);
         default: compiler_err(env, ast, "Unsupported precision");
         }
     }
@@ -474,7 +472,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(PointerType, .pointed=Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value)), .is_stack=true, .is_readonly=true);
     }
     case SizeOf: {
-        return Type(IntType, .is_unsigned=true, .bits=64);
+        return Type(IntType, .bits=64);
     }
     case HeapAllocate: {
         sss_type_t *pointed = get_type(env, Match(ast, HeapAllocate)->value);

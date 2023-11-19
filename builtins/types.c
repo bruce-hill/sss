@@ -27,7 +27,7 @@ public uint32_t generic_hash(const void *obj, const Type *type)
             goto hash_data;
 
         uint32_t hash_values[info.members.length] = {};
-        size_t offset = 0;
+        int64_t offset = 0;
         for (int64_t i = 0; i < info.members.length; i++) {
             typedef struct {const char *name; const Type *type;} struct_member_t;
             struct_member_t *member = info.members.data + i*info.members.stride;
@@ -46,7 +46,7 @@ public uint32_t generic_hash(const void *obj, const Type *type)
             goto hash_data;
 
         int32_t tag = *(int32_t*)obj;
-        size_t offset = 4;
+        int64_t offset = 4;
         typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
@@ -90,7 +90,7 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
         auto info = type->StructInfo;
         typedef struct {const char *name; const Type *type;} struct_member_t;
         auto members = (ARRAY_OF(struct_member_t))&info.members;
-        size_t offset = 0;
+        int64_t offset = 0;
         foreach (members, member, last) {
             if (member->type->align > 1 && (offset % member->type->align))
                 offset += member->type->align - (offset % member->type->align);
@@ -108,7 +108,7 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
         if (xtag != ytag)
             return xtag - ytag;
 
-        size_t offset = 4;
+        int64_t offset = 4;
         typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
@@ -144,7 +144,7 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
 
         typedef struct {const char *name; const Type *type;} struct_member_t;
         auto members = (ARRAY_OF(struct_member_t))&info.members;
-        size_t offset = 0;
+        int64_t offset = 0;
         foreach (members, member, last) {
             if (member->type->align > 1 && (offset % member->type->align))
                 offset += member->type->align - (offset % member->type->align);
@@ -165,7 +165,7 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
         if (xtag != ytag)
             return false;
 
-        size_t offset = 4;
+        int64_t offset = 4;
         typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
@@ -233,7 +233,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     case StructInfo: {
         auto info = type->StructInfo;
         CORD c = "{";
-        size_t offset = 0;
+        int64_t offset = 0;
         for (int64_t i = 0; i < info.members.length; i++) {
             if (i > 0) c = CORD_cat(c, ", ");
             typedef struct {const char *name; const Type *type;} struct_member_t;
@@ -259,7 +259,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     case TaggedUnionInfo: {
         auto info = type->TaggedUnionInfo;
         int32_t tag = *(int32_t*)obj;
-        size_t offset = 4;
+        int64_t offset = 4;
         typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;

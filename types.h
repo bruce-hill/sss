@@ -40,7 +40,6 @@ struct sss_type_s {
         struct {
             const char* units;
             uint16_t bits;
-            bool is_unsigned;
         } IntType;
         struct {
             const char* units;
