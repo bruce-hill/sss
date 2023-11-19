@@ -2049,7 +2049,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_cmp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      get_type_pointer(env, comparison_t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
-                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
             }
         } else {
             if (is_numeric(lhs_t) || lhs_t->tag == PointerType) {
@@ -2060,7 +2060,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      get_type_pointer(env, t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
-                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT)));
+                                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
             }
         }
 
