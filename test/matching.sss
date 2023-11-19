@@ -75,11 +75,11 @@ type Foo := enum(int(i:Int)=5|num(n:Num)|str(s:Str)|vec(v:Vec)|tuple(tup:struct(
         matches ?other
             "Fallback: $other"
 ]
-=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "Str of 'x'", "Fallback: str(s=\"yyy\")", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
+=== ["Int or num: 5", "Int or num: 2.3", "one-two Vec", "Vec: Vec{x=2, y=3}", "99-x Vec", "one-two tuple", "tuple: {2, 3}", "99-x tuple", "Null", "Str of 'x'", "Fallback: str{s=\"yyy\"}", "Five ptr", "Nil ptr", "Nonnull ptr: 6"]
 
 // Binding:
 if f := Foo.str("abc") matches str
     >>> f
-    === str(s="abc")
+    === str{s="abc"}
 else
     fail "Unreachable"
