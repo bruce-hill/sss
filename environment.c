@@ -79,10 +79,6 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"builtin_last_err", "func()->Str"},
     {"builtin_doctest", "func(label:CString, expr:Cord, type:CString, use_color:Bool, expected:CString, filename:CString, start:Int32, end:Int32)->Void"},
 
-    // Modulus:
-    {"Num_mod", "func(n:Num, divisor:Num)->Num"},
-    {"Num32_mod", "func(n:Num32, divisor:Num32)->Num32"},
-
     // Dynamic linking:
     {"dlopen", "func(filename:CString, flags:Int32)->?Memory"},
     {"dlsym", "func(handle:@Memory, symbol:CString)->?Memory"},
@@ -115,7 +111,7 @@ struct {
         {#t"__format", "format", "func(i:"#t", digits=0)->Str"}, \
         {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no)->Str"}, \
         {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=no)->Str"}, \
-        {#t"__random", "random", "func()->"#t}, \
+        {#t"__random", "random", "func(min=1, max=100)->"#t}, \
         {#t"__min",    "min", #t}, \
         {#t"__max",    "max", #t}, \
         {NULL, NULL, NULL}, \
@@ -136,6 +132,7 @@ struct {
         UNARY(trunc), UNARY(roundeven),
 #undef UNARY
         // Binary functions:
+        {"Num__mod", "mod", "func(x:Num, modulus:Num)->Num"},
         {"atan2", "atan2", "func(y:Num, x:Num)->Num"},
         {"pow", "pow", "func(base:Num, power:Num)->Num"},
         {"hypot", "hypot", "func(x:Num, y:Num)->Num"},
@@ -172,6 +169,7 @@ struct {
         UNARY(trunc), UNARY(roundeven),
 #undef UNARY
         // Binary functions:
+        {"Num32__mod", "mod", "func(x:Num32, modulus:Num32)->Num32"},
         {"atan2f", "atan2", "func(y:Num32, x:Num32)->Num32"},
         {"powf", "pow", "func(base:Num32, power:Num32)->Num32"},
         {"hypotf", "hypot", "func(x:Num32, y:Num32)->Num32"},
