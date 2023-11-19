@@ -207,7 +207,6 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
         }
 
         CORD sigil = ptr->is_stack ? "&" : "@";
-        if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
 
         SET_INFO(PointerInfo, pointer_info, pointer_info_fields,
                  gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
