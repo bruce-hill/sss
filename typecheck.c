@@ -628,7 +628,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             }
         }
         case TableType: {
-            return Match(indexed_t, TableType)->value_type;
+            return Match(base_value_t, TableType)->value_type;
         }
         // TODO: support ranges like (99..123)[5]
         // TODO: support slicing arrays like ([1,2,3,4])[2..10]
