@@ -357,7 +357,7 @@ int main(int argc, char *argv[])
         .align=alignof(void*),
         .tag=PointerInfo,
         .PointerInfo={
-            .sigil="?",
+            .sigil="@",
             .pointed=&Memory_type,
         },
     };

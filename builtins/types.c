@@ -206,15 +206,22 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
 
         static int64_t zero = 0;
         static table_t recursion = {.default_value=&zero};
+        static table_t *current_recursion = NULL;
 
         CORD c;
+        bool first_ptr_call = (current_recursion == NULL);
+        if (first_ptr_call && ptr_info.cyclic) {
+            current_recursion = &recursion;
+        }
+
         if (ptr_info.cyclic) {
-            int64_t *found = Table_reserve(&recursion, obj, NULL, &ptr_to_int_type);
+            int64_t *found = Table_reserve(current_recursion, obj, NULL, &ptr_to_int_type);
             if (*found) {
-                CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
-                return c;
+                CORD_sprintf(&c, colorize ? "\x1b[34;1m%s%s#%ld\x1b[m" : "%s%s#%ld",
+                             ptr_info.sigil, ptr_info.pointed->name, *found);
+                goto done;
             } else {
-                *found = 1;
+                *found = Table_length(current_recursion);
             }
         }
 
@@ -225,9 +232,13 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
             CORD_sprintf(&c, colorize ? "\x1b[34;1m%s\x1b[m%r" : "%s%r",
                          ptr_info.sigil, generic_cord(ptr, colorize, ptr_info.pointed));
         }
-        if (ptr_info.cyclic) {
-            Table_remove(&recursion, obj, &ptr_to_int_type);
+
+      done:;
+        if (first_ptr_call && ptr_info.cyclic) {
+            recursion = (table_t){.default_value=&zero};
+            current_recursion = NULL;
         }
+
         return c;
     }
     case StructInfo: {
