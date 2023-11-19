@@ -56,9 +56,9 @@ extern const void *SSS_HASH_VECTOR;
         .CustomInfo={.cord=(void*)KindOfInt ## __cord}, \
     };
 
-DEFINE_INT_TYPE(int64_t,  Int,    "ld", INT64_MIN, INT64_MAX);
-DEFINE_INT_TYPE(int32_t,  Int32,  "d",  INT32_MIN, INT32_MAX);
-DEFINE_INT_TYPE(int16_t,  Int16,  "d",  INT16_MIN, INT16_MAX);
-DEFINE_INT_TYPE(int8_t,   Int8,   "d",  INT8_MIN,  INT8_MAX);
+DEFINE_INT_TYPE(int64_t,  Int,    "ld",     INT64_MIN, INT64_MAX);
+DEFINE_INT_TYPE(int32_t,  Int32,  "d_i32",  INT32_MIN, INT32_MAX);
+DEFINE_INT_TYPE(int16_t,  Int16,  "d_i16",  INT16_MIN, INT16_MAX);
+DEFINE_INT_TYPE(int8_t,   Int8,   "d_i8",   INT8_MIN,  INT8_MAX);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
