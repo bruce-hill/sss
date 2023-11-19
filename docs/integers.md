@@ -17,7 +17,7 @@ In SSS, the following integer or integer-like types exist:
   - Currently not implemented
   - Codepoint values do not support any math, bitwise, or logical operations
   - Prints as `U+000065`
-- Int8, Int16, Int32, Int (implied 64-bit), Int128: N-bit signed integers
+- Int8, Int16, Int32, Int (implied 64-bit): N-bit signed integers
   - Int* types support bitwise and logical operations
     - Overflow/underflow of Int* operations triggers a runtime error that halts the program
       - E.g. `Int.max + 1`
@@ -27,7 +27,7 @@ In SSS, the following integer or integer-like types exist:
           the larger type (e.g. Int8 + Int32 -> Int32)
         - If a function takes a 64-bit integer and you pass it a 32-bit integer,
           the argument will be automatically promoted
-  - Prints as `123_i8`, `123_i16`, `123_i32`, `123` (implied 64-bit), `123_i128`
+  - Prints as `123_i8`, `123_i16`, `123_i32`, `123` (implied 64-bit)
 
 All of these types support comparisons and can be used as keys in a table.
 
