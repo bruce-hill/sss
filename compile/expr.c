@@ -1623,7 +1623,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_func_t *generic_equal = get_function(env, "generic_equal");
             gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal,
                                              gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
-                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
+                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                              get_type_pointer(env, comparison_type));
             if (ast->tag == NotEqual)
                 return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
