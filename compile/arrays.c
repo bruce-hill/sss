@@ -105,11 +105,9 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
     *block = needs_cow;
     // Copy array contents:
-    gcc_func_t *cow_fn = get_function(env, "array_cow");
+    gcc_func_t *cow_fn = get_from_namespace(env, arr_t, "compact")->func;
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
-                                     gcc_bitcast(env->ctx, NULL, arr, gcc_type(env->ctx, VOID_PTR)),
-                                     gcc_rvalue_int64(env->ctx, gcc_sizeof(env, get_item_type(arr_t))),
-                                     gcc_rvalue_bool(env->ctx, has_heap_memory(arr_t))));
+                                     arr, gcc_rvalue_int64(env->ctx, gcc_sizeof(env, get_item_type(arr_t)))));
     gcc_jump(*block, NULL, done);
     *block = done;
 }

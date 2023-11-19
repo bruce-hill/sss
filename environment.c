@@ -546,6 +546,9 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                             TYPES(RO_REF(t), RO_REF(item_t), type_t),
                             DEFTS(NULL, NULL, TYPEOF_DEREF("array")),
                             Type(BoolType)));
+            _load_method(env, ns, "compact", "Array_compact",
+                         FN(NAMES("array", "item_size"), TYPES(REF(t), i64), DEFTS(NULL, item_size),
+                            t));
             _load_method(env, ns, "sort", "Array_sort",
                          FN(NAMES("array", "_type"),
                             TYPES(REF(t), type_t),
