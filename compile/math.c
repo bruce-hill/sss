@@ -29,7 +29,6 @@ static gcc_rvalue_t *math_binop_rec(
     gcc_func_t *func = gcc_block_func(*block);
 
     gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-    gcc_type_t *i16 = gcc_type(env->ctx, INT16);
 
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
         // Use the minimum common length:
@@ -72,11 +71,11 @@ static gcc_rvalue_t *math_binop_rec(
                 (gcc_field_t*[]){
                     gcc_get_field(result_array_struct, ARRAY_DATA_FIELD),
                     gcc_get_field(result_array_struct, ARRAY_LENGTH_FIELD),
-                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
                     gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
                 },
                 (gcc_rvalue_t*[]){
-                    initial_items, len, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), gcc_zero(env->ctx, i16),
+                    initial_items, len, gcc_rvalue_int8(env->ctx, 0), gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)),
                 }));
 
         gcc_block_t *loop_condition = gcc_new_block(func, fresh("loop_condition")),
@@ -147,11 +146,11 @@ static gcc_rvalue_t *math_binop_rec(
                 env->ctx, loc, result_gcc_t, 4, (gcc_field_t*[]){
                     gcc_get_field(result_array_struct, ARRAY_DATA_FIELD),
                     gcc_get_field(result_array_struct, ARRAY_LENGTH_FIELD),
-                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
                     gcc_get_field(result_array_struct, ARRAY_CAPACITY_FIELD),
+                    gcc_get_field(result_array_struct, ARRAY_STRIDE_FIELD),
                 },
                 (gcc_rvalue_t*[]){
-                    initial_items, len, gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)), gcc_rvalue_int16(env->ctx, 0),
+                    initial_items, len, gcc_rvalue_int8(env->ctx, 0), gcc_rvalue_int16(env->ctx, gcc_sizeof(env, item_t)),
                 }));
 
         gcc_lvalue_t *offset = gcc_local(func, NULL, i64, "_offset");
