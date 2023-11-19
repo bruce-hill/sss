@@ -17,7 +17,7 @@ say ""
 say "$i" for i in 100..102
 
 func retry()->Bool
-    r := Int32.random(max=4i32)
+    r := Int32.random(min=0, max=4)
     say "rng = $r"
     return r != 0i32
 
