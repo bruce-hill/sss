@@ -129,10 +129,11 @@ struct {
 #define UNARY(fn) {#fn, #fn, "func(n:Num)->Num"}
         UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
         UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
-        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
+        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil),
         UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
         UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
         UNARY(trunc), UNARY(roundeven),
+        {"fabs", "abs", "func(n:Num)->Num"},
 #undef UNARY
         // Binary functions:
         {"Num__mod", "mod", "func(x:Num, modulus:Num)->Num"},
@@ -167,10 +168,11 @@ struct {
 #define UNARY(fn) {#fn"f", #fn, "func(n:Num32)->Num32"}
         UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
         UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
-        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil), UNARY(fabs),
+        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil),
         UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
         UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
         UNARY(trunc), UNARY(roundeven),
+        {"fabsf", "abs", "func(n:Num32)->Num32"},
 #undef UNARY
         // Binary functions:
         {"Num32__mod", "mod", "func(x:Num32, modulus:Num32)->Num32"},
