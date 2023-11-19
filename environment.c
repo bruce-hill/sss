@@ -109,8 +109,8 @@ struct {
 #define BUILTIN_INT(t, abs_fn, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
         {#t"__format", "format", "func(i:"#t", digits=0)->Str"}, \
-        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no)->Str"}, \
-        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=no)->Str"}, \
+        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=yes)->Str"}, \
+        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=yes)->Str"}, \
         {#t"__random", "random", "func(min=1, max=100)->"#t}, \
         {#t"__min",    "min", #t}, \
         {#t"__max",    "max", #t}, \
