@@ -194,6 +194,18 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
+        if (ptr->pointed->tag == TypeType) {
+            // Special case of type pointers
+            type_rvalues[0] = gcc_str(env->ctx, type_to_string_concise(Match(ptr->pointed, TypeType)->type));
+            SET_INFO(CustomInfo, custom_info, custom_info_fields,
+                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                     gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Type_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
+            );
+            break;
+        }
+
         CORD sigil = ptr->is_stack ? (ptr->is_optional ? "&(optional)" : "&") : (ptr->is_optional ? "?" : "@");
         if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
 
