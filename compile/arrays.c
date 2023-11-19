@@ -245,7 +245,7 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
         return NULL;
 
     sss_type_t *item_t = get_item_type(array_type);
-    if (!item_t || item_t->tag != StructType)
+    if (!item_t || base_variant(item_t)->tag != StructType)
         return NULL;
 
     gcc_type_t *array_gcc_t = sss_type_to_gcc(env, array_type);
