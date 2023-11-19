@@ -27,7 +27,14 @@ public Str_t Num__format(double f, int64_t precision) {
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
     return (Str_t){.data=str, .length=len, .stride=1}; 
-} 
+}
+
+public Str_t Num__scientific(double f, int64_t precision) { 
+    int len = snprintf(NULL, 0, "%.*e", (int)precision, f); 
+    char *str = GC_MALLOC_ATOMIC(len + 1); 
+    snprintf(str, len+1, "%.*e", (int)precision, f); 
+    return (Str_t){.data=str, .length=len, .stride=1}; 
+}
 
 public double Num__mod(double num, double modulus) { 
     double result = fmod(num, modulus); 
@@ -64,7 +71,14 @@ public Str_t Num32__format(float f, int64_t precision) {
     char *str = GC_MALLOC_ATOMIC(len + 1); 
     snprintf(str, len+1, "%.*f", (int)precision, f); 
     return (Str_t){.data=str, .length=len, .stride=1}; 
-} 
+}
+
+public Str_t Num32__scientific(float f, int64_t precision) { 
+    int len = snprintf(NULL, 0, "%.*e", (int)precision, f); 
+    char *str = GC_MALLOC_ATOMIC(len + 1); 
+    snprintf(str, len+1, "%.*e", (int)precision, f); 
+    return (Str_t){.data=str, .length=len, .stride=1}; 
+}
 
 public float Num32__mod(float num, float modulus) { 
     float result = fmodf(num, modulus); 

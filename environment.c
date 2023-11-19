@@ -122,7 +122,8 @@ struct {
 #undef BUILTIN_INT
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
-        {"Num__format", "format", "func(n:Num, precision:Int)->Str"},
+        {"Num__format", "format", "func(n:Num, precision=Int.max)->Str"},
+        {"Num__scientific", "scientific", "func(n:Num, precision=Int.max)->Str"},
         {"drand48", "random", "func()->Num"},
         // Unary functions:
 #define UNARY(fn) {#fn, #fn, "func(n:Num)->Num"}
@@ -159,7 +160,8 @@ struct {
     }},
 
     {{.tag=NumType, .__data.NumType={.bits=32}}, "Num32", "Num32_type", (builtin_binding_t[]){
-        {"Num32__format", "format", "func(n:Num32, precision:Int)->Str"},
+        {"Num32__format", "format", "func(n:Num32, precision=Int.max)->Str"},
+        {"Num32__scientific", "scientific", "func(n:Num32, precision=Int.max)->Str"},
         {"Num32__random", "random", "func()->Num32"},
         // Unary functions:
 #define UNARY(fn) {#fn"f", #fn, "func(n:Num32)->Num32"}
