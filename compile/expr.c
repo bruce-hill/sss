@@ -1819,17 +1819,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (ast->tag == Modulus1)
             lhs_val = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, sss_type_to_gcc(env, t), lhs_val, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
 
-        if (t->tag == NumType) {
-            gcc_func_t *sane_fmod_func = get_function(env, "sane_fmod");
-            if (Match(t, NumType)->bits != 64) {
-                return gcc_cast(
-                    env->ctx, loc,
-                    gcc_callx(env->ctx, loc, sane_fmod_func,
-                              gcc_cast(env->ctx, loc, lhs_val, gcc_type(env->ctx, DOUBLE)),
-                              gcc_cast(env->ctx, loc, rhs_val, gcc_type(env->ctx, DOUBLE))),
-                    gcc_type(env->ctx, FLOAT));
-            }
-            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, sane_fmod_func, lhs_val, rhs_val);
+        sss_type_t *base_t = base_variant(t);
+        if (base_t->tag == NumType) {
+            gcc_func_t *mod_func = get_from_namespace(env, base_t, "mod")->func;
+            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, mod_func, lhs_val, rhs_val);
             if (ast->tag == Modulus1)
                 result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
             return result;
