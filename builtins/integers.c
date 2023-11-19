@@ -16,6 +16,7 @@ extern const void *SSS_HASH_VECTOR;
 #define str(a) #a
 
 #define DEFINE_INT_TYPE(c_type, KindOfInt, fmt, min_val, max_val)\
+    public c_type KindOfInt##__min = min_val, KindOfInt##__max = max_val; \
     public CORD KindOfInt ## __cord(const c_type *i, bool colorize, const Type *type) { \
         (void)type; \
         CORD c; \
@@ -43,11 +44,15 @@ extern const void *SSS_HASH_VECTOR;
         snprintf(str, len+1, octal_fmt, (int)digits, (uint64_t)i); \
         return (Str_t){.data=str, .length=len, .stride=1}; \
     } \
-    public c_type KindOfInt ## __random(c_type min, c_type max) { \
-        uint32_t r = arc4random_uniform((uint32_t)(max - min)); \
+    public c_type KindOfInt ## __random(int64_t min, int64_t max) { \
+        if (min > max) builtin_fail("Random min (%ld) is larger than max (%ld)", min, max); \
+        if (min < (int64_t)KindOfInt##__min) builtin_fail("Random min (%ld) is smaller than the minimum "#KindOfInt" value", min); \
+        if (max > (int64_t)KindOfInt##__max) builtin_fail("Random max (%ld) is smaller than the maximum "#KindOfInt" value", max); \
+        int64_t range = max - min; \
+        if (range > UINT32_MAX) builtin_fail("Random range (%ld) is larger than the maximum allowed (%ld)", range, UINT32_MAX); \
+        uint32_t r = arc4random_uniform((uint32_t)range); \
         return min + (c_type)r; \
     } \
-    public c_type KindOfInt##__min = min_val, KindOfInt##__max = max_val; \
     public Type KindOfInt##_type = { \
         .name=#KindOfInt, \
         .size=sizeof(c_type), \
