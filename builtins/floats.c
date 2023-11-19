@@ -61,8 +61,8 @@ public Type Num_type = {
 static CORD Num32_cord(float *f, bool colorize, const Type *type) { 
     (void)type;
     CORD c; 
-    if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[m", *f); 
-    else CORD_sprintf(&c, "%g", *f); 
+    if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32\x1b[m", *f); 
+    else CORD_sprintf(&c, "%g_f32", *f); 
     return c; 
 } 
 
@@ -98,7 +98,7 @@ public bool Num32__isinf(float n) { return isinf(n); }
 public bool Num32__finite(float n) { return finite(n); }
 public bool Num32__isnan(float n) { return isnan(n); }
 
-Type Num32_type = {
+public Type Num32_type = {
     .name="Num32",
     .size=sizeof(float),
     .align=alignof(float),
