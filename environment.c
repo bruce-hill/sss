@@ -106,7 +106,7 @@ struct {
     {{.tag=VoidType}, "Void", "Void_type", NULL},
     {{.tag=AbortType}, "Abort", "Abort_type", NULL},
 
-#define BUILTIN_INT(t, ...) \
+#define BUILTIN_INT(t, abs_fn, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
         {#t"__format", "format", "func(i:"#t", digits=0)->Str"}, \
         {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=no)->Str"}, \
@@ -114,9 +114,11 @@ struct {
         {#t"__random", "random", "func(min=1, max=100)->"#t}, \
         {#t"__min",    "min", #t}, \
         {#t"__max",    "max", #t}, \
+        {abs_fn,       "abs", "func(i:"#t")->"#t}, \
         {NULL, NULL, NULL}, \
     }}
-    BUILTIN_INT(Int, .bits=64), BUILTIN_INT(Int32, .bits=32), BUILTIN_INT(Int16, .bits=16), BUILTIN_INT(Int8, .bits=8),
+    BUILTIN_INT(Int, "labs", .bits=64), BUILTIN_INT(Int32, "abs", .bits=32),
+    BUILTIN_INT(Int16, "abs", .bits=16), BUILTIN_INT(Int8, "abs", .bits=8),
 #undef BUILTIN_INT
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
