@@ -58,7 +58,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
         binary_name = CORD_from_char_star(argv[i]);
         size_t i = CORD_rchr(binary_name, CORD_len(binary_name)-1, '.');
         if (i != CORD_NOT_FOUND)
-            CORD_substr(binary_name, 0, i);
+            binary_name = CORD_substr(binary_name, 0, i);
 
         struct stat info;
         assert(stat(f->filename, &info) != -1);
