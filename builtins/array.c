@@ -297,10 +297,10 @@ public uint32_t Array_hash(const array_t *arr, const Type *type)
     Type *item = type->ArrayInfo.item;
     if (item->tag == PointerInfo || (item->tag == CustomInfo && item->CustomInfo.hash == NULL)) { // Raw data hash
         int64_t item_size = item->size;
-        uint8_t hash_batch[4 + 8*item_size];
+        uint8_t hash_batch[4 + 8*item_size] = {};
         uint8_t *p = hash_batch, *end = hash_batch + sizeof(hash_batch);
         int64_t length = arr->length;
-        memcpy((p += sizeof(void*)), &length, sizeof(length));
+        *(p++) = (uint32_t)length;
         for (int64_t i = 0; i < arr->length; i++) {
             if (p >= end) {
                 uint32_t chunk_hash;
