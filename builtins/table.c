@@ -33,7 +33,7 @@
 #endif
 
 // Helper accessors for type functions/values:
-#define HASH(t, k) (generic_hash((k), type->TableInfo.key) % ((t)->bucket_info->count))
+#define HASH_KEY(t, k) (generic_hash((k), type->TableInfo.key) % ((t)->bucket_info->count))
 #define EQUAL_KEYS(x, y) (generic_equal((x), (y), type->TableInfo.key))
 #define ENTRY_SIZE (type->TableInfo.entry_size)
 #define VALUE_OFFSET (type->TableInfo.value_offset)
@@ -85,7 +85,7 @@ public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     assert(type->tag == TableInfo);
     if (!t || !key || !t->bucket_info) return NULL;
 
-    uint32_t hash = HASH(t, key);
+    uint32_t hash = HASH_KEY(t, key);
     hshow(t);
     hdebug("Getting value with initial probe at %u\n", hash);
     bucket_t *buckets = t->bucket_info->buckets;
@@ -121,7 +121,7 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
     hshow(t);
     const void *key = entry;
     bucket_t *buckets = t->bucket_info->buckets;
-    uint32_t hash = HASH(t, key);
+    uint32_t hash = HASH_KEY(t, key);
     hdebug("Hash value (mod %u) = %u\n", t->bucket_info->count, hash);
     bucket_t *bucket = &buckets[hash];
     if (!bucket->occupied) {
@@ -141,7 +141,7 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
         --t->bucket_info->last_free;
     }
 
-    uint32_t collided_hash = HASH(t, GET_ENTRY(t, bucket->index));
+    uint32_t collided_hash = HASH_KEY(t, GET_ENTRY(t, bucket->index));
     if (collided_hash != hash) { // Collided with a mid-chain entry
         hdebug("Hit a mid-chain entry at bucket %u (chain starting at %u)\n", hash, collided_hash);
         // Find chain predecessor
@@ -284,7 +284,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
     //    zero out bucket
     //    maybe update lastfree_index1 to removed bucket's index
 
-    uint32_t hash = HASH(t, key);
+    uint32_t hash = HASH_KEY(t, key);
     hdebug("Removing key with hash %u\n", hash);
     bucket_t *bucket, *prev = NULL;
     for (uint32_t i = hash; t->bucket_info->buckets[i].occupied; i = t->bucket_info->buckets[i].next_bucket) {
@@ -311,7 +311,7 @@ public void Table_remove(table_t *t, const void *key, const Type *type)
         hdebug("Removing key/value from the middle of the entries array\n");
 
         // Find the bucket that points to the last entry's index:
-        uint32_t i = HASH(t, GET_ENTRY(t, last_entry));
+        uint32_t i = HASH_KEY(t, GET_ENTRY(t, last_entry));
         while (t->bucket_info->buckets[i].index != last_entry)
             i = t->bucket_info->buckets[i].next_bucket;
         // Update the bucket to point to the last entry's new home (the space
@@ -363,33 +363,54 @@ public void Table_clear(table_t *t)
 
 public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
 {
+    printf("Comparing %p vs %p\n");
     assert(type->tag == TableInfo);
     if (Table_length(x) != Table_length(y))
+    {
+        printf("Different lens\n");
         return false;
+    }
     
     if ((x->default_value != NULL) != (y->default_value != NULL))
+    {
+        printf("Different defaults\n");
         return false;
+    }
     
     if ((x->fallback != NULL) != (y->fallback != NULL))
+    {
+        printf("Different fallbacks\n");
         return false;
+    }
 
     const Type *value_type = type->TableInfo.value;
     for (int64_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
         void *y_value = Table_get_raw(y, x_key, type);
-        if (!y_value) return false;
-        if (!generic_equal(x_value, y_value, value_type))
+        if (!y_value) {
+            printf("No y val\n");
             return false;
+        }
+        if (!generic_equal(x_value, y_value, value_type)) {
+            printf("x val != y val\n");
+            return false;
+        }
     }
 
     if (x->default_value && y->default_value
         && !generic_equal(x->default_value, y->default_value, value_type))
+    {
+        printf("Nonequal defaults\n");
         return false;
+    }
 
     if (x->fallback && y->fallback
         && !Table_equal(x->fallback, y->fallback, type))
+    {
+        printf("Nonequal fallbacks\n");
         return false;
+    }
     
     return true;
 }
@@ -439,7 +460,7 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
     if (t->default_value)
         default_hash = generic_hash(t->default_value, table.value);
 
-    uint32_t components[] = {
+    struct { int64_t len; uint32_t k, v, f, d; } components = {
         Table_length(t),
         key_hashes,
         value_hashes,
@@ -447,7 +468,8 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
         default_hash,
     };
     uint32_t hash;
-    halfsiphash(components, sizeof(components), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+    halfsiphash(&components, sizeof(components), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
+    printf("Hash of %ld %u %u %u %u -> %u\n", Table_length(t), key_hashes, value_hashes, fallback_hash, default_hash, hash);
     return hash;
 }
 
