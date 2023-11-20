@@ -115,7 +115,8 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     ast_t *module_ast = WrapAST(ast, TypeDef, .name="Module", .type=WrapAST(ast, Var, "Void"), .definitions=Match(ast, Block)->statements);
     gcc_rvalue_t *val = compile_expr(env, &do_loading_block, module_ast);
-    gcc_assign(do_loading_block, NULL, module_var, val);
+    if (val)
+        gcc_assign(do_loading_block, NULL, module_var, val);
     gcc_jump(do_loading_block, NULL, finished_loading_block);
 
     gcc_return(finished_loading_block, NULL, gcc_rval(module_var));
