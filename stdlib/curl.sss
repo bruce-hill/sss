@@ -34,39 +34,39 @@ type NetRC := enum(Ignored=0 | Optional=1 | Required=2)
 
 type Header := enum(
       WRITEDATA(data:?Memory)=10001
-    | URL(url:@CStringChar)=10002
+    | URL(url:CString)=10002
     | PORT(port:Int)=3
-    | PROXY(proxy:@CStringChar)=10004
-    | USERPWD(userpwd:@CStringChar)=10005
-    | PROXYUSERPWD(proxyuserpwd:@CStringChar)=10006
-    | RANGE(range:@CStringChar)=10007
+    | PROXY(proxy:CString)=10004
+    | USERPWD(userpwd:CString)=10005
+    | PROXYUSERPWD(proxyuserpwd:CString)=10006
+    | RANGE(range:CString)=10007
     | READDATA(data:?Memory)=10009
     | ERRORBUFFER(buf:@Char)=10010
     | WRITEFUNCTION(fn:func(@Char,Int,Int,?Memory)->Int)=20011
     | READFUNCTION(fn:func(@Char,Int,Int,?Memory)->Int)=20012
     | TIMEOUT(timeout:Int)=13
     | INFILESIZE(size:Int)=14
-    | POSTFIELDS(fields:@CStringChar)=10015
-    | REFERER(name:@CStringChar)=10016
-    | FTPPORT(port:@CStringChar)=10017
-    | USERAGENT(agent:@CStringChar)=10018
+    | POSTFIELDS(fields:CString)=10015
+    | REFERER(name:CString)=10016
+    | FTPPORT(port:CString)=10017
+    | USERAGENT(agent:CString)=10018
     | LOW_SPEED_LIMIT(limit:Int)=19
     | LOW_SPEED_TIME(time:Int)=20
     | RESUME_FROM(from:Int)=21
-    | COOKIE(cookie:@CStringChar)=10022
-    | HTTPHEADER(header:[@CStringChar])=10023
-    | SSLCERT(cert:@CStringChar)=10025
-    | KEYPASSWD(passwd:@CStringChar)=10026
+    | COOKIE(cookie:CString)=10022
+    | HTTPHEADER(header:[CString])=10023
+    | SSLCERT(cert:CString)=10025
+    | KEYPASSWD(passwd:CString)=10026
     | CRLF(crlf:Bool)=27
-    | QUOTE(quote:[@CStringChar])=10028
+    | QUOTE(quote:[CString])=10028
     | HEADERDATA(data:?Memory)=10029
-    | COOKIEFILE(file:@CStringChar)=10031
+    | COOKIEFILE(file:CString)=10031
     | SSLVERSION(version:Int)=32
     | TIMECONDITION(condition:Int)=33
     | TIMEVALUE(value:Int)=34
-    | CUSTOMREQUEST(request:@CStringChar)=10036
+    | CUSTOMREQUEST(request:CString)=10036
     | STDERR(dat:@Memory)=10037
-    | POSTQUOTE(quote:[@CStringChar])=10039
+    | POSTQUOTE(quote:[CString])=10039
     | VERBOSE(verbose:Bool)=41
     | HEADER(header:Bool)=42
     | NOPROGRESS(no_progress:Bool)=43
@@ -84,8 +84,8 @@ type Header := enum(
     | PROXYPORT(port:Int)=59
     | POSTFIELDSIZE(field_size:Int)=60
     | HTTPPROXYTUNNEL(tunnel:Bool)=61
-    | INTERFACE(interface:@CStringChar)=10062
-    | KRBLEVEL(level:@CStringChar)=10063
+    | INTERFACE(interface:CString)=10062
+    | KRBLEVEL(level:CString)=10063
     | SSL_VERIFYPEER=64
     | CAINFO=10065
     | MAXREDIRS=68
@@ -360,7 +360,7 @@ func get(url:Str, headers=[:Header])->Result
     defer extern curl_easy_cleanup(curl)
     buf := &""
     code := _curl(headers ++ [
-        Header.URL(url),
+        Header.URL(url.c_string()),
         Header.WRITEFUNCTION(bitcast _write as func(@Char,Int,Int,?Memory)->Int),
         Header.WRITEDATA(bitcast buf as ?Memory),
     ])

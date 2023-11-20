@@ -97,7 +97,7 @@ type Glob := Str
     func expand(g:Glob)->[Str]
         type glob_t := struct(
             gl_pathc:Int
-            gl_pathv:?@CStringChar
+            gl_pathv:?CString
             gl_offs:Int
             gl_flags:Int32
         )
@@ -110,7 +110,7 @@ type Glob := Str
             mem_addr := bitcast (globbuf.gl_pathv or return [:Str]) as Int
             paths := [
                 for i in 1..globbuf.gl_pathc
-                    (bitcast (mem_addr + (i-1)*8) as @@CStringChar)[].as_string()
+                    (bitcast (mem_addr + (i-1)*8) as @CString)[].as_string()
             ]
             return [for p in paths if not p.ends_with("/./") and not p.ends_with("/../") then p else skip]
         else
