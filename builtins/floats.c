@@ -22,6 +22,16 @@ static CORD Num_cord(const double *f, bool colorize, const Type *type) {
     return c; 
 } 
 
+static int32_t Num_compare(const double *x, const double *y, const Type *type) { 
+    (void)type;
+    return (*x > *y) - (*x < *y);
+} 
+
+static bool Num_equal(const double *x, const double *y, const Type *type) { 
+    (void)type;
+    return *x == *y;
+} 
+
 public Str_t Num__format(double f, int64_t precision) { 
     int len = snprintf(NULL, 0, "%.*f", (int)precision, f); 
     char *str = GC_MALLOC_ATOMIC(len + 1); 
@@ -55,7 +65,11 @@ public Type Num_type = {
     .size=sizeof(double),
     .align=alignof(double),
     .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Num_cord},
+    .CustomInfo={
+        .compare=(void*)Num_compare,
+        .equal=(void*)Num_equal,
+        .cord=(void*)Num_cord,
+    },
 };
 
 static CORD Num32_cord(float *f, bool colorize, const Type *type) { 
@@ -64,6 +78,16 @@ static CORD Num32_cord(float *f, bool colorize, const Type *type) {
     if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32\x1b[m", *f); 
     else CORD_sprintf(&c, "%g_f32", *f); 
     return c; 
+}
+
+static int32_t Num32_compare(const float *x, const float *y, const Type *type) { 
+    (void)type;
+    return (*x > *y) - (*x < *y);
+} 
+
+static bool Num32_equal(const float *x, const float *y, const Type *type) { 
+    (void)type;
+    return *x == *y;
 } 
 
 public Str_t Num32__format(float f, int64_t precision) { 
@@ -103,7 +127,11 @@ public Type Num32_type = {
     .size=sizeof(float),
     .align=alignof(float),
     .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Num32_cord},
+    .CustomInfo={
+        .compare=(void*)Num32_compare,
+        .equal=(void*)Num32_equal,
+        .cord=(void*)Num32_cord,
+    },
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0
