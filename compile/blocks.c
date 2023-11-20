@@ -62,8 +62,8 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
 
-        gcc_lvalue_t *lval = get_type_lvalue(env, t);
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true);
+        gcc_rvalue_t *type_ptr = get_type_pointer(env, t);
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .rval=type_ptr, .visible_in_closures=true);
         Table_str_set(env->bindings, name, b);
         env_t *type_env = get_type_env(env, t);
         type_env->bindings->fallback = env->bindings;
@@ -190,7 +190,6 @@ void populate_def_members(env_t *env, ast_t *def)
             populate_tagged_union_constructors(env, t);
         }
 
-        initialize_type_lvalue(env, t);
         auto definitions = Match(def, TypeDef)->definitions;
         foreach (definitions, def, _)
             populate_def_members(inner_env, *def);

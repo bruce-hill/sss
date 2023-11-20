@@ -69,6 +69,9 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         compile_function(&entry->value->env, entry->value->func, ast);
     }
 
+    // Initialize type lvalues (should be after compiling funcs)
+    initialize_type_lvalues(env);
+
     *result = gcc_compile(ctx);
     if (*result == NULL)
         compiler_err(env, ast, "Compilation failed");

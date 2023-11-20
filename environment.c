@@ -67,12 +67,12 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
-    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Int32"},
-    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:&(read-only)Type)->Bool"},
-    {"generic_hash", "func(obj:&(read-only)Memory, type:&(read-only)Type)->Int32"},
-    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
-    {"Func_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
-    {"Type_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:&(read-only)Type)->Cord"},
+    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Int32"},
+    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Bool"},
+    {"generic_hash", "func(obj:&(read-only)Memory, type:Type)->Int32"},
+    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
+    {"Func_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
+    {"Type_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
 
     // Builtins:
     {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
@@ -288,10 +288,10 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         gcc_lvalue_t *type_lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol);
         binding_t *b = new(binding_t,
                            .type=Type(TypeType, t),
-                           .lval=type_lval,
-                           .rval=gcc_rval(type_lval));
+                           .rval=gcc_lvalue_address(type_lval, NULL));
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
-        Table_str_set(&env->global->type_lvals, type_to_string_concise(t), type_lval);
+        binding_t *lval_binding = new(binding_t, .lval=type_lval, .type=t);
+        Table_str_set(&env->global->type_lvals, type_to_string_concise(t), lval_binding);
         mark_type_lvalue_initialized(env, t);
     }
 
@@ -489,7 +489,7 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
 #define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
 #define DEFTS(...) ARRAY((ast_t*)__VA_ARGS__)
         sss_type_t *void_t = Type(VoidType);
-        sss_type_t *type_t = RO_REF(Type(TypeType, t));
+        sss_type_t *type_t = Type(TypeType, t);
         if (t->tag == TableType) {
             sss_type_t *key_t = Match(t, TableType)->key_type;
             sss_type_t *value_t = Match(t, TableType)->value_type;

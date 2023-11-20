@@ -132,10 +132,9 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);
 
 // ============================== types.c ===============================
-gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *type);
 gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *type);
 gcc_type_t *get_type_gcc_type(env_t *env);
-void initialize_type_lvalue(env_t *env, sss_type_t *t);
 void mark_type_lvalue_initialized(env_t *env, sss_type_t *t);
+void initialize_type_lvalues(env_t *env);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

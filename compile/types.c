@@ -99,26 +99,22 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     return type_gcc_type;
 }
 
-gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
+static gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
 {
     const char *key = type_to_string_concise(t);
-    gcc_lvalue_t *lval = Table_str_get(&env->global->type_lvals, key);
-    if (lval) return lval;
-    gcc_type_t *type_gcc_t = sss_type_to_gcc(env, Type(TypeType));
-    lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, type_gcc_t, fresh("Type"));
-    Table_str_set(&env->global->type_lvals, key, lval);
+    binding_t *b = Table_str_get(&env->global->type_lvals, key);
+    if (b) return b->lval;
+    gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, get_type_gcc_type(env), fresh("Type"));
+    b = new(binding_t, .lval=lval, .type=t);
+    Table_str_set(&env->global->type_lvals, key, b);
     return lval;
 }
 
 gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
 {
     const char *key = type_to_string_concise(t);
-    gcc_lvalue_t *lval = Table_str_get(&env->global->type_lvals, key);
-    if (!lval) {
-        lval = get_type_lvalue(env, t);
-        // Auto-initialize types when we get the pointer via this route
-        initialize_type_lvalue(env, t);
-    }
+    binding_t *b = Table_str_get(&env->global->type_lvals, key);
+    gcc_lvalue_t *lval = b ? b->lval : get_type_lvalue(env, t);
     return gcc_lvalue_address(lval, NULL);
 }
 
@@ -129,7 +125,7 @@ void mark_type_lvalue_initialized(env_t *env, sss_type_t *t)
     Table_str_set(&initialized_type_lvals, type_to_string_concise(t), t);
 }
 
-void initialize_type_lvalue(env_t *env, sss_type_t *t)
+static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 {
     if (Table_str_get(&initialized_type_lvals, type_to_string_concise(t)))
         return;
@@ -170,7 +166,8 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
 #undef FUNC_PTR
             gcc_global_set_initializer_rvalue(
                 lval,
-                gcc_struct_constructor(env->ctx, NULL, type_gcc_type, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+                gcc_struct_constructor(env->ctx, NULL, get_type_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
+                                       type_struct_fields, type_rvalues));
             return;
         }
     }
@@ -194,20 +191,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
     }
     case PointerType: {
         auto ptr = Match(t, PointerType);
-        if (ptr->pointed->tag == TypeType) {
-            // Special case of type pointers
-            type_rvalues[0] = gcc_str(env->ctx, type_to_string_concise(Match(ptr->pointed, TypeType)->type));
-            SET_INFO(CustomInfo, custom_info, custom_info_fields,
-                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                     gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                     gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Type_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
-            );
-            break;
-        }
-
         CORD sigil = ptr->is_stack ? "&" : "@";
-
         SET_INFO(PointerInfo, pointer_info, pointer_info_fields,
                  gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
                  get_type_pointer(env, ptr->pointed),
@@ -269,7 +253,7 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 }, (gcc_rvalue_t*[]){
                     gcc_rvalue_int32(env->ctx, member.tag_value),
                     gcc_str(env->ctx, member.name),
-                    member.type ? get_type_pointer(env, member.type) : gcc_null(env->ctx, gcc_get_ptr_type(type_gcc_type)),
+                    member.type ? get_type_pointer(env, member.type) : gcc_null(env->ctx, gcc_get_ptr_type(get_type_gcc_type(env))),
                 });
         }
 
@@ -322,7 +306,16 @@ void initialize_type_lvalue(env_t *env, sss_type_t *t)
 
     gcc_global_set_initializer_rvalue(
         lval,
-        gcc_struct_constructor(env->ctx, NULL, type_gcc_type, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+        gcc_struct_constructor(env->ctx, NULL, get_type_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+}
+
+void initialize_type_lvalues(env_t *env)
+{
+    for (int64_t i = 1; i <= Table_length(&env->global->type_lvals); i++) {
+        struct {const char *key; binding_t *binding; } *entry = Table_entry(&env->global->type_lvals, i);
+        assert(entry && entry->binding && entry->binding->type && entry->binding->lval);
+        initialize_type_lvalue(env, entry->binding->type);
+    }
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

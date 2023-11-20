@@ -901,14 +901,15 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
                 gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
-                sss_type_t *t = get_type(env, decl->value);
-                assert(t);
-                gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+                sss_type_t *member_t = get_type(env, decl->value);
+                assert(member_t);
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, member_t);
                 const char* name = Match(decl->var, Var)->name;
                 const char* sym_name = fresh(name);
                 gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
                 Table_str_set(env->bindings, name,
-                           new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=sym_name, .visible_in_closures=true));
+                           new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=member_t,
+                               .sym_name=sym_name, .visible_in_closures=true));
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             } else if ((*member)->tag == TypeDef) {

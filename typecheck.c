@@ -469,7 +469,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
     }
     case TypeOf: {
-        return Type(PointerType, .pointed=Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value)), .is_stack=true, .is_readonly=true);
+        return Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value));
     }
     case SizeOf: {
         return Type(IntType, .bits=64);

@@ -86,7 +86,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     case TableType: return sizeof (table_t);
     case RangeType: return sizeof (range_t);
     case BoolType: return sizeof(bool);
-    case TypeType: return sizeof(char*);
+    case TypeType: return sizeof(Type*);
     case NumType: return Match(sss_t, NumType)->bits / 8;
     case FunctionType:
     case PointerType: return sizeof(void*);
@@ -294,7 +294,7 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         cache_key = "Type";
         gcc_t = Table_str_get(&cache, cache_key);
         if (gcc_t) return gcc_t;
-        gcc_t = get_type_gcc_type(env);
+        gcc_t = gcc_get_ptr_type(get_type_gcc_type(env));
         break;
     }
     case GeneratorType: {
