@@ -280,13 +280,23 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
         );
         break;
     }
+    case IntType: case NumType: {
+        gcc_func_t *fn = get_function(env, heap_strf("%T__cord", with_units(t, NULL)));
+        SET_INFO(CustomInfo, custom_info, custom_info_fields,
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_cast(env->ctx, NULL, gcc_get_func_address(fn, NULL), gcc_type(env->ctx, VOID_PTR))
+        );
+        break;
+    }
     case VariantType:
     case FunctionType: {
         SET_INFO(CustomInfo, custom_info, custom_info_fields,
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Func_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
+                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Func__cord"), NULL), gcc_type(env->ctx, VOID_PTR))
         );
         break;
     }
@@ -295,7 +305,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
-                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Type_cord"), NULL), gcc_type(env->ctx, VOID_PTR))
+                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Type__cord"), NULL), gcc_type(env->ctx, VOID_PTR))
         );
         break;
     }

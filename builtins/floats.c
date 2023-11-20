@@ -14,20 +14,20 @@
 #include "string.h"
 #include "types.h"
 
-static CORD Num_cord(const double *f, bool colorize, const Type *type) { 
-    (void)type;
-    CORD c; 
-    if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[m", *f); 
-    else CORD_sprintf(&c, "%g", *f); 
+public CORD Num__cord(const double *f, bool colorize, const Type *type) { 
+    CORD c;
+    const char *units = strchrnul(type->name, '<');
+    if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[33;2m%s\x1b[m", *f, units); 
+    else CORD_sprintf(&c, "%g%s", *f, units); 
     return c; 
 } 
 
-static int32_t Num_compare(const double *x, const double *y, const Type *type) { 
+static int32_t Num__compare(const double *x, const double *y, const Type *type) { 
     (void)type;
     return (*x > *y) - (*x < *y);
 } 
 
-static bool Num_equal(const double *x, const double *y, const Type *type) { 
+static bool Num__equal(const double *x, const double *y, const Type *type) { 
     (void)type;
     return *x == *y;
 } 
@@ -66,26 +66,26 @@ public Type Num_type = {
     .align=alignof(double),
     .tag=CustomInfo,
     .CustomInfo={
-        .compare=(void*)Num_compare,
-        .equal=(void*)Num_equal,
-        .cord=(void*)Num_cord,
+        .compare=(void*)Num__compare,
+        .equal=(void*)Num__equal,
+        .cord=(void*)Num__cord,
     },
 };
 
-static CORD Num32_cord(float *f, bool colorize, const Type *type) { 
-    (void)type;
-    CORD c; 
-    if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32\x1b[m", *f); 
-    else CORD_sprintf(&c, "%g_f32", *f); 
-    return c; 
+public CORD Num32__cord(float *f, bool colorize, const Type *type) { 
+    CORD c;
+    const char *units = strchrnul(type->name, '<');
+    if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32%s\x1b[m", *f, units);
+    else CORD_sprintf(&c, "%g_f32%s", *f, units);
+    return c;
 }
 
-static int32_t Num32_compare(const float *x, const float *y, const Type *type) { 
+static int32_t Num32__compare(const float *x, const float *y, const Type *type) { 
     (void)type;
     return (*x > *y) - (*x < *y);
 } 
 
-static bool Num32_equal(const float *x, const float *y, const Type *type) { 
+static bool Num32__equal(const float *x, const float *y, const Type *type) { 
     (void)type;
     return *x == *y;
 } 
@@ -128,9 +128,9 @@ public Type Num32_type = {
     .align=alignof(float),
     .tag=CustomInfo,
     .CustomInfo={
-        .compare=(void*)Num32_compare,
-        .equal=(void*)Num32_equal,
-        .cord=(void*)Num32_cord,
+        .compare=(void*)Num32__compare,
+        .equal=(void*)Num32__equal,
+        .cord=(void*)Num32__cord,
     },
 };
 

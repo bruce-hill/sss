@@ -319,7 +319,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
 }
 
-public CORD Type_cord(Type **t, bool colorize, const Type *typetype)
+public CORD Type__cord(Type **t, bool colorize, const Type *typetype)
 {
     (void)t;
     if (!colorize)
@@ -332,13 +332,13 @@ public CORD Type_cord(Type **t, bool colorize, const Type *typetype)
 public Type Type_type = {
     .name="Type",
     .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Type_cord},
+    .CustomInfo={.cord=(void*)Type__cord},
 };
 
 public Type Void_type = {.name="Void", .size=0, .align=0};
 public Type Abort_type = {.name="Abort", .size=0, .align=0};
 
-public CORD Func_cord(const void *fn, bool colorize, const Type *type)
+public CORD Func__cord(const void *fn, bool colorize, const Type *type)
 {
     (void)fn;
     CORD c = type->name;
