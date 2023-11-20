@@ -24,6 +24,10 @@ extern const void *SSS_HASH_VECTOR;
         if (colorize) CORD_sprintf(&c, "\x1b[35m%r\x1b[m", c); \
         return c; \
     } \
+    public int32_t KindOfInt ## __compare(const c_type *x, const c_type *y, const Type *type) { \
+        (void)type; \
+        return (*x > *y) - (*x < *y); \
+    } \
     public Str_t KindOfInt ## __format(c_type i, int64_t digits) { \
         int len = snprintf(NULL, 0, "%0*" fmt, (int)digits, i); \
         char *str = GC_MALLOC_ATOMIC(len + 1); \
@@ -58,7 +62,7 @@ extern const void *SSS_HASH_VECTOR;
         .size=sizeof(c_type), \
         .align=alignof(c_type), \
         .tag=CustomInfo, \
-        .CustomInfo={.cord=(void*)KindOfInt ## __cord}, \
+        .CustomInfo={.compare=(void*)KindOfInt##__compare, .cord=(void*)KindOfInt##__cord}, \
     };
 
 DEFINE_INT_TYPE(int64_t,  Int,    "ld",     INT64_MIN, INT64_MAX);
