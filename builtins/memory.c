@@ -15,7 +15,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Memory_cord(const void *p, bool colorize, const Type *type) {
+public CORD Memory__cord(const void *p, bool colorize, const Type *type) {
     (void)type;
     CORD cord;
     CORD_sprintf(&cord, colorize ? "\x1b[0;34;1mMemory<%p>\x1b[m" : "Memory<%p>", p);
@@ -27,7 +27,7 @@ public Type Memory_type = {
     .size=0,
     .align=0,
     .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Memory_cord},
+    .CustomInfo={.cord=(void*)Memory__cord},
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

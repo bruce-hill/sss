@@ -309,6 +309,15 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
         );
         break;
     }
+    case MemoryType: {
+        SET_INFO(CustomInfo, custom_info, custom_info_fields,
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
+                 gcc_cast(env->ctx, NULL, gcc_get_func_address(get_function(env, "Memory__cord"), NULL), gcc_type(env->ctx, VOID_PTR))
+        );
+        break;
+    }
     default: {
         compiler_err(env, NULL, "Type lvalue not implemented for: %T", t);
     }

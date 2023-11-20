@@ -73,6 +73,7 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
     {"Func__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
     {"Type__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
+    {"Memory__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
     {"Num__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
     {"Num32__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
     {"Int__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},

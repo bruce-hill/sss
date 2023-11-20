@@ -1783,8 +1783,9 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         binding_t *b = get_from_namespace(env, array_t, "insert_all");
         assert(b);
         gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-        gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, Match(array_t, ArrayType)->item_type));
-        if (t_lhs->tag == ArrayType) {
+        sss_type_t *item_type = Match(base_variant(array_t), ArrayType)->item_type;
+        gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, item_type));
+        if (base_variant(t_lhs)->tag == ArrayType) {
             gcc_lvalue_t *lval = get_lvalue(env, block, concat->lhs, false);
             gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);
             gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, gcc_rval(lval)));
