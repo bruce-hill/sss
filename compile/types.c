@@ -231,10 +231,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 gcc_rvalue_int16(env->ctx, sizeof(void*) + sizeof(void*)),
             });
 
-        SET_INFO(StructInfo, struct_info, struct_info_fields,
-            fields,
-            gcc_rvalue_bool(env->ctx, false), // TODO: determine if it is pure memory or not
-        );
+        SET_INFO(StructInfo, struct_info, struct_info_fields, fields);
         break;
     }
     case TaggedUnionType: {
@@ -272,10 +269,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 gcc_rvalue_int16(env->ctx, 8*3),
             });
 
-        SET_INFO(TaggedUnionInfo, tagged_union_info, tagged_union_info_fields,
-            fields,
-            gcc_rvalue_bool(env->ctx, false), // TODO: determine if it is pure memory or not
-        );
+        SET_INFO(TaggedUnionInfo, tagged_union_info, tagged_union_info_fields, fields);
         break;
     }
     case IntType: case NumType: {
