@@ -48,7 +48,7 @@ typedef struct {
     table_t type_lvals; // type_string -> gcc_lvalue_t*
     table_t def_types; // ast_t* -> binding_t*
     table_t ast_functions; // ast_t* -> func_context_t*
-    table_t module_types; // inode -> sss_type_t*
+    table_t module_types; // filename -> sss_type_t*
 } global_env_t;
 
 typedef struct env_s {

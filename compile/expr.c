@@ -2300,7 +2300,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_jit_context_add_driver_option(env->ctx, obj_path);
 
         sss_type_t *t = get_file_type(env, sss_path);
-        const char *load_name = heap_strf("load_%.*s_%ld", (int)strcspn(basename(sss_path), "."), basename(sss_path), sss_inode);
+        const char *load_name = heap_strf("load__%s", get_module_name(sss_path));
         gcc_func_t *load_func = gcc_new_func(
             env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, t), load_name, 0, NULL, 0);
 

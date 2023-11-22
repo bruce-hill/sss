@@ -1,5 +1,6 @@
 // Logic for getting an SSS type from an AST node
 #include <gc.h>
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -1348,6 +1349,22 @@ sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
     return Type(StructType, .field_names=field_names, .field_types=field_types);
 }
 
+const char *get_module_name(const char *path)
+{
+    const char *base = strrchr(path, '/')+1;
+    if (isdigit(*base))
+        --base; // This will put the pointer onto the slash, which will get turned into a leading underscore;
+    size_t len = strcspn(base, ".");
+    char *name = GC_MALLOC_ATOMIC(len + 1);
+    memcpy(name, base, len);
+    name[len] = '\0';
+    for (int i = 0; name[i]; i++) {
+        if (!isalnum(name[i]) && name[i] != '_')
+            name[i] = '_';
+    }
+    return name;
+}
+
 sss_type_t *get_file_type(env_t *env, const char *path)
 {
     struct stat file_info;
@@ -1355,15 +1372,14 @@ sss_type_t *get_file_type(env_t *env, const char *path)
     if (stat(sss_path, &file_info) == -1)
         compiler_err(env, NULL, "I can't find the file %s", sss_path);
 
-    int64_t inode = (int64_t)file_info.st_ino; 
-    const char *name = heap_strf("Module_%ld", inode);
-    sss_type_t *type = Table_str_get(&env->global->module_types, name);
+    const char *name = get_module_name(path);
+    sss_type_t *type = Table_str_get(&env->global->module_types, path);
     if (type) return type;
 
     sss_file_t *f = sss_load_file(sss_path);
     ast_t *ast = parse_file(f, env->on_err);
     type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
-    Table_str_set(&env->global->module_types, name, type);
+    Table_str_set(&env->global->module_types, path, type);
     return type;
 }
 
