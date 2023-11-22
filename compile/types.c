@@ -24,8 +24,8 @@ static gcc_field_t *type_struct_fields[5],
                    *pointer_info_fields[3],
                    *array_info_fields[1],
                    *table_info_fields[4],
-                   *struct_info_fields[2],
-                   *tagged_union_info_fields[2];
+                   *struct_info_fields[1],
+                   *tagged_union_info_fields[1];
 static gcc_type_t *type_gcc_type = NULL, *data_union = NULL,
                   *custom_info = NULL, *pointer_info = NULL,
                   *array_info = NULL, *table_info = NULL, *struct_info = NULL,
@@ -68,14 +68,12 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     struct_member_type = STRUCT("StructField", sfields);
     struct_member_array_type = make_array_gcc_type(env, struct_member_type);
     struct_info_fields[0] = FIELD("fields", struct_member_array_type);
-    struct_info_fields[1] = FIELD("is_pure_data", gcc_type(env->ctx, BOOL));
     struct_info = STRUCT("StructInfo", struct_info_fields);
 
     gcc_field_t *tufields[] = {FIELD("tag", gcc_type(env->ctx, INT32)), FIELD("name", gcc_type(env->ctx, STRING)), FIELD("type", gcc_get_ptr_type(type_gcc_type))};
     tu_member_type = STRUCT("TaggedUnionField", tufields);
     tu_member_array_type = make_array_gcc_type(env, tu_member_type);
     tagged_union_info_fields[0] = FIELD("members", tu_member_array_type);
-    tagged_union_info_fields[1] = FIELD("is_pure_data", gcc_type(env->ctx, BOOL));
     tagged_union_info = STRUCT("TaggedUnionInfo", tagged_union_info_fields);
 
     type_union_fields[CustomInfo] = FIELD("CustomInfo", custom_info);

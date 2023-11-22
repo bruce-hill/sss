@@ -39,11 +39,9 @@ typedef struct Type {
             } TableInfo;
             struct {
                 array_t members; // [{name, type}]
-                bool is_pure_data;
             } StructInfo;
             struct {
                 array_t members; // [{tag, name, type}]
-                bool is_pure_data;
             } TaggedUnionInfo;
         };
     };

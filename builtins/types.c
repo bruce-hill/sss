@@ -23,8 +23,6 @@ public uint32_t generic_hash(const void *obj, const Type *type)
         auto info = type->StructInfo;
         if (info.members.length == 0)
             return 0;
-        else if (info.is_pure_data)
-            goto hash_data;
 
         uint32_t hash_values[info.members.length] = {};
         int64_t offset = 0;
@@ -42,9 +40,6 @@ public uint32_t generic_hash(const void *obj, const Type *type)
     }
     case TaggedUnionInfo: {
         auto info = type->TaggedUnionInfo;
-        if (info.is_pure_data)
-            goto hash_data;
-
         int32_t tag = *(int32_t*)obj;
         int64_t offset = 4;
         typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
@@ -139,9 +134,6 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
     case TableInfo: return Table_equal(x, y, type);
     case StructInfo: {
         auto info = type->StructInfo;
-        if (info.is_pure_data)
-            return (memcmp(x, y, type->size) == 0);
-
         typedef struct {const char *name; const Type *type;} struct_member_t;
         auto members = (ARRAY_OF(struct_member_t))&info.members;
         int64_t offset = 0;
@@ -156,9 +148,6 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
     }
     case TaggedUnionInfo: {
         auto info = type->TaggedUnionInfo;
-        if (info.is_pure_data)
-            return (memcmp(x, y, type->size) == 0);
-
         int32_t xtag = *(int32_t*)x,
                 ytag = *(int32_t*)y;
 
