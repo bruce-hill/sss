@@ -1358,7 +1358,6 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
             break;
         }
     }
-    printf("Bada bing: %ld\n", LENGTH(field_names));
     return Type(StructType, .field_names=field_names, .field_types=field_types);
 }
 
