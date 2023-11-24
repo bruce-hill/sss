@@ -610,7 +610,7 @@ bool can_have_cycles(sss_type_t *t)
 sss_type_t *table_entry_type(sss_type_t *table_type)
 {
     static table_t cache = {0};
-    sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
+    sss_type_t *t = Type(StructType, .field_names=ARRAY("key", "value"),
                         .field_types=ARRAY((sss_type_t*)Match(table_type, TableType)->key_type,
                                            Match(table_type, TableType)->value_type));
     sss_type_t *cached = Table_str_get(&cache, type_to_string(t));

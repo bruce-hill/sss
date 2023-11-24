@@ -2014,7 +2014,7 @@ PARSER(parse_enum_type) {
             *dest = '\0';
             append(tag_names, name);
             append(tag_values, next_value);
-            args_t args = (args_t){ARRAY((const char*)"value"), ARRAY(type_ast), ARRAY((ast_t*)NULL)};
+            args_t args = (args_t){ARRAY("value"), ARRAY(type_ast), ARRAY((ast_t*)NULL)};
             append(tag_args, args);
             pos = type_ast->end;
             goto carry_on;

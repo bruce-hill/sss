@@ -491,7 +491,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         
         do_env->loop_label = &(loop_label_t){
             .enclosing = env->loop_label,
-            .names = ARRAY((const char*)do_->label),
+            .names = ARRAY(do_->label),
             .skip_label = do_else,
             .stop_label = do_else,
             .deferred = do_env->deferred,

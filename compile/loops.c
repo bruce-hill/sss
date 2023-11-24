@@ -328,7 +328,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     env_t *loop_env = fresh_scope(env);
 
-    auto label_names = ARRAY((const char*)"for");
+    auto label_names = ARRAY("for");
     if (for_->index) {
         append(label_names, Match(for_->index, Var)->name);
         Table_str_set(loop_env->bindings, Match(for_->index, Var)->name,

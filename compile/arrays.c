@@ -455,7 +455,7 @@ gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool ma
             gcc_block_t *item_done = gcc_new_block(func, fresh("item_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = ARRAY((const char*)"[]"),
+                .names = ARRAY("[]"),
                 .skip_label = item_done,
                 .stop_label = array_done,
             };

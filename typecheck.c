@@ -587,7 +587,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case TableEntry: {
         auto entry = Match(ast, TableEntry);
-        sss_type_t *t = Type(StructType, .field_names=ARRAY((const char*)"key", "value"),
+        sss_type_t *t = Type(StructType, .field_names=ARRAY("key", "value"),
                             .field_types=ARRAY(get_type(env, entry->key), get_type(env, entry->value)));
         sss_type_t *memoized = Table_str_get(&tuple_types, type_to_string(t));
         if (memoized) {
@@ -1358,6 +1358,7 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
             break;
         }
     }
+    printf("Bada bing: %ld\n", LENGTH(field_names));
     return Type(StructType, .field_names=field_names, .field_types=field_types);
 }
 

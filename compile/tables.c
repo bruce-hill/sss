@@ -191,7 +191,7 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_block_t *entry_done = gcc_new_block(func, fresh("entry_done"));
             env2.loop_label = &(loop_label_t){
                 .enclosing = env->loop_label,
-                .names = ARRAY((const char*)"[]"),
+                .names = ARRAY("[]"),
                 .skip_label = entry_done,
                 .stop_label = table_done,
             };
