@@ -15,7 +15,7 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name);
 sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e tag, sss_type_t *rhs_t);
 bool is_discardable(env_t *env, ast_t *ast);
 const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);
-sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements);
+sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(ast_t*) statements);
 const char *get_module_name(const char *path);
 sss_type_t *get_file_type(env_t *env, const char *path);
 

@@ -11,7 +11,7 @@
 #include "builtins/table.h"
 #include "util.h"
 
-extern Type CString_type, Int_type;
+extern TypeInfo CString_type, Int_type;
 
 // Return an in-evaluation-order list of relevant information about each argument
 ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(const char*) arg_names, ARRAY_OF(sss_type_t*) arg_types, ARRAY_OF(ast_t*) arg_defaults)
@@ -20,7 +20,7 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
     arg_info_t *arg_infos = GC_MALLOC(num_args * sizeof(arg_info_t));
     int64_t next_arg = 0;
 
-    static Type c_str_to_int_type = {
+    static TypeInfo c_str_to_int_type = {
         .name="{CString=>Int}", .size=sizeof(table_t), .align=sizeof(table_t),
         .tag=TableInfo, .TableInfo={&CString_type, &Int_type, sizeof(char*) + sizeof(int64_t), sizeof(char*)}
     };

@@ -16,7 +16,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Range_cord(const range_t *range, bool colorize, const Type *type)
+static CORD Range_cord(const range_t *range, bool colorize, const TypeInfo *type)
 {
     (void)type;
     CORD c = NULL;
@@ -52,7 +52,7 @@ static int32_t Range_compare(range_t *x, range_t *y)
     return (x->stride > y->stride) - (x->stride < y->stride);
 }
 
-public Type Range_type = {
+public TypeInfo Range_type = {
     .name="Range",
     .size=sizeof(range_t),
     .align=alignof(range_t),

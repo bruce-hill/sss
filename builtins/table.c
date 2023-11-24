@@ -45,7 +45,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-Type *CStringToVoidStarTable_type;
+TypeInfo *CStringToVoidStarTable_type;
 
 static inline void hshow(const table_t *t)
 {
@@ -60,7 +60,7 @@ static inline void hshow(const table_t *t)
     hdebug("}\n");
 }
 
-static void maybe_copy_on_write(table_t *t, const Type *type)
+static void maybe_copy_on_write(table_t *t, const TypeInfo *type)
 {
     if (t->entries.copy_on_write) {
         Array_compact(&t->entries, type->TableInfo.entry_size);
@@ -80,7 +80,7 @@ public void Table_mark_copy_on_write(table_t *t)
 }
 
 // Return address of value or NULL
-public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
+public void *Table_get_raw(const table_t *t, const void *key, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     if (!t || !key || !t->bucket_info) return NULL;
@@ -102,7 +102,7 @@ public void *Table_get_raw(const table_t *t, const void *key, const Type *type)
     return NULL;
 }
 
-public void *Table_get(const table_t *t, const void *key, const Type *type)
+public void *Table_get(const table_t *t, const void *key, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     for (const table_t *iter = t; iter; iter = iter->fallback) {
@@ -115,7 +115,7 @@ public void *Table_get(const table_t *t, const void *key, const Type *type)
     return NULL;
 }
 
-static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const Type *type)
+static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const TypeInfo *type)
 {
     assert(t->bucket_info);
     hshow(t);
@@ -169,7 +169,7 @@ static void Table_set_bucket(table_t *t, const void *entry, int32_t index, const
     hshow(t);
 }
 
-static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type *type)
+static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const TypeInfo *type)
 {
     hdebug("About to resize from %u to %u\n", t->bucket_info ? t->bucket_info->count : 0, new_capacity);
     hshow(t);
@@ -189,7 +189,7 @@ static void hashmap_resize_buckets(table_t *t, uint32_t new_capacity, const Type
 }
 
 // Return address of value
-public void *Table_reserve(table_t *t, const void *key, const void *value, const Type *type)
+public void *Table_reserve(table_t *t, const void *key, const void *value, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     if (!t || !key) return NULL;
@@ -248,13 +248,13 @@ public void *Table_reserve(table_t *t, const void *key, const void *value, const
     return entry + VALUE_OFFSET;
 }
 
-public void Table_set(table_t *t, const void *key, const void *value, const Type *type)
+public void Table_set(table_t *t, const void *key, const void *value, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     (void)Table_reserve(t, key, value, type);
 }
 
-public void Table_remove(table_t *t, const void *key, const Type *type)
+public void Table_remove(table_t *t, const void *key, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     if (!t || Table_length(t) == 0) return;
@@ -361,7 +361,7 @@ public void Table_clear(table_t *t)
     memset(t, 0, sizeof(table_t));
 }
 
-public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
+public bool Table_equal(const table_t *x, const table_t *y, const TypeInfo *type)
 {
     printf("Comparing %p vs %p\n");
     assert(type->tag == TableInfo);
@@ -383,7 +383,7 @@ public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
         return false;
     }
 
-    const Type *value_type = type->TableInfo.value;
+    const TypeInfo *value_type = type->TableInfo.value;
     for (int64_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
@@ -415,15 +415,15 @@ public bool Table_equal(const table_t *x, const table_t *y, const Type *type)
     return true;
 }
 
-public int32_t Table_compare(const table_t *x, const table_t *y, const Type *type)
+public int32_t Table_compare(const table_t *x, const table_t *y, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     auto table = type->TableInfo;
     struct {
         const char *name;
-        const Type *type;
+        const TypeInfo *type;
     } member_data[] = {{"key", table.key}, {"value", table.value}};
-    Type entry_type = {
+    TypeInfo entry_type = {
         .name="Entry",
         .size=ENTRY_SIZE,
         .align=MAX(table.key->align, table.value->align),
@@ -438,7 +438,7 @@ public int32_t Table_compare(const table_t *x, const table_t *y, const Type *typ
     return Array_compare(&x_entries, &y_entries, &entry_type);
 }
 
-public uint32_t Table_hash(const table_t *t, const Type *type)
+public uint32_t Table_hash(const table_t *t, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     // Table hashes are computed as:
@@ -473,7 +473,7 @@ public uint32_t Table_hash(const table_t *t, const Type *type)
     return hash;
 }
 
-public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
+public CORD Table_cord(const table_t *t, bool colorize, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     auto table = type->TableInfo;
@@ -502,7 +502,7 @@ public CORD Table_cord(const table_t *t, bool colorize, const Type *type)
     return c;
 }
 
-public table_t Table_from_entries(array_t entries, const Type *type)
+public table_t Table_from_entries(array_t entries, const TypeInfo *type)
 {
     assert(type->tag == TableInfo);
     table_t t = {.entries=entries};

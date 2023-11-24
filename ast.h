@@ -118,7 +118,7 @@ struct ast_s {
         } Predeclare;
         struct {
             ast_t *var, *value;
-            bool is_global;
+            bool is_public;
         } Declare;
         struct {
             ARRAY_OF(ast_t*) targets;

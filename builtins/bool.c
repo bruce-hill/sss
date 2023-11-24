@@ -15,7 +15,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-static CORD Bool_cord(const bool *b, bool colorize, const Type *type)
+static CORD Bool_cord(const bool *b, bool colorize, const TypeInfo *type)
 {
     (void)type;
     if (colorize)
@@ -24,7 +24,7 @@ static CORD Bool_cord(const bool *b, bool colorize, const Type *type)
         return *b ? "yes" : "no";
 }
 
-public Type Bool_type = {
+public TypeInfo Bool_type = {
     .name="Bool",
     .size=sizeof(bool),
     .align=alignof(bool),

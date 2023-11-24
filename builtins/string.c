@@ -32,7 +32,7 @@ static Str_t compacted(const Str_t str)
     return (Str_t){.data=buf, .length=str.length, .stride=1};
 }
 
-public CORD Str__cord(const Str_t *s, bool colorize, const Type *type)
+public CORD Str__cord(const Str_t *s, bool colorize, const TypeInfo *type)
 {
     (void)type;
     char *data = s->data;
@@ -111,7 +111,7 @@ public bool Str__equal(const Str_t *x, const Str_t *y)
     return (Str__compare(x, y) == 0);
 }
 
-public int Str__hash(const Str_t *s, const Type *type)
+public int Str__hash(const Str_t *s, const TypeInfo *type)
 {
     (void)type;
     if (s->length == 0 || !s->data) return 0;
@@ -461,7 +461,7 @@ public Str_t Str__join(Str_t glue, Str_Array_t pieces)
     return (Str_t){.data=data, .length=length, .stride=1};
 }
 
-public Type Str_type = {
+public TypeInfo Str_type = {
     .name="Str",
     .size=sizeof(Str_t),
     .align=alignof(Str_t),
@@ -474,13 +474,13 @@ public Type Str_type = {
     },
 };
 
-static CORD CString_cord(const char **s, bool colorize, const Type *type)
+static CORD CString_cord(const char **s, bool colorize, const TypeInfo *type)
 {
     Str_t str = {.data=(char*)*s, .length=*s ? strlen(*s) : 0, .stride=1};
     return Str__cord(&str, colorize, type);
 }
 
-static uint32_t CString_hash(const char **s, const Type *type)
+static uint32_t CString_hash(const char **s, const TypeInfo *type)
 {
     (void)type;
     if (!*s) return 0;
@@ -490,7 +490,7 @@ static uint32_t CString_hash(const char **s, const Type *type)
     return hash;
 }
 
-static uint32_t CString_compare(const char **x, const char **y, const Type *type)
+static uint32_t CString_compare(const char **x, const char **y, const TypeInfo *type)
 {
     (void)type;
     if (!*x || !*y)
@@ -498,7 +498,7 @@ static uint32_t CString_compare(const char **x, const char **y, const Type *type
     return strcmp(*x, *y);
 }
 
-public Type CString_type = {
+public TypeInfo CString_type = {
     .name="CString",
     .size=sizeof(char*),
     .align=alignof(char*),
@@ -510,25 +510,25 @@ public Type CString_type = {
     },
 };
 
-static CORD Cord_cord(const CORD *c, bool colorize, const Type *type)
+static CORD Cord_cord(const CORD *c, bool colorize, const TypeInfo *type)
 {
     const char *str = CORD_to_const_char_star(*c);
     return CString_cord(&str, colorize, type);
 }
 
-static uint32_t Cord_hash(const CORD *c, const Type *type)
+static uint32_t Cord_hash(const CORD *c, const TypeInfo *type)
 {
     const char *str = CORD_to_const_char_star(*c);
     return CString_hash(&str, type);
 }
 
-static uint32_t Cord_compare(const char **x, const char **y, const Type *type)
+static uint32_t Cord_compare(const char **x, const char **y, const TypeInfo *type)
 {
     (void)type;
     return CORD_cmp(*x, *y);
 }
 
-public Type Cord_type = {
+public TypeInfo Cord_type = {
     .name="Cord",
     .size=sizeof(CORD),
     .align=alignof(CORD),

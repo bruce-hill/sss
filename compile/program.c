@@ -18,6 +18,64 @@
 #include "libgccjit_abbrev.h"
 #include "../SipHash/halfsiphash.h"
 
+static void bind_globals(env_t *env, sss_type_t *ns_t, gcc_lvalue_t *ns_lval, ARRAY_OF(ast_t*) statements)
+{
+    gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
+    auto ns_struct = Match(ns_t, StructType);
+
+    int64_t field_num = 0;
+    foreach (statements, _stmt, _) {
+        ast_t *stmt = *_stmt;
+      doctest_inner:
+        switch (stmt->tag) {
+        case Declare: {
+            auto decl = Match(stmt, Declare);
+            decl->is_public = true;
+            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
+            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
+            sss_type_t *t = ith(ns_struct->field_types, field_num);
+            assert(t);
+            set_binding(env, Match(decl->var, Var)->name, new(binding_t, .type=t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
+            ++field_num;
+            break;
+        }
+        case TypeDef: {
+            auto def = Match(stmt, TypeDef);
+            sss_type_t *inner_ns_t = ith(ns_struct->field_types, field_num);
+            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
+            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
+            sss_type_t *def_t = get_type_by_name(env, def->name);
+            bind_globals(get_type_env(env, def_t), inner_ns_t, lval, def->definitions);
+            ++field_num;
+            break;
+        }
+        case FunctionDef: {
+            auto def = Match(stmt, FunctionDef);
+            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
+            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
+            sss_type_t *t = ith(ns_struct->field_types, field_num);
+            assert(t);
+            set_binding(env, def->name, new(binding_t, .type=t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
+            ++field_num;
+            break;
+        }
+        case DocTest: {
+            stmt = Match(stmt, DocTest)->expr;
+            goto doctest_inner;
+        }
+        default: break;
+        }
+    }
+}
+
+static void make_module_struct(env_t *env, ast_t *ast)
+{
+    sss_type_t *ns_t = get_namespace_type(env, NULL, Match(ast, Block)->statements);
+    gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
+    gcc_lvalue_t *mod_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ns_gcc_t, "mod");
+    bind_globals(env, ns_t, mod_lval, Match(ast, Block)->statements);
+}
+
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
@@ -58,6 +116,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         gcc_new_param(ctx, NULL, gcc_type(ctx, UINT32), "seed")}, false);
     gcc_eval(main_block, NULL, gcc_callx(ctx, NULL, srand48_func, gcc_callx(ctx, NULL, arc4_rng)));
 
+    make_module_struct(env, ast);
+
     // Run the program:
     compile_statement(env, &main_block, ast);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
@@ -70,7 +130,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     }
 
     // Initialize type lvalues (should be after compiling funcs)
-    initialize_type_lvalues(env);
+    initialize_typeinfo_lvalues(env);
 
     *result = gcc_compile(ctx);
     if (*result == NULL)
@@ -81,7 +141,7 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     return main_fn;
 }
 
-void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
+void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
 
@@ -91,10 +151,10 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     struct stat file_stat;  
     stat(f->filename, &file_stat);  
-    sss_type_t *ret_type = get_file_type(env, f->filename);
-    gcc_type_t *ret_gcc_type = sss_type_to_gcc(env, ret_type);
+    sss_type_t *module_type = get_file_type(env, f->filename);
+    gcc_type_t *module_gcc_type = sss_type_to_gcc(env, module_type);
     const char *load_name = heap_strf("load__%s", get_module_name(f->filename));
-    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, ret_gcc_type, load_name, 0, NULL, 0);
+    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_get_ptr_type(module_gcc_type), load_name, 0, NULL, 0);
     gcc_block_t *check_loaded_block = gcc_new_block(load_func, fresh("check_if_loaded")),
                 *do_loading_block = gcc_new_block(load_func, fresh("do_loading")),
                 *finished_loading_block = gcc_new_block(load_func, fresh("finished_loading"));
@@ -107,19 +167,19 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Load the module:
     sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
-    gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ret_gcc_type, fresh("module"));
+    gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, module_gcc_type, fresh("module"));
     binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
     Table_str_set(env->bindings, "Module", b);
     env_t *type_env = get_type_env(env, t);
     type_env->bindings->fallback = env->bindings;
 
-    ast_t *module_ast = WrapAST(ast, TypeDef, .name="Module", .type=WrapAST(ast, Var, "Void"), .definitions=Match(ast, Block)->statements);
-    gcc_rvalue_t *val = compile_expr(env, &do_loading_block, module_ast);
-    if (val)
-        gcc_assign(do_loading_block, NULL, module_var, val);
-    gcc_jump(do_loading_block, NULL, finished_loading_block);
+    make_module_struct(env, ast);
 
-    gcc_return(finished_loading_block, NULL, gcc_rval(module_var));
+    compile_block_statement(env, &do_loading_block, ast);
+    if (do_loading_block)
+        gcc_jump(do_loading_block, NULL, finished_loading_block);
+
+    gcc_return(finished_loading_block, NULL, gcc_lvalue_address(module_var, NULL));
 
     // Actually compile the functions:
     for (int64_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
@@ -127,10 +187,6 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         ast_t *ast = (ast_t*)strtol(entry->key, NULL, 16);
         compile_function(&entry->value->env, entry->value->func, ast);
     }
-
-    *result = gcc_compile(ctx);
-    if (*result == NULL)
-        compiler_err(env, ast, "Compilation failed");
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

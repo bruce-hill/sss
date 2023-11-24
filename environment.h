@@ -32,7 +32,6 @@ typedef struct {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
     sss_type_t *type;
-    const char* sym_name;
     union {
         gcc_jit_rvalue *tag_rval;
         gcc_jit_function *func;
@@ -80,6 +79,7 @@ env_t *fresh_scope(env_t *env);
 env_t *file_scope(env_t *env);
 env_t *scope_with_type(env_t *env, sss_type_t *t);
 binding_t *get_binding(env_t *env, const char *name);
+#define set_binding(env, key, binding) Table_str_set((env)->bindings, (key), (binding))
 sss_type_t *get_type_by_name(env_t *env, const char *name);
 binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);

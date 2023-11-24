@@ -1770,7 +1770,7 @@ PARSER(parse_declaration) {
     ast_t *val = optional_ast(ctx, &pos, parse_use);
     if (!val) val = optional_ast(ctx, &pos, parse_extended_expr);
     if (!val) parser_err(ctx, pos, strchrnul(pos, '\n'), "This declaration value didn't parse");
-    return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val, .is_global=false);
+    return NewAST(ctx->file, start, pos, Declare, .var=var, .value=val, .is_public=false);
 }
 
 PARSER(parse_update) {

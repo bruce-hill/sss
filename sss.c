@@ -6,7 +6,6 @@
 #include <printf.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -46,8 +45,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
     if (verbose)
         fprintf(stderr, "\x1b[33;4;1mCompiling %s...\n\x1b[0;34;1m", f->filename);
 
-    gcc_jit_result *result;
-    compile_object_file(ctx, NULL, f, ast, tail_calls, &result);
+    compile_object_file(ctx, NULL, f, ast, tail_calls);
 
     CORD binary_name;
     int i = 0;
@@ -60,9 +58,7 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
         if (i != CORD_NOT_FOUND)
             binary_name = CORD_substr(binary_name, 0, i);
 
-        struct stat info;
-        assert(stat(f->filename, &info) != -1);
-        CORD_sprintf(&binary_name, "%r.%ld.o", binary_name, info.st_ino);
+        binary_name = CORD_cat(binary_name, ".o");
     }
 
     if (CORD_ncmp(binary_name, 0, "/", 0, 1) != 0
@@ -73,7 +69,6 @@ int compile_to_file(gcc_jit_context *ctx, sss_file_t *f, int argc, char *argv[])
     binary_name = CORD_to_char_star(binary_name);
     gcc_jit_context_compile_to_file(ctx, GCC_OUTPUT_KIND_OBJECT_FILE, binary_name);
     printf("\x1b[0;1;32mSuccessfully compiled \x1b[33m%s\x1b[32m -> \x1b[37m%s\x1b[m\n", f->relative_filename, binary_name);
-    gcc_jit_result_release(result);
 
     return 0;
 }
@@ -228,7 +223,7 @@ int run_repl(gcc_jit_context *ctx)
             }
 
             if (stmt->tag == Declare)
-                stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_global=true);
+                stmt = WrapAST(stmt, Declare, .var=Match(stmt, Declare)->var, .value=Match(stmt, Declare)->value, .is_public=true);
             stmt = WrapAST(stmt, DocTest, .expr=stmt, .skip_source=true);
             append(stmts, stmt);
         }
@@ -278,11 +273,12 @@ int run_repl(gcc_jit_context *ctx)
             for (int64_t i = 1; i <= Table_length(bindings); i++) {
                 struct {const char *key; binding_t *value;} *entry = Table_str_entry(bindings, i);
                 binding_t *b = entry->value;
-                if (!b->sym_name || Table_str_get(env->bindings, entry->key) == b)
+                if (Table_str_get(env->bindings, entry->key) == b)
                     continue;
 
                 // Update the binding so it points to the global memory:
-                void *global = gcc_jit_result_get_global(result, b->sym_name);
+                // TODO: get public value properly
+                void *global = gcc_jit_result_get_global(result, entry->key);
                 assert(global);
                 gcc_type_t *gcc_t = sss_type_to_gcc(fresh_env, b->type);
                 gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(fresh_env->ctx, gcc_get_ptr_type(gcc_t), global);
@@ -348,10 +344,10 @@ int main(int argc, char *argv[])
     if (register_printf_specifier('W', printf_ast, printf_pointer_size))
         errx(1, "Couldn't set printf specifier");
 
-    extern Type *CStringToVoidStarTable_type;
-    extern Type CString_type;
-    extern Type Memory_type;
-    Type MemoryPointer_type = {
+    extern TypeInfo *CStringToVoidStarTable_type;
+    extern TypeInfo CString_type;
+    extern TypeInfo Memory_type;
+    TypeInfo MemoryPointer_type = {
         .name="@Memory",
         .size=sizeof(void*),
         .align=alignof(void*),
@@ -361,7 +357,7 @@ int main(int argc, char *argv[])
             .pointed=&Memory_type,
         },
     };
-    CStringToVoidStarTable_type = (Type[]){{
+    CStringToVoidStarTable_type = (TypeInfo[]){{
         .name="{CString=>@Memory}",
         .size=sizeof(table_t),
         .align=alignof(table_t),

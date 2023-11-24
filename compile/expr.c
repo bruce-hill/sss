@@ -313,21 +313,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
         gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
         gcc_lvalue_t *lval;
-        const char* name = Match(decl->var, Var)->name;
-        const char* sym_name = decl->is_global ? fresh(name) : name;
-        if (decl->is_global) {
-            lval = gcc_global(env->ctx, ast_loc(env, ast), GCC_GLOBAL_EXPORTED, gcc_t, sym_name);
+        const char *name = Match(decl->var, Var)->name;
+        if (decl->is_public) {
+            binding_t *b = get_binding(env, name);
+            assert(b);
+            lval = b->lval;
         } else {
             gcc_func_t *func = gcc_block_func(*block);
-            lval = gcc_local(func, ast_loc(env, ast), gcc_t, sym_name);
+            lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
+            binding_t *clobbered = get_local_binding(env, name);
+            if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
+                compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
+                      "and I get confused if you try to redeclare the name of a namespace.");
+            Table_str_set(env->bindings, name,
+                       new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .visible_in_closures=decl->is_public));
         }
-        binding_t *clobbered = get_local_binding(env, name);
-        if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
-            compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
-                  "and I get confused if you try to redeclare the name of a namespace.");
-        Table_str_set(env->bindings, name,
-                   new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .sym_name=decl->is_global ? sym_name : NULL,
-                       .visible_in_closures=decl->is_global));
         assert(rval);
         gcc_assign(*block, ast_loc(env, ast), lval, rval);
         return gcc_rval(lval);
@@ -462,7 +462,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     target.table,
                     gcc_lvalue_address(target.key, loc),
                     gcc_lvalue_address(val_lval, loc),
-                    get_type_pointer(env, target.table_type)
+                    get_typeinfo_pointer(env, target.table_type)
                 );
                 gcc_eval(*block, loc, call);
             } else {
@@ -612,7 +612,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto fn = Match(ast, FunctionDef);
         binding_t *binding = get_binding(env, fn->name);
         assert(binding && binding->func);
-        // compile_function(env, binding->func, ast);
+        if (binding->lval)
+            gcc_assign(*block, loc, binding->lval, gcc_get_func_address(binding->func, NULL));
         return binding->rval;
     }
     case Lambda: {
@@ -836,7 +837,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             APPEND_CORD(*block, gcc_callx(
                 env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, gcc_lvalue_address(interp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                 interp->colorize ? get_binding(env, "USE_COLOR")->rval : gcc_rvalue_bool(env->ctx, false),
-                get_type_pointer(env, interp_t)));
+                get_typeinfo_pointer(env, interp_t)));
         }
         loc = ast_loc(env, ast);
         gcc_lvalue_t *char_star = gcc_local(func, loc, gcc_type(env->ctx, STRING), "string");
@@ -901,15 +902,21 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             if ((*member)->tag == Declare) {
                 auto decl = Match((*member), Declare);
                 gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
-                sss_type_t *member_t = get_type(env, decl->value);
-                assert(member_t);
-                gcc_type_t *gcc_t = sss_type_to_gcc(env, member_t);
-                const char* name = Match(decl->var, Var)->name;
-                const char* sym_name = fresh(name);
-                gcc_lvalue_t *lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, sym_name);
-                Table_str_set(env->bindings, name,
-                           new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=member_t,
-                               .sym_name=sym_name, .visible_in_closures=true));
+                const char *name = Match(decl->var, Var)->name;
+                gcc_lvalue_t *lval;
+                if (decl->is_public) {
+                    binding_t *b = get_from_namespace(env, t, name);
+                    assert(b);
+                    lval = b->lval;
+                } else {
+                    sss_type_t *member_t = get_type(env, decl->value);
+                    assert(member_t);
+                    gcc_type_t *gcc_t = sss_type_to_gcc(env, member_t);
+                    lval = gcc_global(env->ctx, ast_loc(env, (*member)), GCC_GLOBAL_INTERNAL, gcc_t, fresh(name));
+                    Table_str_set(env->bindings, name,
+                               new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=member_t,
+                                   .visible_in_closures=true));
+                }
                 assert(rval);
                 gcc_assign(*block, ast_loc(env, (*member)), lval, rval);
             } else if ((*member)->tag == TypeDef) {
@@ -1034,7 +1041,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             }
         } else {
-          non_method_fncall:
+          non_method_fncall:;
+            if (call->fn->tag == Var) {
+                binding_t *b = get_binding(env, Match(call->fn, Var)->name);
+                if (b && b->func) {
+                    fn = b->func;
+                    goto got_function;
+                }
+            }
             fn_ptr = compile_expr(env, block, call->fn);
             fn = NULL;
         }
@@ -1178,9 +1192,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         (void)get_type(env, ast); // typecheck
         sss_type_t *fielded_t = get_type(env, access->fielded);
         gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *obj_lval = gcc_local(func, loc, sss_type_to_gcc(env, fielded_t), "_fielded");
-        gcc_assign(*block, loc, obj_lval, compile_expr(env, block, access->fielded));
-        gcc_rvalue_t *obj = gcc_rval(obj_lval);
+        gcc_rvalue_t *obj;
+        if (access->fielded->tag == Var) {
+            obj = compile_expr(env, block, access->fielded);
+        } else {
+            gcc_lvalue_t *obj_lval = gcc_local(func, loc, sss_type_to_gcc(env, fielded_t), "_fielded");
+            gcc_assign(*block, loc, obj_lval, compile_expr(env, block, access->fielded));
+            obj = gcc_rval(obj_lval);
+        }
 
       get_field:
         switch (fielded_t->tag) {
@@ -1443,7 +1462,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case TypeOf: {
         auto value = Match(ast, TypeOf)->value;
         sss_type_t *t = get_type(env, value);
-        return get_type_pointer(env, t);
+        return get_typeinfo_pointer(env, t);
     }
     case SizeOf: {
         auto value = Match(ast, SizeOf)->value;
@@ -1625,7 +1644,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal,
                                              gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                              gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
-                                             get_type_pointer(env, comparison_type));
+                                             get_typeinfo_pointer(env, comparison_type));
             if (ast->tag == NotEqual)
                 return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
             else
@@ -1637,7 +1656,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                                   gcc_callx(env->ctx, loc, generic_compare,
                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                             gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
-                                            get_type_pointer(env, comparison_type)),
+                                            get_typeinfo_pointer(env, comparison_type)),
                                   gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
         }
         }
@@ -2049,7 +2068,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_cmp_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_cmp_var, loc), gcc_type(env->ctx, VOID_PTR)),
-                                                     get_type_pointer(env, comparison_t));
+                                                     get_typeinfo_pointer(env, comparison_t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
             }
@@ -2060,7 +2079,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 gcc_rvalue_t *cmp_result = gcc_callx(env->ctx, loc, get_function(env, "generic_compare"),
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs, loc), gcc_type(env->ctx, VOID_PTR)),
                                                      gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs, loc), gcc_type(env->ctx, VOID_PTR)),
-                                                     get_type_pointer(env, t));
+                                                     get_typeinfo_pointer(env, t));
                 should_choose_lhs = gcc_comparison(env->ctx, loc, cmp, cmp_result,
                                                    gcc_zero(env->ctx, gcc_type(env->ctx, INT32)));
             }
@@ -2164,7 +2183,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
 #define DOCTEST(label, t, val_ptr) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
            gcc_str(env->ctx, label), \
-           gcc_callx(env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, val_ptr, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true), get_type_pointer(env, t)), \
+           gcc_callx(env->ctx, loc, generic_cord_fn, gcc_cast(env->ctx, loc, val_ptr, gcc_type(env->ctx, VOID_PTR)), gcc_rvalue_bool(env->ctx, true), get_typeinfo_pointer(env, t)), \
            gcc_str(env->ctx, type_to_string_concise(t)), \
            use_color, \
            test->output ? gcc_str(env->ctx, test->output) : gcc_null(env->ctx, gcc_type(env->ctx, STRING)), \
@@ -2262,10 +2281,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (stat(sss_path, &sss_stat) == -1)
             compiler_err(env, ast, "I can't find the file %s", sss_path);
 
-        int64_t sss_inode = (int64_t)sss_stat.st_ino; 
-
         // TODO: compile .o file if it doesn't exist or is older than .sss file
-        const char *obj_path = heap_strf("%.*s.%ld.o", strlen(sss_path)-4, sss_path, sss_inode);
+        const char *obj_path = heap_strf("%.*s.o", strlen(sss_path)-4, sss_path);
         struct stat obj_stat;
         bool needs_compiling = (stat(obj_path, &obj_stat) == -1);
         if (!needs_compiling)
@@ -2302,7 +2319,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_file_type(env, sss_path);
         const char *load_name = heap_strf("load__%s", get_module_name(sss_path));
         gcc_func_t *load_func = gcc_new_func(
-            env->ctx, NULL, GCC_FUNCTION_IMPORTED, sss_type_to_gcc(env, t), load_name, 0, NULL, 0);
+            env->ctx, NULL, GCC_FUNCTION_IMPORTED, gcc_get_ptr_type(sss_type_to_gcc(env, t)), load_name, 0, NULL, 0);
 
         return gcc_callx(env->ctx, NULL, load_func);
     }

@@ -14,7 +14,7 @@
 #include "string.h"
 #include "types.h"
 
-public CORD Num__cord(const double *f, bool colorize, const Type *type) { 
+public CORD Num__cord(const double *f, bool colorize, const TypeInfo *type) { 
     CORD c;
     const char *units = strchrnul(type->name, '<');
     if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[33;2m%s\x1b[m", *f, units); 
@@ -22,12 +22,12 @@ public CORD Num__cord(const double *f, bool colorize, const Type *type) {
     return c; 
 } 
 
-static int32_t Num__compare(const double *x, const double *y, const Type *type) { 
+static int32_t Num__compare(const double *x, const double *y, const TypeInfo *type) { 
     (void)type;
     return (*x > *y) - (*x < *y);
 } 
 
-static bool Num__equal(const double *x, const double *y, const Type *type) { 
+static bool Num__equal(const double *x, const double *y, const TypeInfo *type) { 
     (void)type;
     return *x == *y;
 } 
@@ -60,7 +60,7 @@ public bool Num__isinf(double n) { return isinf(n); }
 public bool Num__finite(double n) { return finite(n); }
 public bool Num__isnan(double n) { return isnan(n); }
 
-public Type Num_type = {
+public TypeInfo Num_type = {
     .name="Num",
     .size=sizeof(double),
     .align=alignof(double),
@@ -72,7 +72,7 @@ public Type Num_type = {
     },
 };
 
-public CORD Num32__cord(float *f, bool colorize, const Type *type) { 
+public CORD Num32__cord(float *f, bool colorize, const TypeInfo *type) { 
     CORD c;
     const char *units = strchrnul(type->name, '<');
     if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32%s\x1b[m", *f, units);
@@ -80,12 +80,12 @@ public CORD Num32__cord(float *f, bool colorize, const Type *type) {
     return c;
 }
 
-static int32_t Num32__compare(const float *x, const float *y, const Type *type) { 
+static int32_t Num32__compare(const float *x, const float *y, const TypeInfo *type) { 
     (void)type;
     return (*x > *y) - (*x < *y);
 } 
 
-static bool Num32__equal(const float *x, const float *y, const Type *type) { 
+static bool Num32__equal(const float *x, const float *y, const TypeInfo *type) { 
     (void)type;
     return *x == *y;
 } 
@@ -122,7 +122,7 @@ public bool Num32__isinf(float n) { return isinf(n); }
 public bool Num32__finite(float n) { return finite(n); }
 public bool Num32__isnan(float n) { return isnan(n); }
 
-public Type Num32_type = {
+public TypeInfo Num32_type = {
     .name="Num32",
     .size=sizeof(float),
     .align=alignof(float),

@@ -287,7 +287,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     );
     env->bindings->fallback = env->file_bindings;
 
-    gcc_type_t *type_gcc_type = get_type_gcc_type(env);
+    gcc_type_t *type_gcc_type = get_typeinfo_gcc_type(env);
 
     // Declare types first:
     for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
@@ -299,7 +299,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
         binding_t *lval_binding = new(binding_t, .lval=type_lval, .type=t);
         Table_str_set(&env->global->type_lvals, type_to_string_concise(t), lval_binding);
-        mark_type_lvalue_initialized(env, t);
+        mark_typeinfo_lvalue_initialized(env, t);
     }
 
     // Then declare type methods:

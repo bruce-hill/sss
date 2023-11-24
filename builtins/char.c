@@ -13,7 +13,7 @@
 #include "string.h"
 #include "types.h"
 
-static CORD Char_cord(const char *c, bool colorize, const Type *type) {
+static CORD Char_cord(const char *c, bool colorize, const TypeInfo *type) {
     (void)type;
     CORD cord = 0;
     switch (*c) {
@@ -63,7 +63,7 @@ BOOLIFY(isblank)
 
 typedef bool (*char_pred_t)(char);
 
-public Type Char_type = {
+public TypeInfo Char_type = {
     .name="Char",
     .size=sizeof(char),
     .align=alignof(char),

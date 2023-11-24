@@ -14,7 +14,7 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-public uint32_t generic_hash(const void *obj, const Type *type)
+public uint32_t generic_hash(const void *obj, const TypeInfo *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_hash(obj, type);
@@ -27,7 +27,7 @@ public uint32_t generic_hash(const void *obj, const Type *type)
         uint32_t hash_values[info.members.length] = {};
         int64_t offset = 0;
         for (int64_t i = 0; i < info.members.length; i++) {
-            typedef struct {const char *name; const Type *type;} struct_member_t;
+            typedef struct {const char *name; const TypeInfo *type;} struct_member_t;
             struct_member_t *member = info.members.data + i*info.members.stride;
             if (member->type->align > 1 && (offset % member->type->align))
                 offset += member->type->align - (offset % member->type->align);
@@ -42,7 +42,7 @@ public uint32_t generic_hash(const void *obj, const Type *type)
         auto info = type->TaggedUnionInfo;
         int32_t tag = *(int32_t*)obj;
         int64_t offset = 4;
-        typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
+        typedef struct { int64_t tag; const char *name; const TypeInfo *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
             offset = MAX(offset, member->type->align);
@@ -76,14 +76,14 @@ public uint32_t generic_hash(const void *obj, const Type *type)
     }
 }
 
-public int32_t generic_compare(const void *x, const void *y, const Type *type)
+public int32_t generic_compare(const void *x, const void *y, const TypeInfo *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_compare(x, y, type);
     case TableInfo: return Table_compare(x, y, type);
     case StructInfo: {
         auto info = type->StructInfo;
-        typedef struct {const char *name; const Type *type;} struct_member_t;
+        typedef struct {const char *name; const TypeInfo *type;} struct_member_t;
         auto members = (ARRAY_OF(struct_member_t))&info.members;
         int64_t offset = 0;
         foreach (members, member, last) {
@@ -104,7 +104,7 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
             return xtag - ytag;
 
         int64_t offset = 4;
-        typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
+        typedef struct { int64_t tag; const char *name; const TypeInfo *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
             offset = MAX(offset, member->type->align);
@@ -127,14 +127,14 @@ public int32_t generic_compare(const void *x, const void *y, const Type *type)
     }
 }
 
-public bool generic_equal(const void *x, const void *y, const Type *type)
+public bool generic_equal(const void *x, const void *y, const TypeInfo *type)
 {
     switch (type->tag) {
     case ArrayInfo: return Array_equal(x, y, type);
     case TableInfo: return Table_equal(x, y, type);
     case StructInfo: {
         auto info = type->StructInfo;
-        typedef struct {const char *name; const Type *type;} struct_member_t;
+        typedef struct {const char *name; const TypeInfo *type;} struct_member_t;
         auto members = (ARRAY_OF(struct_member_t))&info.members;
         int64_t offset = 0;
         foreach (members, member, last) {
@@ -155,7 +155,7 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
             return false;
 
         int64_t offset = 4;
-        typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
+        typedef struct { int64_t tag; const char *name; const TypeInfo *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
             offset = MAX(offset, member->type->align);
@@ -178,14 +178,14 @@ public bool generic_equal(const void *x, const void *y, const Type *type)
     }
 }
 
-public CORD generic_cord(const void *obj, bool colorize, const Type *type)
+public CORD generic_cord(const void *obj, bool colorize, const TypeInfo *type)
 {
     switch (type->tag) {
     case PointerInfo: {
         auto ptr_info = type->PointerInfo;
-        static Type ptr_type = {.name="@Memory", .size=sizeof(void*), .align=alignof(void*)};
-        static Type int_type = {.name="Int", .size=sizeof(int64_t), .align=alignof(int64_t)};
-        static Type ptr_to_int_type = {
+        static TypeInfo ptr_type = {.name="@Memory", .size=sizeof(void*), .align=alignof(void*)};
+        static TypeInfo int_type = {.name="Int", .size=sizeof(int64_t), .align=alignof(int64_t)};
+        static TypeInfo ptr_to_int_type = {
             .name="{@Memory=>Int}",
             .size=sizeof(table_t),
             .align=alignof(table_t),
@@ -236,7 +236,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
         int64_t offset = 0;
         for (int64_t i = 0; i < info.members.length; i++) {
             if (i > 0) c = CORD_cat(c, ", ");
-            typedef struct {const char *name; const Type *type;} struct_member_t;
+            typedef struct {const char *name; const TypeInfo *type;} struct_member_t;
             struct_member_t *member = info.members.data + i*info.members.stride;
             if (member->type->align > 1 && (offset % member->type->align))
                 offset += member->type->align - (offset % member->type->align);
@@ -260,7 +260,7 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
         auto info = type->TaggedUnionInfo;
         int32_t tag = *(int32_t*)obj;
         int64_t offset = 4;
-        typedef struct { int64_t tag; const char *name; const Type *type;} tu_member_t;
+        typedef struct { int64_t tag; const char *name; const TypeInfo *type;} tu_member_t;
         for (int64_t i = 0; i < info.members.length; i++) {
             tu_member_t *member = info.members.data + i*info.members.stride;
             offset = MAX(offset, member->type->align);
@@ -308,26 +308,26 @@ public CORD generic_cord(const void *obj, bool colorize, const Type *type)
     }
 }
 
-public CORD Type__cord(Type **t, bool colorize, const Type *typetype)
+public CORD Type__cord(void *type_namespace, bool colorize, const TypeInfo *type)
 {
-    (void)t;
+    (void)type_namespace;
     if (!colorize)
-        return CORD_from_char_star(typetype->name);
+        return CORD_from_char_star(type->name);
     CORD c;
-    CORD_sprintf(&c, "\x1b[36;1m%s\x1b[m", typetype->name);
+    CORD_sprintf(&c, "\x1b[36;1m%s\x1b[m", type->name);
     return c;
 }
 
-public Type Type_type = {
-    .name="Type",
+public TypeInfo Type_type = {
+    .name="TypeInfo",
     .tag=CustomInfo,
     .CustomInfo={.cord=(void*)Type__cord},
 };
 
-public Type Void_type = {.name="Void", .size=0, .align=0};
-public Type Abort_type = {.name="Abort", .size=0, .align=0};
+public TypeInfo Void_type = {.name="Void", .size=0, .align=0};
+public TypeInfo Abort_type = {.name="Abort", .size=0, .align=0};
 
-public CORD Func__cord(const void *fn, bool colorize, const Type *type)
+public CORD Func__cord(const void *fn, bool colorize, const TypeInfo *type)
 {
     (void)fn;
     CORD c = type->name;

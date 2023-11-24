@@ -693,7 +693,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             case Declare: {
                 auto decl = Match(stmt, Declare);
                 sss_type_t *t = get_type(env, decl->value);
-                Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+                Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_public));
                 break;
             }
             default:
@@ -727,7 +727,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Use: {
         const char *path = Match(ast, Use)->path;
-        return get_file_type(env, path);
+        return Type(PointerType, .pointed=get_file_type(env, path));
     }
     case Return: case Fail: case Stop: case Skip: {
         return Type(AbortType);
@@ -1297,7 +1297,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                      type_to_string(t));
 }
 
-sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
+sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(ast_t*) statements)
 {
     env = fresh_scope(env);
 
@@ -1316,13 +1316,20 @@ sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
 
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
+    if (typedef_type) {
+        append(field_names, "__info");
+        append(field_types, typedef_type);
+    }
     for (int64_t i = 0, len = LENGTH(statements); i < len; i++) {
         ast_t *stmt = ith(statements, i);
+      doctest_inner:
         switch (stmt->tag) {
         case Declare: {
             auto decl = Match(stmt, Declare);
             sss_type_t *t = get_type(env, decl->value);
-            Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_global));
+            if (Table_str_get_raw(env->bindings, Match(decl->var, Var)->name))
+                compiler_err(env, stmt, "This variable declaration is overriding a variable with the same name earlier in the file");
+            Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_public));
             append(field_names, Match(decl->var, Var)->name);
             append(field_types, t);
             break;
@@ -1330,8 +1337,9 @@ sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
             append(field_names, def->name);
-            sss_type_t *t = get_namespace_type(env, def->definitions);
-            append(field_types, t);
+            sss_type_t *def_t = get_type_by_name(env, def->name);
+            sss_type_t *ns_t = get_namespace_type(env, def_t, def->definitions);
+            append(field_types, ns_t);
             break;
         }
         case FunctionDef: {
@@ -1340,6 +1348,10 @@ sss_type_t *get_namespace_type(env_t *env, ARRAY_OF(ast_t*) statements)
             sss_type_t *t = get_binding(env, def->name)->type;
             append(field_types, t);
             break;
+        }
+        case DocTest: {
+            stmt = Match(stmt, DocTest)->expr;
+            goto doctest_inner;
         }
         default:
             // TODO: bind structs/tagged unions in block typechecking
@@ -1378,7 +1390,7 @@ sss_type_t *get_file_type(env_t *env, const char *path)
 
     sss_file_t *f = sss_load_file(sss_path);
     ast_t *ast = parse_file(f, env->on_err);
-    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, Match(ast, Block)->statements));
+    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, NULL, Match(ast, Block)->statements));
     Table_str_set(&env->global->module_types, path, type);
     return type;
 }

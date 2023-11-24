@@ -140,9 +140,9 @@ public void Array_remove(array_t *arr, int64_t index, int64_t count, int64_t ite
     arr->length -= count;
 }
 
-public void Array_sort(array_t *arr, const Type *type)
+public void Array_sort(array_t *arr, const TypeInfo *type)
 {
-    const Type *item_type = type->ArrayInfo.item;
+    const TypeInfo *item_type = type->ArrayInfo.item;
     int64_t item_size = item_type->size;
     if (item_type->align > 1 && item_size % item_type->align)
         item_size += item_type->align - (item_size % item_type->align); // padding
@@ -167,9 +167,9 @@ public void Array_shuffle(array_t *arr, int64_t item_size)
     }
 }
 
-public array_t Array_slice(array_t *array, range_t range, bool readonly, const Type *type)
+public array_t Array_slice(array_t *array, range_t range, bool readonly, const TypeInfo *type)
 {
-    Type *item = type->ArrayInfo.item;
+    TypeInfo *item = type->ArrayInfo.item;
     int64_t item_size = item->size;
 
     if (range.stride > INT16_MAX)
@@ -227,9 +227,9 @@ public array_t Array_slice(array_t *array, range_t range, bool readonly, const T
     };
 }
 
-public bool Array_contains(array_t array, void *item, const Type *type)
+public bool Array_contains(array_t array, void *item, const TypeInfo *type)
 {
-    Type *item_type = type->ArrayInfo.item;
+    TypeInfo *item_type = type->ArrayInfo.item;
     for (int64_t i = 0; i < array.length; i++)
         if (generic_equal(array.data + i*array.stride, item, item_type))
             return true;
@@ -241,13 +241,13 @@ public void Array_clear(array_t *array)
     *array = (array_t){.data=0, .length=0};
 }
 
-public int32_t Array_compare(const array_t *x, const array_t *y, const Type *type)
+public int32_t Array_compare(const array_t *x, const array_t *y, const TypeInfo *type)
 {
     // Early out for arrays with the same data, e.g. two copies of the same array:
     if (x->data == y->data && x->stride == y->stride)
         return (x->length > y->length) - (x->length < y->length);
 
-    Type *item = type->ArrayInfo.item;
+    TypeInfo *item = type->ArrayInfo.item;
     if (item->tag == PointerInfo || (item->tag == CustomInfo && item->CustomInfo.compare == NULL)) { // data comparison
         int64_t item_size = item->size;
         if (x->stride == (int32_t)item_size && y->stride == (int32_t)item_size) {
@@ -268,14 +268,14 @@ public int32_t Array_compare(const array_t *x, const array_t *y, const Type *typ
     return (x->length > y->length) - (x->length < y->length);
 }
 
-public bool Array_equal(const array_t *x, const array_t *y, const Type *type)
+public bool Array_equal(const array_t *x, const array_t *y, const TypeInfo *type)
 {
     return (Array_compare(x, y, type) == 0);
 }
 
-public CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
+public CORD Array_cord(const array_t *arr, bool colorize, const TypeInfo *type)
 {
-    Type *item_type = type->ArrayInfo.item;
+    TypeInfo *item_type = type->ArrayInfo.item;
     CORD c = "[";
     for (int64_t i = 0; i < arr->length; i++) {
         if (i > 0)
@@ -287,14 +287,14 @@ public CORD Array_cord(const array_t *arr, bool colorize, const Type *type)
     return c;
 }
 
-public uint32_t Array_hash(const array_t *arr, const Type *type)
+public uint32_t Array_hash(const array_t *arr, const TypeInfo *type)
 {
     // Array hash is calculated as a rolling, compacting hash of the length of the array, followed by
     // the hashes of its items (or the items themselves if they're small plain data)
     // In other words, it reads in a chunk of items or item hashes, then when it fills up the chunk,
     // hashes it down to a single item to start the next chunk. This repeats until the end, when it
     // hashes the last chunk down to a uint32_t.
-    Type *item = type->ArrayInfo.item;
+    TypeInfo *item = type->ArrayInfo.item;
     if (item->tag == PointerInfo || (item->tag == CustomInfo && item->CustomInfo.hash == NULL)) { // Raw data hash
         int64_t item_size = item->size;
         uint8_t hash_batch[4 + 8*item_size] = {};

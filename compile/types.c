@@ -33,7 +33,7 @@ static gcc_type_t *type_gcc_type = NULL, *data_union = NULL,
                   *struct_member_type = NULL, *struct_member_array_type = NULL,
                   *tu_member_type = NULL, *tu_member_array_type = NULL;
 
-gcc_type_t *get_type_gcc_type(env_t *env)
+gcc_type_t *get_typeinfo_gcc_type(env_t *env)
 {
     if (type_gcc_type != NULL)
         return type_gcc_type;
@@ -97,39 +97,39 @@ gcc_type_t *get_type_gcc_type(env_t *env)
     return type_gcc_type;
 }
 
-static gcc_lvalue_t *get_type_lvalue(env_t *env, sss_type_t *t)
+static gcc_lvalue_t *get_typeinfo_lvalue(env_t *env, sss_type_t *t)
 {
     const char *key = type_to_string_concise(t);
     binding_t *b = Table_str_get(&env->global->type_lvals, key);
     if (b) return b->lval;
-    gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, get_type_gcc_type(env), fresh("Type"));
+    gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, get_typeinfo_gcc_type(env), fresh("Type"));
     b = new(binding_t, .lval=lval, .type=t);
     Table_str_set(&env->global->type_lvals, key, b);
     return lval;
 }
 
-gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *t)
+gcc_rvalue_t *get_typeinfo_pointer(env_t *env, sss_type_t *t)
 {
     const char *key = type_to_string_concise(t);
     binding_t *b = Table_str_get(&env->global->type_lvals, key);
-    gcc_lvalue_t *lval = b ? b->lval : get_type_lvalue(env, t);
+    gcc_lvalue_t *lval = b ? b->lval : get_typeinfo_lvalue(env, t);
     return gcc_lvalue_address(lval, NULL);
 }
 
-static table_t initialized_type_lvals = {0};
-void mark_type_lvalue_initialized(env_t *env, sss_type_t *t)
+static table_t initialized_typeinfo_lvals = {0};
+void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t)
 {
     (void)env;
-    Table_str_set(&initialized_type_lvals, type_to_string_concise(t), t);
+    Table_str_set(&initialized_typeinfo_lvals, type_to_string_concise(t), t);
 }
 
 static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 {
-    if (Table_str_get(&initialized_type_lvals, type_to_string_concise(t)))
+    if (Table_str_get(&initialized_typeinfo_lvals, type_to_string_concise(t)))
         return;
-    mark_type_lvalue_initialized(env, t);
+    mark_typeinfo_lvalue_initialized(env, t);
 
-    gcc_lvalue_t *lval = get_type_lvalue(env, t);
+    gcc_lvalue_t *lval = get_typeinfo_lvalue(env, t);
 #define TAG_RVAL 3
 #define INFO_RVAL 4
     gcc_rvalue_t *type_rvalues[5] = {
@@ -164,7 +164,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 #undef FUNC_PTR
             gcc_global_set_initializer_rvalue(
                 lval,
-                gcc_struct_constructor(env->ctx, NULL, get_type_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
+                gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
                                        type_struct_fields, type_rvalues));
             return;
         }
@@ -173,15 +173,15 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
     switch (t->tag) {
     case ArrayType: {
         sss_type_t *item_type = Match(t, ArrayType)->item_type;
-        SET_INFO(ArrayInfo, array_info, array_info_fields, get_type_pointer(env, item_type));
+        SET_INFO(ArrayInfo, array_info, array_info_fields, get_typeinfo_pointer(env, item_type));
         break;
     }
     case TableType: {
         sss_type_t *key_type = Match(t, TableType)->key_type;
         sss_type_t *value_type = Match(t, TableType)->value_type;
         SET_INFO(TableInfo, table_info, table_info_fields,
-                 get_type_pointer(env, key_type),
-                 get_type_pointer(env, value_type),
+                 get_typeinfo_pointer(env, key_type),
+                 get_typeinfo_pointer(env, value_type),
                  gcc_rvalue_int64(env->ctx, gcc_sizeof(env, table_entry_type(t))),
                  table_entry_value_offset(env, t),
         );
@@ -192,7 +192,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
         CORD sigil = ptr->is_stack ? "&" : "@";
         SET_INFO(PointerInfo, pointer_info, pointer_info_fields,
                  gcc_str(env->ctx, CORD_to_const_char_star(sigil)),
-                 get_type_pointer(env, ptr->pointed),
+                 get_typeinfo_pointer(env, ptr->pointed),
                  gcc_rvalue_bool(env->ctx, can_have_cycles(t)),
         );
         break;
@@ -210,7 +210,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                     gcc_get_field(gcc_type_as_struct(struct_member_type), 1),
                 }, (gcc_rvalue_t*[]){
                     gcc_str(env->ctx, name),
-                    get_type_pointer(env, ith(info->field_types, i)),
+                    get_typeinfo_pointer(env, ith(info->field_types, i)),
                 });
         }
 
@@ -248,7 +248,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                 }, (gcc_rvalue_t*[]){
                     gcc_rvalue_int32(env->ctx, member.tag_value),
                     gcc_str(env->ctx, member.name),
-                    member.type ? get_type_pointer(env, member.type) : gcc_null(env->ctx, gcc_get_ptr_type(get_type_gcc_type(env))),
+                    member.type ? get_typeinfo_pointer(env, member.type) : gcc_null(env->ctx, gcc_get_ptr_type(get_typeinfo_gcc_type(env))),
                 });
         }
 
@@ -317,10 +317,10 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 
     gcc_global_set_initializer_rvalue(
         lval,
-        gcc_struct_constructor(env->ctx, NULL, get_type_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+        gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
 }
 
-void initialize_type_lvalues(env_t *env)
+void initialize_typeinfo_lvalues(env_t *env)
 {
     for (int64_t i = 1; i <= Table_length(&env->global->type_lvals); i++) {
         struct {const char *key; binding_t *binding; } *entry = Table_entry(&env->global->type_lvals, i);

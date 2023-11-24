@@ -17,14 +17,14 @@ extern const void *SSS_HASH_VECTOR;
 
 #define DEFINE_INT_TYPE(c_type, KindOfInt, fmt, min_val, max_val)\
     public c_type KindOfInt##__min = min_val, KindOfInt##__max = max_val; \
-    public CORD KindOfInt ## __cord(const c_type *i, bool colorize, const Type *type) { \
+    public CORD KindOfInt ## __cord(const c_type *i, bool colorize, const TypeInfo *type) { \
         const char *units = strchrnul(type->name, '<'); \
         CORD c; \
         if (colorize) CORD_sprintf(&c, "\x1b[35m%"fmt"\x1b[33;2m%s\x1b[m", *i, units); \
         else CORD_sprintf(&c, "%"fmt"%s", *i, units); \
         return c; \
     } \
-    public int32_t KindOfInt ## __compare(const c_type *x, const c_type *y, const Type *type) { \
+    public int32_t KindOfInt ## __compare(const c_type *x, const c_type *y, const TypeInfo *type) { \
         (void)type; \
         return (*x > *y) - (*x < *y); \
     } \
@@ -57,7 +57,7 @@ extern const void *SSS_HASH_VECTOR;
         uint32_t r = arc4random_uniform((uint32_t)range); \
         return min + (c_type)r; \
     } \
-    public Type KindOfInt##_type = { \
+    public TypeInfo KindOfInt##_type = { \
         .name=#KindOfInt, \
         .size=sizeof(c_type), \
         .align=alignof(c_type), \

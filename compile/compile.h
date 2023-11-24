@@ -66,7 +66,7 @@ gcc_rvalue_t *pointer_offset(env_t *env, gcc_type_t *ptr_type, gcc_rvalue_t *ptr
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result);
-void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result);
+void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls);
 
 // ============================== expr.c ================================
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
@@ -132,9 +132,9 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
 const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);
 
 // ============================== types.c ===============================
-gcc_rvalue_t *get_type_pointer(env_t *env, sss_type_t *type);
-gcc_type_t *get_type_gcc_type(env_t *env);
-void mark_type_lvalue_initialized(env_t *env, sss_type_t *t);
-void initialize_type_lvalues(env_t *env);
+gcc_rvalue_t *get_typeinfo_pointer(env_t *env, sss_type_t *type);
+gcc_type_t *get_typeinfo_gcc_type(env_t *env);
+void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t);
+void initialize_typeinfo_lvalues(env_t *env);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

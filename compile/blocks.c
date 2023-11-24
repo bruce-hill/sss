@@ -62,11 +62,27 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
 
-        gcc_rvalue_t *type_ptr = get_type_pointer(env, t);
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .rval=type_ptr, .visible_in_closures=true);
+        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
         Table_str_set(env->bindings, name, b);
+
         env_t *type_env = get_type_env(env, t);
         type_env->bindings->fallback = env->bindings;
+
+        // Create a namespace struct:
+        sss_type_t *namespace_t = get_namespace_type(env, t, definitions);
+        gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, namespace_t);
+        binding_t *ns_binding = get_binding(env, name);
+        auto ns_struct = Match(base_variant(namespace_t), StructType);
+        for (int64_t i = 0; ns_struct->field_names && i < LENGTH(ns_struct->field_types); i++) {
+            const char *field_name = ith(ns_struct->field_names, i);
+            sss_type_t *field_t = ith(ns_struct->field_types, i);
+            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), i);
+            assert(field);
+            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_binding->lval, NULL, field);
+            Table_str_set(type_env->bindings, field_name,
+                          new(binding_t, .type=field_t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
+        }
+
         foreach (definitions, def, _)
             predeclare_def_types(type_env, *def, lazy);
     } else if (def->tag == UnitDef) {
@@ -138,10 +154,8 @@ void populate_def_members(env_t *env, ast_t *def)
 {
     if (def->tag == TypeDef) {
         const char *name = Match(def, TypeDef)->name;
-        binding_t *binding = get_binding(env, name);
-        assert(binding && binding->type->tag == TypeType);
-
-        sss_type_t *t = Match(binding->type, TypeType)->type;
+        sss_type_t *t = get_type_by_name(env, name);
+        assert(t);
         env_t *inner_env = get_type_env(env, t);
         inner_env->bindings->fallback = env->bindings;
 
@@ -203,10 +217,15 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
         gcc_func_t *func = get_function_def(env, def, fresh(fndef->name));
-        binding_t *b =  new(binding_t, .type=get_type(env, def),
-                            .func=func, .rval=gcc_get_func_address(func, NULL),
-                            .visible_in_closures=true);
-        Table_str_set(env->file_bindings, fndef->name, b);
+        binding_t *b = get_binding(env, fndef->name);
+        if (b) {
+            b->func = func;
+        } else {
+            binding_t *b = new(binding_t, .type=get_type(env, def),
+                               .func=func, .rval=gcc_get_func_address(func, NULL),
+                               .visible_in_closures=true);
+            Table_str_set(env->file_bindings, fndef->name, b);
+        }
     } else if (def->tag == TypeDef) {
         binding_t *b = get_binding(env, Match(def, TypeDef)->name);
         sss_type_t *t = Match(b->type, TypeType)->type;

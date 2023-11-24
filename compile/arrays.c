@@ -223,7 +223,7 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
         gcc_lvalue_address(arr_var, loc),
         range_val,
         gcc_rvalue_bool(env->ctx, (access == ACCESS_READ) || !env->should_mark_cow),
-        get_type_pointer(env, arr_t));
+        get_typeinfo_pointer(env, arr_t));
 }
 
 gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, const char *field_name, access_type_e access)

@@ -6,14 +6,14 @@
 #include "datatypes.h"
 #include "string.h"
 
-struct Type;
+struct TypeInfo;
 
-typedef uint32_t (*hash_fn_t)(const void*, const struct Type*);
-typedef int32_t (*compare_fn_t)(const void*, const void*, const struct Type*);
-typedef bool (*equal_fn_t)(const void*, const void*, const struct Type*);
-typedef CORD (*cord_fn_t)(const void*, bool, const struct Type*);
+typedef uint32_t (*hash_fn_t)(const void*, const struct TypeInfo*);
+typedef int32_t (*compare_fn_t)(const void*, const void*, const struct TypeInfo*);
+typedef bool (*equal_fn_t)(const void*, const void*, const struct TypeInfo*);
+typedef CORD (*cord_fn_t)(const void*, bool, const struct TypeInfo*);
 
-typedef struct Type {
+typedef struct TypeInfo {
     const char *name;
     int64_t size, align;
     struct { // Anonymous tagged union for convenience 
@@ -27,14 +27,14 @@ typedef struct Type {
             } CustomInfo;
             struct {
                 const char *sigil;
-                struct Type *pointed;
+                struct TypeInfo *pointed;
                 bool cyclic;
             } PointerInfo;
             struct {
-                struct Type *item;
+                struct TypeInfo *item;
             } ArrayInfo;
             struct {
-                struct Type *key, *value;
+                struct TypeInfo *key, *value;
                 int64_t entry_size, value_offset;
             } TableInfo;
             struct {
@@ -45,11 +45,11 @@ typedef struct Type {
             } TaggedUnionInfo;
         };
     };
-} Type;
+} TypeInfo;
 
-uint32_t generic_hash(const void *obj, const Type *type);
-int32_t generic_compare(const void *x, const void *y, const Type *type);
-bool generic_equal(const void *x, const void *y, const Type *type);
-CORD generic_cord(const void *obj, bool colorize, const Type *type);
+uint32_t generic_hash(const void *obj, const TypeInfo *type);
+int32_t generic_compare(const void *x, const void *y, const TypeInfo *type);
+bool generic_equal(const void *x, const void *y, const TypeInfo *type);
+CORD generic_cord(const void *obj, bool colorize, const TypeInfo *type);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

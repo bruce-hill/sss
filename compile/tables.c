@@ -55,17 +55,17 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_assign(*block, NULL, key_lval, key_val);
 
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
-    gcc_rvalue_t *type_ptr = get_type_pointer(env, t);
+    gcc_rvalue_t *typeinfo_ptr = get_typeinfo_pointer(env, t);
     if (autocreate) {
         gcc_func_t *set_fn = get_from_namespace(env, t, "reserve")->func;
         gcc_assign(*block, NULL, dest,
                    gcc_callx(env->ctx, NULL, set_fn, table, gcc_lvalue_address(key_lval, NULL),
-                             gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t)), type_ptr));
+                             gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t)), typeinfo_ptr));
         return gcc_rvalue_dereference(gcc_rval(dest), NULL);
     } else {
         gcc_func_t *get_raw_fn = get_from_namespace(env, t, "get_raw")->func;
         gcc_assign(*block, NULL, dest,
-                   gcc_callx(env->ctx, NULL, get_raw_fn, table, gcc_lvalue_address(key_lval, NULL), type_ptr));
+                   gcc_callx(env->ctx, NULL, get_raw_fn, table, gcc_lvalue_address(key_lval, NULL), typeinfo_ptr));
         gcc_block_t *if_missing = gcc_new_block(func, fresh("if_missing")),
                     *done = gcc_new_block(func, fresh("done"));
         gcc_jump_condition(*block, NULL, gcc_comparison(env->ctx, NULL, GCC_COMPARISON_EQ, gcc_rval(dest), gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t))),
@@ -116,7 +116,7 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
                                      info->table_ptr,
                                      gcc_lvalue_address(key_lval, NULL),
                                      gcc_lvalue_address(value_lval, NULL),
-                                     get_type_pointer(env, info->table_type)));
+                                     get_typeinfo_pointer(env, info->table_type)));
 }
 
 // Returns an optional pointer to a value
@@ -153,7 +153,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
         env->ctx, loc, get_fn_binding->func,
         gcc_lvalue_address(table_var, loc),
         gcc_lvalue_address(key_lval, loc),
-        get_type_pointer(env, table_t));
+        get_typeinfo_pointer(env, table_t));
     gcc_type_t *val_ptr_gcc_t = gcc_get_ptr_type(sss_type_to_gcc(env, value_t));
     val_ptr = gcc_cast(env->ctx, loc, val_ptr, val_ptr_gcc_t);
 
