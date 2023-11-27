@@ -41,8 +41,6 @@
 
 #define GET_ENTRY(t, i) ((t)->entries.data + (t)->entries.stride*(i))
 
-#define memcpy(dest, src, size) ({ FILE *f = fopen("log.txt", "a"); fprintf(f, "%s:%d Writing to %p\n", __FILE__, __LINE__, dest); fclose(f); memcpy(dest, src, size); })
-
 extern const void *SSS_HASH_VECTOR;
 
 TypeInfo *CStringToVoidStarTable_type;
