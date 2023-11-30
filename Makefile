@@ -40,6 +40,9 @@ $(LIBFILE): libsss/list.o libsss/utils.o libsss/string.o libsss/hashmap.o libsss
 sss: $(OBJFILES) $(HFILES) $(LIBFILE) sss.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) sss.c
 
+SipHash/halfsiphash.c:
+	git submodule update --init --recursive
+
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 
