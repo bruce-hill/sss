@@ -44,6 +44,9 @@ $(LIBFILE): $(BUILTIN_OBJFILES) builtins/builtins.o SipHash/halfsiphash.o
 sss: $(OBJFILES) $(BUILTIN_OBJFILES) $(HFILES) $(LIBFILE) sss.c
 	$(CC) $(ALL_FLAGS) $(LIBS) $(LDFLAGS) -o $@ $(OBJFILES) $(BUILTIN_OBJFILES) sss.c
 
+SipHash/halfsiphash.c:
+	git submodule update --init --recursive
+
 %.o: %.c $(HFILES)
 	$(CC) -c $(ALL_FLAGS) -o $@ $<
 

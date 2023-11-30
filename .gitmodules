@@ -1,0 +1,3 @@
+[submodule "SipHash"]
+	path = SipHash
+	url = https://github.com/veorq/SipHash
