@@ -207,7 +207,7 @@ public CORD generic_cord(const void *obj, bool colorize, const TypeInfo *type)
             int64_t *found = Table_reserve(current_recursion, obj, NULL, &ptr_to_int_type);
             if (*found) {
                 CORD_sprintf(&c, colorize ? "\x1b[34;1m%s%s#%ld\x1b[m" : "%s%s#%ld",
-                             ptr_info.sigil, ptr_info.pointed->name, *found);
+                             ptr_info.sigil, ptr_info.pointed ? ptr_info.pointed->name : "", *found);
                 goto done;
             } else {
                 *found = Table_length(current_recursion);
@@ -216,10 +216,10 @@ public CORD generic_cord(const void *obj, bool colorize, const TypeInfo *type)
 
         void *ptr = *(void**)obj;
         if (ptr == NULL) {
-            CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed->name);
+            CORD_sprintf(&c, colorize ? "\x1b[34;1m!%s\x1b[m" : "!%s", ptr_info.pointed ? ptr_info.pointed->name : "");
         } else {
             CORD_sprintf(&c, colorize ? "\x1b[34;1m%s\x1b[m%r" : "%s%r",
-                         ptr_info.sigil, generic_cord(ptr, colorize, ptr_info.pointed));
+                         ptr_info.sigil, ptr_info.pointed ? generic_cord(ptr, colorize, ptr_info.pointed) : "???");
         }
 
       done:;
@@ -318,14 +318,22 @@ public CORD Type__cord(void *type_namespace, bool colorize, const TypeInfo *type
     return c;
 }
 
-public TypeInfo Type_type = {
-    .name="TypeInfo",
-    .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Type__cord},
+public struct {
+    TypeInfo type;
+} TypeInfo_type = {
+    .type={
+        .name="TypeInfo",
+        .tag=CustomInfo,
+        .CustomInfo={.cord=(void*)Type__cord},
+    },
 };
 
-public TypeInfo Void_type = {.name="Void", .size=0, .align=0};
-public TypeInfo Abort_type = {.name="Abort", .size=0, .align=0};
+public struct {
+    TypeInfo type;
+} Void_type = {.type={.name="Void", .size=0, .align=0}};
+public struct {
+    TypeInfo type;
+} Abort_type = {.type={.name="Abort", .size=0, .align=0}};
 
 public CORD Func__cord(const void *fn, bool colorize, const TypeInfo *type)
 {

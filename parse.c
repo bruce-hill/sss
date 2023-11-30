@@ -44,10 +44,10 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "typeof", "then", "struct", "stop", "skip",
+    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
-    "and", "alias", "_mix_", "_min_", "_max_",
+    "and", "alias", "_typeinfo_", "_mix_", "_min_", "_max_",
     NULL,
 };
 
@@ -529,23 +529,23 @@ PARSER(parse_pointer_type) {
         return NULL;
 
     spaces(&pos);
-    bool is_readonly = match(&pos, "(read-only)");
+    bool is_readonly = match(&pos, "(readonly)");
     spaces(&pos);
     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
                              "I couldn't parse a pointer type after this point");
     return NewAST(ctx->file, start, pos, TypePointer, .pointed=type, .is_optional=optional, .is_stack=is_stack, .is_readonly=is_readonly);
 }
 
-PARSER(parse_type_type) {
-    const char *start = pos;
-    if (!match_word(&pos, "Type")) return NULL;
-    spaces(&pos);
-    if (!match(&pos, "(")) return NULL;
-    ast_t *type = expect_ast(ctx, start, &pos, parse_type,
-                             "I couldn't parse a pointer type after this point");
-    expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
-    return NewAST(ctx->file, start, pos, TypeTypeAST, .type=type);
-}
+// PARSER(parse_type_type) {
+//     const char *start = pos;
+//     if (!match_word(&pos, "Type")) return NULL;
+//     spaces(&pos);
+//     if (!match(&pos, "(")) return NULL;
+//     ast_t *type = expect_ast(ctx, start, &pos, parse_type,
+//                              "I couldn't parse a pointer type after this point");
+//     expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this type");
+//     return NewAST(ctx->file, start, pos, TypeTypeAST, .type=type);
+// }
 
 PARSER(parse_type_name) {
     const char *start = pos;
@@ -571,7 +571,7 @@ PARSER(parse_type) {
     bool success = (false
         || (type=parse_enum_type(ctx, pos))
         || (type=parse_pointer_type(ctx, pos))
-        || (type=parse_type_type(ctx, pos))
+        // || (type=parse_type_type(ctx, pos))
         || (type=parse_array_type(ctx, pos))
         || (type=parse_table_type(ctx, pos))
         || (type=parse_struct_type(ctx, pos))
@@ -1180,7 +1180,7 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
 #define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@", false)
 #define parse_stack_reference(...) parse_unary(__VA_ARGS__, StackReference, "&", false)
 #define parse_not(...) parse_unary(__VA_ARGS__, Not, "not", true)
-#define parse_typeof(...) parse_unary(__VA_ARGS__, TypeOf, "typeof", true)
+#define parse_typeinfo(...) parse_unary(__VA_ARGS__, GetTypeInfo, "_typeinfo_", true)
 #define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof", true)
 
 PARSER(parse_wildcard) {
@@ -1487,7 +1487,7 @@ PARSER(parse_term_no_suffix) {
         || (term=parse_stop(ctx, pos))
         || (term=parse_return(ctx, pos))
         || (term=parse_bitcast(ctx, pos))
-        || (term=parse_typeof(ctx, pos))
+        || (term=parse_typeinfo(ctx, pos))
         || (term=parse_sizeof(ctx, pos))
         || (term=parse_not(ctx, pos))
         || (term=parse_extern(ctx, pos))

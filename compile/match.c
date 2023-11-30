@@ -91,10 +91,7 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         if (base_variant(t)->tag != StructType) {
             compiler_err(env, pattern, "This is a struct pattern, but you're attempting to match it against a non-struct value with type %T", t);
         } else if (pat_struct->type) {
-            sss_type_t *pat_t = get_type(env, pat_struct->type);
-            if (pat_t->tag != TypeType)
-                compiler_err(env, pat_struct->type, "This is not a valid struct type");
-            pat_t = Match(pat_t, TypeType)->type;
+            sss_type_t *pat_t = parse_type_ast(env, pat_struct->type);
             if (!type_eq(t, pat_t))
                 compiler_err(env, pattern, "This pattern is a %T, but you're attempting to match it against a value with type %T", pat_t, t);
         } else if (!streq(Match(base_variant(t), StructType)->units, pat_struct->units)) {

@@ -29,7 +29,7 @@ typedef enum {
     Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
     In, NotIn,
     Not, Negative,
-    TypeOf, SizeOf,
+    GetTypeInfo, SizeOf,
     HeapAllocate, StackReference,
     Array, Table, TableEntry,
     FunctionDef, Lambda,
@@ -42,7 +42,7 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer,
-    TypeMeasure, TypeTypeAST,
+    TypeMeasure,
     TypeTaggedUnion,
     Cast, Bitcast,
     Struct,
@@ -136,7 +136,7 @@ struct ast_s {
         } Min, Max, Mix;
         struct {
             ast_t *value;
-        } Not, Negative, TypeOf, SizeOf, HeapAllocate, StackReference;
+        } Not, Negative, GetTypeInfo, SizeOf, HeapAllocate, StackReference;
         struct {
             ast_t *type;
             ARRAY_OF(ast_t*) items;

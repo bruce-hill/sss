@@ -43,7 +43,40 @@
 
 extern const void *SSS_HASH_VECTOR;
 
-TypeInfo *CStringToVoidStarTable_type;
+extern CORD CString_cord(const char **s, bool colorize, const TypeInfo *type);
+extern uint32_t CString_hash(const char **s, const TypeInfo *type);
+extern uint32_t CString_compare(const char **x, const char **y, const TypeInfo *type);
+static TypeInfo CString_typeinfo = {
+    .name="CString",
+    .size=sizeof(char*),
+    .align=alignof(char*),
+    .tag=CustomInfo,
+    .CustomInfo={
+        .cord=(void*)CString_cord,
+        .hash=(void*)CString_hash,
+        .compare=(void*)CString_compare,
+    },
+};
+
+TypeInfo MemoryPointer_typeinfo = {
+    .name="@Memory",
+    .size=sizeof(void*),
+    .align=alignof(void*),
+    .tag=PointerInfo,
+    .PointerInfo={
+        .sigil="@",
+        .pointed=NULL,
+    },
+};
+
+TypeInfo CStringToVoidStarTable_type = {
+    .name="{CString=>@Memory}",
+    .size=sizeof(table_t),
+    .align=alignof(table_t),
+    .tag=TableInfo,
+    .TableInfo={.key=&CString_typeinfo,.value=&MemoryPointer_typeinfo,
+        .entry_size=16, .value_offset=8},
+};
 
 static inline void hshow(const table_t *t)
 {
@@ -513,29 +546,29 @@ public table_t Table_from_entries(array_t entries, const TypeInfo *type)
 
 void *Table_str_get(const table_t *t, const char *key)
 {
-    void **ret = Table_get(t, &key, CStringToVoidStarTable_type);
+    void **ret = Table_get(t, &key, &CStringToVoidStarTable_type);
     return ret ? *ret : NULL;
 }
 
 void *Table_str_get_raw(const table_t *t, const char *key)
 {
-    void **ret = Table_get_raw(t, &key, CStringToVoidStarTable_type);
+    void **ret = Table_get_raw(t, &key, &CStringToVoidStarTable_type);
     return ret ? *ret : NULL;
 }
 
 void *Table_str_reserve(table_t *t, const char *key, const void *value)
 {
-    return Table_reserve(t, &key, &value, CStringToVoidStarTable_type);
+    return Table_reserve(t, &key, &value, &CStringToVoidStarTable_type);
 }
 
 void Table_str_set(table_t *t, const char *key, const void *value)
 {
-    Table_set(t, &key, &value, CStringToVoidStarTable_type);
+    Table_set(t, &key, &value, &CStringToVoidStarTable_type);
 }
 
 void Table_str_remove(table_t *t, const char *key)
 {
-    return Table_remove(t, &key, CStringToVoidStarTable_type);
+    return Table_remove(t, &key, &CStringToVoidStarTable_type);
 }
 
 void *Table_str_entry(const table_t *t, int64_t n)

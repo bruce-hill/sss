@@ -12,6 +12,7 @@
 #include "../SipHash/halfsiphash.h"
 #include "types.h"
 #include "array.h"
+#include "range.h"
 #include "string.h"
 
 #define CLAMP(x, lo, hi) MIN(hi, MAX(x,lo))
@@ -461,26 +462,68 @@ public Str_t Str__join(Str_t glue, Str_Array_t pieces)
     return (Str_t){.data=data, .length=length, .stride=1};
 }
 
-public TypeInfo Str_type = {
-    .name="Str",
-    .size=sizeof(Str_t),
-    .align=alignof(Str_t),
-    .tag=CustomInfo,
-    .CustomInfo={
-        .cord=(void*)Str__cord,
-        .compare=(void*)Str__compare,
-        .equal=(void*)Str__equal,
-        .hash=(void*)Str__hash,
+public struct {
+    TypeInfo type;
+    Str_t (*uppercased)(const Str_t s);
+    Str_t (*lowercased)(const Str_t s);
+    Str_t (*capitalized)(const Str_t s);
+    Str_t (*titlecased)(const Str_t s);
+    bool (*starts_with)(const Str_t s, const Str_t prefix);
+    bool (*ends_with)(const Str_t s, const Str_t suffix);
+    Str_t (*without_prefix)(const Str_t s, const Str_t prefix);
+    Str_t (*without_suffix)(const Str_t s, const Str_t suffix);
+    Str_t (*trimmed)(const Str_t s, const Str_t trim_chars, bool trim_left, bool trim_right);
+    Str_t (*slice)(Str_t *s, range_t range, bool readonly, const TypeInfo *type);
+    const char *(*c_string)(const Str_t str);
+    Str_t (*from_c_string)(const char *str);
+    find_result_t (*find)(const Str_t str, const Str_t pat);
+    Str_t (*replace)(Str_t text, Str_t pat, Str_t replacement, int64_t limit);
+    Str_t (*quoted)(const Str_t text, const char *dsl, bool colorize);
+    Str_Array_t (*split)(const Str_t str, const Str_t split_chars);
+    Str_t (*join)(Str_t glue, Str_Array_t pieces);
+    bool (*equal)(const Str_t *x, const Str_t *y);
+    int32_t (*compare)(const Str_t *x, const Str_t *y);
+    int (*hash)(const Str_t *s, const TypeInfo *type);
+    CORD (*cord)(const Str_t *s, bool colorize, const TypeInfo *type);
+} Str_type = {
+    .type={
+        .name="Str",
+        .size=sizeof(Str_t),
+        .align=alignof(Str_t),
+        .tag=CustomInfo,
+        .CustomInfo={
+            .cord=(void*)Str__cord,
+            .compare=(void*)Str__compare,
+            .equal=(void*)Str__equal,
+            .hash=(void*)Str__hash,
+        },
     },
+    .uppercased=Str__uppercased,
+    .lowercased=Str__lowercased,
+    .capitalized=Str__capitalized,
+    .titlecased=Str__titlecased,
+    .starts_with=Str__starts_with,
+    .ends_with=Str__ends_with,
+    .without_prefix=Str__without_prefix,
+    .without_suffix=Str__without_suffix,
+    .trimmed=Str__trimmed,
+    .slice=(void*)Array_slice,
+    .c_string=Str__c_string,
+    .from_c_string=Str__from_c_string,
+    .find=Str__find,
+    .replace=Str__replace,
+    .quoted=Str__quoted,
+    .split=Str__split,
+    .join=Str__join,
 };
 
-static CORD CString_cord(const char **s, bool colorize, const TypeInfo *type)
+public CORD CString_cord(const char **s, bool colorize, const TypeInfo *type)
 {
     Str_t str = {.data=(char*)*s, .length=*s ? strlen(*s) : 0, .stride=1};
     return Str__cord(&str, colorize, type);
 }
 
-static uint32_t CString_hash(const char **s, const TypeInfo *type)
+public uint32_t CString_hash(const char **s, const TypeInfo *type)
 {
     (void)type;
     if (!*s) return 0;
@@ -490,7 +533,7 @@ static uint32_t CString_hash(const char **s, const TypeInfo *type)
     return hash;
 }
 
-static uint32_t CString_compare(const char **x, const char **y, const TypeInfo *type)
+public uint32_t CString_compare(const char **x, const char **y, const TypeInfo *type)
 {
     (void)type;
     if (!*x || !*y)
@@ -498,16 +541,24 @@ static uint32_t CString_compare(const char **x, const char **y, const TypeInfo *
     return strcmp(*x, *y);
 }
 
-public TypeInfo CString_type = {
-    .name="CString",
-    .size=sizeof(char*),
-    .align=alignof(char*),
-    .tag=CustomInfo,
-    .CustomInfo={
-        .cord=(void*)CString_cord,
-        .hash=(void*)CString_hash,
-        .compare=(void*)CString_compare,
+public struct {
+    TypeInfo type;
+    const char *(*from_str)(const Str_t str);
+    Str_t (*as_str)(const char *str);
+} CString_type = {
+    .type={
+        .name="CString",
+        .size=sizeof(char*),
+        .align=alignof(char*),
+        .tag=CustomInfo,
+        .CustomInfo={
+            .cord=(void*)CString_cord,
+            .hash=(void*)CString_hash,
+            .compare=(void*)CString_compare,
+        },
     },
+    .from_str=Str__c_string,
+    .as_str=Str__from_c_string,
 };
 
 static CORD Cord_cord(const CORD *c, bool colorize, const TypeInfo *type)
@@ -528,15 +579,19 @@ static uint32_t Cord_compare(const char **x, const char **y, const TypeInfo *typ
     return CORD_cmp(*x, *y);
 }
 
-public TypeInfo Cord_type = {
-    .name="Cord",
-    .size=sizeof(CORD),
-    .align=alignof(CORD),
-    .tag=CustomInfo,
-    .CustomInfo={
-        .cord=(void*)Cord_cord,
-        .hash=(void*)Cord_hash,
-        .compare=(void*)Cord_compare,
+public struct {
+    TypeInfo type;
+} Cord_type = {
+    .type={
+        .name="Cord",
+        .size=sizeof(CORD),
+        .align=alignof(CORD),
+        .tag=CustomInfo,
+        .CustomInfo={
+            .cord=(void*)Cord_cord,
+            .hash=(void*)Cord_hash,
+            .compare=(void*)Cord_compare,
+        },
     },
 };
 

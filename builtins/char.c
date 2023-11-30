@@ -62,13 +62,25 @@ BOOLIFY(isascii)
 BOOLIFY(isblank)
 
 typedef bool (*char_pred_t)(char);
+typedef char (*char_map_t)(char);
 
-public TypeInfo Char_type = {
-    .name="Char",
-    .size=sizeof(char),
-    .align=alignof(char),
-    .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Char_cord},
+public struct {
+    TypeInfo type;
+    char_pred_t isalnum, isalpha, iscntrl, isdigit, isgraph, islower, isprint, ispunct,
+                isspace, isupper, isxdigit, isascii, isblank;
+    char_map_t tolower, toupper;
+} Char_type = {
+    .type={
+        .name="Char",
+        .size=sizeof(char),
+        .align=alignof(char),
+        .tag=CustomInfo,
+        .CustomInfo={.cord=(void*)Char_cord},
+    },
+    .isalnum=Char__isalnum, .isalpha=Char__isalpha, .iscntrl=Char__iscntrl, .isdigit=Char__isdigit, .isgraph=Char__isgraph,
+    .islower=Char__islower, .isprint=Char__isprint, .ispunct=Char__ispunct, .isspace=Char__isspace, .isupper=Char__isupper,
+    .isxdigit=Char__isxdigit, .isascii=Char__isascii, .isblank=Char__isblank,
+    .tolower=(char_map_t)(void*)tolower, .toupper=(char_map_t)(void*)toupper,
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

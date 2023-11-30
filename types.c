@@ -39,13 +39,6 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             else
                 return num->units ? heap_strf("Num32<%s>", num->units) : "Num32";
         }
-        case TypeType: {
-            sss_type_t *inner = Match(t, TypeType)->type;
-            if (!inner) return "Type(...)";
-            CORD ret;
-            CORD_sprintf(&ret, "Type(%r)", type_to_cord(inner, expanded, flags));
-            return ret;
-        }
         case RangeType: return "Range";
         case ArrayType: {
             auto array = Match(t, ArrayType);
@@ -106,7 +99,7 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
         case PointerType: {
             auto ptr = Match(t, PointerType);
             CORD sigil = ptr->is_stack ? "&" : (ptr->is_optional ? "?" : "@");
-            if (ptr->is_readonly) sigil = CORD_cat(sigil, "(read-only)");
+            if (ptr->is_readonly) sigil = CORD_cat(sigil, "(readonly)");
             return CORD_cat(sigil, type_to_cord(ptr->pointed, expanded, flags));
         }
         case GeneratorType: {
@@ -151,15 +144,13 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             c = CORD_cat(c, ")");
             return c;
         }
-        case ModuleType: {
-            CORD c;
-            CORD_sprintf(&c, "Module(\"%s\")", Match(t, ModuleType)->path);
-            return c;
-        }
         case VariantType: {
             auto variant = Match(t, VariantType);
             const char *name = (flags & FILENAMES) ? heap_strf("%s:%s", variant->filename, variant->name) : variant->name;
             return name;
+        }
+        case TypeInfoType: {
+            return "TypeInfo";
         }
         default: {
             CORD c;
@@ -646,7 +637,6 @@ sss_type_t *replace_type(sss_type_t *t, sss_type_t *target, sss_type_t *replacem
 #define COPY(t) memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t))
 #define REPLACED_MEMBER(t, tag, member) ({ t = memcpy(GC_MALLOC(sizeof(sss_type_t)), (t), sizeof(sss_type_t)); Match((struct sss_type_s*)(t), tag)->member = replace_type(Match((t), tag)->member, target, replacement); t; })
     switch (t->tag) {
-        case TypeType: return REPLACED_MEMBER(t, TypeType, type);
         case ArrayType: return REPLACED_MEMBER(t, ArrayType, item_type);
         case TableType: {
             t = REPLACED_MEMBER(t, TableType, key_type);

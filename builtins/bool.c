@@ -24,12 +24,16 @@ static CORD Bool_cord(const bool *b, bool colorize, const TypeInfo *type)
         return *b ? "yes" : "no";
 }
 
-public TypeInfo Bool_type = {
-    .name="Bool",
-    .size=sizeof(bool),
-    .align=alignof(bool),
-    .tag=CustomInfo,
-    .CustomInfo={.cord=(void*)Bool_cord},
+public struct {
+    TypeInfo type;
+} Bool_type = {
+    .type={
+        .name="Bool",
+        .size=sizeof(bool),
+        .align=alignof(bool),
+        .tag=CustomInfo,
+        .CustomInfo={.cord=(void*)Bool_cord},
+    },
 };
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

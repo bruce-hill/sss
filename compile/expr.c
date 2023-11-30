@@ -44,22 +44,7 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
         break;
     }
     case FieldAccess: {
-        auto access = Match(ast, FieldAccess);
-        sss_type_t *fielded_t = get_type(env, access->fielded);
-        binding_t *binding = get_ast_binding(env, ast);
-        if (!binding) {
-            compiler_err(env, ast, "I can't find any constant-value field or method called \"%s\" on a %T.", access->field, fielded_t);
-        } else if (!binding->is_constant) {
-            compiler_err(env, ast, "This variable is not a constant, but I need a constant value here that is known at compile-time and can't change."); 
-        } else if (binding->rval) {
-            return binding->rval;
-        } else if (binding->lval) {
-            return gcc_rval(binding->lval);
-        } else if (binding->func) {
-            return gcc_get_func_address(binding->func, NULL);
-        }
-
-        return binding->rval;
+        compiler_err(env, ast, "SSS doesn't currently support using namespace members as constants"); 
     }
     case Int: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, get_type(env, ast));
@@ -321,10 +306,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         } else {
             gcc_func_t *func = gcc_block_func(*block);
             lval = gcc_local(func, ast_loc(env, ast), gcc_t, name);
-            binding_t *clobbered = get_local_binding(env, name);
-            if (clobbered && clobbered->type->tag == TypeType && clobbered->rval)
-                compiler_err(env, ast, "This name is already being used for the name of a type (struct or enum) in the same block, "
-                      "and I get confused if you try to redeclare the name of a namespace.");
             Table_str_set(env->bindings, name,
                        new(binding_t, .lval=lval, .rval=gcc_rval(lval), .type=t, .visible_in_closures=decl->is_public));
         }
@@ -884,8 +865,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case TypeDef: {
-        binding_t *b = get_binding(env, Match(ast, TypeDef)->name);
-        sss_type_t *t = Match(b->type, TypeType)->type;
+        sss_type_t *t = get_type_by_name(env, Match(ast, TypeDef)->name);
         env = get_type_env(env, t);
 
         auto members = Match(ast, TypeDef)->definitions;
@@ -937,14 +917,10 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         double unit_scaling = 1.0;
         if (struct_->units)
             unit_derive(struct_->units, &unit_scaling, env->derived_units);
-        binding_t *binding;
         if (struct_->type) {
-            binding = get_ast_binding(env, struct_->type);
-            if (!binding || binding->type->tag != TypeType)
-                compiler_err(env, struct_->type, "This isn't a struct type that I recognize");
-            t = Match(binding->type, TypeType)->type;
+            t = parse_type_ast(env, struct_->type);
+            assert(t);
         } else {
-            binding = NULL;
             t = get_type(env, ast);
         }
 
@@ -987,17 +963,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
 
         fn_sss_t = get_type(env, call->fn);
-        if (fn_sss_t->tag == TypeType) {
-            binding_t *b = get_from_namespace(env, Match(fn_sss_t, TypeType)->type, "new");
-            if (b && b->type->tag == FunctionType) {
-                fn_sss_t = b->type;
-                fn = b->func;
-                goto got_function;
-            }
-            return compile_struct(env, block, ast, Match(fn_sss_t, TypeType)->type, call->args);
-        } else if (fn_sss_t->tag != FunctionType) {
+        if (fn_sss_t->tag != FunctionType)
             compiler_err(env, call->fn, "This is not a callable function (it's a %T)", fn_sss_t);
-        }
 
         if (call->fn->tag == FieldAccess) { // method call (foo.method())
             auto access = Match(call->fn, FieldAccess);
@@ -1007,15 +974,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             while (value_type->tag == PointerType)
                 value_type = Match(value_type, PointerType)->pointed;
             switch (value_type->tag) {
-            case TypeType: {
-                sss_type_t *fielded_type = Match(value_type, TypeType)->type;
-                binding_t *binding = get_from_namespace(env, fielded_type, access->field);
-                if (!binding)
-                    compiler_err(env, call->fn, "I couldn't find any method called %s for %T.", access->field, fielded_type);
-                fn = binding->func;
-                fn_ptr = binding->rval;
-                break;
-            }
             default: {
                 binding_t *binding = get_from_namespace(env, self_t, access->field);
                 if (!binding)
@@ -1332,15 +1290,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             }
             goto class_lookup;
         }
-        case TypeType: {
-            sss_type_t *t = Match(fielded_t, TypeType)->type;
-            binding_t *val_binding = get_from_namespace(env, t, access->field);
-            if (val_binding)
-                return val_binding->rval;
-            else
-                compiler_err(env, ast, "I can't find any field or method called \"%s\" on the type %T.", access->field, t);
-            break;
-        }
         default: break;
         }
         // Class lookup:
@@ -1459,8 +1408,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             ret = gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), ret);
         return ret;
     }
-    case TypeOf: {
-        auto value = Match(ast, TypeOf)->value;
+    case GetTypeInfo: {
+        auto value = Match(ast, GetTypeInfo)->value;
         sss_type_t *t = get_type(env, value);
         return get_typeinfo_pointer(env, t);
     }
@@ -2324,7 +2273,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_callx(env->ctx, NULL, load_func);
     }
     case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
-    case TypeMeasure: case TypeTypeAST: case TypeTaggedUnion: {
+    case TypeMeasure: case TypeTaggedUnion: {
         sss_type_t *t = parse_type_ast(env, ast);
         const char *str = type_to_string(t);
         return gcc_str(env->ctx, str);

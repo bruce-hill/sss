@@ -21,7 +21,6 @@ struct sss_type_s {
         AbortType, VoidType, MemoryType,
         BoolType, CharType,
         IntType, NumType,
-        TypeType,
         RangeType,
         ArrayType,
         TableType,
@@ -30,8 +29,8 @@ struct sss_type_s {
         GeneratorType,
         StructType,
         TaggedUnionType,
-        ModuleType,
         VariantType,
+        TypeInfoType,
     } tag;
 
     union {
@@ -45,9 +44,6 @@ struct sss_type_s {
             const char* units;
             uint16_t bits;
         } NumType;
-        struct {
-            sss_type_t *type;
-        } TypeType;
         struct {} RangeType;
         struct {
             sss_type_t *item_type;
@@ -79,12 +75,10 @@ struct sss_type_s {
             ARRAY_OF(sss_tagged_union_member_t) members;
         } TaggedUnionType;
         struct {
-            const char *path;
-        } ModuleType;
-        struct {
             const char *name, *filename;
             sss_type_t *variant_of;
         } VariantType;
+        struct {} TypeInfoType;
     } __data;
 };
 

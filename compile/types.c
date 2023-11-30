@@ -38,8 +38,8 @@ gcc_type_t *get_typeinfo_gcc_type(env_t *env)
     if (type_gcc_type != NULL)
         return type_gcc_type;
 
-    gcc_struct_t *type_struct = gcc_opaque_struct(env->ctx, NULL, "Type");
-    type_gcc_type = gcc_struct_as_type(type_struct);
+    gcc_struct_t *typeinfo_struct = gcc_opaque_struct(env->ctx, NULL, "TypeInfo");
+    type_gcc_type = gcc_struct_as_type(typeinfo_struct);
 
 #define FIELD(name, type) gcc_new_field(env->ctx, NULL, type, name)
 #define STRUCT(name, fields) gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, name, sizeof(fields)/sizeof(fields[0]), fields))
@@ -89,7 +89,7 @@ gcc_type_t *get_typeinfo_gcc_type(env_t *env)
     type_struct_fields[2] = FIELD("align", gcc_type(env->ctx, INT64));
     type_struct_fields[3] = FIELD("tag", gcc_type(env->ctx, INT32));
     type_struct_fields[4] = FIELD("info", data_union);
-    gcc_set_fields(type_struct, NULL, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields);
+    gcc_set_fields(typeinfo_struct, NULL, sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields);
 
 #undef STRUCT
 #undef FIELD
@@ -100,19 +100,18 @@ gcc_type_t *get_typeinfo_gcc_type(env_t *env)
 static gcc_lvalue_t *get_typeinfo_lvalue(env_t *env, sss_type_t *t)
 {
     const char *key = type_to_string_concise(t);
-    binding_t *b = Table_str_get(&env->global->type_lvals, key);
-    if (b) return b->lval;
-    gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, get_typeinfo_gcc_type(env), fresh("Type"));
-    b = new(binding_t, .lval=lval, .type=t);
-    Table_str_set(&env->global->type_lvals, key, b);
-    return lval;
+    typeinfo_lval_t *info = Table_str_get(&env->global->typeinfos, key);
+    if (!info) {
+        gcc_lvalue_t *lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, get_typeinfo_gcc_type(env), fresh("TypeInfo"));
+        info = new(typeinfo_lval_t, .type=t, .lval=lval);
+        Table_str_set(&env->global->typeinfos, key, info);
+    }
+    return info->lval;
 }
 
 gcc_rvalue_t *get_typeinfo_pointer(env_t *env, sss_type_t *t)
 {
-    const char *key = type_to_string_concise(t);
-    binding_t *b = Table_str_get(&env->global->type_lvals, key);
-    gcc_lvalue_t *lval = b ? b->lval : get_typeinfo_lvalue(env, t);
+    gcc_lvalue_t *lval = get_typeinfo_lvalue(env, t);
     return gcc_lvalue_address(lval, NULL);
 }
 
@@ -133,7 +132,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 #define TAG_RVAL 3
 #define INFO_RVAL 4
     gcc_rvalue_t *type_rvalues[5] = {
-        gcc_str(env->ctx, type_to_string_concise(t->tag == TypeType ? Match(t, TypeType)->type : t)),
+        gcc_str(env->ctx, type_to_string_concise(t)),
         gcc_rvalue_int64(env->ctx, gcc_sizeof(env, t)),
         gcc_rvalue_int64(env->ctx, gcc_alignof(env, t)),
         NULL, // tag
@@ -292,7 +291,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
         );
         break;
     }
-    case TypeType: {
+    case TypeInfoType: {
         SET_INFO(CustomInfo, custom_info, custom_info_fields,
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
@@ -322,10 +321,10 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
 
 void initialize_typeinfo_lvalues(env_t *env)
 {
-    for (int64_t i = 1; i <= Table_length(&env->global->type_lvals); i++) {
-        struct {const char *key; binding_t *binding; } *entry = Table_entry(&env->global->type_lvals, i);
-        assert(entry && entry->binding && entry->binding->type && entry->binding->lval);
-        initialize_type_lvalue(env, entry->binding->type);
+    for (int64_t i = 1; i <= Table_length(&env->global->typeinfos); i++) {
+        struct {const char *key; typeinfo_lval_t *info; } *entry = Table_entry(&env->global->typeinfos, i);
+        assert(entry && entry->info && entry->info->type && entry->info->lval);
+        initialize_type_lvalue(env, entry->info->type);
     }
 }
 

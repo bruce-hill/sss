@@ -344,27 +344,6 @@ int main(int argc, char *argv[])
     if (register_printf_specifier('W', printf_ast, printf_pointer_size))
         errx(1, "Couldn't set printf specifier");
 
-    extern TypeInfo *CStringToVoidStarTable_type;
-    extern TypeInfo CString_type;
-    extern TypeInfo Memory_type;
-    TypeInfo MemoryPointer_type = {
-        .name="@Memory",
-        .size=sizeof(void*),
-        .align=alignof(void*),
-        .tag=PointerInfo,
-        .PointerInfo={
-            .sigil="@",
-            .pointed=&Memory_type,
-        },
-    };
-    CStringToVoidStarTable_type = (TypeInfo[]){{
-        .name="{CString=>@Memory}",
-        .size=sizeof(table_t),
-        .align=alignof(table_t),
-        .tag=TableInfo,
-        .TableInfo={.key=&CString_type,.value=&MemoryPointer_type,
-            .entry_size=16, .value_offset=8},
-    }};
 
     for (int i = 1; i < argc; i++) {
         if (streq(argv[i], "-h") || streq(argv[i], "--help")) {

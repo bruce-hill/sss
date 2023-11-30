@@ -18,7 +18,7 @@
 #include "compile/libgccjit_abbrev.h"
 
 typedef struct {
-    const char *symbol, *sss_name, *type;
+    const char *name, *type;
 } builtin_binding_t;
 
 static sss_type_t sss_str_t = {
@@ -67,19 +67,19 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"getenv", "func(name:CString)->CString"},
 
     // Generic functions:
-    {"generic_compare", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Int32"},
-    {"generic_equal", "func(x:&(read-only)Memory, y:&(read-only)Memory, type:Type)->Bool"},
-    {"generic_hash", "func(obj:&(read-only)Memory, type:Type)->Int32"},
-    {"generic_cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Func__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Type__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Memory__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Num__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Num32__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Int__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Int32__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Int16__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
-    {"Int8__cord", "func(obj:&(read-only)Memory, colorize:Bool, type:Type)->Cord"},
+    {"generic_compare", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&(readonly)TypeInfo)->Int32"},
+    {"generic_equal", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&(readonly)TypeInfo)->Bool"},
+    {"generic_hash", "func(obj:&(readonly)Memory, type:&(readonly)TypeInfo)->Int32"},
+    {"generic_cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Func__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Type__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Memory__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Num__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Num32__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Int__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Int32__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Int16__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+    {"Int8__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
 
     // Builtins:
     {"builtin_say", "func(str:Str, end=\"\\n\")->Void"},
@@ -109,147 +109,167 @@ struct {
     {{.tag=BoolType}, "Bool", "Bool_type", NULL},
     {{.tag=MemoryType}, "Memory", "Memory_type", NULL},
     {{.tag=RangeType}, "Range", "Range_type", NULL},
-    {{.tag=TypeType}, "Type", "Type_type", NULL},
     {{.tag=VoidType}, "Void", "Void_type", NULL},
     {{.tag=AbortType}, "Abort", "Abort_type", NULL},
+    {{.tag=TypeInfoType}, "TypeInfo", "TypeInfo_type", NULL},
 
-#define BUILTIN_INT(t, abs_fn, ...) \
+#define BUILTIN_INT(t, ...) \
     {{.tag=IntType, .__data.IntType={__VA_ARGS__}}, #t, #t "_type", (builtin_binding_t[]){ \
-        {#t"__format", "format", "func(i:"#t", digits=0)->Str"}, \
-        {#t"__hex",    "hex", "func(i:"#t", digits=0, uppercase=yes, prefix=yes)->Str"}, \
-        {#t"__octal",  "octal", "func(i:"#t", digits=0, prefix=yes)->Str"}, \
-        {#t"__random", "random", "func(min=1, max=100)->"#t}, \
-        {#t"__min",    "min", #t}, \
-        {#t"__max",    "max", #t}, \
-        {abs_fn,       "abs", "func(i:"#t")->"#t}, \
-        {NULL, NULL, NULL}, \
+        {"min", #t}, \
+        {"max", #t}, \
+        {"abs", "func(i:"#t")->"#t}, \
+        {"format", "func(i:"#t", digits=0)->Str"}, \
+        {"hex", "func(i:"#t", digits=0, uppercase=yes, prefix=yes)->Str"}, \
+        {"octal", "func(i:"#t", digits=0, prefix=yes)->Str"}, \
+        {"random", "func(min=1, max=100)->"#t}, \
+        {NULL, NULL}, \
     }}
-    BUILTIN_INT(Int, "labs", .bits=64), BUILTIN_INT(Int32, "abs", .bits=32),
-    BUILTIN_INT(Int16, "abs", .bits=16), BUILTIN_INT(Int8, "abs", .bits=8),
+    BUILTIN_INT(Int, .bits=64), BUILTIN_INT(Int32, .bits=32),
+    BUILTIN_INT(Int16, .bits=16), BUILTIN_INT(Int8, .bits=8),
 #undef BUILTIN_INT
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
-        {"Num__format", "format", "func(n:Num, precision=Int.max)->Str"},
-        {"Num__scientific", "scientific", "func(n:Num, precision=Int.max)->Str"},
-        {"drand48", "random", "func()->Num"},
+        // Constants
+        {"2_sqrt_pi", "Num"},
+        {"NaN", "Num"},
+        {"e", "Num"},
+        {"half_pi", "Num"},
+        {"inf", "Num"},
+        {"inverse_half_pi", "Num"},
+        {"inverse_pi", "Num"},
+        {"ln10", "Num"},
+        {"ln2", "Num"},
+        {"log2e", "Num"},
+        {"pi", "Num"},
+        {"quarter_pi", "Num"},
+        {"sqrt2", "Num"},
+        {"sqrt_half", "Num"},
+        {"tau", "Num"},
+        // Nullary functions:
+        {"random", "func()->Num"},
+        // Predicates:
+        {"isinf", "func(n:Num)->Bool"},
+        {"finite", "func(n:Num)->Bool"},
+        {"isnan", "func(n:Num)->Bool"},
         // Unary functions:
-#define UNARY(fn) {#fn, #fn, "func(n:Num)->Num"}
-        UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
-        UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
-        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil),
-        UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
-        UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
-        UNARY(trunc), UNARY(roundeven),
-        {"fabs", "abs", "func(n:Num)->Num"},
+#define UNARY(fn) {#fn, "func(n:Num)->Num"}
+        UNARY(abs), UNARY(acos), UNARY(acosh), UNARY(asin), UNARY(asinh), UNARY(atan), UNARY(atanh),
+        UNARY(cbrt), UNARY(ceil), UNARY(cos), UNARY(cosh), UNARY(erf), UNARY(erfc), UNARY(exp),
+        UNARY(exp10), UNARY(exp2), UNARY(expm1), UNARY(floor), UNARY(j0), UNARY(j1), UNARY(log),
+        UNARY(log10), UNARY(log1p), UNARY(log2), UNARY(logb), UNARY(nextdown), UNARY(nextup),
+        UNARY(rint), UNARY(round), UNARY(roundeven), UNARY(significand), UNARY(sin), UNARY(sinh),
+        UNARY(sqrt), UNARY(tan), UNARY(tanh), UNARY(tgamma), UNARY(trunc), UNARY(y0), UNARY(y1),
 #undef UNARY
         // Binary functions:
-        {"Num__mod", "mod", "func(x:Num, modulus:Num)->Num"},
-        {"atan2", "atan2", "func(y:Num, x:Num)->Num"},
-        {"pow", "pow", "func(base:Num, power:Num)->Num"},
-        {"hypot", "hypot", "func(x:Num, y:Num)->Num"},
-        {"copysign", "hypot", "func(magnitude:Num, sign:Num)->Num"},
-        {"nextafter", "nextafter", "func(x:Num, toward:Num)->Num"},
-        {"remainder", "remainder", "func(x:Num, divisor:Num)->Num"},
-        {"fmaxmag", "max_magnitude", "func(x:Num, y:Num)->Num"},
-        {"fminmag", "min_magnitude", "func(x:Num, y:Num)->Num"},
-        {"fdim", "distance", "func(x:Num, y:Num)->Num"},
-        // Predicates
-        {"isinf", "isinf", "func(n:Num)->Bool"},
-        {"finite", "finite", "func(n:Num)->Bool"},
-        {"isnan", "isnan", "func(n:Num)->Bool"},
-        // Constants
-        {"Num__e", "e", "Num"}, {"Num__log2e", "log2e", "Num"}, {"Num__ln2", "ln2", "Num"},
-        {"Num__ln10", "ln10", "Num"}, {"Num__pi", "pi", "Num"}, {"Num__tau", "tau", "Num"},
-        {"Num__half_pi", "half_pi", "Num"}, {"Num__quarter_pi", "quarter_pi", "Num"},
-        {"Num__inverse_pi", "inverse_pi", "Num"}, {"Num__inverse_half_pi", "inverse_half_pi", "Num"},
-        {"Num__2_sqrt_pi", "2_sqrt_pi", "Num"}, {"Num__sqrt2", "sqrt2", "Num"},
-        {"Num__sqrt_half", "sqrt_half", "Num"}, {"Num__NaN", "NaN", "Num"}, {"Num__inf", "inf", "Num"},
-        {NULL, NULL, NULL},
+        {"atan2", "func(y:Num, x:Num)->Num"},
+        {"copysign", "func(magnitude:Num, sign:Num)->Num"},
+        {"distance", "func(x:Num, y:Num)->Num"},
+        {"hypot", "func(x:Num, y:Num)->Num"},
+        {"maxmag", "func(x:Num, y:Num)->Num"},
+        {"minmag", "func(x:Num, y:Num)->Num"},
+        {"mod", "func(x:Num, modulus:Num)->Num"},
+        {"nextafter", "func(x:Num, toward:Num)->Num"},
+        {"pow", "func(base:Num, power:Num)->Num"},
+        {"remainder", "func(x:Num, divisor:Num)->Num"},
+        // Other functions:
+        {"format", "func(n:Num, precision=0x7fffffffffffffff)->Str"},
+        {"scientific", "func(n:Num, precision=0x7fffffffffffffff)->Str"},
+        {NULL, NULL},
     }},
 
     {{.tag=NumType, .__data.NumType={.bits=32}}, "Num32", "Num32_type", (builtin_binding_t[]){
-        {"Num32__format", "format", "func(n:Num32, precision=Int.max)->Str"},
-        {"Num32__scientific", "scientific", "func(n:Num32, precision=Int.max)->Str"},
-        {"Num32__random", "random", "func()->Num32"},
+        // Constants
+        {"2_sqrt_pi", "Num32"},
+        {"NaN", "Num32"},
+        {"e", "Num32"},
+        {"half_pi", "Num32"},
+        {"inf", "Num32"},
+        {"inverse_half_pi", "Num32"},
+        {"inverse_pi", "Num32"},
+        {"ln10", "Num32"},
+        {"ln2", "Num32"},
+        {"log2e", "Num32"},
+        {"pi", "Num32"},
+        {"quarter_pi", "Num32"},
+        {"sqrt2", "Num32"},
+        {"sqrt_half", "Num32"},
+        {"tau", "Num32"},
+        // Nullary functions:
+        {"random", "func()->Num32"},
+        // Predicates:
+        {"isinf", "func(n:Num32)->Bool"},
+        {"finite", "func(n:Num32)->Bool"},
+        {"isnan", "func(n:Num32)->Bool"},
         // Unary functions:
-#define UNARY(fn) {#fn"f", #fn, "func(n:Num32)->Num32"}
-        UNARY(acos), UNARY(asin), UNARY(atan), UNARY(cos), UNARY(sin), UNARY(tan), UNARY(cosh), UNARY(sinh), UNARY(tanh),
-        UNARY(acosh), UNARY(asinh), UNARY(atanh), UNARY(exp), UNARY(log), UNARY(log10), UNARY(exp10), UNARY(expm1),
-        UNARY(log1p), UNARY(logb), UNARY(exp2), UNARY(log2), UNARY(sqrt), UNARY(cbrt), UNARY(ceil),
-        UNARY(floor), UNARY(significand), UNARY(j0), UNARY(j1), UNARY(y0), UNARY(y1), UNARY(erf), UNARY(erfc),
-        UNARY(tgamma), UNARY(rint), UNARY(nextdown), UNARY(nextup), UNARY(round),
-        UNARY(trunc), UNARY(roundeven),
-        {"fabsf", "abs", "func(n:Num32)->Num32"},
+#define UNARY(fn) {#fn, "func(n:Num32)->Num32"}
+        UNARY(abs), UNARY(acos), UNARY(acosh), UNARY(asin), UNARY(asinh), UNARY(atan), UNARY(atanh),
+        UNARY(cbrt), UNARY(ceil), UNARY(cos), UNARY(cosh), UNARY(erf), UNARY(erfc), UNARY(exp),
+        UNARY(exp10), UNARY(exp2), UNARY(expm1), UNARY(floor), UNARY(j0), UNARY(j1), UNARY(log),
+        UNARY(log10), UNARY(log1p), UNARY(log2), UNARY(logb), UNARY(nextdown), UNARY(nextup),
+        UNARY(rint), UNARY(round), UNARY(roundeven), UNARY(significand), UNARY(sin), UNARY(sinh),
+        UNARY(sqrt), UNARY(tan), UNARY(tanh), UNARY(tgamma), UNARY(trunc), UNARY(y0), UNARY(y1),
 #undef UNARY
         // Binary functions:
-        {"Num32__mod", "mod", "func(x:Num32, modulus:Num32)->Num32"},
-        {"atan2f", "atan2", "func(y:Num32, x:Num32)->Num32"},
-        {"powf", "pow", "func(base:Num32, power:Num32)->Num32"},
-        {"hypotf", "hypot", "func(x:Num32, y:Num32)->Num32"},
-        {"copysignf", "hypot", "func(magnitude:Num32, sign:Num32)->Num32"},
-        {"nextafterf", "nextafter", "func(x:Num32, toward:Num32)->Num32"},
-        {"remainderf", "remainder", "func(x:Num32, divisor:Num32)->Num32"},
-        {"fmaxmagf", "max_magnitude", "func(x:Num32, y:Num32)->Num32"},
-        {"fminmagf", "min_magnitude", "func(x:Num32, y:Num32)->Num32"},
-        {"fdimf", "distance", "func(x:Num32, y:Num32)->Num32"},
-        // Predicates
-        {"Num32__isinf", "isinf", "func(n:Num32)->Bool"},
-        {"Num32__finite", "finite", "func(n:Num32)->Bool"},
-        {"Num32__isnan", "isnan", "func(n:Num32)->Bool"},
-        // Constants
-        {"Num32__e", "e", "Num32"}, {"Num32__log2e", "log2e", "Num32"}, {"Num32__ln2", "ln2", "Num32"},
-        {"Num32__ln10", "ln10", "Num32"}, {"Num32__pi", "pi", "Num32"}, {"Num32__tau", "tau", "Num32"},
-        {"Num32__half_pi", "half_pi", "Num32"}, {"Num32__quarter_pi", "quarter_pi", "Num32"},
-        {"Num32__inverse_pi", "inverse_pi", "Num32"}, {"Num32__inverse_half_pi", "inverse_half_pi", "Num32"},
-        {"Num32__2_sqrt_pi", "2_sqrt_pi", "Num32"}, {"Num32__sqrt2", "sqrt2", "Num32"},
-        {"Num32__sqrt_half", "sqrt_half", "Num32"}, {"Num32__NaN", "NaN", "Num32"}, {"Num32__inf", "inf", "Num32"},
-        {NULL, NULL, NULL},
+        {"atan2", "func(y:Num32, x:Num32)->Num32"},
+        {"copysign", "func(magnitude:Num32, sign:Num32)->Num32"},
+        {"distance", "func(x:Num32, y:Num32)->Num32"},
+        {"hypot", "func(x:Num32, y:Num32)->Num32"},
+        {"maxmag", "func(x:Num32, y:Num32)->Num32"},
+        {"minmag", "func(x:Num32, y:Num32)->Num32"},
+        {"mod", "func(x:Num32, modulus:Num32)->Num32"},
+        {"nextafter", "func(x:Num32, toward:Num32)->Num32"},
+        {"pow", "func(base:Num32, power:Num32)->Num32"},
+        {"remainder", "func(x:Num32, divisor:Num32)->Num32"},
+        // Other functions:
+        {"format", "func(n:Num32, precision=0x7fffffffffffffff)->Str"},
+        {"scientific", "func(n:Num32, precision=0x7fffffffffffffff)->Str"},
+        {NULL, NULL},
     }},
 
     {{.tag=CharType}, "Char", "Char_type", (builtin_binding_t[]){
-        {"Char__toupper", "toupper", "func(c:Char)->Char"},
-        {"Char__tolower", "tolower", "func(c:Char)->Char"},
-#define CHARP(name) {"Char__"#name, #name, "func(c:Char)->Bool"}
+        {"toupper", "func(c:Char)->Char"},
+        {"tolower", "func(c:Char)->Char"},
+#define CHARP(name) {#name, "func(c:Char)->Bool"}
         CHARP(isalnum), CHARP(isalpha), CHARP(iscntrl), CHARP(isdigit), CHARP(isgraph), CHARP(islower),
         CHARP(isprint), CHARP(ispunct), CHARP(isspace), CHARP(isupper), CHARP(isxdigit), CHARP(isascii), CHARP(isblank),
 #undef CHARP
-        {NULL, NULL, NULL},
+        {NULL, NULL},
     }},
 
     {sss_str_t, "Str", "Str_type", (builtin_binding_t[]){
-        {"Str__uppercased", "uppercased", "func(s:Str)->Str"},
-        {"Str__lowercased", "lowercased", "func(s:Str)->Str"},
-        {"Str__capitalized", "capitalized", "func(s:Str)->Str"},
-        {"Str__titlecased", "titlecased", "func(s:Str)->Str"},
-        {"Str__starts_with", "starts_with", "func(s:Str, prefix:Str)->Bool"},
-        {"Str__ends_with", "ends_with", "func(s:Str, suffix:Str)->Bool"},
-        {"Str__without_prefix", "without_prefix", "func(s:Str, prefix:Str)->Str"},
-        {"Str__without_suffix", "without_suffix", "func(s:Str, suffix:Str)->Str"},
-        {"Str__trimmed", "trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
-        {"Array__slice", "slice", "func(s:&Str, range:Range, readonly=no, _type=typeof(s))->Str"},
-        {"Str__c_string", "c_string", "func(s:Str)->CString"},
-        {"Str__from_c_string", "from_c_string", "func(c:CString)->Str"},
-        {"Str__find", "find", "func(s:Str, target:Str)->Str"},
-        {"Str__replace", "replace", "func(s:Str, target:Str, replacement:Str, limit=Int.max)->Str"},
-        {"Str__quoted", "quoted", "func(s:Str)->Str"},
-        {"Str__split", "split", "func(s:Str, split_chars=[\\x2C, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
-        {"Str__join", "join", "func(glue:Str, pieces:[Str])->Str"},
+        {"uppercased", "func(s:Str)->Str"},
+        {"lowercased", "func(s:Str)->Str"},
+        {"capitalized", "func(s:Str)->Str"},
+        {"titlecased", "func(s:Str)->Str"},
+        {"starts_with", "func(s:Str, prefix:Str)->Bool"},
+        {"ends_with", "func(s:Str, suffix:Str)->Bool"},
+        {"without_prefix", "func(s:Str, prefix:Str)->Str"},
+        {"without_suffix", "func(s:Str, suffix:Str)->Str"},
+        {"trimmed", "func(s:Str, trim_chars=[\\x20, \\n, \\r, \\t, \\v], trim_left=yes, trim_right=yes)->Str"},
+        {"slice", "func(s:&Str, range:Range, readonly=no, _type=_typeinfo_(s))->Str"},
+        {"c_string", "func(s:Str)->CString"},
+        {"from_c_string", "func(c:CString)->Str"},
+        {"find", "func(s:Str, target:Str)->Str"},
+        {"replace", "func(s:Str, target:Str, replacement:Str, limit=0x7fffffffffffffff)->Str"},
+        {"quoted", "func(s:Str)->Str"},
+        {"split", "func(s:Str, split_chars=[\\x2C, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
+        {"join", "func(glue:Str, pieces:[Str])->Str"},
 
-        {"Str__equal", "equals", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Bool"},
-        {"Str__compare", "compare", "func(x:&(read-only)Str, y:&(read-only)Str, _type=typeof(x[]))->Int32"},
-        {"Str__hash", "hash", "func(s:&(read-only)Str, _type=typeof(s[]))->Int32"},
-        {"Str__cord", "cord", "func(s:&(read-only)Str, colorize:Bool, _type=typeof(s[]))->Cord"},
-        {NULL, NULL, NULL},
+        {"equals", "func(x:&(readonly)Str, y:&(readonly)Str, _type=_typeinfo_(x[]))->Bool"},
+        {"compare", "func(x:&(readonly)Str, y:&(readonly)Str, _type=_typeinfo_(x[]))->Int32"},
+        {"hash", "func(s:&(readonly)Str, _type=_typeinfo_(s[]))->Int32"},
+        {"cord", "func(s:&(readonly)Str, colorize:Bool, _type=_typeinfo_(s[]))->Cord"},
+        {NULL, NULL},
     }},
 
     {sss_c_str_t, "CString", "CString_type", (builtin_binding_t[]){
-        {"Str__c_string", "from_str", "func(s:Str)->CString"},
-        {"Str__from_c_string", "as_str", "func(c:CString)->Str"},
-        {NULL, NULL, NULL},
+        {"from_str", "func(s:Str)->CString"},
+        {"as_str", "func(c:CString)->Str"},
+        {NULL, NULL},
     }},
 
     {sss_cord_t, "Cord", "Cord_type", (builtin_binding_t[]){
-        {NULL, NULL, NULL},
+        {NULL, NULL},
     }},
 };
 
@@ -281,48 +301,63 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         .global=global,
         .on_err = on_err,
         .file = f,
-        .file_bindings = new(table_t, .fallback=&global->bindings),
-        .bindings = new(table_t),
+        .bindings = new(table_t, .fallback=&global->bindings),
         .tail_calls = tail_calls,
     );
-    env->bindings->fallback = env->file_bindings;
 
-    gcc_type_t *type_gcc_type = get_typeinfo_gcc_type(env);
+    const int num_builtin_types = sizeof(builtin_types)/sizeof(builtin_types[0]);
+    sss_type_t *namespace_types[num_builtin_types] = {};
 
     // Declare types first:
-    for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
+    for (size_t i = 0; i < num_builtin_types; i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
-        gcc_lvalue_t *type_lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, type_gcc_type, builtin_types[i].type_symbol);
-        binding_t *b = new(binding_t,
-                           .type=Type(TypeType, t),
-                           .rval=gcc_lvalue_address(type_lval, NULL));
-        Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
-        binding_t *lval_binding = new(binding_t, .lval=type_lval, .type=t);
-        Table_str_set(&env->global->type_lvals, type_to_string_concise(t), lval_binding);
-        mark_typeinfo_lvalue_initialized(env, t);
+        Table_str_set(&env->global->bindings, heap_strf("#type:%s", builtin_types[i].type_name), t);
+        namespace_types[i] = Type(StructType, .field_names=ARRAY("type"), .field_types=ARRAY(Type(TypeInfoType)));
     }
 
-    // Then declare type methods:
-    for (size_t i = 0; i < sizeof(builtin_types)/sizeof(builtin_types[0]); i++) {
-        sss_type_t *t = &builtin_types[i].sss_type;
-        for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].symbol; j++) {
+    // Then add struct fields to the type namespace struct:
+    for (size_t i = 0; i < num_builtin_types; i++) {
+        auto ns_struct = Match(namespace_types[i], StructType);
+        for (int j = 0; builtin_types[i].bindings && builtin_types[i].bindings[j].name; j++) {
             auto member = builtin_types[i].bindings[j];
             ast_t *type_ast = parse_type_str(member.type);
             if (!type_ast)
-                compiler_err(env, NULL, "Couldn't parse builtin type for %s.%s: `%s`", builtin_types[i].type_name, member.sss_name, member.type);
+                compiler_err(env, NULL, "Couldn't parse builtin type for %s.%s: `%s`", builtin_types[i].type_name, member.name, member.type);
             sss_type_t *member_type = parse_type_ast(env, type_ast);
-            if (member_type->tag == FunctionType) {
-                gcc_func_t *func = import_function(env, member.symbol, member_type, false);
-                set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .func=func, .rval=gcc_get_func_address(func, NULL)));
-                Table_str_set(&env->global->funcs, member.symbol, func);
-            } else {
-                gcc_type_t *member_gcc_type = sss_type_to_gcc(env, member_type);
-                gcc_lvalue_t *lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, member_gcc_type, member.symbol);
-                set_in_namespace(env, t, member.sss_name, new(binding_t, .type=member_type, .rval=gcc_rval(lval)));
-            }
+            append(ns_struct->field_names, member.name);
+            append(ns_struct->field_types, member_type);
         }
     }
 
+    // Then bind namespace structs for each type:
+    for (size_t i = 0; i < num_builtin_types; i++) {
+        sss_type_t *t = &builtin_types[i].sss_type;
+        sss_type_t *ns_t = namespace_types[i];
+        gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
+        gcc_lvalue_t *type_lval = gcc_global(ctx, NULL, GCC_GLOBAL_IMPORTED, ns_gcc_t, builtin_types[i].type_symbol);
+        // Binding is a pointer to the namespace struct (so they can be imported more easily)
+        binding_t *b = new(binding_t, .type=Type(PointerType, .pointed=ns_t),
+                           .rval=gcc_lvalue_address(type_lval, NULL));
+        Table_str_set(&env->global->bindings, builtin_types[i].type_name, b);
+        gcc_field_t *info_field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), 0);
+        gcc_lvalue_t *info_lval = gcc_lvalue_access_field(type_lval, NULL, info_field);
+        Table_str_set(&env->global->typeinfos, type_to_string_concise(t), new(typeinfo_lval_t, .type=t, .lval=info_lval));
+        mark_typeinfo_lvalue_initialized(env, t);
+
+        gcc_struct_t *ns_gcc_struct = gcc_type_as_struct(ns_gcc_t);
+
+        // For each namespace struct member, bind its lval inside that type's namespace:
+        auto ns_struct = Match(ns_t, StructType);
+        for (int f = 1 /* skip 'type' */; f < LENGTH(ns_struct->field_names); f++) {
+            const char *name = ith(ns_struct->field_names, f);
+            sss_type_t *field_type = ith(ns_struct->field_types, f);
+            gcc_field_t *field = gcc_get_field(ns_gcc_struct, f);
+            gcc_lvalue_t *field_lval = gcc_lvalue_access_field(type_lval, NULL, field);
+            set_in_namespace(env, t, name, new(binding_t, .type=field_type, .lval=field_lval, .rval=gcc_rval(field_lval)));
+        }
+    }
+
+    // Load global functions:
     for (size_t i = 0; i < sizeof(builtin_functions)/sizeof(builtin_functions[0]); i++) {
         auto fn = builtin_functions[i];
         ast_t *type_ast = parse_type_str(fn.type);
@@ -383,7 +418,7 @@ env_t *file_scope(env_t *env)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));
     *fresh = *env;
-    fresh->bindings = new(table_t, .fallback=env->file_bindings);
+    fresh->bindings = new(table_t, .fallback=&env->global->bindings);
     copy_global_bindings(fresh->bindings, env->bindings);
     return fresh;
 }
@@ -419,8 +454,8 @@ binding_t *get_binding(env_t *env, const char *name)
 
 sss_type_t *get_type_by_name(env_t *env, const char *name)
 {
-    binding_t *b = get_binding(env, name);
-    return b && b->type->tag == TypeType ? Match(b->type, TypeType)->type : NULL;
+    sss_type_t *t = Table_str_get(env->bindings, heap_strf("#type:%s", name));
+    return t;
 }
 
 binding_t *get_local_binding(env_t *env, const char *name)
@@ -439,38 +474,6 @@ gcc_func_t *get_function(env_t *env, const char *name)
     return func;
 }
 
-binding_t *get_ast_binding(env_t *env, ast_t *ast)
-{
-    switch (ast->tag) {
-    case Var: {
-        binding_t *b = get_binding(env, Match(ast, Var)->name);
-        if (b) return b;
-        const char *suggestion = spellcheck(env->bindings, Match(ast, Var)->name);
-        if (suggestion)
-            compiler_err(env, ast, "I can't figure out what this type refers to. Did you mean '%s'?", suggestion);
-        else
-            compiler_err(env, ast, "I can't figure out what this type refers to.");
-    }
-    case FieldAccess: {
-        auto access = Match(ast, FieldAccess);
-        binding_t *b = get_ast_binding(env, access->fielded);
-        sss_type_t *t = b->type->tag == TypeType ? Match(b->type, TypeType)->type : b->type;
-        table_t *ns = get_namespace(env, t);
-        b = get_from_namespace(env, t, access->field);
-        if (b) return b;
-
-        const char *suggestion = spellcheck(ns, access->field);
-        if (suggestion)
-            compiler_err(env, ast, "There isn't a member on %T called '%s', did you mean '%s'?",
-                         t, access->field, suggestion);
-        else
-            compiler_err(env, ast, "There isn't a member on %T called '%s'", t, access->field);
-    }
-    default: compiler_err(env, ast, "I can't figure out at compile-time what this refers to");
-    }
-
-}
-
 static inline void _load_method(env_t *env, table_t *ns, const char *name, const char *symbol, sss_type_t *t)
 {
     gcc_func_t *func = import_function(env, symbol, t, false);
@@ -484,46 +487,46 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
 
     table_t *ns = Table_str_get(&env->global->type_namespaces, type_to_string(t));
     if (!ns) {
-        ns = new(table_t, .fallback=env->file_bindings);
+        ns = new(table_t, .fallback=env->bindings);
         Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
 
 #define REF(x) Type(PointerType, .is_stack=true, .pointed=x)
 #define RO_REF(x) Type(PointerType, .is_stack=true, .is_readonly=true, .pointed=x)
 #define OPT(x) Type(PointerType, .is_optional=true, .pointed=x)
 #define FN(names, types, defaults, ret_type) Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=ret_type)
-#define TYPEOF_DEREF(var) FakeAST(TypeOf, FakeAST(Index, FakeAST(Var, var)))
+#define TYPEINFO_DEREF(var) FakeAST(GetTypeInfo, FakeAST(Index, FakeAST(Var, var)))
 #define NAMES(...) ARRAY((const char*)__VA_ARGS__)
 #define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
 #define DEFTS(...) ARRAY((ast_t*)__VA_ARGS__)
         sss_type_t *void_t = Type(VoidType);
-        sss_type_t *type_t = Type(TypeType, t);
+        sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
         if (t->tag == TableType) {
             sss_type_t *key_t = Match(t, TableType)->key_type;
             sss_type_t *value_t = Match(t, TableType)->value_type;
             _load_method(env, ns, "remove", "Table_remove",
                          FN(NAMES("t", "key", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), type_t),
-                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            TYPES(REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
                             void_t));
             _load_method(env, ns, "set", "Table_set",
                          FN(NAMES("t", "key", "value", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), type_t),
-                            DEFTS(NULL, NULL, NULL, TYPEOF_DEREF("t")),
+                            TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
                             void_t));
             _load_method(env, ns, "reserve", "Table_reserve",
                          FN(NAMES("t", "key", "value", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), OPT(value_t), type_t),
-                            DEFTS(NULL, NULL, NULL, TYPEOF_DEREF("t")),
+                            TYPES(REF(t), RO_REF(key_t), OPT(value_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
                             Type(PointerType, value_t)));
             _load_method(env, ns, "get", "Table_get",
                          FN(NAMES("t", "key", "_type"),
-                            TYPES(RO_REF(t), RO_REF(key_t), type_t),
-                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
                             OPT(value_t)));
             _load_method(env, ns, "get_raw", "Table_get_raw",
                          FN(NAMES("t", "key", "_type"),
-                            TYPES(RO_REF(t), RO_REF(key_t), type_t),
-                            DEFTS(NULL, NULL, TYPEOF_DEREF("t")),
+                            TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
                             OPT(value_t)));
             _load_method(env, ns, "clear", "Table_get_clear",
                          FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
@@ -550,16 +553,16 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                             void_t));
             _load_method(env, ns, "contains", "Array_contains",
                          FN(NAMES("array", "item", "_type"),
-                            TYPES(RO_REF(t), RO_REF(item_t), type_t),
-                            DEFTS(NULL, NULL, TYPEOF_DEREF("array")),
+                            TYPES(RO_REF(t), RO_REF(item_t), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, TYPEINFO_DEREF("array")),
                             Type(BoolType)));
             _load_method(env, ns, "compact", "Array_compact",
                          FN(NAMES("array", "item_size"), TYPES(REF(t), i64), DEFTS(NULL, item_size),
                             t));
             _load_method(env, ns, "sort", "Array_sort",
                          FN(NAMES("array", "_type"),
-                            TYPES(REF(t), type_t),
-                            DEFTS(NULL, TYPEOF_DEREF("array")),
+                            TYPES(REF(t), typeinfo_ptr_t),
+                            DEFTS(NULL, TYPEINFO_DEREF("array")),
                             void_t));
             _load_method(env, ns, "shuffle", "Array_shuffle",
                          FN(NAMES("array", "_item_size"),
@@ -573,15 +576,15 @@ table_t *get_namespace(env_t *env, sss_type_t *t)
                             void_t));
             _load_method(env, ns, "slice", "Array_slice",
                          FN(NAMES("array", "range", "readonly", "_type"),
-                            TYPES(REF(t), Type(RangeType), Type(BoolType), type_t),
-                            DEFTS(NULL, NULL, FakeAST(Bool, false), TYPEOF_DEREF("array")),
+                            TYPES(REF(t), Type(RangeType), Type(BoolType), typeinfo_ptr_t),
+                            DEFTS(NULL, NULL, FakeAST(Bool, false), TYPEINFO_DEREF("array")),
                             t));
         }
 #undef REF
 #undef RO_REF
 #undef OPT
 #undef FN
-#undef TYPEOF_DEREF
+#undef TYPEINFO_DEREF
 #undef NAMES
 #undef TYPES
 #undef DEFTS

@@ -67,7 +67,6 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         return align;
     }
     case VariantType: return gcc_alignof(env, Match(sss_t, VariantType)->variant_of);
-    case ModuleType: return 1;
     case VoidType: case MemoryType: return 1;
     default:
         return gcc_sizeof(env, sss_t);
@@ -86,7 +85,6 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     case TableType: return sizeof (table_t);
     case RangeType: return sizeof (range_t);
     case BoolType: return sizeof(bool);
-    case TypeType: return sizeof(void*);
     case NumType: return Match(sss_t, NumType)->bits / 8;
     case FunctionType:
     case PointerType: return sizeof(void*);
@@ -126,7 +124,6 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
         return size;
     }
     case VariantType: return gcc_sizeof(env, Match(sss_t, VariantType)->variant_of);
-    case ModuleType: return 0;
     case VoidType: case MemoryType: return 0;
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
     }
@@ -290,11 +287,8 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         Table_str_remove(&opaque_structs, t_str);
         break;
     }
-    case TypeType: {
-        cache_key = "Type";
-        gcc_t = Table_str_get(&cache, cache_key);
-        if (gcc_t) return gcc_t;
-        gcc_t = gcc_get_ptr_type(get_typeinfo_gcc_type(env));
+    case TypeInfoType: {
+        gcc_t = get_typeinfo_gcc_type(env);
         break;
     }
     case GeneratorType: {
@@ -303,10 +297,6 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         case AbortType: case VoidType: case MemoryType: return gcc_type(env->ctx, VOID);
         default: goto unknown_gcc_type;
         }
-    }
-    case ModuleType: {
-        gcc_t = gcc_struct_as_type(gcc_new_struct_type(env->ctx, NULL, "Module", 0, NULL));
-        break;
     }
     case VariantType: {
         if (type_eq(t, get_type_by_name(env, "CString"))) {

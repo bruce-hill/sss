@@ -210,7 +210,7 @@ typedef enum gcc_jit_comparison gcc_comparison_e;
 #define gcc_lvalue_get_alignment gcc_jit_lvalue_get_alignment
 #define gcc_array_access gcc_jit_context_new_array_access
 #define gcc_lvalue_access_field gcc_jit_lvalue_access_field
-#define gcc_rvalue_access_field gcc_jit_rvalue_access_field
+#define gcc_rvalue_access_field(...) ({gcc_rvalue_t *rval = gcc_jit_rvalue_access_field(__VA_ARGS__); assert(rval); rval; })
 #define gcc_rvalue_dereference_field gcc_jit_rvalue_dereference_field
 #define gcc_deref_field gcc_jit_rvalue_dereference_field
 #define gcc_rvalue_dereference gcc_jit_rvalue_dereference

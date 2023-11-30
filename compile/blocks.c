@@ -62,8 +62,7 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         }
         t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
 
-        binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
-        Table_str_set(env->bindings, name, b);
+        Table_str_set(env->bindings, heap_strf("#type:%s", name), t);
 
         env_t *type_env = get_type_env(env, t);
         type_env->bindings->fallback = env->bindings;
@@ -224,11 +223,10 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
             binding_t *b = new(binding_t, .type=get_type(env, def),
                                .func=func, .rval=gcc_get_func_address(func, NULL),
                                .visible_in_closures=true);
-            Table_str_set(env->file_bindings, fndef->name, b);
+            Table_str_set(env->bindings, fndef->name, b);
         }
     } else if (def->tag == TypeDef) {
-        binding_t *b = get_binding(env, Match(def, TypeDef)->name);
-        sss_type_t *t = Match(b->type, TypeType)->type;
+        sss_type_t *t = get_type_by_name(env, Match(def, TypeDef)->name);
         env = get_type_env(env, t);
         auto members = Match(def, TypeDef)->definitions;
         for (int64_t i = 0; members && i < LENGTH(members); i++) {

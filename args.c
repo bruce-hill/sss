@@ -3,6 +3,7 @@
 // specification
 
 #include <stdint.h>
+#include <gc/cord.h>
 
 #include "args.h"
 #include "ast.h"
@@ -11,7 +12,35 @@
 #include "builtins/table.h"
 #include "util.h"
 
-extern TypeInfo CString_type, Int_type;
+extern CORD CString_cord(const char **s, bool colorize, const TypeInfo *type);
+extern uint32_t CString_hash(const char **s, const TypeInfo *type);
+extern uint32_t CString_compare(const char **x, const char **y, const TypeInfo *type);
+static TypeInfo CString_typeinfo = {
+    .name="CString",
+    .size=sizeof(char*),
+    .align=alignof(char*),
+    .tag=CustomInfo,
+    .CustomInfo={
+        .cord=(void*)CString_cord,
+        .hash=(void*)CString_hash,
+        .compare=(void*)CString_compare,
+    },
+};
+
+extern int32_t Int__compare(const int64_t *x, const int64_t *y, const TypeInfo *type);
+extern CORD Int__cord(const int64_t *x, bool colorize, const TypeInfo *type);
+static TypeInfo Int_typeinfo = {
+    .name="Int",
+    .size=sizeof(int64_t),
+    .align=alignof(int64_t),
+    .tag=CustomInfo,
+    .CustomInfo={.compare=(void*)Int__compare, .cord=(void*)Int__cord},
+};
+
+static TypeInfo c_str_to_int_type = {
+    .name="{CString=>Int}", .size=sizeof(table_t), .align=sizeof(table_t),
+    .tag=TableInfo, .TableInfo={&CString_typeinfo, &Int_typeinfo, sizeof(char*) + sizeof(int64_t), sizeof(char*)}
+};
 
 // Return an in-evaluation-order list of relevant information about each argument
 ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(const char*) arg_names, ARRAY_OF(sss_type_t*) arg_types, ARRAY_OF(ast_t*) arg_defaults)
@@ -20,10 +49,6 @@ ARRAY_OF(arg_info_t) bind_arguments(env_t *env, ARRAY_OF(ast_t*) args, ARRAY_OF(
     arg_info_t *arg_infos = GC_MALLOC(num_args * sizeof(arg_info_t));
     int64_t next_arg = 0;
 
-    static TypeInfo c_str_to_int_type = {
-        .name="{CString=>Int}", .size=sizeof(table_t), .align=sizeof(table_t),
-        .tag=TableInfo, .TableInfo={&CString_type, &Int_type, sizeof(char*) + sizeof(int64_t), sizeof(char*)}
-    };
     table_t arg_positions = {};
     if (arg_names) {
         for (int64_t i = 0; i < LENGTH(arg_names); i++) {

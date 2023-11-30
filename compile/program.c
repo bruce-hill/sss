@@ -168,8 +168,6 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     // Load the module:
     sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
     gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, module_gcc_type, fresh("module"));
-    binding_t *b = new(binding_t, .type=Type(TypeType, .type=t), .visible_in_closures=true);
-    Table_str_set(env->bindings, "Module", b);
     env_t *type_env = get_type_env(env, t);
     type_env->bindings->fallback = env->bindings;
 

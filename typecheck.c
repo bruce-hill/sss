@@ -23,23 +23,18 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case Var: {
-        binding_t *b = get_binding(env, Match(ast, Var)->name);
-        if (!b)
-            compiler_err(env, ast, "I don't know anything with the name '%s'", Match(ast, Var)->name);
-        else if (b->type->tag == ModuleType)
-            return b->type;
-        else if (b->type->tag == TypeType)
-            return Match(b->type, TypeType)->type;
-        else
-            compiler_err(env, ast, "The only '%s' I know is a %T, not a type", Match(ast, Var)->name, b->type);
+        const char *name = Match(ast, Var)->name;
+        sss_type_t *t = get_type_by_name(env, name);
+        if (t) return t;
+        compiler_err(env, ast, "I don't know a type with the name '%s'", name);
     }
     case FieldAccess: {
         auto access = Match(ast, FieldAccess);
         sss_type_t *fielded_t = parse_type_ast(env, access->fielded);
-        binding_t *b = get_from_namespace(env, fielded_t, access->field);
-        if (!b || b->type->tag != TypeType)
+        sss_type_t *t = (sss_type_t*)get_from_namespace(env, fielded_t, heap_strf("#type:%s", access->field));
+        if (!t)
             compiler_err(env, ast, "I don't know any type with this name.");
-        return Match(b->type, TypeType)->type;
+        return t;
     }
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
@@ -142,10 +137,6 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             append(members, member);
         }
         return Type(TaggedUnionType, .members=members);
-    }
-    case TypeTypeAST: {
-        auto t = Match(ast, TypeTypeAST);
-        return Type(TypeType, .type=parse_type_ast(env, t->type));
     }
     default: compiler_err(env, ast, "This is not a Type value");
     }
@@ -282,12 +273,6 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
             if (streq(field_name, member->name))
                 return member->type;
         }
-        goto class_lookup;
-    }
-    case TypeType: {
-        binding_t *binding = get_from_namespace(env, Match(t, TypeType)->type, field_name);
-        if (binding)
-            return binding->type;
         goto class_lookup;
     }
     case ArrayType: {
@@ -469,8 +454,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         default: compiler_err(env, ast, "Unsupported precision");
         }
     }
-    case TypeOf: {
-        return Type(TypeType, .type=get_type(env, Match(ast, TypeOf)->value));
+    case GetTypeInfo: {
+        return Type(PointerType, .pointed=Type(TypeInfoType));
     }
     case SizeOf: {
         return Type(IntType, .bits=64);
@@ -505,8 +490,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(RangeType);
     }
     case StringJoin: case Interp: case StringLiteral: {
-        binding_t *b = Table_str_get(&env->global->bindings, "Str");
-        return Match(b->type, TypeType)->type;
+        return get_type_by_name(env, "Str");
     }
     case Var: {
         const char* name = Match(ast, Var)->name;
@@ -646,15 +630,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (call->extern_return_type)
             return parse_type_ast(env, call->extern_return_type);
         sss_type_t *fn_type_t = get_type(env, call->fn);
-        if (fn_type_t->tag == TypeType) {
-            binding_t *b = get_from_namespace(env, Match(fn_type_t, TypeType)->type, "new");
-            if (b && b->type->tag == FunctionType)
-                fn_type_t = b->type;
-            else
-                return Match(fn_type_t, TypeType)->type;
-        } else if (fn_type_t->tag != FunctionType) {
-            compiler_err(env, call->fn, "You're calling a value of type %T and not a function", fn_type_t);
-        }
         auto fn_type = Match(fn_type_t, FunctionType);
         return fn_type->ret;
     }
@@ -692,7 +667,14 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             switch (stmt->tag) {
             case Declare: {
                 auto decl = Match(stmt, Declare);
-                sss_type_t *t = get_type(env, decl->value);
+                sss_type_t *t;
+                if (decl->value->tag == Use) {
+                    sss_type_t *file_t = get_file_type(env, Match(decl->value, Use)->path);
+                    Table_str_set(env->bindings, heap_strf("type:%s", Match(decl->var, Var)->name), file_t);
+                    t = Type(PointerType, .pointed=file_t);                                                                     
+                } else {
+                    t = get_type(env, decl->value);
+                }
                 Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_public));
                 break;
             }
@@ -740,8 +722,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return parse_type_ast(env, Match(ast, Bitcast)->type);
     }
     case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
-    case TypeMeasure: case TypeTypeAST: case TypeTaggedUnion: {
-        return Type(TypeType, .type=parse_type_ast(env, ast));
+    case TypeMeasure: case TypeTaggedUnion: {
+        compiler_err(env, ast, "Attempt to get the type of this term, which is already a type annotation");
     }
     case Negative: {
         sss_type_t *t = get_type(env, Match(ast, Negative)->value);
@@ -992,18 +974,8 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             }
             return t;
         }
-        binding_t *b = get_ast_binding(env, struct_->type);
 
-        sss_type_t *t = NULL;
-        if (struct_->type && struct_->type->tag == FieldAccess) {
-            sss_type_t *fielded_t = get_type(env, Match(struct_->type, FieldAccess)->fielded);
-            if (fielded_t->tag == TypeType && Match(fielded_t, TypeType)->type->tag == TaggedUnionType)
-                t = Match(fielded_t, TypeType)->type;
-        }
-
-        if (t == NULL && b->type->tag == TypeType)
-            t = Match(b->type, TypeType)->type;
-
+        sss_type_t *t = parse_type_ast(env, struct_->type);
         if (t == NULL)
             compiler_err(env, ast, "There isn't any kind of struct like this");
 
