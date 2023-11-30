@@ -785,9 +785,8 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
             sss_type_t *str_type = get_type_by_name(env, "Str");
             if (type_eq(t, str_type)) {
                 binding_t *b = get_from_namespace(env, t, "c_string");
-                gcc_func_t *to_c_str = b ? b->func : NULL;
-                assert(to_c_str);
-                append(args, gcc_callx(env->ctx, NULL, to_c_str, rval));
+                assert(b);
+                append(args, b->func ? gcc_callx(env->ctx, NULL, b->func, rval) : gcc_callx_ptr(env->ctx, NULL, b->rval, rval));
                 continue;
             }
 
