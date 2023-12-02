@@ -323,6 +323,8 @@ public struct {
 } TypeInfo_type = {
     .type={
         .name="TypeInfo",
+        .size=sizeof(TypeInfo),
+        .align=alignof(TypeInfo),
         .tag=CustomInfo,
         .CustomInfo={.cord=(void*)Type__cord},
     },
