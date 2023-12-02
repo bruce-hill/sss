@@ -67,6 +67,7 @@ ssize_t gcc_alignof(env_t *env, sss_type_t *sss_t)
         return align;
     }
     case VariantType: return gcc_alignof(env, Match(sss_t, VariantType)->variant_of);
+    case TypeInfoType: return alignof(TypeInfo);
     case VoidType: case MemoryType: return 1;
     default:
         return gcc_sizeof(env, sss_t);
@@ -125,6 +126,7 @@ ssize_t gcc_sizeof(env_t *env, sss_type_t *sss_t)
     }
     case VariantType: return gcc_sizeof(env, Match(sss_t, VariantType)->variant_of);
     case VoidType: case MemoryType: return 0;
+    case TypeInfoType: return sizeof(TypeInfo);
     default: compiler_err(env, NULL, "gcc_sizeof() isn't implemented for %T", sss_t);
     }
 }
