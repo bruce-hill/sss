@@ -44,8 +44,11 @@ static void bind_globals(env_t *env, sss_type_t *ns_t, gcc_lvalue_t *ns_lval, AR
             sss_type_t *inner_ns_t = ith(ns_struct->field_types, field_num);
             gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
             gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
-            sss_type_t *def_t = get_type_by_name(env, def->name);
-            bind_globals(get_type_env(env, def_t), inner_ns_t, lval, def->definitions);
+
+            set_binding(env, def->name, new(binding_t, .type=inner_ns_t, .lval=lval, .rval=gcc_rval(lval)));
+
+            // bind_globals(get_type_env(env, def_t), inner_ns_t, lval, def->definitions);
+            bind_globals(env, inner_ns_t, lval, def->definitions);
             ++field_num;
             break;
         }

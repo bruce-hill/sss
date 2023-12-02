@@ -43,8 +43,8 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
 {
     if (def->tag == TypeDef) {
         const char *name = Match(def, TypeDef)->name;
-        if (Table_str_get(env->bindings, name))
-            compiler_err(env, def, "The name '%s' is already being used by something else", name);
+        // if (Table_str_get(env->bindings, name))
+        //     compiler_err(env, def, "The name '%s' is already being used by something else", name);
 
         ast_t *type_ast = Match(def, TypeDef)->type;
         auto definitions = Match(def, TypeDef)->definitions;
@@ -71,15 +71,23 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
         sss_type_t *namespace_t = get_namespace_type(env, t, definitions);
         gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, namespace_t);
         binding_t *ns_binding = get_binding(env, name);
+        if (!ns_binding) {
+            ns_binding = new(binding_t, .type=namespace_t);
+            Table_str_set(env->bindings, name, ns_binding);
+        }
+        assert(ns_binding);
+
         auto ns_struct = Match(base_variant(namespace_t), StructType);
         for (int64_t i = 0; ns_struct->field_names && i < LENGTH(ns_struct->field_types); i++) {
             const char *field_name = ith(ns_struct->field_names, i);
             sss_type_t *field_t = ith(ns_struct->field_types, i);
             gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), i);
             assert(field);
-            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_binding->lval, NULL, field);
-            Table_str_set(type_env->bindings, field_name,
-                          new(binding_t, .type=field_t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
+            if (ns_binding->lval) {
+                gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_binding->lval, NULL, field);
+                Table_str_set(type_env->bindings, field_name,
+                              new(binding_t, .type=field_t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
+            }
         }
 
         foreach (definitions, def, _)

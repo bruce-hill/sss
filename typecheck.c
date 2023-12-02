@@ -1289,8 +1289,8 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
     if (typedef_type) {
-        append(field_names, "__info");
-        append(field_types, typedef_type);
+        append(field_names, "type");
+        append(field_types, Type(TypeInfoType));
     }
     for (int64_t i = 0, len = LENGTH(statements); i < len; i++) {
         ast_t *stmt = ith(statements, i);
@@ -1301,7 +1301,6 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
             sss_type_t *t = get_type(env, decl->value);
             if (Table_str_get_raw(env->bindings, Match(decl->var, Var)->name))
                 compiler_err(env, stmt, "This variable declaration is overriding a variable with the same name earlier in the file");
-            Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_public));
             append(field_names, Match(decl->var, Var)->name);
             append(field_types, t);
             break;
@@ -1311,6 +1310,7 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
             append(field_names, def->name);
             sss_type_t *def_t = get_type_by_name(env, def->name);
             sss_type_t *ns_t = get_namespace_type(env, def_t, def->definitions);
+            set_binding(env, def->name, new(binding_t, .type=ns_t));
             append(field_types, ns_t);
             break;
         }
