@@ -13,7 +13,6 @@
 
 #include "ast.h"
 #include "parse.h"
-#include "units.h"
 
 typedef struct {
     sss_file_t *file;
@@ -44,7 +43,7 @@ static int op_tightness[NUM_AST_TAGS+1] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "using", "use", "unless", "unit", "then", "struct", "stop", "skip",
+    "yes", "xor", "with", "while", "using", "use", "unless", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_typeinfo_", "_mix_", "_min_", "_max_",
@@ -95,7 +94,6 @@ static PARSER(parse_var);
 static PARSER(parse_type_def);
 static PARSER(parse_func_def);
 static PARSER(parse_enum_type);
-static PARSER(parse_unit_def);
 static PARSER(parse_def);
 static PARSER(parse_convert_def);
 static PARSER(parse_extern);
@@ -392,17 +390,6 @@ PARSER(parse_parens) {
                .tag=expr->tag, .__data=expr->__data);
 }
 
-const char* match_units(const char **out) {
-    const char *pos = *out;
-    if (!match(&pos, "<")) return NULL;
-    pos += strspn(pos, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ/^0123456789-_ ");
-    if (!match(&pos, ">")) return NULL;
-    const char* buf = heap_strn(*out + 1, (size_t)(pos-1-(*out+1)));
-    const char* ret = unit_string(buf);
-    *out = pos;
-    return ret;
-}
-
 PARSER(parse_int) {
     const char *start = pos;
     bool negative = match(&pos, "-");
@@ -453,7 +440,7 @@ PARSER(parse_int) {
 
     if (match(&pos, "%")) {
         double d = (double)i / 100.;
-        return NewAST(ctx->file, start, pos, Num, .n=d, .precision=64, .units="%");
+        return NewAST(ctx->file, start, pos, Num, .n=d, .precision=64);
     }
 
     match(&pos, "_");
@@ -465,8 +452,7 @@ PARSER(parse_int) {
 
     // else if (match(&pos, ".") || match(&pos, "e")) return NULL; // looks like a float
 
-    const char* units = match_units(&pos);
-    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision, .units=units);
+    return NewAST(ctx->file, start, pos, Int, .i=i, .precision=precision);
 }
 
 PARSER(parse_table_type) {
@@ -556,15 +542,6 @@ PARSER(parse_type_name) {
     return fielded ? fielded : ast;
 }
 
-static const char* get_units(const char **pos) {
-    // +@(@unit=(id !~ keyword) [`^ @power=([`-] +`0-9)]) % (_[`*,/_])
-    size_t len = strcspn(*pos, ">");
-    // TODO: verify
-    const char* units = heap_strn(*pos, len);
-    *pos += len;
-    return units;
-}
-
 PARSER(parse_type) {
     const char *start = pos;
     ast_t *type = NULL;
@@ -592,12 +569,6 @@ PARSER(parse_type) {
     if (!type) return NULL;
 
     pos = type->end;
-    // Measure type
-    if (match(&pos, "<")) {
-        const char* units = get_units(&pos);
-        expect_closing(ctx, &pos, ">", "I expected a closing '>' for these units");
-        type = NewAST(ctx->file, type->start, pos, TypeMeasure, .type=type, .units=units);
-    }
     return type;
 }
 
@@ -630,15 +601,11 @@ PARSER(parse_num) {
     if (match(&pos, "f64")) precision = 64;
     else if (match(&pos, "f32")) precision = 32;
 
-    const char* units;
     if (match(&pos, "%")) {
         d /= 100.;
-        units = "%";
-    } else {
-        units = match_units(&pos);
     }
 
-    return NewAST(ctx->file, start, pos, Num, .n=d, .precision=precision, .units=units);
+    return NewAST(ctx->file, start, pos, Num, .n=d, .precision=precision);
 }
 
 PARSER(parse_array) {
@@ -780,8 +747,7 @@ PARSER(parse_struct) {
     }
     whitespace(&pos);
     expect_closing(ctx, &pos, "}", "I wasn't able to parse the rest of this struct");
-    const char* units = match_units(&pos);
-    return NewAST(ctx->file, start, pos, Struct, .type=type, .members=members, .units=units);
+    return NewAST(ctx->file, start, pos, Struct, .type=type, .members=members);
 }
 
 ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs) {
@@ -1837,7 +1803,6 @@ PARSER(parse_def) {
     ast_t *stmt = NULL;
     (void)((stmt=parse_func_def(ctx, pos))
         || (stmt=parse_type_def(ctx, pos))
-        || (stmt=parse_unit_def(ctx, pos))
         || (stmt=parse_convert_def(ctx, pos)));
     return stmt;
 }
@@ -2176,43 +2141,6 @@ PARSER(parse_convert_def) {
     ast_t *target_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion target type here");
     ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
     return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
-}
-
-PARSER(parse_unit_def) {
-    // unit 1<mi> := 1.6<km>
-    const char *start = pos;
-    if (!match_word(&pos, "unit")) return NULL;
-
-    spaces(&pos);
-
-    if (!isdigit(*pos)) return NULL;
-
-    ast_t *derived;
-    if (!(derived=optional_ast(ctx, &pos, parse_num))
-        && !(derived=optional_ast(ctx, &pos, parse_int)))
-        parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-    if (derived->tag == Int)
-        derived = NewAST(ctx->file, derived->start, derived->end, Num, .n=(double)Match(derived, Int)->i, .units=Match(derived, Int)->units);
-
-    if (derived->tag != Num || Match(derived, Num)->units == NULL)
-        parser_err(ctx, derived->start, derived->end, "Derived units must have units");
-
-    spaces(&pos);
-    if (!match(&pos, ":="))
-        parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-    ast_t *base;
-    if (!(base=optional_ast(ctx, &pos, parse_num))
-        && !(base=optional_ast(ctx, &pos, parse_int)))
-        parser_err(ctx, start, pos, "Invalid derived unit definition");
-
-    if (base->tag == Int)
-        base = NewAST(ctx->file, base->start, base->end, Num, .n=(double)Match(base, Int)->i, .units=Match(base, Int)->units);
-
-    if (base->tag != Num || Match(base, Num)->units == NULL)
-        parser_err(ctx, base->start, base->end, "Derived units must have units");
-    return NewAST(ctx->file, start, pos, UnitDef, .derived=derived, .base=base);
 }
 
 PARSER(parse_extern) {

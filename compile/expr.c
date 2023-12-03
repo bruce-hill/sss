@@ -18,7 +18,6 @@
 #include "../parse.h"
 #include "../typecheck.h"
 #include "../types.h"
-#include "../units.h"
 #include "../util.h"
 #include "../SipHash/halfsiphash.h"
 #include "compile.h"
@@ -51,18 +50,6 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
 
         auto intval = Match(ast, Int);
         int64_t i = intval->i;
-        double n = (double)i;
-        const char* units = intval->units;
-        if (units) {
-            units = unit_derive(units, &n, env->derived_units);
-            if ((double)((int64_t)n) == n) // no floating point rounding
-                i = (int64_t)n;
-            else
-                compiler_err(env, ast, "This is an integer with a derived unit of measure (%s) which is %g<%s> in base units, "
-                            "but that can't be represented as an integer without rounding errors",
-                            intval->units, n, units);
-        }
-
         int64_t min = INT64_MIN, max = INT64_MAX;
         switch (intval->precision) {
         case 32:
@@ -95,8 +82,6 @@ gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast)
     case Num: {
         gcc_type_t *gcc_t = sss_type_to_gcc(env, get_type(env, ast));
         double n = Match(ast, Num)->n;
-        const char* units = Match(ast, Num)->units;
-        units = unit_derive(units, &n, env->derived_units);
         return gcc_rvalue_from_double(env->ctx, gcc_t, n);
     }
     default: break;
@@ -841,9 +826,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env->comprehension_callback(env, block, ast, env->comprehension_userdata);
         return NULL;
     }
-    case UnitDef: {
-        return NULL;
-    }
     case ConvertDef: {
         auto convert = Match(ast, ConvertDef);
         sss_type_t *src_t = parse_type_ast(env, convert->source_type);
@@ -914,9 +896,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Struct: {
         auto struct_ = Match(ast, Struct);
         sss_type_t *t;
-        double unit_scaling = 1.0;
-        if (struct_->units)
-            unit_derive(struct_->units, &unit_scaling, env->derived_units);
         if (struct_->type) {
             t = parse_type_ast(env, struct_->type);
             assert(t);
@@ -2059,8 +2038,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         // (1-amount)*lhs + amount*rhs
         ast_t *amount_var = WrapAST(mix->key, Var, "$mix_amount");
         ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, Var, "Num32"));
-        if (streq(type_units(mix_t), "%"))
-            amount = WrapAST(mix->key, Divide, amount, WrapAST(mix->key, Num, .n=1.0, .precision=32, .units="%"));
         ast_t *mix_equation = WrapAST(ast, Block, ARRAY(
             WrapAST(mix->key, Declare, amount_var, amount),
             WrapAST(ast, Add,
@@ -2273,7 +2250,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return gcc_callx(env->ctx, NULL, load_func);
     }
     case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
-    case TypeMeasure: case TypeTaggedUnion: {
+    case TypeTaggedUnion: {
         sss_type_t *t = parse_type_ast(env, ast);
         const char *str = type_to_string(t);
         return gcc_str(env->ctx, str);

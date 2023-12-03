@@ -171,7 +171,6 @@ gcc_type_t *make_array_gcc_type(env_t *env, gcc_type_t *item_type)
 gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
 {
     static table_t cache = {0};
-    t = with_units(t, NULL);
     const char *cache_key = type_to_string(t);
     gcc_type_t *gcc_t = Table_str_get(&cache, cache_key);
     if (gcc_t) return gcc_t;
@@ -330,13 +329,8 @@ bool demote_int_literals(ast_t **ast, sss_type_t *needed)
 
     auto needed_int = Match(needed, IntType);
     auto int_ast = Match(*ast, Int);
-    if (streq(needed_int->units, int_ast->units)) {
-        *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=MIN(int_ast->precision, needed_int->bits),
-                       .units=needed_int->units);
-        return true;
-    } else {
-        return false;
-    }
+    *ast = WrapAST(*ast, Int, .i=int_ast->i, .precision=MIN(int_ast->precision, needed_int->bits));
+    return true;
 }
 
 gcc_rvalue_t *compile_ast_to_type(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *needed)

@@ -27,17 +27,15 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             CORD name = "Int";
             if (int_->bits != 64)
                 CORD_sprintf(&name, "%r%d", name, int_->bits);
-            if (int_->units)
-                CORD_sprintf(&name, "%r<%s>", name, int_->units);
             return name;
         }
         case CharType: return "Char";
         case NumType: {
             auto num = Match(t, NumType);
             if (num->bits == 64)
-                return num->units ? heap_strf("Num<%s>", num->units) : "Num";
+                return "Num";
             else
-                return num->units ? heap_strf("Num32<%s>", num->units) : "Num32";
+                return "Num32";
         }
         case RangeType: return "Range";
         case ArrayType: {
@@ -92,8 +90,6 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
                 c = CORD_cat(c, fstr);
             }
             c = CORD_cat(c, ")");
-            if (struct_->units)
-                CORD_sprintf(&c, "%r<%s>", c, struct_->units);
             return c;
         }
         case PointerType: {
@@ -279,45 +275,6 @@ sss_type_t *type_or_type(sss_type_t *a, sss_type_t *b)
     return NULL;
 }
 
-const char* type_units(sss_type_t *t)
-{
-    assert(t);
-    switch (t->tag) {
-    case IntType: return Match(t, IntType)->units;
-    case NumType: return Match(t, NumType)->units;
-    case StructType: return Match(t, StructType)->units;
-    case PointerType: return type_units(Match(t, PointerType)->pointed);
-    case ArrayType: return type_units(Match(t, ArrayType)->item_type);
-    case VariantType: return type_units(Match(t, VariantType)->variant_of);
-    default: return NULL;
-    }
-}
-
-sss_type_t *with_units(sss_type_t *t, const char* units)
-{
-    switch (t->tag) {
-    case IntType: return Type(IntType, .units=units, .bits=Match(t, IntType)->bits);
-    case NumType: return Type(NumType, .units=units, .bits=Match(t, NumType)->bits);
-    case StructType: {
-        auto s = Match(t, StructType);
-        return Type(StructType, .field_names=s->field_names, .field_types=s->field_types, .units=units);
-    }
-    case PointerType: {
-        auto ptr = Match(t, PointerType);
-        return Type(PointerType, .pointed=with_units(ptr->pointed, units), .is_optional=ptr->is_optional);
-    }
-    case ArrayType: {
-        auto array = Match(t, ArrayType);
-        return Type(ArrayType, .item_type=with_units(array->item_type, units));
-    }
-    case VariantType: {
-        auto variant = Match(t, VariantType);
-        return Type(VariantType, .filename=variant->filename, .name=variant->name, .variant_of=with_units(variant->variant_of, units));
-    }
-    default: return t;
-    }
-}
-
 bool is_integral(sss_type_t *t)
 {
     t = base_variant(t);
@@ -459,9 +416,6 @@ bool can_promote(sss_type_t *actual, sss_type_t *needed)
     // No promotion necessary:
     if (type_eq(actual, needed))
         return true;
-
-    if (!streq(type_units(actual), type_units(needed)))
-        return false;
 
     if (is_numeric(actual) && is_numeric(needed)) {
         auto cmp = compare_precision(actual, needed);

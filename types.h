@@ -5,7 +5,6 @@
 
 #include "ast.h"
 #include "builtins/array.h"
-#include "units.h"
 
 typedef const struct sss_type_s sss_type_t;
 
@@ -37,11 +36,9 @@ struct sss_type_s {
         struct {
         } UnknownType, AbortType, VoidType, MemoryType, BoolType, CharType;
         struct {
-            const char* units;
             uint16_t bits;
         } IntType;
         struct {
-            const char* units;
             uint16_t bits;
         } NumType;
         struct {} RangeType;
@@ -69,7 +66,6 @@ struct sss_type_s {
             ARRAY_OF(const char*) field_names;
             ARRAY_OF(sss_type_t*) field_types;
             ARRAY_OF(ast_t*) field_defaults;
-            const char* units;
         } StructType;
         struct {
             ARRAY_OF(sss_tagged_union_member_t) members;
@@ -101,8 +97,6 @@ bool is_floating_point(sss_type_t *t);
 bool is_numeric(sss_type_t *t);
 typedef enum {NUM_PRECISION_EQUAL, NUM_PRECISION_LESS, NUM_PRECISION_MORE, NUM_PRECISION_INCOMPARABLE} precision_cmp_e;
 precision_cmp_e compare_precision(sss_type_t *a, sss_type_t *b);
-const char* type_units(sss_type_t *t);
-sss_type_t *with_units(sss_type_t *t, const char* units);
 bool is_orderable(sss_type_t *t);
 bool has_heap_memory(sss_type_t *t);
 bool has_stack_memory(sss_type_t *t);

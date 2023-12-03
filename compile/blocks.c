@@ -92,13 +92,6 @@ void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
 
         foreach (definitions, def, _)
             predeclare_def_types(type_env, *def, lazy);
-    } else if (def->tag == UnitDef) {
-        auto unit_def = Match(def, UnitDef);
-        env->derived_units = new(derived_units_t, 
-                                 .derived=Match(unit_def->derived, Num)->units,
-                                 .base=Match(unit_def->base, Num)->units,
-                                 .ratio=Match(unit_def->base, Num)->n / Match(unit_def->derived, Num)->n,
-                                 .next=env->derived_units);
     } else if (def->tag == DocTest) {
         predeclare_def_types(env, Match(def, DocTest)->expr, lazy);
     }
@@ -306,7 +299,6 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
             env_t tmp = *env;
             tmp.comprehension_callback = NULL;
             compile_statement(&tmp, block, *stmt);
-            env->derived_units = tmp.derived_units;
             env->deferred = tmp.deferred;
         }
     }

@@ -17,10 +17,10 @@ extern const void *SSS_HASH_VECTOR;
 
 #define DEFINE_INT_TYPE(c_type, KindOfInt, fmt, abs_fn, min_val, max_val)\
     public CORD KindOfInt ## __cord(const c_type *i, bool colorize, const TypeInfo *type) { \
-        const char *units = strchrnul(type->name, '<'); \
+        (void)type; \
         CORD c; \
-        if (colorize) CORD_sprintf(&c, "\x1b[35m%"fmt"\x1b[33;2m%s\x1b[m", *i, units); \
-        else CORD_sprintf(&c, "%"fmt"%s", *i, units); \
+        if (colorize) CORD_sprintf(&c, "\x1b[35m%"fmt"\x1b[33;2m\x1b[m", *i); \
+        else CORD_sprintf(&c, "%"fmt, *i); \
         return c; \
     } \
     public int32_t KindOfInt ## __compare(const c_type *x, const c_type *y, const TypeInfo *type) { \

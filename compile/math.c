@@ -184,8 +184,6 @@ static gcc_rvalue_t *math_binop_rec(
 
     sss_type_t *struct_t = NULL;
     if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
-            compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
         struct_t = lhs_t;
     } else if (lhs_t->tag == StructType) {
         struct_t = lhs_t;
@@ -236,9 +234,9 @@ static gcc_rvalue_t *math_binop_rec(
             compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
 
         sss_type_t *result_t;
-        if (promote(env, with_units(lhs_t, NULL), &lhs, with_units(rhs_t, NULL)))
+        if (promote(env, lhs_t, &lhs, rhs_t))
             result_t = rhs_t;
-        else if (promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
+        else if (promote(env, rhs_t, &rhs, lhs_t))
             result_t = lhs_t;
         else
             compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
@@ -324,11 +322,6 @@ void math_update_rec(
     else if (rhs_t->tag == PointerType)
         compiler_err(env, ast, "The right hand side of this operation is a %T pointer. You need to get its value with '*' to use it in a math operation", lhs_t);
 
-    if (type_units(rhs_t) && (op == GCC_BINOP_MULT || op == GCC_BINOP_DIVIDE))
-        compiler_err(env, ast, "I can't do this math operation because it would change the left hand side's units");
-    else if (!streq(type_units(lhs_t), type_units(rhs_t)) && (op == GCC_BINOP_PLUS || op == GCC_BINOP_MINUS))
-        compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible units: %T and %T", lhs_t, rhs_t);
-
     gcc_type_t *i64 = gcc_type(env->ctx, INT64);
     if (lhs_t->tag == ArrayType && rhs_t->tag == ArrayType) {
         check_cow(env, block, lhs_t, gcc_lvalue_address(lhs, loc));
@@ -412,7 +405,7 @@ void math_update_rec(
         gcc_jump(*block, NULL, loop_condition);
         *block = loop_end;
     } else if (lhs_t->tag == StructType && rhs_t->tag == StructType) {
-        if (!type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL)))
+        if (!type_eq(lhs_t, rhs_t))
             compiler_err(env, ast, "I can't do this math operation because it requires math operations between incompatible types: %T and %T", lhs_t, rhs_t);
 
         auto struct_ = Match(lhs_t, StructType);
@@ -433,11 +426,11 @@ void math_update_rec(
             gcc_rvalue_t *rhs_field = rhs_t->tag == StructType ? gcc_rvalue_access_field(rhs, loc, field) : rhs;
             sss_type_t *rhs_field_t = rhs_t->tag == StructType ? field_t : rhs_t;
             math_update_rec(
-                env, block, ast, with_units(field_t, type_units(lhs_t)), gcc_lvalue_access_field(lhs, loc, field),
+                env, block, ast, field_t, gcc_lvalue_access_field(lhs, loc, field),
                 op, rhs_field_t, rhs_field);
         }
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
-        if (!promote(env, with_units(rhs_t, NULL), &rhs, with_units(lhs_t, NULL)))
+        if (!promote(env, rhs_t, &rhs, lhs_t))
             compiler_err(env, ast, "I can't automatically convert from %T to %T without losing precision", rhs_t, lhs_t);
         if ((op == GCC_BINOP_BITWISE_AND || op == GCC_BINOP_BITWISE_OR || op == GCC_BINOP_BITWISE_XOR) && lhs_t->tag == NumType)
             compiler_err(env, ast, "Bitwise operations cannot be performed in floating point numbers.");

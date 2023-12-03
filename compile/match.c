@@ -13,7 +13,6 @@
 #include "../parse.h"
 #include "../typecheck.h"
 #include "../types.h"
-#include "../units.h"
 #include "../util.h"
 #include "../SipHash/halfsiphash.h"
 #include "compile.h"
@@ -94,9 +93,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             sss_type_t *pat_t = parse_type_ast(env, pat_struct->type);
             if (!type_eq(t, pat_t))
                 compiler_err(env, pattern, "This pattern is a %T, but you're attempting to match it against a value with type %T", pat_t, t);
-        } else if (!streq(Match(base_variant(t), StructType)->units, pat_struct->units)) {
-            compiler_err(env, pattern, "The units of this pattern: <%s> don't match the units of the value being matched: <%s>",
-                         Match(base_variant(t), StructType)->units, pat_struct->units);
         }
 
         auto struct_info = Match(base_variant(t), StructType);

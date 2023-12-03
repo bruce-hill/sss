@@ -13,7 +13,6 @@
 #include "parse.h"
 #include "typecheck.h"
 #include "types.h"
-#include "units.h"
 #include "util.h"
 
 // Cache of type string -> tuple type
@@ -63,15 +62,6 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         if (pointed_t->tag == VoidType)
             compiler_err(env, ast, "Void pointers are not supported in SSS. You probably meant '!Memory'");
         return Type(PointerType, .is_optional=ptr->is_optional, .pointed=pointed_t, .is_stack=ptr->is_stack, .is_readonly=ptr->is_readonly);
-    }
-    case TypeMeasure: {
-        auto measure = Match(ast, TypeMeasure);
-        sss_type_t *raw = parse_type_ast(env, measure->type);
-        const char* raw_units = type_units(raw);
-        if (raw_units)
-            compiler_err(env, measure->type, "This type already has units on it (<%s>), you can't add more units", raw_units);
-        const char* units = unit_derive(measure->units, NULL, env->derived_units);
-        return with_units(raw, units);
     }
     case TypeFunction: {
         auto fn = Match(ast, TypeFunction);
@@ -178,37 +168,9 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         lhs_t = Match(lhs_t, PointerType)->pointed;
     while (rhs_t->tag == PointerType)
         rhs_t = Match(rhs_t, PointerType)->pointed;
-    const char* u1 = type_units(lhs_t), *u2 = type_units(rhs_t);
-    u1 = unit_derive(u1, NULL, env->derived_units);
-    u2 = unit_derive(u2, NULL, env->derived_units);
 
-    const char* units;
-    if (tag == Add || tag == Subtract || tag == And || tag == Or || tag == Xor) {
-        if (!streq(u1, u2))
-            compiler_err(env, ast, "The units of these two numbers don't match: <%s> vs. <%s>", u1 ? u1 : "", u2 ? u2 : "");
-        units = u1;
-    } else if (tag == Divide || tag == Multiply) {
-        units = ast->tag == Divide ? unit_string_div(u1, u2) : unit_string_mul(u1, u2);
-    } else if (tag == Power) {
-        if (u1 && strlen(u1) > 0)
-            compiler_err(env, ast, "Exponentiating units of measure isn't supported (this value has units <%s>)", u1);
-        else if (u2 && strlen(u2) > 0)
-            compiler_err(env, ast, "Using a unit of measure as an exponent isn't supported (this value has units <%s>)", u2);
-        units = NULL;
-    } else if (tag == Modulus || tag == Modulus1) {
-        if (u2 && strlen(u2) > 0)
-            compiler_err(env, ast, "This modulus value has units attached (<%s>), which doesn't make sense", u2);
-        units = u1;
-    } else if (tag == LeftShift || tag == RightShift) {
-        if (u2 && strlen(u2) > 0)
-            compiler_err(env, ast, "This bit shift has units attached (<%s>), which doesn't make sense", u2);
-        units = u1;
-    } else {
-        compiler_err(env, ast, "Unsupported math operation");
-    }
-
-    if (type_eq(with_units(lhs_t, NULL), with_units(rhs_t, NULL))) {
-        return with_units(lhs_t, units);
+    if (type_eq(lhs_t, rhs_t)) {
+        return lhs_t;
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
         if (lhs_t->tag == VariantType && rhs_t->tag == VariantType)
@@ -226,13 +188,11 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
             else
                 compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
         }
-        return with_units(t, units);
+        return t;
     } else if (is_numeric(lhs_t) && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType)) {
-        if (streq(units, "%")) units = NULL;
-        return with_units(rhs_t, units);
+        return rhs_t;
     } else if (is_numeric(rhs_t) && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType)) {
-        if (streq(units, "%")) units = NULL;
-        return with_units(lhs_t, units);
+        return lhs_t;
     } else if (lhs_t->tag == BoolType && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
         return rhs_t;
     } else if (rhs_t->tag == BoolType && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
@@ -258,11 +218,7 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
             const char *struct_field = ith(struct_t->field_names, i);
             if (!struct_field) struct_field = heap_strf("_%ld", i+1);
             if (streq(struct_field, field_name)) {
-                sss_type_t *field_t = ith(struct_t->field_types, i);
-                if (struct_t->units)
-                    field_t = with_units(field_t, unit_derive(struct_t->units, NULL, env->derived_units));
-
-                return field_t;
+                return ith(struct_t->field_types, i);
             }
         }
         goto class_lookup;
@@ -379,8 +335,6 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         if (pat_struct->type) {
             sss_type_t *pat_t = get_type(env, pat_struct->type);
             if (!type_eq(t, pat_t)) return;
-        } else if (!streq(struct_type->units, pat_struct->units)) {
-            return;
         }
 
         auto arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
@@ -433,24 +387,18 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case Int: {
         auto i = Match(ast, Int);
-        const char* units = i->units;
-        units = unit_derive(units, NULL, env->derived_units);
-
         switch (i->precision) {
         case 64: case 32: case 16: case 8:
-            return Type(IntType, .units=units, .bits=i->precision);
+            return Type(IntType, .bits=i->precision);
         default: compiler_err(env, ast, "Unsupported precision");
         }
     }
     case Char: return Type(CharType);
     case Num: {
         auto n = Match(ast, Num);
-        const char* units = n->units;
-        units = unit_derive(units, NULL, env->derived_units);
-
         switch (n->precision) {
-        case 64: return Type(NumType, .units=units, .bits=64);
-        case 32: return Type(NumType, .units=units, .bits=32);
+        case 64: return Type(NumType, .bits=64);
+        case 32: return Type(NumType, .bits=32);
         default: compiler_err(env, ast, "Unsupported precision");
         }
     }
@@ -520,7 +468,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 while (t2->tag == GeneratorType)
                     t2 = Match(t2, GeneratorType)->generated;
                 sss_type_t *merged = item_type ? type_or_type(item_type, t2) : t2;
-                if (!merged || (item_type && !streq(type_units(item_type), type_units(t2))))
+                if (!merged)
                     compiler_err(env, ith(array->items, i),
                                 "This array item has type %s, which is different from earlier array items which have type %s",
                                 type_to_string(t2),  type_to_string(item_type));
@@ -550,7 +498,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
                 sss_type_t *key_t = ith(Match(entry_t, StructType)->field_types, 0);
                 sss_type_t *key_merged = key_type ? type_or_type(key_type, key_t) : key_t;
-                if (!key_merged || (key_type && !streq(type_units(key_type), type_units(key_t))))
+                if (!key_merged)
                     compiler_err(env, ith(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(key_t),  type_to_string(key_type));
@@ -558,7 +506,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
                 sss_type_t *value_t = ith(Match(entry_t, StructType)->field_types, 1);
                 sss_type_t *val_merged = value_type ? type_or_type(value_type, value_t) : value_t;
-                if (!val_merged || (value_type && !streq(type_units(value_type), type_units(value_t))))
+                if (!val_merged)
                     compiler_err(env, ith(table->entries, i),
                                 "This table entry has type %s, which is different from earlier table entries which have type %s",
                                 type_to_string(value_t),  type_to_string(value_type));
@@ -691,7 +639,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (do_->else_body) {
             sss_type_t *else_t = get_type(env, do_->else_body);
             sss_type_t *t2 = type_or_type(t, else_t);
-            if (!t2 || !streq(type_units(t), type_units(else_t)))
+            if (!t2)
                 compiler_err(env, do_->else_body, "I was expecting this 'else' block to have a %T value (based on the preceding 'do'), but it actually has a %T value.",
                              t, else_t);
             t = t2;
@@ -722,7 +670,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return parse_type_ast(env, Match(ast, Bitcast)->type);
     }
     case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
-    case TypeMeasure: case TypeTaggedUnion: {
+    case TypeTaggedUnion: {
         compiler_err(env, ast, "Attempt to get the type of this term, which is already a type annotation");
     }
     case Negative: {
@@ -769,7 +717,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return lhs_t;
         else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
-            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+            if (!t)
                 compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
             return t;
         }
@@ -801,7 +749,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             return lhs_t;
         } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
             sss_type_t *t = type_or_type(lhs_t, rhs_t);
-            if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+            if (!t)
                 compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
             return t;
         } else {
@@ -846,7 +794,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
         sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
-        if (!t || !streq(type_units(lhs_t), type_units(rhs_t)))
+        if (!t)
             compiler_err(env, ast, "The two sides of this operation are not compatible: %T vs %T", lhs_t, rhs_t);
         return t;
     }
@@ -944,7 +892,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
     }
 
-    case TypeDef: case UnitDef: case ConvertDef: {
+    case TypeDef: case ConvertDef: {
         return Type(VoidType);
     }
 
@@ -964,8 +912,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 append(field_types, field_type);
             }
 
-            sss_type_t *t = Type(StructType, .field_names=field_names, .field_types=field_types,
-                                 .units=unit_derive(struct_->units, NULL, env->derived_units));
+            sss_type_t *t = Type(StructType, .field_names=field_names, .field_types=field_types);
             sss_type_t *memoized = Table_str_get(&tuple_types, type_to_string(t));
             if (memoized) {
                 t = memoized;
@@ -979,7 +926,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (t == NULL)
             compiler_err(env, ast, "There isn't any kind of struct like this");
 
-        return struct_->units ? with_units(t, unit_derive(struct_->units, NULL, env->derived_units)) : t;
+        return t;
     }
 
     case If: {
@@ -999,7 +946,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
             bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
             sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
-            if (!t2 || (t && !streq(type_units(t), type_units(case_t))))
+            if (!t2)
                 compiler_err(env, ith(if_->blocks, i),
                             "I was expecting this block to have a %s value (based on earlier clauses), but it actually has a %s value.",
                             type_to_string(t), type_to_string(case_t));

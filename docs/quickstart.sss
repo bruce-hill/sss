@@ -412,43 +412,6 @@ v1 := Vec3{1,2,3}
 >>> [Vec3{1,2,3}, Vec3{4,5,6}] * 100
 === [Vec3{x=100, y=200, z=300}, Vec3{x=400, y=500, z=600}]
 
-// Units of measure:
-// SSS supports tracking units of measure using the type system. This lets
-// the compiler verify that units are being properly used. Units of measure do
-// *not* affect runtime performance, they are entirely calculated at compile
-// time and at runtime are represented as ordinary floating point numbers. The
-// only difference in runtime behavior is that numbers with units attached will
-// print their units when converted to strings.
-distance := 10.<km>
-speed := 5.<km/hr>
-distance += speed * 3<hr>
->>> distance
-=== 25<km>
->>> "$distance"
-=== "25<km>"
-
-// This would be a type error because the units don't match:
-//    >>> distance + speed
-
-// SSS doesn't come pre-built with any knowledge of units, you can use your
-// own units. SSS simply enforces the rules that units must match when adding
-// or subtracting, and units stack or cancel out when multiplying and dividing.
-foo := 8.5<frog/horse>
->>> foo * 10<horse/banana>
-=== 85<frog/banana>
-
-// If you want, you can define derived units, which allows SSS to
-// automatically calculate unit conversions.
-unit 1.0<mi> := 1.60934<km>
-
->>> 1.0<mi> + 1.0<km>
-=== 2.60934<km>
-
-// Units can also be attached to structs:
-vel := Vec{1, 2}<km/hr>
->>> vel.x
-=== 1<km/hr>
-
 
 // Domain Specific Languages:
 // SSS provides language-level safety features for having strings that

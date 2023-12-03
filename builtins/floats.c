@@ -15,10 +15,10 @@
 #include "types.h"
 
 public CORD Num__cord(const double *f, bool colorize, const TypeInfo *type) { 
+    (void)type;
     CORD c;
-    const char *units = strchrnul(type->name, '<');
-    if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[33;2m%s\x1b[m", *f, units); 
-    else CORD_sprintf(&c, "%g%s", *f, units); 
+    if (colorize) CORD_sprintf(&c, "\x1b[35m%g\x1b[33;2m\x1b[m", *f); 
+    else CORD_sprintf(&c, "%g", *f); 
     return c; 
 } 
 
@@ -110,10 +110,10 @@ public struct {
 };
 
 public CORD Num32__cord(float *f, bool colorize, const TypeInfo *type) { 
+    (void)type;
     CORD c;
-    const char *units = strchrnul(type->name, '<');
-    if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32%s\x1b[m", *f, units);
-    else CORD_sprintf(&c, "%g_f32%s", *f, units);
+    if (colorize) CORD_sprintf(&c, "\x1b[35m%g_f32\x1b[m", *f);
+    else CORD_sprintf(&c, "%g_f32", *f);
     return c;
 }
 

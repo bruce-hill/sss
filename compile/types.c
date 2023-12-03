@@ -272,7 +272,7 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
         break;
     }
     case IntType: case NumType: {
-        gcc_func_t *fn = get_function(env, heap_strf("%T__cord", with_units(t, NULL)));
+        gcc_func_t *fn = get_function(env, heap_strf("%T__cord", t));
         SET_INFO(CustomInfo, custom_info, custom_info_fields,
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),
                  gcc_null(env->ctx, gcc_type(env->ctx, VOID_PTR)),

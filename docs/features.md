@@ -263,59 +263,6 @@ enemies := @[
 === ["Evil Ed", "Bad Bob"]
 ```
 
-## Units of Measure
-
-Inspired by [Graydon Hoare's blogpost "What's
-next?"](https://graydon2.dreamwidth.org/253769.html) as well as the
-implementation of [F#'s Units of
-Measure](https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/units-of-measure),
-SSS supports typed units of measure with typechecking and automatic
-conversions between units.
-
-```python
-unit 1<km> := 1_000<m>
-unit 100<cm> := 1<m>
-unit 10<mm> := 1<cm>
-
->>> 1<m> + 1<cm>
-=== 1.01<m>
-
->>> 10.0 * 2.5<m>
-=== 25.0<m>
-
-unit 1<min> := 60<s>
-unit 1<hr> := 60<min>
-
-// 1<km> + 1<hr> // Type error!
-// 12 + 1<hr> // Type error!
-
-unit 1<inch> := 2.54<cm>
-unit 1<ft> := 12<inch>
-unit 1<yd> := 3<ft>
-unit 1<mi> := 5_280<ft>
-
->>> 10<mi> / 2<hr>
-=== 2.2352<m/s>
->>> 1<mi>/1<km>
-=== 1.60934
-```
-
-Type checking and unit conversions are all performed *at compile time* relative
-to irreducible base units (i.e. those not defined in relation to other units),
-and all math occurs as double precision floating point operations in base
-units. In other words, there is no run-time overhead when performing unitful
-calculations.
-
-Units of measure can also be applied to structs, such as vectors:
-
-```python
-struct Vec2{x,y:Num}
-
-pos := Vec2{0,0}<m>
-vel := Vec2{5,3}<m/s>
-pos += 2<s>*vel
-```
-
 ## Minimally Intrusive Optional Types
 
 Optional types in many programming languages are either verbose and annoying to
@@ -620,13 +567,7 @@ all mainstream languages force programmers to use fractional real numbers (e.g.
 represented visually as a percent. This is serviceable, but somewhat tedious
 and unintuitive, and occasionally leads to mistakes. SSS allows for
 percentage literals like `2%`, which internally compiles to the floating point
-representation equivalent to `.02` but comes with two added advantages: it
-automatically prints as "2%" rather than "0.02", and it comes with a few type
-safety guarantees. The compiler allows normal math operations between
-percentages (adding, multiplying, etc.) but treats addition and subtraction
-between percentages and non-percentages as a type error (e.g. `5% + 10.0`).
-Multiplying percentages by numbers or units of measure produces something of
-the same type, as you would expect, so `50%*10.0<km> + 2.0<km> == 7.0<km>`
+representation equivalent to `.02`.
 
 To be frank, percentages are a bit of a gimmicky language feature, but they
 were easy to add and interesting as an experiment.

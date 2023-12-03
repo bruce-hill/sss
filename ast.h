@@ -42,14 +42,13 @@ typedef enum {
     Extern,
     TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer,
-    TypeMeasure,
     TypeTaggedUnion,
     Cast, Bitcast,
     Struct,
     TaggedUnionField,
     TypeDef,
     Index, FieldAccess,
-    UnitDef, ConvertDef,
+    ConvertDef,
     Reduction,
     DocTest,
     Defer,
@@ -90,12 +89,10 @@ struct ast_s {
         struct {
             int64_t i;
             uint8_t precision;
-            const char * units;
         } Int;
         struct {
             double n;
             uint8_t precision;
-            const char *units;
         } Num;
         struct {
             ast_t *first, *last, *step;
@@ -226,10 +223,6 @@ struct ast_s {
         } TypePointer;
         struct {
             ast_t *type;
-            const char *units;
-        } TypeMeasure;
-        struct {
-            ast_t *type;
         } TypeTypeAST;
         struct {
             ast_t *value, *type;
@@ -237,7 +230,6 @@ struct ast_s {
         struct {
             ast_t *type;
             ARRAY_OF(ast_t *) members;
-            const char *units;
         } Struct;
         struct {
             ARRAY_OF(const char*) tag_names;
@@ -261,9 +253,6 @@ struct ast_s {
             ast_t *fielded;
             const char *field;
         } FieldAccess;
-        struct {
-            ast_t *derived, *base;
-        } UnitDef;
         struct {
             const char *var;
             ast_t *source_type, *target_type, *body;

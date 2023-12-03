@@ -56,7 +56,6 @@ SSS.](docs/features.md) These include:
 - Destructuring pattern matching with exhaustiveness checking
 - Beautiful and helpful compiler and runtime error messages with emphasis on
   user-friendliness
-- Units of measure with automatic unit conversions
 - Better loops
 - Vectorized math operations (array programming style)
 - Structs with known-at-compile-time methods, not OOP objects with vtable

@@ -11,7 +11,6 @@
 #include "builtins/table.h"
 #include "builtins/array.h"
 #include "types.h"
-#include "units.h"
 
 typedef struct env_s env_t;
 
@@ -63,7 +62,6 @@ typedef struct env_s {
     table_t *bindings; // name -> binding_t
     sss_type_t *return_type;
     loop_label_t *loop_label;
-    derived_units_t *derived_units;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
     void *comprehension_userdata;
     defer_t *deferred;

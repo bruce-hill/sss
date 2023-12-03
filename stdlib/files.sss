@@ -4,7 +4,7 @@ time := use time.sss
 
 type FileInfo := struct(
     device, rdevice, inode, mode, links, user, group:Int
-    size,block_size:Int<bytes>
+    size,block_size:Int
     block_count:Int
     accessed, modified, moved:time.Timestamp
 )
