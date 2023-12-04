@@ -39,64 +39,6 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 }
 
-void predeclare_def_types(env_t *env, ast_t *def, bool lazy)
-{
-    if (def->tag == TypeDef) {
-        const char *name = Match(def, TypeDef)->name;
-        // if (Table_str_get(env->bindings, name))
-        //     compiler_err(env, def, "The name '%s' is already being used by something else", name);
-
-        ast_t *type_ast = Match(def, TypeDef)->type;
-        auto definitions = Match(def, TypeDef)->definitions;
-
-        sss_type_t *t;
-        if (type_ast->tag == TypeStruct) {
-            // This is a placeholder type, whose fields will be populated later.
-            // This is necessary because of recursive/corecursive structs.
-            t = Type(StructType, .field_names=EMPTY_ARRAY(const char*),
-                     .field_types=EMPTY_ARRAY(sss_type_t*), .field_defaults=EMPTY_ARRAY(ast_t*));
-        } else if (type_ast->tag == TypeTaggedUnion) {
-            t = Type(TaggedUnionType, .members=EMPTY_ARRAY(sss_tagged_union_member_t));
-        } else {
-            t = parse_type_ast(env, type_ast);
-        }
-        t = Type(VariantType, .name=name, .filename=sss_get_file_pos(def->file, def->start), .variant_of=t);
-
-        Table_str_set(env->bindings, heap_strf("#type:%s", name), t);
-
-        env_t *type_env = get_type_env(env, t);
-        type_env->bindings->fallback = env->bindings;
-
-        // Create a namespace struct:
-        sss_type_t *namespace_t = get_namespace_type(env, t, definitions);
-        gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, namespace_t);
-        binding_t *ns_binding = get_binding(env, name);
-        if (!ns_binding) {
-            ns_binding = new(binding_t, .type=namespace_t);
-            Table_str_set(env->bindings, name, ns_binding);
-        }
-        assert(ns_binding);
-
-        auto ns_struct = Match(base_variant(namespace_t), StructType);
-        for (int64_t i = 0; ns_struct->field_names && i < LENGTH(ns_struct->field_types); i++) {
-            const char *field_name = ith(ns_struct->field_names, i);
-            sss_type_t *field_t = ith(ns_struct->field_types, i);
-            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), i);
-            assert(field);
-            if (ns_binding->lval) {
-                gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_binding->lval, NULL, field);
-                Table_str_set(type_env->bindings, field_name,
-                              new(binding_t, .type=field_t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
-            }
-        }
-
-        foreach (definitions, def, _)
-            predeclare_def_types(type_env, *def, lazy);
-    } else if (def->tag == DocTest) {
-        predeclare_def_types(env, Match(def, DocTest)->expr, lazy);
-    }
-}
-
 void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
 {
     env = get_type_env(env, t);
@@ -150,68 +92,6 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
     }
 }
 
-void populate_def_members(env_t *env, ast_t *def)
-{
-    if (def->tag == TypeDef) {
-        const char *name = Match(def, TypeDef)->name;
-        sss_type_t *t = get_type_by_name(env, name);
-        assert(t);
-        env_t *inner_env = get_type_env(env, t);
-        inner_env->bindings->fallback = env->bindings;
-
-        ast_t *type_ast = Match(def, TypeDef)->type;
-        if (type_ast->tag == TypeStruct) {
-            auto struct_type = Match(base_variant(t), StructType);
-            table_t used_names = {0};
-            auto struct_def = Match(type_ast, TypeStruct);
-            for (int64_t i = 0, len = LENGTH(struct_def->members.names); i < len; i++) {
-                const char *name = ith(struct_def->members.names, i);
-                if (!name) name = heap_strf("_%lu", i+1);
-                if (Table_str_get(&used_names, name))
-                    compiler_err(env, def, "This struct has a duplicated field name: '%s'", name);
-                Table_str_set(&used_names, name, (void*)true);
-                append(struct_type->field_names, name);
-                ast_t *type = ith(struct_def->members.types, i);
-                ast_t *default_val = struct_def->members.defaults ? ith(struct_def->members.defaults, i) : NULL;
-                sss_type_t *ft = type ? parse_type_ast(env, type) : get_type(env, default_val);
-                if (ft->tag == VoidType)
-                    compiler_err(env, type ? type : default_val, "This field is a Void type, but that isn't supported for struct members.");
-                if (ft->tag == PointerType && Match(ft, PointerType)->is_stack)
-                    compiler_err(env, type ? type : default_val, "Structs are not allowed to hold stack references, because the struct might outlive the stack frame.");
-                append(struct_type->field_types, ft);
-                append(struct_type->field_defaults, default_val);
-            }
-        } else if (type_ast->tag == TypeTaggedUnion) {
-            auto members = Match(base_variant(t), TaggedUnionType)->members;
-            auto tu_def = Match(type_ast, TypeTaggedUnion);
-            table_t used_names = {0};
-            for (int64_t i = 0; i < LENGTH(tu_def->tag_names); i++) {
-                args_t args = ith(tu_def->tag_args, i);
-                sss_type_t *member_t = parse_type_ast(env, WrapAST(def, TypeStruct, .members=args));
-                if (member_t && member_t->tag == PointerType && Match(member_t, PointerType)->is_stack)
-                    compiler_err(env, def, "Tagged unions are not allowed to hold stack references, because the tagged union might outlive the stack frame.");
-                const char *name = ith(tu_def->tag_names, i);
-                if (Table_str_get(&used_names, name))
-                    compiler_err(env, def, "This definition has a duplicated field name: '%s'", name);
-                Table_str_set(&used_names, name, (void*)true);
-                sss_tagged_union_member_t member = {
-                    .name=name,
-                    .tag_value=ith(tu_def->tag_values, i),
-                    .type=member_t,
-                };
-                append(members, member);
-            }
-            populate_tagged_union_constructors(env, t);
-        }
-
-        auto definitions = Match(def, TypeDef)->definitions;
-        foreach (definitions, def, _)
-            populate_def_members(inner_env, *def);
-    } else if (def->tag == DocTest) {
-        return populate_def_members(env, Match(def, DocTest)->expr);
-    }
-}
-
 void predeclare_def_funcs(env_t *env, ast_t *def)
 {
     if (def->tag == FunctionDef) {
@@ -229,7 +109,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
     } else if (def->tag == TypeDef) {
         sss_type_t *t = get_type_by_name(env, Match(def, TypeDef)->name);
         env = get_type_env(env, t);
-        auto members = Match(def, TypeDef)->definitions;
+        auto members = Match(Match(def, TypeDef)->namespace, Namespace)->statements;
         for (int64_t i = 0; members && i < LENGTH(members); i++) {
             ast_t *member = ith(members, i);
             if (member->tag == FunctionDef) {
@@ -270,14 +150,6 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
     //    5B) Also populate all inner method bodies
     // 6) Compile each statement
 
-    // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
-    foreach (statements, stmt, _) {
-        predeclare_def_types(env, *stmt, true);
-    }
-    // Populate struct fields:
-    foreach (statements, stmt, _) {
-        populate_def_members(env, *stmt);
-    }
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {
         predeclare_def_funcs(env, *stmt);

@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "../ast.h"
+#include "../args.h"
 #include "../environment.h"
 #include "../typecheck.h"
 #include "../parse.h"
@@ -18,70 +19,67 @@
 #include "libgccjit_abbrev.h"
 #include "../SipHash/halfsiphash.h"
 
-static void bind_globals(env_t *env, sss_type_t *ns_t, gcc_lvalue_t *ns_lval, ARRAY_OF(ast_t*) statements)
+// This function only cares about typedefs and making sure types can be
+// referenced when defining other types.
+static void predeclare_types(env_t *env, ast_t *ast)
 {
-    gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
-    auto ns_struct = Match(ns_t, StructType);
+    switch (ast->tag) {
+    case TypeDef: {
+        auto def = Match(ast, TypeDef);
+        sss_type_t *t = Type(PlaceholderType);
+        Table_str_set(env->bindings, heap_strf("#type:%s", def->name), t);
 
-    int64_t field_num = 0;
-    foreach (statements, _stmt, _) {
-        ast_t *stmt = *_stmt;
-      doctest_inner:
-        switch (stmt->tag) {
-        case Declare: {
-            auto decl = Match(stmt, Declare);
-            decl->is_public = true;
-            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
-            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
-            sss_type_t *t = ith(ns_struct->field_types, field_num);
-            assert(t);
-            set_binding(env, Match(decl->var, Var)->name, new(binding_t, .type=t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
-            ++field_num;
-            break;
-        }
-        case TypeDef: {
-            auto def = Match(stmt, TypeDef);
-            sss_type_t *inner_ns_t = ith(ns_struct->field_types, field_num);
-            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
-            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
-
-            set_binding(env, def->name, new(binding_t, .type=inner_ns_t, .lval=lval, .rval=gcc_rval(lval)));
-
-            // bind_globals(get_type_env(env, def_t), inner_ns_t, lval, def->definitions);
-            bind_globals(env, inner_ns_t, lval, def->definitions);
-            ++field_num;
-            break;
-        }
-        case FunctionDef: {
-            auto def = Match(stmt, FunctionDef);
-            gcc_field_t *field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), field_num);
-            gcc_lvalue_t *lval = gcc_lvalue_access_field(ns_lval, ast_loc(env, stmt), field);
-            sss_type_t *t = ith(ns_struct->field_types, field_num);
-            assert(t);
-            set_binding(env, def->name, new(binding_t, .type=t, .lval=lval, .rval=gcc_rval(lval), .visible_in_closures=true));
-            ++field_num;
-            break;
-        }
-        case DocTest: {
-            stmt = Match(stmt, DocTest)->expr;
-            goto doctest_inner;
-        }
-        default: break;
-        }
+        table_t *namespace = new(table_t, .fallback=env->bindings);
+        Table_str_set(&env->global->type_namespaces, def->name, namespace);
+        set_ast_namespace(env, def->namespace, namespace);
+        predeclare_types(env, def->namespace);
+        break;
+    }
+    case Namespace: {
+        env = get_ast_scope(env, ast);
+        foreach (Match(ast, Namespace)->statements, stmt, _)
+            predeclare_types(env, *stmt);
+        break;
+    }
+    default: break;
     }
 }
 
-static void make_module_struct(env_t *env, ast_t *ast)
+static void populate_type_placeholders(env_t *env, ast_t *ast)
 {
-    sss_type_t *ns_t = get_namespace_type(env, NULL, Match(ast, Block)->statements);
+    switch (ast->tag) {
+    case TypeDef: {
+        auto def = Match(ast, TypeDef);
+        sss_type_t *placeholder_t = Table_str_get(env->bindings, heap_strf("#type:%s", def->name));
+        // Mutate placeholder type to hold resolved type: 
+        sss_type_t *resolved_t = parse_type_ast(env, def->type);
+        *(struct sss_type_s*)placeholder_t = *resolved_t;
+        populate_type_placeholders(env, def->namespace);
+        break;
+    }
+    case Namespace: {
+        env = get_ast_scope(env, ast);
+        foreach (Match(ast, Namespace)->statements, stmt, _)
+            populate_type_placeholders(env, *stmt);
+        break;
+    }
+    default: break;
+    }
+}
+
+static void make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
+{
+    sss_type_t *ns_t = get_namespace_type(env, ast, false);
     gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_lvalue_t *mod_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ns_gcc_t, "mod");
-    bind_globals(env, ns_t, mod_lval, Match(ast, Block)->statements);
+    compile_namespace(env, block, mod_lval, ast, NULL);
 }
 
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
+    predeclare_types(env, ast);
+    populate_type_placeholders(env, ast);
 
     sss_type_t *str_t = get_type_by_name(env, "Str");
     gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
@@ -119,10 +117,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
         gcc_new_param(ctx, NULL, gcc_type(ctx, UINT32), "seed")}, false);
     gcc_eval(main_block, NULL, gcc_callx(ctx, NULL, srand48_func, gcc_callx(ctx, NULL, arc4_rng)));
 
-    make_module_struct(env, ast);
-
     // Run the program:
-    compile_statement(env, &main_block, ast);
+    make_module_struct(env, &main_block, ast);
     gcc_return(main_block, NULL, gcc_zero(ctx, gcc_type(ctx, INT)));
 
     // Actually compile the functions:
@@ -147,6 +143,8 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
+    predeclare_types(env, ast);
+    populate_type_placeholders(env, ast);
 
     // Set up `USE_COLOR`
     Table_str_set(&env->global->bindings, "USE_COLOR",
@@ -174,9 +172,8 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     env_t *type_env = get_type_env(env, t);
     type_env->bindings->fallback = env->bindings;
 
-    make_module_struct(env, ast);
+    make_module_struct(env, &do_loading_block, ast);
 
-    compile_block_statement(env, &do_loading_block, ast);
     if (do_loading_block)
         gcc_jump(do_loading_block, NULL, finished_loading_block);
 

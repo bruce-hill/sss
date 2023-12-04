@@ -342,7 +342,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         gcc_field_t *info_field = gcc_get_field(gcc_type_as_struct(ns_gcc_t), 0);
         gcc_lvalue_t *info_lval = gcc_lvalue_access_field(type_lval, NULL, info_field);
         Table_str_set(&env->global->typeinfos, type_to_string_concise(t), new(typeinfo_lval_t, .type=t, .lval=info_lval));
-        mark_typeinfo_lvalue_initialized(env, t);
+        mark_typeinfo_lvalue_initialized(env, t, gcc_rval(info_lval));
 
         gcc_struct_t *ns_gcc_struct = gcc_type_as_struct(ns_gcc_t);
 
@@ -382,6 +382,26 @@ env_t *fresh_scope(env_t *env)
     *fresh = *env;
     fresh->bindings = new(table_t, .fallback=env->bindings);
     return fresh;
+}
+
+env_t *get_ast_scope(env_t *env, ast_t *ast)
+{
+    env_t *fresh = GC_MALLOC(sizeof(env_t));
+    *fresh = *env;
+    const char *key = heap_strf("%s;%ld", ast->file->filename, (int64_t)(ast->start - ast->file->text));
+    table_t *bindings = Table_str_get(&env->global->block_bindings, key);
+    if (!bindings) {
+        bindings = new(table_t, .fallback=env->bindings);
+        Table_str_set(&env->global->block_bindings, key, bindings);
+    }
+    fresh->bindings = bindings;
+    return fresh;
+}
+
+void set_ast_namespace(env_t *env, ast_t *ast, table_t *namespace)
+{
+    const char *key = heap_strf("%s;%ld", ast->file->filename, (int64_t)(ast->start - ast->file->text));
+    Table_str_set(&env->global->block_bindings, key, namespace);
 }
 
 env_t *scope_with_type(env_t *env, sss_type_t *t)

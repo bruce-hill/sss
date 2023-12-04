@@ -116,19 +116,18 @@ gcc_rvalue_t *get_typeinfo_pointer(env_t *env, sss_type_t *t)
 }
 
 static table_t initialized_typeinfo_lvals = {0};
-void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t)
+void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t, gcc_rvalue_t *rval)
 {
     (void)env;
-    Table_str_set(&initialized_typeinfo_lvals, type_to_string_concise(t), t);
+    Table_str_set(&initialized_typeinfo_lvals, type_to_string_concise(t), rval);
 }
 
-static void initialize_type_lvalue(env_t *env, sss_type_t *t)
+gcc_rvalue_t *get_typeinfo_rvalue(env_t *env, sss_type_t *t)
 {
-    if (Table_str_get(&initialized_typeinfo_lvals, type_to_string_concise(t)))
-        return;
-    mark_typeinfo_lvalue_initialized(env, t);
+    gcc_rvalue_t *rval = Table_str_get(&initialized_typeinfo_lvals, type_to_string_concise(t));
+    if (rval)
+        return rval;
 
-    gcc_lvalue_t *lval = get_typeinfo_lvalue(env, t);
 #define TAG_RVAL 3
 #define INFO_RVAL 4
     gcc_rvalue_t *type_rvalues[5] = {
@@ -161,11 +160,12 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
                      FUNC_PTR("Str__cord"),
             );
 #undef FUNC_PTR
-            gcc_global_set_initializer_rvalue(
-                lval,
-                gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
-                                       type_struct_fields, type_rvalues));
-            return;
+            rval = gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env),
+                                          sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
+                                          type_struct_fields, type_rvalues);
+
+            mark_typeinfo_lvalue_initialized(env, t, rval);
+            return rval;
         }
     }
 
@@ -314,9 +314,10 @@ static void initialize_type_lvalue(env_t *env, sss_type_t *t)
     }
     }
 
-    gcc_global_set_initializer_rvalue(
-        lval,
-        gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]), type_struct_fields, type_rvalues));
+    rval = gcc_struct_constructor(env->ctx, NULL, get_typeinfo_gcc_type(env), sizeof(type_struct_fields)/sizeof(type_struct_fields[0]),
+                                  type_struct_fields, type_rvalues);
+    mark_typeinfo_lvalue_initialized(env, t, rval);
+    return rval;
 }
 
 void initialize_typeinfo_lvalues(env_t *env)
@@ -324,7 +325,12 @@ void initialize_typeinfo_lvalues(env_t *env)
     for (int64_t i = 1; i <= Table_length(&env->global->typeinfos); i++) {
         struct {const char *key; typeinfo_lval_t *info; } *entry = Table_entry(&env->global->typeinfos, i);
         assert(entry && entry->info && entry->info->type && entry->info->lval);
-        initialize_type_lvalue(env, entry->info->type);
+
+        if (Table_str_get(&initialized_typeinfo_lvals, entry->key))
+            continue;
+        gcc_rvalue_t *rval = get_typeinfo_rvalue(env, entry->info->type);
+        gcc_global_set_initializer_rvalue(entry->info->lval, rval);
+        mark_typeinfo_lvalue_initialized(env, entry->info->type, gcc_rval(entry->info->lval));
     }
 }
 

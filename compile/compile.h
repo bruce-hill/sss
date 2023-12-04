@@ -72,6 +72,7 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 gcc_rvalue_t *compile_constant(env_t *env, ast_t *ast);
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_len(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *obj);
+sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lval, ast_t *namespace_ast, sss_type_t *xxx);
 
 // ============================== functions.c ===========================
 void compile_function(env_t *env, gcc_func_t *func, ast_t *def);
@@ -80,9 +81,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name);
 // ============================== blocks.c ==============================
 gcc_func_t *prepare_use(env_t *env, ast_t *ast);
 void populate_uses(env_t *env, ast_t *ast);
-void predeclare_def_types(env_t *env, ast_t *def, bool lazy);
 void predeclare_def_funcs(env_t *env, ast_t *def);
-void populate_def_members(env_t *env, ast_t *def);
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
@@ -134,7 +133,8 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
 // ============================== types.c ===============================
 gcc_rvalue_t *get_typeinfo_pointer(env_t *env, sss_type_t *type);
 gcc_type_t *get_typeinfo_gcc_type(env_t *env);
-void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t);
+void mark_typeinfo_lvalue_initialized(env_t *env, sss_type_t *t, gcc_rvalue_t *rval);
+gcc_rvalue_t *get_typeinfo_rvalue(env_t *env, sss_type_t *t);
 void initialize_typeinfo_lvalues(env_t *env);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

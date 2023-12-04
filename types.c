@@ -145,6 +145,10 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             const char *name = (flags & FILENAMES) ? heap_strf("%s:%s", variant->filename, variant->name) : variant->name;
             return name;
         }
+        case PlaceholderType: {
+            auto placeholder = Match(t, PlaceholderType);
+            return placeholder->name;
+        }
         case TypeInfoType: {
             return "TypeInfo";
         }

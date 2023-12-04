@@ -94,15 +94,14 @@ static PARSER(parse_var);
 static PARSER(parse_type_def);
 static PARSER(parse_func_def);
 static PARSER(parse_enum_type);
-static PARSER(parse_def);
 static PARSER(parse_convert_def);
 static PARSER(parse_extern);
-static PARSER(parse_predeclaration);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
 static PARSER(parse_use);
 static PARSER(parse_linker);
 static PARSER(parse_ellipsis);
+static PARSER(parse_namespace);
 static ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast);
 
 //
@@ -1712,19 +1711,6 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     return expr;
 }
 
-PARSER(parse_predeclaration) {
-    const char *start = pos;
-    ast_t *var = parse_var(ctx, pos);
-    if (!var) return NULL;
-    pos = var->end;
-    spaces(&pos);
-    if (!match(&pos, ":")) return NULL;
-    if (match(&pos, "=") || match(&pos, ":")) return NULL;
-    spaces(&pos);
-    ast_t *type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this declaration");
-    return NewAST(ctx->file, start, pos, Predeclare, .var=var, .type=type);
-}
-
 PARSER(parse_declaration) {
     const char *start = pos;
     ast_t *var = parse_var(ctx, pos);
@@ -1799,21 +1785,12 @@ PARSER(parse_assignment) {
     return NewAST(ctx->file, start, pos, Assign, .targets=targets, .values=values);
 }
 
-PARSER(parse_def) {
-    ast_t *stmt = NULL;
-    (void)((stmt=parse_func_def(ctx, pos))
-        || (stmt=parse_type_def(ctx, pos))
-        || (stmt=parse_convert_def(ctx, pos)));
-    return stmt;
-}
-
 PARSER(parse_statement) {
     ast_t *stmt = NULL;
     if ((stmt=parse_declaration(ctx, pos))
-        || (stmt=parse_predeclaration(ctx, pos))
-        || (stmt=parse_def(ctx, pos))
         || (stmt=parse_doctest(ctx, pos))
-        || (stmt=parse_linker(ctx,pos))
+        || (stmt=parse_func_def(ctx, pos))
+        || (stmt=parse_convert_def(ctx, pos))
         || (stmt=parse_use(ctx,pos)))
         return stmt;
 
@@ -1902,34 +1879,30 @@ PARSER(parse_opt_indented_block) {
     return indent(ctx, &pos) ? parse_block(ctx, pos) : parse_inline_block(ctx, pos);
 }
 
-static ARRAY_OF(ast_t*) parse_def_definitions(parse_ctx_t *ctx, const char **pos, int64_t starting_indent)
-{
-    const char *start = *pos;
-    whitespace(pos);
-    auto definitions = EMPTY_ARRAY(ast_t*);
-    int64_t indent = sss_get_indent(ctx->file, *pos);
-    if (indent > starting_indent) {
-        for (;;) {
-            const char *next = *pos;
-            whitespace(&next);
-            if (sss_get_indent(ctx->file, next) != indent) break;
-            ast_t *def;
-            bool success = ((def=optional_ast(ctx, &next, parse_declaration))
-                            || (def=optional_ast(ctx, &next, parse_predeclaration))
-                            || (def=optional_ast(ctx, &next, parse_def)));
-            whitespace(&next);
-            if (!success) {
-                if (sss_get_indent(ctx->file, next) > starting_indent && next < strchrnul(next, '\n'))
-                    parser_err(ctx, next, strchrnul(next, '\n'), "Only declarations and defs can go inside defs, and this isn't one of those");
-                break;
-            }
-            append(definitions, def);
-            *pos = next;
+PARSER(parse_namespace) {
+    const char *start = pos;
+    whitespace(&pos);
+    int64_t indent = sss_get_indent(ctx->file, pos);
+    auto statements = EMPTY_ARRAY(ast_t*);
+    for (;;) {
+        const char *next = pos;
+        whitespace(&next);
+        if (sss_get_indent(ctx->file, next) != indent) break;
+        ast_t *stmt;
+        if ((stmt=optional_ast(ctx, &pos, parse_type_def))
+            ||(stmt=optional_ast(ctx, &pos, parse_linker))
+            ||(stmt=optional_ast(ctx, &pos, parse_statement)))
+        {
+            append(statements, stmt);
+            pos = stmt->end;
+            whitespace(&pos);
+        } else {
+            if (sss_get_indent(ctx->file, next) > indent && next < strchrnul(next, '\n'))
+                parser_err(ctx, next, strchrnul(next, '\n'), "I couldn't parse this namespace statement");
+            break;
         }
-    } else {
-        *pos = start;
     }
-    return definitions;
+    return NewAST(ctx->file, start, pos, Namespace, .statements=statements);
 }
 
 PARSER(parse_type_def) {
@@ -1945,8 +1918,16 @@ PARSER(parse_type_def) {
 
     if (!match(&pos, ":=")) return NULL;
     ast_t *type_ast = expect_ast(ctx, start, &pos, parse_type, "I expected a type after this ':='");
-    ARRAY_OF(ast_t*) definitions = parse_def_definitions(ctx, &pos, starting_indent);
-    return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .definitions=definitions);
+
+    const char *ns_pos = pos;
+    whitespace(&ns_pos);
+    int64_t ns_indent = sss_get_indent(ctx->file, ns_pos);
+    ast_t *namespace = NULL;
+    if (ns_indent > starting_indent) {
+        pos = ns_pos;
+        namespace = optional_ast(ctx, &pos, parse_namespace);
+    }
+    return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .namespace=namespace);
 }
 
 PARSER(parse_enum_type) {
@@ -2237,7 +2218,7 @@ ast_t *parse_file(sss_file_t *file, jmp_buf *on_err) {
         some_not(&pos, "\r\n");
 
     whitespace(&pos);
-    ast_t *ast = parse_block(&ctx, pos);
+    ast_t *ast = parse_namespace(&ctx, pos);
     pos = ast->end;
     whitespace(&pos);
     if (strlen(pos) > 0) {

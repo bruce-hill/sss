@@ -132,7 +132,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
     }
 }
 
-static sss_type_t *get_iter_type(env_t *env, ast_t *iter)
+sss_type_t *get_iter_type(env_t *env, ast_t *iter)
 {
     sss_type_t *iter_t = get_type(env, iter);
     for (;;) {
@@ -295,84 +295,6 @@ static sss_type_t *generate(sss_type_t *t)
         return t;
     else
         return Type(GeneratorType, .generated=t);
-}
-
-static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
-{
-    while (t->tag == VariantType)
-        t = Match(t, VariantType)->variant_of;
-
-    switch (pattern->tag) {
-    case Wildcard: {
-        const char *name = Match(pattern, Wildcard)->name;
-        if (!name) return;
-        binding_t *b = get_binding(env, name);
-        if (!b)
-            Table_str_set(env->bindings, name, new(binding_t, .type=t));
-        return;
-    }
-    case Var: {
-        const char *name = Match(pattern, Var)->name;
-        if (t->tag == TaggedUnionType) {
-            auto tu_t = Match(t, TaggedUnionType);
-            foreach (tu_t->members, member, _) {
-                if (streq(member->name, name))
-                    return;
-            }
-        }
-        return;
-    }
-    case HeapAllocate: {
-        if (t->tag != PointerType) return;
-        bind_match_patterns(env, Match(t, PointerType)->pointed, Match(pattern, HeapAllocate)->value);
-        return;
-    }
-    case Struct: {
-        if (t->tag != StructType)
-            return;
-        auto struct_type = Match(t, StructType);
-        auto pat_struct = Match(pattern, Struct);
-        if (pat_struct->type) {
-            sss_type_t *pat_t = get_type(env, pat_struct->type);
-            if (!type_eq(t, pat_t)) return;
-        }
-
-        auto arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
-                                        struct_type->field_types, struct_type->field_defaults);
-        foreach (arg_infos, arg_info, _) {
-            if (arg_info->ast)
-                bind_match_patterns(env, arg_info->type, arg_info->ast);
-        }
-        return;
-    }
-    case FunctionCall: {
-        auto call = Match(pattern, FunctionCall);
-        if (call->fn->tag != Var) return;
-
-        const char *fn_name = Match(call->fn, Var)->name;
-        if (t->tag != TaggedUnionType) return;
-
-        // Tagged Union Constructor:
-        auto tu_t = Match(t, TaggedUnionType);
-        int64_t tag_index = -1;
-        for (int64_t i = 0; i < LENGTH(tu_t->members); i++) {
-            if (streq(ith(tu_t->members, i).name, fn_name)) {
-                tag_index = i;
-                break;
-            }
-        }
-        if (tag_index < 0) return;
-
-        auto member = ith(tu_t->members, tag_index);
-        if (!member.type)
-            compiler_err(env, pattern, "This tagged union member doesn't have any value");
-
-        ast_t *m_pat = WrapAST(pattern, Struct, .members=call->args);
-        bind_match_patterns(env, member.type, m_pat);
-        return;
-    }
-    default: return;
-    }
 }
 
 sss_type_t *get_type(env_t *env, ast_t *ast)
@@ -590,21 +512,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         switch (last->tag) {
         case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
         case AndUpdate: case OrUpdate: case XorUpdate:
-        case Assign: case Predeclare: case Declare: case FunctionDef: case TypeDef:
+        case Assign: case Declare: case FunctionDef: case TypeDef:
             return Type(VoidType);
         default: break;
         }
 
         env = fresh_scope(env);
 
-        // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
-        foreach (block->statements, stmt, _) {
-            predeclare_def_types(env, *stmt, false);
-        }
-        // Populate struct fields:
-        foreach (block->statements, stmt, _) {
-            populate_def_members(env, *stmt);
-        }
         // Function defs are visible in the entire block (allowing corecursive funcs)
         foreach (block->statements, stmt, _) {
             predeclare_def_funcs(env, *stmt);
@@ -652,7 +566,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *t = parse_type_ast(env, Match(ast, Extern)->type);
         return Match(ast, Extern)->address ? Type(PointerType, .pointed=t, .is_optional=false) : t;
     }
-    case Predeclare: case Declare: case Assign: case DocTest: case LinkerDirective: {
+    case Declare: case Assign: case DocTest: case LinkerDirective: {
         return Type(VoidType);
     }
     case Use: {
@@ -934,16 +848,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *subject_t;
         if (if_->subject->tag == Declare) {
             subject_t = get_type(env, Match(if_->subject, Declare)->value);
-            env = fresh_scope(env);
-            Table_str_set(env->bindings, Match(Match(if_->subject, Declare)->var, Var)->name,
-                 new(binding_t, .type=subject_t));
+            env = get_ast_scope(env, ast);
         } else {
             subject_t = get_type(env, if_->subject);
         }
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
-            env_t *case_env = fresh_scope(env);
-            bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
+            env_t *case_env = get_ast_scope(env, ith(if_->blocks, i));
             sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
@@ -1047,6 +958,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto variant = Match(ast, Variant);
         return parse_type_ast(env, variant->type);
     }
+    case Namespace: {
+        return get_namespace_type(env, ast, false);
+    }
     case Extend: return Type(VoidType);
     default: break;
     }
@@ -1057,7 +971,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case Assign: case Predeclare: case Declare: case FunctionDef: case TypeDef: case Use:
+    case Assign: case Declare: case FunctionDef: case TypeDef: case Use: case Namespace:
         return true;
     default: break;
     }
@@ -1216,18 +1130,12 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                      type_to_string(t));
 }
 
-sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(ast_t*) statements)
+sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, bool include_typeinfo)
 {
-    env = fresh_scope(env);
+    env = get_ast_scope(env, namespace_ast);
 
-    // Struct and tagged union defs are visible in the entire block (allowing corecursive structs)
-    foreach (statements, stmt, _) {
-        predeclare_def_types(env, *stmt, false);
-    }
-    // Populate struct fields:
-    foreach (statements, stmt, _) {
-        populate_def_members(env, *stmt);
-    }
+    auto statements = Match(namespace_ast, Namespace)->statements;
+
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {
         predeclare_def_funcs(env, *stmt);
@@ -1235,28 +1143,31 @@ sss_type_t *get_namespace_type(env_t *env, sss_type_t *typedef_type, ARRAY_OF(as
 
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
-    if (typedef_type) {
+
+    if (include_typeinfo) {
         append(field_names, "type");
         append(field_types, Type(TypeInfoType));
     }
+
     for (int64_t i = 0, len = LENGTH(statements); i < len; i++) {
         ast_t *stmt = ith(statements, i);
       doctest_inner:
         switch (stmt->tag) {
         case Declare: {
             auto decl = Match(stmt, Declare);
+            const char *name = Match(decl->var, Var)->name;
             sss_type_t *t = get_type(env, decl->value);
-            if (Table_str_get_raw(env->bindings, Match(decl->var, Var)->name))
-                compiler_err(env, stmt, "This variable declaration is overriding a variable with the same name earlier in the file");
-            append(field_names, Match(decl->var, Var)->name);
+            // if (Table_str_get_raw(env->bindings, name))
+            //     compiler_err(env, stmt, "This variable declaration is overriding a variable with the same name earlier in the file");
+            append(field_names, name);
             append(field_types, t);
+            set_binding(env, name, new(binding_t, .type=t));
             break;
         }
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
             append(field_names, def->name);
-            sss_type_t *def_t = get_type_by_name(env, def->name);
-            sss_type_t *ns_t = get_namespace_type(env, def_t, def->definitions);
+            sss_type_t *ns_t = get_namespace_type(env, def->namespace, true);
             set_binding(env, def->name, new(binding_t, .type=ns_t));
             append(field_types, ns_t);
             break;
@@ -1309,7 +1220,7 @@ sss_type_t *get_file_type(env_t *env, const char *path)
 
     sss_file_t *f = sss_load_file(sss_path);
     ast_t *ast = parse_file(f, env->on_err);
-    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, NULL, Match(ast, Block)->statements));
+    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, ast, false));
     Table_str_set(&env->global->module_types, path, type);
     return type;
 }

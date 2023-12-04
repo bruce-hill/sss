@@ -20,7 +20,7 @@ typedef enum {
     Nil, Bool, Var, Wildcard,
     Int, Num, Range, Char,
     StringLiteral, StringJoin, Interp,
-    Predeclare, Declare, Assign,
+    Declare, Assign,
     AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
     AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
     Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
@@ -34,7 +34,7 @@ typedef enum {
     Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
-    Block,
+    Block, Namespace,
     Do, For, While, Repeat, If,
     Skip, Stop, Pass,
     Return,
@@ -111,9 +111,6 @@ struct ast_s {
             bool labelled:1, colorize:1, quote_string:1;
         } Interp;
         struct {
-            ast_t *var, *type;
-        } Predeclare;
-        struct {
             ast_t *var, *value;
             bool is_public;
         } Declare;
@@ -171,6 +168,9 @@ struct ast_s {
             // Whether to keep using the existing scope instead of creating a new one:
             bool keep_scope;
         } Block;
+        struct {
+            ARRAY_OF(ast_t*) statements;
+        } Namespace;
         struct {
             const char *label;
             ast_t *body, *else_body;
@@ -242,8 +242,7 @@ struct ast_s {
         } TaggedUnionField;
         struct {
             const char *name;
-            ast_t *type;
-            ARRAY_OF(ast_t*) definitions;
+            ast_t *type, *namespace;
         } TypeDef;
         struct {
             ast_t *indexed, *index;

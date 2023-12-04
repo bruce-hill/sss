@@ -30,6 +30,7 @@ struct sss_type_s {
         TaggedUnionType,
         VariantType,
         TypeInfoType,
+        PlaceholderType,
     } tag;
 
     union {
@@ -75,6 +76,9 @@ struct sss_type_s {
             sss_type_t *variant_of;
         } VariantType;
         struct {} TypeInfoType;
+        struct {
+            const char *name;
+        } PlaceholderType;
     } __data;
 };
 

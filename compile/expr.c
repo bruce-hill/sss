@@ -168,6 +168,78 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
+sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lval, ast_t *namespace_ast, sss_type_t *type_for_typeinfo)
+{
+    auto ns = Match(namespace_ast, Namespace);
+    sss_type_t *ns_t = get_namespace_type(env, namespace_ast, type_for_typeinfo != NULL);
+    gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
+    gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
+    env = get_ast_scope(env, namespace_ast);
+
+    int64_t field_index = 0;
+    if (type_for_typeinfo) {
+        gcc_lvalue_t *typeinfo_lval = gcc_lvalue_access_field(lval, ast_loc(env, namespace_ast), gcc_get_field(gcc_struct, field_index));
+        ++field_index;
+        const char *key = type_to_string_concise(type_for_typeinfo);
+        typeinfo_lval_t *info = new(typeinfo_lval_t, .type=type_for_typeinfo, .lval=typeinfo_lval);
+        Table_str_set(&env->global->typeinfos, key, info);
+        gcc_rvalue_t *rval = get_typeinfo_rvalue(env, type_for_typeinfo);
+        gcc_assign(*block, ast_loc(env, namespace_ast), typeinfo_lval, rval);
+        mark_typeinfo_lvalue_initialized(env, type_for_typeinfo, gcc_rval(typeinfo_lval));
+    }
+
+    foreach (ns->statements, _stmt, _) {
+        ast_t *stmt = *_stmt;
+        // while (stmt->tag == DocTest)
+        //     stmt = Match(stmt, DocTest)->expr;
+
+        gcc_loc_t *loc = ast_loc(env, stmt);
+        switch (stmt->tag) {
+        case Declare: {
+            auto decl = Match(stmt, Declare);
+            sss_type_t *t = get_type(env, decl->value);
+            assert(t);
+            if (t->tag == GeneratorType)
+                compiler_err(env, decl->value, "This expression isn't guaranteed to have a single value, so you can't use it to initialize a variable."); 
+            else if (t->tag == VoidType)
+                compiler_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
+            gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
+            gcc_lvalue_t *decl_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            ++field_index;
+            const char *name = Match(decl->var, Var)->name;
+            Table_str_set(env->bindings, name,
+                       new(binding_t, .lval=decl_lval, .rval=gcc_rval(decl_lval), .type=t, .visible_in_closures=true));
+            gcc_assign(*block, loc, decl_lval, rval);
+            break;
+        }
+        case FunctionDef: {
+            auto fn = Match(stmt, FunctionDef);
+            gcc_lvalue_t *def_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            ++field_index;
+            binding_t *binding = get_binding(env, fn->name);
+            assert(binding && binding->func);
+            gcc_assign(*block, loc, def_lval, gcc_get_func_address(binding->func, NULL));
+            break;
+        }
+        case TypeDef: {
+            auto def = Match(stmt, TypeDef);
+            sss_type_t *t = get_type_by_name(env, def->name);
+            gcc_lvalue_t *ns_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            ++field_index;
+            sss_type_t *ns_t = compile_namespace(env, block, ns_lval, def->namespace, t);
+            Table_str_set(env->bindings, def->name,
+                       new(binding_t, .lval=ns_lval, .rval=gcc_rval(ns_lval), .type=ns_t, .visible_in_closures=true));
+            break;
+        }
+        default: {
+            compile_statement(env, block, stmt);
+            break;
+        }
+        }
+    }
+    return ns_t;
+}
+
 static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *t, ARRAY_OF(ast_t*) args)
 {
     t = base_variant(t);
@@ -268,9 +340,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Wildcard: {
         compiler_err(env, ast, "Wildcards can only be used inside 'matches' expressions, they can't be used as values");
-    }
-    case Predeclare: {
-        return NULL;
     }
     case Declare: {
         auto decl = Match(ast, Declare);
@@ -574,6 +643,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             env = fresh_scope(env);
         return compile_block_expr(env, block, ast);
     }
+    case Namespace: {
+        sss_type_t *ns_t = get_namespace_type(env, ast, false);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
+        gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, gcc_t, fresh("namespace"));
+        compile_namespace(env, block, lval, ast, NULL);
+        return gcc_rval(lval);
+    }
     case FunctionDef: {
         auto fn = Match(ast, FunctionDef);
         binding_t *binding = get_binding(env, fn->name);
@@ -850,12 +926,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type_by_name(env, Match(ast, TypeDef)->name);
         env = get_type_env(env, t);
 
-        auto members = Match(ast, TypeDef)->definitions;
+        auto members = Match(Match(ast, TypeDef)->namespace, Namespace)->statements;
 
-        foreach (members, stmt, _)
-            predeclare_def_types(env, *stmt, true);
-        foreach (members, stmt, _)
-            populate_def_members(env, *stmt);
         foreach (members, stmt, _)
             predeclare_def_funcs(env, *stmt);
 
