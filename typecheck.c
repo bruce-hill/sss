@@ -1170,6 +1170,8 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
 
+    env = fresh_scope(env);
+
     if (type) {
         append(field_names, "type");
         append(field_types, Type(TypeInfoType));

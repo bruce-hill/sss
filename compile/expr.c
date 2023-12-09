@@ -266,6 +266,8 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
         }
     }
 
+    env = fresh_scope(env);
+
     foreach (ns->statements, _stmt, _) {
         ast_t *stmt = *_stmt;
         while (stmt->tag == DocTest)
