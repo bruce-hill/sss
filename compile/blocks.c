@@ -137,24 +137,6 @@ gcc_rvalue_t *_compile_block(env_t *env, gcc_block_t **block, ast_t *ast, bool g
 {
     auto statements = ast->tag == Block ? Match(ast, Block)->statements : ARRAY(ast);
 
-    // Design constraints:
-    // - Struct/tagged union members can be struct/tagged union values defined earlier in the file
-    // - Struct/tagged union members can be pointers to structs/tagged union defined *later* in the file
-    // - Structs can define inner classes, which can be referenced by other classes
-    // - Structs can define inner methods, which can be referenced inside the bodies of functions
-    // - Function arguments can be struct/tagged union values/pointers defined anywhere in the file
-    // - Function bodies can have references to functions declared anywhere in the file (corecursion)
-    // Therefore the order of operations is:
-    // 1) Load imports
-    // 2) Predeclare all structs/tagged union with placeholder opaque structs/tagged union
-    //    2B) Also predeclare all struct/tagged union 
-    // 3) Populate all struct/tagged union members
-    // 4) Predeclare all functions
-    //    4B) Also predeclare all inner methods
-    // 5) Populate all function bodies
-    //    5B) Also populate all inner method bodies
-    // 6) Compile each statement
-
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {
         predeclare_def_funcs(env, *stmt);

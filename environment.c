@@ -423,7 +423,7 @@ static void copy_global_bindings(table_t *dest, table_t *src)
     for (; src; src = src->fallback) {
         for (int64_t i = 1; i <= Table_length(src); i++) {
             struct { const char *key; binding_t *value;} *entry = Table_str_entry(src, i);
-            if (entry->value->visible_in_closures)
+            if (strncmp(entry->key, "#type:", strlen("#type:")) == 0 || entry->value->visible_in_closures)
                 Table_str_set(dest, entry->key, entry->value);
         }
     }

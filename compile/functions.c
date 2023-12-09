@@ -191,7 +191,7 @@ void compile_function(env_t *env, gcc_func_t *func, ast_t *def)
     }
 }
 
-gcc_func_t *get_function_def(env_t *env, ast_t *def, const char* name)
+gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name)
 {
     const char *key = heap_strf("%p", def);
     func_context_t *func_context = Table_str_get(&env->global->ast_functions, key);
