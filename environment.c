@@ -91,6 +91,12 @@ struct {const char *symbol, *type; } builtin_functions[] = {
     {"dlsym", "func(handle:@Memory, symbol:CString)->?Memory"},
     {"dlclose", "func(handle:@Memory)->?Memory"},
 
+    // String metamethods:
+    {"Str__compare", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&(readonly)TypeInfo)->Int32"},
+    {"Str__equal", "func(x:&(readonly)Memory, y:&(readonly)Memory, type:&(readonly)TypeInfo)->Bool"},
+    {"Str__hash", "func(obj:&(readonly)Memory, type:&(readonly)TypeInfo)->Int32"},
+    {"Str__cord", "func(obj:&(readonly)Memory, colorize:Bool, type:&(readonly)TypeInfo)->Cord"},
+
     // Cord functions:
     {"CORD_cat", "func(x:Cord, y:Cord)->Cord"},
     {"CORD_cat_char_star", "func(x:Cord, y:CString, leny:Int)->Cord"},
