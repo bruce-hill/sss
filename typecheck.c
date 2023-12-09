@@ -561,7 +561,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 sss_type_t *t;
                 if (decl->value->tag == Use) {
                     sss_type_t *file_t = get_file_type(env, Match(decl->value, Use)->path);
-                    Table_str_set(env->bindings, heap_strf("type:%s", Match(decl->var, Var)->name), file_t);
+                    Table_str_set(env->bindings, heap_strf("#type:%s", Match(decl->var, Var)->name), file_t);
                     t = Type(PointerType, .pointed=file_t);                                                                     
                 } else {
                     t = get_type(env, decl->value);
@@ -1203,8 +1203,6 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             auto decl = Match(stmt, Declare);
             const char *name = Match(decl->var, Var)->name;
             sss_type_t *t = get_type(env, decl->value);
-            // if (Table_str_get_raw(env->bindings, name))
-            //     compiler_err(env, stmt, "This variable declaration is overriding a variable with the same name earlier in the file");
             append(field_names, name);
             append(field_types, t);
             set_binding(env, name, new(binding_t, .type=t));
