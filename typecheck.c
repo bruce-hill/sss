@@ -297,6 +297,35 @@ static sss_type_t *generate(sss_type_t *t)
         return Type(GeneratorType, .generated=t);
 }
 
+sss_type_t *get_doctest_type(env_t *env, ast_t *ast)
+{
+    switch (ast->tag) {
+    case Return: {
+        auto ret = Match(ast, Return);
+        return ret->value ? get_doctest_type(env, ret->value) : Type(VoidType);
+    }
+    case Assign: {
+        auto assign = Match(ast, Assign);
+        auto members = EMPTY_ARRAY(ast_t*);
+        for (int64_t i = 0; i < LENGTH(assign->targets); i++) {
+            append(members, WrapAST(ith(assign->targets, i), KeywordArg, .name=heap_strf("_%d", i+1), .arg=ith(assign->targets, i)));
+            // ast_t *target = ith(assign->targets, i);
+            // append(members, WrapAST(target, KeywordArg, .name=heap_strf("%W", target), .arg=target));
+        }
+        return get_doctest_type(env, WrapAST(ast, Struct, .members=members));
+    }
+    case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
+    case XorUpdate: case ConcatenateUpdate: case Declare: {
+        // UNSAFE: this assumes all these types have the same layout:
+        ast_t *lhs_ast = ast->__data.AddUpdate.lhs;
+        // END UNSAFE
+        return get_doctest_type(env, lhs_ast);
+    }
+    default:
+        return get_type(env, ast);
+    }
+}
+
 sss_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
