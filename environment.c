@@ -410,11 +410,6 @@ env_t *scope_with_type(env_t *env, sss_type_t *t)
     *fresh = *env;
     fresh->bindings = new(table_t, .fallback=env->bindings);
     table_t *ns = get_namespace(env, t);
-    if (t->tag == TaggedUnionType) {
-        auto members = Match(t, TaggedUnionType)->members;
-        if (LENGTH(members) > 0 && !Table_str_get(ns, ith(members, 0).name))
-            populate_tagged_union_constructors(env, t);
-    }
     for (int64_t i = 1; i <= Table_length(ns); i++) {
         struct { const char *key; binding_t *value; } *entry = Table_entry(ns, i);
         if (!Table_str_get(fresh->bindings, entry->key))

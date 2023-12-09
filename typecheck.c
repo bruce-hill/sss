@@ -1159,7 +1159,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
                      type_to_string(t));
 }
 
-sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, bool include_typeinfo)
+sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *type)
 {
     env = get_ast_scope(env, namespace_ast);
 
@@ -1173,9 +1173,26 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, bool include_ty
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
 
-    if (include_typeinfo) {
+    if (type) {
         append(field_names, "type");
         append(field_types, Type(TypeInfoType));
+
+        if (base_variant(type)->tag == TaggedUnionType) {
+            // Add enum flag/constructors:
+            auto tagged = Match(base_variant(type), TaggedUnionType);
+            foreach (tagged->members, member, _) {
+                append(field_names, member->name);
+                auto fields = Match(member->type, StructType);
+                if (LENGTH(fields->field_types) == 0) {
+                    append(field_types, type);
+                } else {
+                    sss_type_t *constructor_t = Type(FunctionType, .arg_names=fields->field_names,
+                                                     .arg_types=fields->field_types, .arg_defaults=fields->field_defaults,
+                                                     .ret=type, .env=env);
+                    append(field_types, constructor_t);
+                }
+            }
+        }
     }
 
     for (int64_t i = 0, len = LENGTH(statements); i < len; i++) {
@@ -1196,7 +1213,8 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, bool include_ty
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
             append(field_names, def->name);
-            sss_type_t *ns_t = get_namespace_type(env, def->namespace, true);
+            sss_type_t *def_type = get_type_by_name(env, def->name);
+            sss_type_t *ns_t = get_namespace_type(env, def->namespace, def_type);
             set_binding(env, def->name, new(binding_t, .type=ns_t));
             append(field_types, ns_t);
             break;

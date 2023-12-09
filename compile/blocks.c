@@ -39,7 +39,7 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 }
 
-void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
+void populate_tagged_union_constructors(env_t *env, gcc_block_t **block, gcc_struct_t *ns_struct, gcc_lvalue_t *ns_lval, sss_type_t *t)
 {
     env = get_type_env(env, t);
     auto members = Match(base_variant(t), TaggedUnionType)->members;
@@ -49,8 +49,11 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
     gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
     gcc_field_t *union_field = gcc_get_field(gcc_tagged_s, 1);
     gcc_type_t *union_gcc_t = get_union_type(env, t);
+
     for (int64_t i = 0; i < LENGTH(members); i++) {
         auto member = ith(members, i);
+        int64_t constructor_index = i + 1; // first index is "type" (TypeInfo) field 
+        gcc_lvalue_t *field_lval = gcc_lvalue_access_field(ns_lval, NULL, gcc_get_field(ns_struct, constructor_index));
         // Constructor:
         if (member.type && member.type->tag == StructType && LENGTH(Match(member.type, StructType)->field_types) > 0) {
             gcc_type_t *member_gcc_t = sss_type_to_gcc(env, member.type);
@@ -78,6 +81,7 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
                         gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                         gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), struct_val),
                     }));
+            gcc_assign(*block, NULL, field_lval, gcc_get_func_address(func, NULL));
             Table_str_set(env->bindings, member.name,
                  new(binding_t, .type=Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=t),
                      .visible_in_closures=true,
@@ -87,7 +91,8 @@ void populate_tagged_union_constructors(env_t *env, sss_type_t *t)
                 env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
                     gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                 });
-            Table_str_set(env->bindings, member.name, new(binding_t, .type=t, .rval=val, .visible_in_closures=true));
+            gcc_assign(*block, NULL, field_lval, val);
+            Table_str_set(env->bindings, member.name, new(binding_t, .type=t, .rval=gcc_rval(field_lval), .visible_in_closures=true));
         }
     }
 }

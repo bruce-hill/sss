@@ -245,7 +245,7 @@ static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rva
 sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lval, ast_t *namespace_ast, sss_type_t *type_for_typeinfo)
 {
     auto ns = Match(namespace_ast, Namespace);
-    sss_type_t *ns_t = get_namespace_type(env, namespace_ast, type_for_typeinfo != NULL);
+    sss_type_t *ns_t = get_namespace_type(env, namespace_ast, type_for_typeinfo);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
     env = get_ast_scope(env, namespace_ast);
@@ -260,6 +260,11 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
         gcc_rvalue_t *rval = get_typeinfo_rvalue(env, type_for_typeinfo);
         gcc_assign(*block, ast_loc(env, namespace_ast), typeinfo_lval, rval);
         mark_typeinfo_lvalue_initialized(env, type_for_typeinfo, gcc_rval(typeinfo_lval));
+
+        if (base_variant(type_for_typeinfo)->tag == TaggedUnionType) {
+            populate_tagged_union_constructors(env, block, gcc_struct, lval, type_for_typeinfo);
+            field_index += LENGTH(Match(base_variant(type_for_typeinfo), TaggedUnionType)->members);
+        }
     }
 
     foreach (ns->statements, _stmt, _) {

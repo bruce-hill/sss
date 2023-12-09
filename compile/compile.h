@@ -85,7 +85,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def);
 void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *compile_block_expr(env_t *env, gcc_block_t **block, ast_t *ast);
 void compile_block_statement(env_t *env, gcc_block_t **block, ast_t *ast);
-void populate_tagged_union_constructors(env_t *env, sss_type_t *t);
+void populate_tagged_union_constructors(env_t *env, gcc_block_t **block, gcc_struct_t *ns_struct, gcc_lvalue_t *ns_lval, sss_type_t *t);
 
 // ============================== loops.c ================================
 void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast);
