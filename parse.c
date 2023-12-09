@@ -624,7 +624,7 @@ PARSER(parse_array) {
         whitespace(&pos);
         ast_t *item = optional_ast(ctx, &pos, parse_extended_expr);
         if (!item) break;
-        item = optional_suffix_condition(ctx, item, &pos, FakeAST(Skip));
+        item = optional_suffix_condition(ctx, item, &pos, NewAST(ctx->file, pos, pos, Skip));
         append(items, item);
         whitespace(&pos);
         if (!match(&pos, ",")) break;
@@ -676,7 +676,7 @@ PARSER(parse_table) {
             );
             if (progress) entry = new_entry;
         }
-        entry = optional_suffix_condition(ctx, entry, &pos, FakeAST(Skip));
+        entry = optional_suffix_condition(ctx, entry, &pos, NewAST(ctx->file, pos, pos, Skip));
         pos = entry->end;
 
         append(entries, entry);
@@ -884,18 +884,18 @@ PARSER(parse_if) {
 
         ast_t *pattern = match_word(&pos, "matches") ? 
             expect_ast(ctx, pos, &pos, parse_expr, "I expected a pattern to match here")
-            : FakeAST(Bool, true);
+            : NewAST(ctx->file, pos, pos, Bool, true);
 
         match_word(&pos, "then");
         ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'unless' statement"); 
 
         if (sss_get_indent(ctx->file, pos) == starting_indent && match_word(&pos, "else")) {
             ast_t *else_body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'else'"); 
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, FakeAST(Wildcard)),
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, NewAST(ctx->file, pos, pos, Wildcard)),
                           .blocks=ARRAY(else_body, body));
         } else {
-            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, FakeAST(Wildcard)),
-                          .blocks=ARRAY(FakeAST(Pass), body));
+            return NewAST(ctx->file, start, pos, If, .subject=subj, .patterns=ARRAY(pattern, NewAST(ctx->file, pos, pos, Wildcard)),
+                          .blocks=ARRAY(NewAST(ctx->file, pos, pos, Pass), body));
         }
     }
 
@@ -1080,7 +1080,7 @@ ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {
         value = expect_ast(ctx, pos-1, &pos, parse_var, "I expected a variable after this comma");
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
-    body = optional_suffix_condition(ctx, body, &pos, FakeAST(Skip));
+    body = optional_suffix_condition(ctx, body, &pos, NewAST(ctx->file, pos, pos, Skip));
     return NewAST(ctx->file, start, pos, For, .index=value ? index : NULL, .value=value ? value : index, .iter=iter, .body=body);
 }
 
@@ -1124,7 +1124,7 @@ ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body) {
     const char *pos = body->end;
     if (!match_word(&pos, "while")) return NULL;
     ast_t *cond = expect_ast(ctx, start, &pos, parse_expr, "I don't see a viable condition for this 'while'");
-    body = optional_suffix_condition(ctx, body, &pos, FakeAST(Skip));
+    body = optional_suffix_condition(ctx, body, &pos, NewAST(ctx->file, pos, pos, Skip));
     return NewAST(ctx->file, start, pos, While, .condition=cond, .body=body);
 }
 
@@ -1350,7 +1350,7 @@ PARSER(parse_skip) {
     else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
     ast_t *skip = NewAST(ctx->file, start, pos, Skip, .target=target);
-    return optional_suffix_condition(ctx, skip, &pos, FakeAST(Pass));
+    return optional_suffix_condition(ctx, skip, &pos, NewAST(ctx->file, pos, pos, Pass));
 }
 
 PARSER(parse_stop) {
@@ -1363,7 +1363,7 @@ PARSER(parse_stop) {
     else if (match_word(&pos, "repeat")) target = "repeat";
     else target = get_id(&pos);
     ast_t *stop = NewAST(ctx->file, start, pos, Stop, .target=target);
-    return optional_suffix_condition(ctx, stop, &pos, FakeAST(Pass));
+    return optional_suffix_condition(ctx, stop, &pos, NewAST(ctx->file, pos, pos, Pass));
 }
 
 PARSER(parse_return) {
@@ -1372,7 +1372,7 @@ PARSER(parse_return) {
     spaces(&pos);
     ast_t *value = optional_ast(ctx, &pos, parse_expr);
     ast_t *ret = NewAST(ctx->file, start, pos, Return, .value=value);
-    if (!value) ret = optional_suffix_condition(ctx, ret, &pos, FakeAST(Pass));
+    if (!value) ret = optional_suffix_condition(ctx, ret, &pos, NewAST(ctx->file, pos, pos, Pass));
     return ret;
 }
 
@@ -1404,7 +1404,7 @@ PARSER(parse_fail) {
     ast_t *msg = parse_term(ctx, pos);
     if (msg) pos = msg->end;
     ast_t *fail = NewAST(ctx->file, start, pos, Fail, .message=msg);
-    return optional_suffix_condition(ctx, fail, &pos, FakeAST(Pass));
+    return optional_suffix_condition(ctx, fail, &pos, NewAST(ctx->file, pos, pos, Pass));
 }
 
 PARSER(parse_var) {
