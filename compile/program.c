@@ -26,7 +26,7 @@ static void predeclare_types(env_t *env, ast_t *ast)
     switch (ast->tag) {
     case TypeDef: {
         auto def = Match(ast, TypeDef);
-        sss_type_t *t = Type(PlaceholderType);
+        sss_type_t *t = Type(PlaceholderType, .name=def->name);
         Table_str_set(env->bindings, heap_strf("#type:%s", def->name), t);
 
         table_t *namespace = new(table_t, .fallback=env->bindings);
@@ -53,7 +53,7 @@ static void populate_type_placeholders(env_t *env, ast_t *ast)
         sss_type_t *placeholder_t = Table_str_get(env->bindings, heap_strf("#type:%s", def->name));
         // Mutate placeholder type to hold resolved type: 
         sss_type_t *resolved_t = parse_type_ast(env, def->type);
-        *(struct sss_type_s*)placeholder_t = *resolved_t;
+        *(struct sss_type_s*)placeholder_t = *Type(VariantType, .name=def->name, .variant_of=resolved_t);
         populate_type_placeholders(env, def->namespace);
         break;
     }

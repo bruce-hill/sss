@@ -1,6 +1,6 @@
 type CallbackList := struct(fn:func(Num)->Void, next:?CallbackList)
 
-// type NumberValue := {_value:Num, _callbacks:?CallbackList}
+// type NumberValue := struct(_value:Num, _callbacks:?CallbackList)
 //     func set(self:@NumberValue, value:Num)
 //         self._value = value
 //         for cb in self._callbacks
@@ -10,7 +10,7 @@ type CallbackList := struct(fn:func(Num)->Void, next:?CallbackList)
 //     func get(self:@NumberValue)->Num
 //         return self._value
 
-//     func on_changed(self:@NumberValue, callback:((Num)->Void))-> ((Num)->Void)
+//     func on_changed(self:@NumberValue, callback:func(Num)->Void)-> func(Num)->Void
 //         self._callbacks = @CallbackList{callback, next=self._callbacks}
 //         return callback
 

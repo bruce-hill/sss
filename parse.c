@@ -1927,6 +1927,8 @@ PARSER(parse_type_def) {
         pos = ns_pos;
         namespace = optional_ast(ctx, &pos, parse_namespace);
     }
+    if (!namespace)
+        namespace = NewAST(ctx->file, pos, pos, Namespace, .statements=EMPTY_ARRAY(ast_t*));
     return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .namespace=namespace);
 }
 
