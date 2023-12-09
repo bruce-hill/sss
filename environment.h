@@ -52,7 +52,6 @@ typedef struct {
     table_t def_types; // ast_t* -> binding_t*
     table_t ast_functions; // ast_t* -> func_context_t*
     table_t module_types; // filename -> sss_type_t*
-    table_t block_bindings; // ast_t* -> table_t*
 } global_env_t;
 
 typedef struct env_s {
@@ -79,8 +78,6 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls);
 env_t *fresh_scope(env_t *env);
-env_t *get_ast_scope(env_t *env, ast_t *ast);
-void set_ast_namespace(env_t *env, ast_t *ast, table_t *namespace);
 env_t *scope_with_type(env_t *env, sss_type_t *t);
 env_t *file_scope(env_t *env);
 env_t *scope_with_type(env_t *env, sss_type_t *t);

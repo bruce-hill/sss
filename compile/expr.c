@@ -248,7 +248,6 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
     sss_type_t *ns_t = get_namespace_type(env, namespace_ast, type_for_typeinfo);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
-    env = get_ast_scope(env, namespace_ast);
 
     int64_t field_index = 0;
     if (type_for_typeinfo) {
@@ -287,8 +286,8 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
             const char *name = Match(decl->var, Var)->name;
-            Table_str_set(env->bindings, name,
-                       new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=t, .visible_in_closures=true));
+            set_binding(env, name,
+                        new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=t, .visible_in_closures=true));
             gcc_assign(*block, loc, field_lval, rval);
             break;
         }
@@ -296,9 +295,11 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             auto fn = Match(stmt, FunctionDef);
             field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
-            binding_t *binding = get_binding(env, fn->name);
-            assert(binding && binding->func);
-            gcc_assign(*block, loc, field_lval, gcc_get_func_address(binding->func, NULL));
+            sss_type_t *fn_t = get_type(env, stmt);
+            gcc_func_t *func = get_function_def(env, stmt, fn->name);
+            gcc_assign(*block, loc, field_lval, gcc_get_func_address(func, NULL));
+            set_binding(env, fn->name,
+                        new(binding_t, .type=fn_t, .func=func, .lval=field_lval, .rval=gcc_rval(field_lval), .visible_in_closures=true));
             break;
         }
         case TypeDef: {
@@ -307,8 +308,8 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
             sss_type_t *ns_t = compile_namespace(env, block, field_lval, def->namespace, t);
-            Table_str_set(env->bindings, def->name,
-                       new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=ns_t, .visible_in_closures=true));
+            set_binding(env, def->name,
+                        new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=ns_t, .visible_in_closures=true));
             break;
         }
         default: {

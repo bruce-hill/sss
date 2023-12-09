@@ -21,7 +21,7 @@
 
 // This function only cares about typedefs and making sure types can be
 // referenced when defining other types.
-static void predeclare_types(env_t *env, ast_t *ast)
+void predeclare_types(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case TypeDef: {
@@ -31,12 +31,10 @@ static void predeclare_types(env_t *env, ast_t *ast)
 
         table_t *namespace = new(table_t, .fallback=env->bindings);
         Table_str_set(&env->global->type_namespaces, def->name, namespace);
-        set_ast_namespace(env, def->namespace, namespace);
-        predeclare_types(env, def->namespace);
+        predeclare_types(get_type_env(env, t), def->namespace);
         break;
     }
     case Namespace: {
-        env = get_ast_scope(env, ast);
         foreach (Match(ast, Namespace)->statements, stmt, _)
             predeclare_types(env, *stmt);
         break;
@@ -54,11 +52,10 @@ static void populate_type_placeholders(env_t *env, ast_t *ast)
         // Mutate placeholder type to hold resolved type: 
         sss_type_t *resolved_t = parse_type_ast(env, def->type);
         *(struct sss_type_s*)placeholder_t = *Type(VariantType, .name=def->name, .variant_of=resolved_t);
-        populate_type_placeholders(env, def->namespace);
+        populate_type_placeholders(get_type_env(env, placeholder_t), def->namespace);
         break;
     }
     case Namespace: {
-        env = get_ast_scope(env, ast);
         foreach (Match(ast, Namespace)->statements, stmt, _)
             populate_type_placeholders(env, *stmt);
         break;

@@ -390,26 +390,6 @@ env_t *fresh_scope(env_t *env)
     return fresh;
 }
 
-env_t *get_ast_scope(env_t *env, ast_t *ast)
-{
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    const char *key = heap_strf("%s;%ld", ast->file->filename, (int64_t)(ast->start - ast->file->text));
-    table_t *bindings = Table_str_get(&env->global->block_bindings, key);
-    if (!bindings) {
-        bindings = new(table_t, .fallback=env->bindings);
-        Table_str_set(&env->global->block_bindings, key, bindings);
-    }
-    fresh->bindings = bindings;
-    return fresh;
-}
-
-void set_ast_namespace(env_t *env, ast_t *ast, table_t *namespace)
-{
-    const char *key = heap_strf("%s;%ld", ast->file->filename, (int64_t)(ast->start - ast->file->text));
-    Table_str_set(&env->global->block_bindings, key, namespace);
-}
-
 env_t *scope_with_type(env_t *env, sss_type_t *t)
 {
     env_t *fresh = GC_MALLOC(sizeof(env_t));

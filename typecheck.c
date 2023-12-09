@@ -877,14 +877,13 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *subject_t;
         if (if_->subject->tag == Declare) {
             subject_t = get_type(env, Match(if_->subject, Declare)->value);
-            env = get_ast_scope(env, ast);
+            env = fresh_scope(env);
         } else {
             subject_t = get_type(env, if_->subject);
         }
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
-            env_t *case_env = get_ast_scope(env, ith(if_->blocks, i));
-            sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
+            sss_type_t *case_t = get_type(env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
                 compiler_err(env, ith(if_->blocks, i),
@@ -1161,8 +1160,6 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
 
 sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *type)
 {
-    env = get_ast_scope(env, namespace_ast);
-
     auto statements = Match(namespace_ast, Namespace)->statements;
 
     // Function defs are visible in the entire block (allowing corecursive funcs)
@@ -1222,6 +1219,7 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             append(field_names, def->name);
             sss_type_t *t = get_binding(env, def->name)->type;
             append(field_types, t);
+            set_binding(env, def->name, new(binding_t, .type=t));
             break;
         }
         case DocTest: {
