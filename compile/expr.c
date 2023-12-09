@@ -168,6 +168,80 @@ static gcc_rvalue_t *set_pointer_level(env_t *env, gcc_block_t **block, ast_t *a
     return rval;
 }
 
+static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rvalue_t *expr_ptr, const char *expected, bool show_source)
+{
+    gcc_loc_t *loc = ast_loc(env, ast);
+    gcc_rvalue_t *use_color = get_binding(env, "USE_COLOR")->rval;
+    const char *filename = ast->file->filename;
+    int start = (int)(ast->start - ast->file->text),
+        end = (int)(ast->end - ast->file->text);
+
+    assert(block);
+
+    gcc_func_t *doctest_fn = get_function(env, "builtin_doctest");
+    gcc_func_t *generic_cord_fn = get_function(env, "generic_cord");
+    gcc_rvalue_t *null_str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
+
+    if (expr_ptr)
+        expr_ptr = gcc_cast(env->ctx, loc, expr_ptr, gcc_type(env->ctx, VOID_PTR));
+
+#define DOCTEST(label, t) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
+           gcc_str(env->ctx, label), \
+           expr_ptr ? gcc_callx(env->ctx, loc, generic_cord_fn, expr_ptr, gcc_rvalue_bool(env->ctx, true), get_typeinfo_pointer(env, t)) : null_str, \
+           gcc_str(env->ctx, type_to_string_concise(t)), \
+           use_color, \
+           expected ? gcc_str(env->ctx, expected) : null_str, \
+           show_source ? gcc_str(env->ctx, filename) : null_str, \
+           gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)))
+
+    sss_type_t *expr_t = get_doctest_type(env, ast);
+    switch (ast->tag) {
+    case Return: {
+        DOCTEST("return", expr_t);
+        if (expr_t->tag == VoidType) {
+            gcc_return_void(*block, loc);
+            *block = NULL;
+        } else {
+            gcc_return(*block, loc, gcc_rval(gcc_rvalue_dereference(expr_ptr, loc)));
+            *block = NULL;
+        }
+        return;
+    }
+    case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
+    case XorUpdate: case ConcatenateUpdate: case Declare: {
+        // UNSAFE: this assumes all these types have the same layout:
+        ast_t *lhs_ast = ast->__data.AddUpdate.lhs;
+        // END UNSAFE
+        DOCTEST(heap_strf("%#W =", lhs_ast), expr_t);
+        break;
+    }
+    case Assign: {
+        auto assign = Match(ast, Assign);
+        ast_t *first = ith(assign->targets, 0);
+        ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
+        if (LENGTH(assign->targets) == 1)
+            expr_t = ith(Match(expr_t, StructType)->field_types, 0);
+        DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), expr_t);
+        break;
+    }
+    default: {
+        if (expr_t->tag == VoidType || expr_t->tag == AbortType) {
+            // Print the source code
+            gcc_eval(*block, loc,
+                gcc_callx(env->ctx, loc, doctest_fn, null_str, null_str, null_str,
+                          use_color, null_str, gcc_str(env->ctx, filename),
+                          gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)));
+        } else {
+            // Print "= <expr>"
+            DOCTEST("=", expr_t);
+        }
+        break;
+    }
+    }
+#undef DOCTEST
+}
+
+
 sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lval, ast_t *namespace_ast, sss_type_t *type_for_typeinfo)
 {
     auto ns = Match(namespace_ast, Namespace);
@@ -190,8 +264,11 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
 
     foreach (ns->statements, _stmt, _) {
         ast_t *stmt = *_stmt;
+        while (stmt->tag == DocTest)
+            stmt = Match(stmt, DocTest)->expr;
 
         gcc_loc_t *loc = ast_loc(env, stmt);
+        gcc_lvalue_t *field_lval = NULL;
         switch (stmt->tag) {
         case Declare: {
             auto decl = Match(stmt, Declare);
@@ -202,42 +279,44 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             else if (t->tag == VoidType)
                 compiler_err(env, decl->value, "This expression doesn't have a value (it has a Void type), so you can't store it in a variable."); 
             gcc_rvalue_t *rval = compile_expr(env, block, decl->value);
-            gcc_lvalue_t *decl_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
             const char *name = Match(decl->var, Var)->name;
             Table_str_set(env->bindings, name,
-                       new(binding_t, .lval=decl_lval, .rval=gcc_rval(decl_lval), .type=t, .visible_in_closures=true));
-            gcc_assign(*block, loc, decl_lval, rval);
+                       new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=t, .visible_in_closures=true));
+            gcc_assign(*block, loc, field_lval, rval);
             break;
         }
         case FunctionDef: {
             auto fn = Match(stmt, FunctionDef);
-            gcc_lvalue_t *def_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
             binding_t *binding = get_binding(env, fn->name);
             assert(binding && binding->func);
-            gcc_assign(*block, loc, def_lval, gcc_get_func_address(binding->func, NULL));
+            gcc_assign(*block, loc, field_lval, gcc_get_func_address(binding->func, NULL));
             break;
         }
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
             sss_type_t *t = get_type_by_name(env, def->name);
-            gcc_lvalue_t *ns_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
+            field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
-            sss_type_t *ns_t = compile_namespace(env, block, ns_lval, def->namespace, t);
+            sss_type_t *ns_t = compile_namespace(env, block, field_lval, def->namespace, t);
             Table_str_set(env->bindings, def->name,
-                       new(binding_t, .lval=ns_lval, .rval=gcc_rval(ns_lval), .type=ns_t, .visible_in_closures=true));
+                       new(binding_t, .lval=field_lval, .rval=gcc_rval(field_lval), .type=ns_t, .visible_in_closures=true));
             break;
         }
         default: {
-            compile_statement(env, block, stmt);
-            break;
+            compile_statement(env, block, *_stmt);
+            continue;
         }
         }
 
-        // if ((*_stmt)->tag == DocTest) {
-        //     compile_doctest(env, block, "=", stmt, Match(*_stmt, DocTest)->output, get_type(env, stmt), gcc_lvalue_address(val_var, loc));
-        // }
+        if ((*_stmt)->tag == DocTest && field_lval) {
+            auto doctest = Match(*_stmt, DocTest);
+            compile_doctest(env, block, stmt, gcc_lvalue_address(field_lval, loc),
+                            doctest->output, !doctest->skip_source);
+        }
     }
     return ns_t;
 }
@@ -320,79 +399,6 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
     gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_populated, fields, populated_rvals);
     assert(rval);
     return rval;
-}
-
-static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rvalue_t *expr_ptr, const char *expected, bool show_source)
-{
-    gcc_loc_t *loc = ast_loc(env, ast);
-    gcc_rvalue_t *use_color = get_binding(env, "USE_COLOR")->rval;
-    const char *filename = ast->file->filename;
-    int start = (int)(ast->start - ast->file->text),
-        end = (int)(ast->end - ast->file->text);
-
-    assert(block);
-
-    gcc_func_t *doctest_fn = get_function(env, "builtin_doctest");
-    gcc_func_t *generic_cord_fn = get_function(env, "generic_cord");
-    gcc_rvalue_t *null_str = gcc_null(env->ctx, gcc_type(env->ctx, STRING));
-
-    if (expr_ptr)
-        expr_ptr = gcc_cast(env->ctx, loc, expr_ptr, gcc_type(env->ctx, VOID_PTR));
-
-#define DOCTEST(label, t) gcc_eval(*block, loc, gcc_callx(env->ctx, loc, doctest_fn, \
-           gcc_str(env->ctx, label), \
-           expr_ptr ? gcc_callx(env->ctx, loc, generic_cord_fn, expr_ptr, gcc_rvalue_bool(env->ctx, true), get_typeinfo_pointer(env, t)) : null_str, \
-           gcc_str(env->ctx, type_to_string_concise(t)), \
-           use_color, \
-           expected ? gcc_str(env->ctx, expected) : null_str, \
-           show_source ? gcc_str(env->ctx, filename) : null_str, \
-           gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)))
-
-    sss_type_t *expr_t = get_doctest_type(env, ast);
-    switch (ast->tag) {
-    case Return: {
-        DOCTEST("return", expr_t);
-        if (expr_t->tag == VoidType) {
-            gcc_return_void(*block, loc);
-            *block = NULL;
-        } else {
-            gcc_return(*block, loc, gcc_rval(gcc_rvalue_dereference(expr_ptr, loc)));
-            *block = NULL;
-        }
-        return;
-    }
-    case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
-    case XorUpdate: case ConcatenateUpdate: case Declare: {
-        // UNSAFE: this assumes all these types have the same layout:
-        ast_t *lhs_ast = ast->__data.AddUpdate.lhs;
-        // END UNSAFE
-        DOCTEST(heap_strf("%#W =", lhs_ast), expr_t);
-        break;
-    }
-    case Assign: {
-        auto assign = Match(ast, Assign);
-        ast_t *first = ith(assign->targets, 0);
-        ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
-        if (LENGTH(assign->targets) == 1)
-            expr_t = ith(Match(expr_t, StructType)->field_types, 0);
-        DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), expr_t);
-        break;
-    }
-    default: {
-        if (expr_t->tag == VoidType || expr_t->tag == AbortType) {
-            // Print the source code
-            gcc_eval(*block, loc,
-                gcc_callx(env->ctx, loc, doctest_fn, null_str, null_str, null_str,
-                          use_color, null_str, gcc_str(env->ctx, filename),
-                          gcc_rvalue_int(env->ctx, start), gcc_rvalue_int(env->ctx, end)));
-        } else {
-            // Print "= <expr>"
-            DOCTEST("=", expr_t);
-        }
-        break;
-    }
-    }
-#undef DOCTEST
 }
 
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
