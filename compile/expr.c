@@ -373,6 +373,8 @@ static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rva
         auto assign = Match(ast, Assign);
         ast_t *first = ith(assign->targets, 0);
         ast_t *last = ith(assign->targets, LENGTH(assign->targets)-1);
+        if (LENGTH(assign->targets) == 1)
+            expr_t = ith(Match(expr_t, StructType)->field_types, 0);
         DOCTEST(heap_strf("%.*s =", (int)(last->end - first->start), first->start), expr_t);
         break;
     }
