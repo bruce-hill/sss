@@ -1931,8 +1931,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
         sss_type_t *base_t = base_variant(t);
         if (base_t->tag == NumType) {
-            gcc_func_t *mod_func = get_from_namespace(env, base_t, "mod")->func;
-            gcc_rvalue_t *result = gcc_callx(env->ctx, loc, mod_func, lhs_val, rhs_val);
+            gcc_rvalue_t *mod_func_rval = get_from_namespace(env, base_t, "mod")->rval;
+            gcc_rvalue_t *result = gcc_callx_ptr(env->ctx, loc, mod_func_rval, lhs_val, rhs_val);
             if (ast->tag == Modulus1)
                 result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
             return result;
