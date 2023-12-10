@@ -147,7 +147,8 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
         }
         case PlaceholderType: {
             auto placeholder = Match(t, PlaceholderType);
-            return placeholder->name;
+            const char *name = (flags & FILENAMES) ? heap_strf("%s:%s", placeholder->filename, placeholder->name) : placeholder->name;
+            return name;
         }
         case TypeInfoType: {
             return "TypeInfo";
@@ -212,6 +213,7 @@ bool type_eq(sss_type_t *a, sss_type_t *b)
 {
     if (a == b) return true;
     if (a->tag != b->tag) return false;
+    if (a->tag == PlaceholderType) return a == b;
     return streq(type_to_string(a), type_to_string(b));
 }
 
