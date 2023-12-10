@@ -1332,28 +1332,63 @@ const char *get_module_name(const char *path)
     return name;
 }
 
-sss_type_t *get_file_type(env_t *env, const char *path)
+typedef struct {
+    sss_file_t *file;
+    env_t *env;
+    ast_t *ast;
+} parsed_file_info_t;
+
+static parsed_file_info_t *get_file_info(env_t *env, const char *path)
 {
-    struct stat file_info;
+    static table_t cache = {0};
+
+    struct stat file_stat;
     const char *sss_path = strlen(path) > 4 && streq(path + strlen(path) - 4, ".sss") ? path : heap_strf("%s.sss", path);
-    if (stat(sss_path, &file_info) == -1)
+    if (stat(sss_path, &file_stat) == -1)
         compiler_err(env, NULL, "I can't find the file %s", sss_path);
 
-    sss_type_t *type = Table_str_get(&env->global->module_types, path);
-    if (type) return type;
+    parsed_file_info_t *file_info = Table_str_get(&cache, path);
+    if (file_info) return file_info;
 
     sss_file_t *f = sss_load_file(sss_path);
-    env_t *file_env = new_environment(env->ctx, env->on_err, f, env->tail_calls);
-    ast_t *ast = parse_file(f, file_env->on_err);
+    file_info = new(parsed_file_info_t, .file=f);
+    Table_str_set(&cache, path, file_info);
+    file_info->env = new_environment(env->ctx, env->on_err, f, env->tail_calls);
 
-    predeclare_types(file_env, ast);
-    populate_type_placeholders(file_env, ast);
+    file_info->ast = parse_file(f, file_info->env->on_err);
+    predeclare_types(file_info->env, file_info->ast);
+    populate_type_placeholders(file_info->env, file_info->ast);
+    Table_str_set(&file_info->env->global->bindings, "USE_COLOR", new(binding_t, .type=Type(BoolType), .visible_in_closures=true));
+    return file_info;
+}
 
-    Table_str_set(&file_env->global->bindings, "USE_COLOR", new(binding_t, .type=Type(BoolType), .visible_in_closures=true));
+sss_type_t *get_file_type(env_t *env, const char *path)
+{
+    auto info = get_file_info(env, path);
+    return get_namespace_type(info->env, info->ast, NULL);
+}
 
-    type = get_namespace_type(file_env, ast, NULL);
-    Table_str_set(&env->global->module_types, path, type);
-    return type;
+static void _load_file_types(env_t *src_env, table_t *src_bindings, env_t *dest_env, table_t *dest_namespace)
+{
+    for (int64_t i = 1; i <= Table_length(src_bindings); i++) {
+        struct {const char *key; sss_type_t *type;} *entry = Table_str_entry(src_bindings, i);
+        if (strncmp(entry->key, "#type:", strlen("#type:")) != 0)
+            continue;
+        Table_str_set(dest_namespace, entry->key, entry->type);
+        _load_file_types(src_env, get_namespace(src_env, entry->type),
+                         dest_env, get_namespace(dest_env, entry->type));
+    }
+}
+
+void load_file_types(env_t *env, const char *name, const char *path)
+{
+    sss_type_t *t = Type(VariantType, .variant_of=Type(VoidType), .name=name);
+    Table_str_set(env->bindings, heap_strf("#type:%s", name), t);
+    table_t *namespace = get_namespace(env, t);
+    namespace->fallback = NULL;
+
+    auto info = get_file_info(env, path);
+    _load_file_types(info->env, info->env->bindings, env, namespace);
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

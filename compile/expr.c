@@ -2299,7 +2299,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (stat(sss_path, &sss_stat) == -1)
             compiler_err(env, ast, "I can't find the file %s", sss_path);
 
-        // TODO: compile .o file if it doesn't exist or is older than .sss file
+        // Compile .o file if it doesn't exist or is older than .sss file
         const char *obj_path = heap_strf("%.*s.o", strlen(sss_path)-4, sss_path);
         struct stat obj_stat;
         bool needs_compiling = (stat(obj_path, &obj_stat) == -1);

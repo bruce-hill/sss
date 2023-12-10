@@ -20,5 +20,6 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
 const char *get_module_name(const char *path);
 sss_type_t *get_file_type(env_t *env, const char *path);
 sss_type_t *get_iter_type(env_t *env, ast_t *iter);
+void load_file_types(env_t *env, const char *name, const char *path);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

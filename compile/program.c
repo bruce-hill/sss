@@ -39,6 +39,23 @@ void predeclare_types(env_t *env, ast_t *ast)
             predeclare_types(env, *stmt);
         break;
     }
+    case Block: {
+        foreach (Match(ast, Block)->statements, stmt, _)
+            predeclare_types(env, *stmt);
+        break;
+    }
+    case Declare: {
+        auto decl = Match(ast, Declare);
+        if (decl->value->tag == Use) {
+            const char *name = Match(decl->var, Var)->name;
+            load_file_types(env, name, Match(decl->value, Use)->path);
+        }
+        break;
+    }
+    case DocTest: {
+        predeclare_types(env, Match(ast, DocTest)->expr);
+        break;
+    }
     default: break;
     }
 }
