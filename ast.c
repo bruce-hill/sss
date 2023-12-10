@@ -2,6 +2,7 @@
 // strings for debugging.
 #include <gc/cord.h>
 #include <stdarg.h>
+#include <printf.h>
 
 #include "ast.h"
 
@@ -193,6 +194,19 @@ CORD ast_to_cord(const char *name, ast_t *ast)
 const char *ast_to_str(ast_t *ast) {
     CORD c = ast_to_cord(NULL, ast);
     return CORD_to_char_star(c);
+}
+
+int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[])
+{
+    ast_t *ast = *(ast_t**)(args[0]);
+    if (ast) {
+        if (info->alt)
+            return fprintf(stream, "%.*s", (int)(ast->end - ast->start), ast->start);
+        else
+            return fprintf(stream, "%s", ast_to_str(ast));
+    } else {
+        return fputs("(null)", stream);
+    }
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

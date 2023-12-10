@@ -1,8 +1,9 @@
 #pragma once
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <libgccjit.h>
+#include <printf.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #include "files.h"
 #include "builtins/array.h"
@@ -295,5 +296,6 @@ struct ast_s {
 };
 
 const char *ast_to_str(ast_t *ast);
+int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[]);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -182,19 +182,6 @@ int printf_type(FILE *stream, const struct printf_info *info, const void *const 
     return CORD_put(c, stream);
 }
 
-int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[])
-{
-    ast_t *ast = *(ast_t**)(args[0]);
-    if (ast) {
-        if (info->alt)
-            return fprintf(stream, "%.*s", (int)(ast->end - ast->start), ast->start);
-        else
-            return fprintf(stream, "%s", ast_to_str(ast));
-    } else {
-        return fputs("(null)", stream);
-    }
-}
-
 const char* type_to_string_concise(sss_type_t *t) {
     return CORD_to_char_star(type_to_cord(t, NULL, DEFAULT));
 }
