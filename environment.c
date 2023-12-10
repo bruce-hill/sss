@@ -136,8 +136,8 @@ struct {
 
     {{.tag=NumType, .__data.NumType={.bits=64}}, "Num", "Num_type", (builtin_binding_t[]){
         // Constants
-        {"2_sqrt_pi", "Num"},
         {"NaN", "Num"},
+        {"_2_sqrt_pi", "Num"},
         {"e", "Num"},
         {"half_pi", "Num"},
         {"inf", "Num"},
@@ -185,8 +185,8 @@ struct {
 
     {{.tag=NumType, .__data.NumType={.bits=32}}, "Num32", "Num32_type", (builtin_binding_t[]){
         // Constants
-        {"2_sqrt_pi", "Num32"},
         {"NaN", "Num32"},
+        {"_2_sqrt_pi", "Num32"},
         {"e", "Num32"},
         {"half_pi", "Num32"},
         {"inf", "Num32"},
