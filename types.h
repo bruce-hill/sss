@@ -77,7 +77,7 @@ struct sss_type_s {
         } VariantType;
         struct {} TypeInfoType;
         struct {
-            const char *name;
+            const char *filename, *name;
         } PlaceholderType;
     } __data;
 };
