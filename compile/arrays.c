@@ -317,9 +317,17 @@ static gcc_lvalue_t *bounds_checked_index(
     gcc_struct_t *array_struct, gcc_type_t *gcc_item_t, gcc_rvalue_t *arr, gcc_rvalue_t *index_val)
 {
     gcc_type_t *i64_t = gcc_type(env->ctx, INT64);
-    gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index_val, gcc_one(env->ctx, i64_t));
+    // Convert negative indices to back-indexed without branching: index0 = index + (index < 0)*(len+1)) - 1
+#define BINOP(a, op, b) gcc_binary_op(env->ctx, loc, GCC_BINOP_ ## op, i64_t, a, b)
     gcc_rvalue_t *len64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_LENGTH_FIELD)), i64_t);
-    gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LE, index_val, len64);
+    gcc_rvalue_t *index0 = BINOP(index_val, PLUS,
+                                 BINOP(
+                                     BINOP(gcc_cast(env->ctx, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, index_val, gcc_zero(env->ctx, i64_t)), i64_t),
+                                           MULT, BINOP(len64, PLUS, gcc_one(env->ctx, i64_t))),
+                                     MINUS, gcc_one(env->ctx, i64_t)));
+#undef BINOP
+    gcc_rvalue_t *big_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_GE, index0, gcc_zero(env->ctx, i64_t));
+    gcc_rvalue_t *small_enough = gcc_comparison(env->ctx, loc, GCC_COMPARISON_LT, index0, len64);
     gcc_rvalue_t *ok = gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, gcc_type(env->ctx, BOOL), big_enough, small_enough);
 
     gcc_func_t *func = gcc_block_func(*block);
@@ -334,7 +342,7 @@ static gcc_lvalue_t *bounds_checked_index(
     gcc_jump_condition(*block, loc, gcc_comparison(env->ctx, loc, GCC_COMPARISON_GT, len64, gcc_rvalue_int64(env->ctx, 0)),
                        nonempty, empty);
     *block = nonempty;
-    insert_failure(env, block, file, start, end, "Error: '%#s' is not a valid index for this array (valid indices are: 1..%#s)",
+    insert_failure(env, block, file, start, end, "Error: '%#s' is not a valid index for this array (valid indices are: +/-1..%#s)",
                    Type(IntType, .bits=64), index_val, Type(IntType, .bits=64), len64);
     *block = empty;
     insert_failure(env, block, file, start, end, "Error: this is an empty array and it cannot be indexed into");
@@ -342,7 +350,6 @@ static gcc_lvalue_t *bounds_checked_index(
     // Bounds check success:
     *block = bounds_safe;
     gcc_rvalue_t *items = gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_DATA_FIELD));
-    gcc_rvalue_t *index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, i64_t, index_val, gcc_one(env->ctx, i64_t));
     gcc_rvalue_t *stride64 = gcc_cast(env->ctx, loc, gcc_rvalue_access_field(arr, loc, gcc_get_field(array_struct, ARRAY_STRIDE_FIELD)), i64_t);
     index0 = gcc_binary_op(env->ctx, loc, GCC_BINOP_MULT, i64_t, index0, stride64);
     return gcc_rvalue_dereference(pointer_offset(env, gcc_get_ptr_type(gcc_item_t), items, index0), loc);
