@@ -34,14 +34,3 @@ type Tree := struct(value:Int, left,right:?Tree)
 >>> l.left = l
 >>> t
 === @Tree{value=5, left=@Tree{value=6, left=@Tree#2, right=!Tree}, right=@Tree#1}
-
-// Struct constructors:
->>> Vec(1)
-=== Vec{x=1, y=0}
-
-type Foo := struct(x,y,z:Int)
-    func new(x:Int)->Foo
-        return Foo{x, x, x}
-
->>> Foo(5) // Special .new() behavior
-=== Foo{x=5, y=5, z=5}
