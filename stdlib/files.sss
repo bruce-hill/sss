@@ -1,6 +1,6 @@
 // Filesystem reading and manipulating library.
 
-time := use time.sss
+time := use time
 
 type FileInfo := struct(
     device, rdevice, inode, mode, links, user, group:Int
@@ -94,14 +94,9 @@ func spoof(text:Str)->@File
     return f
 
 type Glob := Str
+    type glob_t := struct(gl_pathc:Int, gl_pathv:CString, gl_offs:Int, gl_flags:Int32)
+    type GlobResult := enum(SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3)
     func expand(g:Glob)->[Str]
-        type glob_t := struct(
-            gl_pathc:Int
-            gl_pathv:?CString
-            gl_offs:Int
-            gl_flags:Int32
-        )
-        type GlobResult := enum(SUCCESS=0 | NOSPACE=1 | ABORTED=2 | NOMATCH=3)
         flags := 17410i32 // GLOB_MARK | GLOB_BRACE | GLOB_TILDE_CHECK
         globbuf := glob_t{}
         result := extern glob((bitcast g as Str).c_string(), flags, !Memory, &globbuf):GlobResult
