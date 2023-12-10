@@ -64,12 +64,13 @@ static void populate_type_placeholders(env_t *env, ast_t *ast)
     }
 }
 
-static void make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
+static gcc_lvalue_t *make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     sss_type_t *ns_t = get_namespace_type(env, ast, false);
     gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_lvalue_t *mod_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ns_gcc_t, "mod");
     compile_namespace(env, block, mod_lval, ast, NULL);
+    return mod_lval;
 }
 
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
@@ -165,11 +166,10 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     // Load the module:
     sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
-    gcc_lvalue_t *module_var = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, module_gcc_type, fresh("module"));
     env_t *type_env = get_type_env(env, t);
     type_env->bindings->fallback = env->bindings;
 
-    make_module_struct(env, &do_loading_block, ast);
+    gcc_lvalue_t *module_var = make_module_struct(env, &do_loading_block, ast);
 
     if (do_loading_block)
         gcc_jump(do_loading_block, NULL, finished_loading_block);
