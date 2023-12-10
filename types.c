@@ -79,7 +79,7 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
                 sss_type_t *ft = ith(struct_->field_types, i);
                 const char *fname = struct_->field_names ? ith(struct_->field_names, i) : heap_strf("_%lu", i+1);
                 if (i > 0)
-                    c = CORD_cat(c, ",");
+                    c = CORD_cat(c, ", ");
 
                 if (fname && !streq(fname, heap_strf("_%lu", i+1)))
                     c = CORD_cat(CORD_cat(c, fname), ":");

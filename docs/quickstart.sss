@@ -156,8 +156,8 @@ anon_tuple := {123, "xxx"}
 
 // Floating point numbers are called 'Num'
 f := 2.3
->>> typeof f
-=== Num
+>>> f
+=== 2.3 : Num
 
 // Custom structs can be defined like this:
 struct Vec{x,y:Num}
@@ -315,35 +315,33 @@ for entry in *mutable
 // optional pointer with "?" or a null value with "!":
 struct IntList{value:Int, next:?IntList}
 
-my_list := ?IntList{1, next=?IntList{2, next=!IntList}}
+my_list := @IntList{1, next=@IntList{2, next=!IntList}}
 
 // Null values cannot be dereferenced without checking for null first. The
 // compiler will enforce this requirement. This means that the language
 // prevents runtime segfaults caused by null pointer dereferences.
 
->>> typeof my_list
-=== ?IntList
+>>> my_list
+=== @IntList{1, next=@IntList{2, next=!IntList}} : @IntList
 
 // The simplest way to check a value for null is to use "!" to explicitly
 // request that the program should trigger a runtime error if null is found.
 // The type system can safely assume that if the program continues running,
 // the value is non-null:
 
->>> typeof my_list!
-=== @IntList
->>> my_list!.next!.value
+>>> my_list.next!.value
 === 2
 
 // You can also use "or fail" to provide your own custom message. This is
 // the same behavior as "!", but slightly more customizable and verbose.
->>> typeof (my_list or fail "Oh no, it was null!")
-=== @IntList
->>> ((my_list or fail "Oh no, first was null").next or fail "oh no, second was null").value
+>>> (my_list.next or fail "Oh no, it was null!")
+=== @IntList{2, next=!IntList} : @IntList
+>>> (my_list.next or fail "oh no, second was null").value
 === 2
 
 // The next way to check a value is to use "or" to provide a fallback value:
->>> typeof (my_list or @IntList{value=0})
-=== @IntList
+>>> (!IntList or @IntList{value=0})
+=== @IntList{value=0} : @IntList
 >>> (my_list or @IntList{value=0}).value
 === 1
 

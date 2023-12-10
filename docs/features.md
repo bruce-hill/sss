@@ -291,13 +291,10 @@ that requires a non-null pointer.
 For example, consider this situation:
 
 ```python
-vec := if consition
+vec := if condition
     @Vec{1,2}
 else
     !Vec
-
->>> typeof vec
-=== ?Vec
 
 // Want to call: needs_value(vec)
 ```
@@ -309,11 +306,6 @@ runtime failure if the pointer is null. The compiler can assume that if the
 program execution is still going, the expression must not have been null.
 
 ```
->>> typeof vec
-=== ?Vec
->>> typeof vec!
-=== @Vec
-
 // If vec is null, this will trigger a runtime failure with an informative
 // message, otherwise it will succeed:
 needs_value(vec!)
@@ -325,11 +317,6 @@ SSS also lets you provide an alternative value to use in the event that the
 pointer is null using `or`:
 
 ```
->>> typeof vec
-=== ?Vec
->>> typeof (vec or @Vec{0,0})
-=== @Vec
-
 needs_value(vec or @Vec{0,0})
 ```
 
@@ -344,10 +331,6 @@ is executed, we know that the value must have been non-null.
 ```python
 maybe_vecs := [@Vec{1,2}, !Vec, @Vec{2,3}]
 for vec in maybe_vecs
-    >>> typeof vec
-    === ?Vec
-    >>> typeof (vec or skip)
-    === @Vec
     needs_value(vec or skip)
 
 func get_x(v:?Vec)->Num

@@ -10,9 +10,10 @@ implementations of many algorithms.
 The syntax for tables is pretty straightforward:
 
 ```
-my_table := {123=>456, 789=>10, key=>value}
->>> typeof my_table
-=== {Int=Int}
+key := 11
+value := 12
+>>> my_table := {123=>456, 789=>10, key=>value}
+=== {123=>456, 789=>10, 11=>12} : {Int=Int}
 ```
 
 Empty tables must specify their type:
@@ -24,9 +25,8 @@ empty := {:Str=>Num}
 Values can be retrieved with square bracket indexing:
 
 ```
-val := my_table[123]
->>> typeof val
-=== Int
+>>> val := my_table[123]
+=== 456 : Int
 ```
 
 The operation will return the value in the table corresponding to the given
@@ -97,10 +97,10 @@ The currently supported special behaviors are:
 Special behaviors can be accessed (or modified) by attributes:
 
 ```
->>> typeof t.default
-=== ?!{Int=>Int}
->>> typeof t.fallback
-=== ?!Int
+>>> t.default
+=== !Int : ?(readonly)Int
+>>> t.fallback
+=== @{"x"=>1; default=0} : ?(readonly){Str=>Int}
 
 >>> t := @{1=>2; fallback={3=>4}, default=99}
 >>> t.fallback

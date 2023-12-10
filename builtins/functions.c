@@ -114,7 +114,13 @@ public void builtin_doctest(const char *label, CORD expr, const char *type, bool
         CORD_fprintf(stderr, use_color ? "\x1b[2m%s\x1b[0m %s \x1b[2m: %s\x1b[m\n" : "%s %s : %s\n", label, expr_str, type);
         if (expected) {
             const char *actual = use_color ? without_colors(expr_str) : expr_str;
-            if (strcmp(actual, expected) != 0) {
+            bool success = (strcmp(actual, expected) == 0);
+            if (!success && strchr(expected, ':')) {
+                actual = heap_strf("%s : %s", actual, type);
+                success = (strcmp(actual, expected) == 0);
+            }
+
+            if (!success) {
                 if (filename && file)
                     fprint_span(stderr, file, file->text+start, file->text+end, "\x1b[31;1m", 2, use_color);
                 builtin_fail(use_color ? "\x1b[31;1mExpected: \x1b[32;7m%s\x1b[0m\n\x1b[31;1m But got: \x1b[31;7m%s\x1b[0m\n" : "Expected: %s\n But got: %s\n", expected, actual);
