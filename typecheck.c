@@ -326,6 +326,84 @@ sss_type_t *get_doctest_type(env_t *env, ast_t *ast)
     }
 }
 
+static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
+{
+    while (t->tag == VariantType)
+        t = Match(t, VariantType)->variant_of;
+
+    switch (pattern->tag) {
+    case Wildcard: {
+        const char *name = Match(pattern, Wildcard)->name;
+        if (!name) return;
+        binding_t *b = get_binding(env, name);
+        if (!b)
+            set_binding(env, name, new(binding_t, .type=t));
+        return;
+    }
+    case Var: {
+        const char *name = Match(pattern, Var)->name;
+        if (t->tag == TaggedUnionType) {
+            auto tu_t = Match(t, TaggedUnionType);
+            foreach (tu_t->members, member, _) {
+                if (streq(member->name, name))
+                    return;
+            }
+        }
+        return;
+    }
+    case HeapAllocate: {
+        if (t->tag != PointerType) return;
+        bind_match_patterns(env, Match(t, PointerType)->pointed, Match(pattern, HeapAllocate)->value);
+        return;
+    }
+    case Struct: {
+        if (t->tag != StructType)
+            return;
+        auto struct_type = Match(t, StructType);
+        auto pat_struct = Match(pattern, Struct);
+        if (pat_struct->type) {
+            sss_type_t *pat_t = get_type(env, pat_struct->type);
+            if (!type_eq(t, pat_t)) return;
+        }
+
+        auto arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
+                                        struct_type->field_types, struct_type->field_defaults);
+        foreach (arg_infos, arg_info, _) {
+            if (arg_info->ast)
+                bind_match_patterns(env, arg_info->type, arg_info->ast);
+        }
+        return;
+    }
+    case FunctionCall: {
+        auto call = Match(pattern, FunctionCall);
+        if (call->fn->tag != Var) return;
+
+        const char *fn_name = Match(call->fn, Var)->name;
+        if (t->tag != TaggedUnionType) return;
+
+        // Tagged Union Constructor:
+        auto tu_t = Match(t, TaggedUnionType);
+        int64_t tag_index = -1;
+        for (int64_t i = 0; i < LENGTH(tu_t->members); i++) {
+            if (streq(ith(tu_t->members, i).name, fn_name)) {
+                tag_index = i;
+                break;
+            }
+        }
+        if (tag_index < 0) return;
+
+        auto member = ith(tu_t->members, tag_index);
+        if (!member.type)
+            compiler_err(env, pattern, "This tagged union member doesn't have any value");
+
+        ast_t *m_pat = WrapAST(pattern, Struct, .members=call->args);
+        bind_match_patterns(env, member.type, m_pat);
+        return;
+    }
+    default: return;
+    }
+}
+
 sss_type_t *get_type(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
@@ -883,7 +961,9 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         }
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
-            sss_type_t *case_t = get_type(env, ith(if_->blocks, i));
+            env_t *case_env = fresh_scope(env);
+            bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
+            sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
                 compiler_err(env, ith(if_->blocks, i),
