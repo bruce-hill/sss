@@ -1359,6 +1359,8 @@ static parsed_file_info_t *get_file_info(env_t *env, const char *path)
     predeclare_types(file_info->env, file_info->ast);
     populate_type_placeholders(file_info->env, file_info->ast);
     Table_str_set(&file_info->env->global->bindings, "USE_COLOR", new(binding_t, .type=Type(BoolType), .visible_in_closures=true));
+    Table_str_set(&file_info->env->global->bindings, "IS_MAIN_PROGRAM",
+         new(binding_t, .rval=gcc_rvalue_bool(env->ctx, false), .type=Type(BoolType), .visible_in_closures=true));
     return file_info;
 }
 

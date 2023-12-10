@@ -99,10 +99,12 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     sss_type_t *str_t = get_type_by_name(env, "Str");
     gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
 
-    // Set up `USE_COLOR`
+    // Set up `USE_COLOR` and `IS_MAIN_PROGRAM`
     gcc_lvalue_t *use_color = gcc_global(ctx, NULL, GCC_GLOBAL_INTERNAL, gcc_type(ctx, BOOL), "USE_COLOR");
     Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rval(use_color), .type=Type(BoolType), .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, "IS_MAIN_PROGRAM",
+         new(binding_t, .rval=gcc_rvalue_bool(env->ctx, true), .type=Type(BoolType), .visible_in_closures=true));
 
     // Compile main(int argc, char *argv[]) function
     gcc_param_t* main_params[] = {
@@ -161,9 +163,11 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     predeclare_types(env, ast);
     populate_type_placeholders(env, ast);
 
-    // Set up `USE_COLOR`
+    // Set up `USE_COLOR` and `IS_MAIN_PROGRAM`
     Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rvalue_bool(ctx, true), .type=Type(BoolType), .visible_in_closures=true));
+    Table_str_set(&env->global->bindings, "IS_MAIN_PROGRAM",
+         new(binding_t, .rval=gcc_rvalue_bool(env->ctx, false), .type=Type(BoolType), .visible_in_closures=true));
 
     struct stat file_stat;  
     stat(f->filename, &file_stat);  
