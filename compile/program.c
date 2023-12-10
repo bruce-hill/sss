@@ -43,7 +43,7 @@ void predeclare_types(env_t *env, ast_t *ast)
     }
 }
 
-static void populate_type_placeholders(env_t *env, ast_t *ast)
+void populate_type_placeholders(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case TypeDef: {
@@ -66,7 +66,7 @@ static void populate_type_placeholders(env_t *env, ast_t *ast)
 
 static gcc_lvalue_t *make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    sss_type_t *ns_t = get_namespace_type(env, ast, false);
+    sss_type_t *ns_t = get_namespace_type(env, ast, NULL);
     gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_lvalue_t *mod_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ns_gcc_t, "mod");
     compile_namespace(env, block, mod_lval, ast, NULL);
@@ -150,10 +150,10 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 
     struct stat file_stat;  
     stat(f->filename, &file_stat);  
-    sss_type_t *module_type = get_file_type(env, f->filename);
-    gcc_type_t *module_gcc_type = sss_type_to_gcc(env, module_type);
+    sss_type_t *ns_t = get_namespace_type(env, ast, NULL);
+    gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
     const char *load_name = heap_strf("load__%s", get_module_name(f->filename));
-    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_get_ptr_type(module_gcc_type), load_name, 0, NULL, 0);
+    gcc_func_t *load_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_get_ptr_type(ns_gcc_t), load_name, 0, NULL, 0);
     gcc_block_t *check_loaded_block = gcc_new_block(load_func, fresh("check_if_loaded")),
                 *do_loading_block = gcc_new_block(load_func, fresh("do_loading")),
                 *finished_loading_block = gcc_new_block(load_func, fresh("finished_loading"));
@@ -165,10 +165,6 @@ void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
     gcc_assign(do_loading_block, NULL, is_loaded, gcc_rvalue_bool(env->ctx, true));
 
     // Load the module:
-    sss_type_t *t = Type(VariantType, .name="Module", .filename=sss_get_file_pos(ast->file, ast->start), .variant_of=Type(VoidType));
-    env_t *type_env = get_type_env(env, t);
-    type_env->bindings->fallback = env->bindings;
-
     gcc_lvalue_t *module_var = make_module_struct(env, &do_loading_block, ast);
 
     if (do_loading_block)

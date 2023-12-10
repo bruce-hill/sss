@@ -65,6 +65,8 @@ gcc_rvalue_t *pointer_offset(env_t *env, gcc_type_t *ptr_type, gcc_rvalue_t *ptr
 
 // ============================== program.c =============================
 typedef void (*main_func_t)(int, char**);
+void predeclare_types(env_t *env, ast_t *ast);
+void populate_type_placeholders(env_t *env, ast_t *ast);
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result);
 void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls);
 

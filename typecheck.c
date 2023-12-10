@@ -1067,7 +1067,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return parse_type_ast(env, variant->type);
     }
     case Namespace: {
-        return get_namespace_type(env, ast, false);
+        return get_namespace_type(env, ast, NULL);
     }
     case Extend: return Type(VoidType);
     default: break;
@@ -1339,13 +1339,19 @@ sss_type_t *get_file_type(env_t *env, const char *path)
     if (stat(sss_path, &file_info) == -1)
         compiler_err(env, NULL, "I can't find the file %s", sss_path);
 
-    const char *name = get_module_name(path);
     sss_type_t *type = Table_str_get(&env->global->module_types, path);
     if (type) return type;
 
     sss_file_t *f = sss_load_file(sss_path);
-    ast_t *ast = parse_file(f, env->on_err);
-    type = Type(VariantType, .name=name, .variant_of=get_namespace_type(env, ast, false));
+    env_t *file_env = new_environment(env->ctx, env->on_err, f, env->tail_calls);
+    ast_t *ast = parse_file(f, file_env->on_err);
+
+    predeclare_types(file_env, ast);
+    populate_type_placeholders(file_env, ast);
+
+    Table_str_set(&file_env->global->bindings, "USE_COLOR", new(binding_t, .type=Type(BoolType), .visible_in_closures=true));
+
+    type = get_namespace_type(file_env, ast, NULL);
     Table_str_set(&env->global->module_types, path, type);
     return type;
 }
