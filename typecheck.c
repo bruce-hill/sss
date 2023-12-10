@@ -1284,7 +1284,7 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             sss_type_t *t = get_type(env, decl->value);
             append(field_names, name);
             append(field_types, t);
-            set_binding(env, name, new(binding_t, .type=t));
+            set_binding(env, name, new(binding_t, .type=t, .visible_in_closures=true));
             break;
         }
         case TypeDef: {
@@ -1292,7 +1292,7 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             append(field_names, def->name);
             sss_type_t *def_type = get_type_by_name(env, def->name);
             sss_type_t *ns_t = get_namespace_type(env, def->namespace, def_type);
-            set_binding(env, def->name, new(binding_t, .type=ns_t));
+            set_binding(env, def->name, new(binding_t, .type=ns_t, .visible_in_closures=true));
             append(field_types, ns_t);
             break;
         }
@@ -1301,7 +1301,7 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             append(field_names, def->name);
             sss_type_t *t = get_binding(env, def->name)->type;
             append(field_types, t);
-            set_binding(env, def->name, new(binding_t, .type=t));
+            set_binding(env, def->name, new(binding_t, .type=t, .visible_in_closures=true));
             break;
         }
         case DocTest: {
