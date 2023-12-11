@@ -19,7 +19,6 @@
 #include "../typecheck.h"
 #include "../types.h"
 #include "../util.h"
-#include "../SipHash/halfsiphash.h"
 #include "compile.h"
 #include "libgccjit_abbrev.h"
 
@@ -244,7 +243,7 @@ static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rva
 
 sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lval, ast_t *namespace_ast, sss_type_t *type_for_typeinfo)
 {
-    auto ns = Match(namespace_ast, Namespace);
+    auto ns = Match(namespace_ast, Block);
     sss_type_t *ns_t = get_namespace_type(env, namespace_ast, type_for_typeinfo);
     gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
@@ -725,17 +724,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return compile_expr(env, block, using->body);
     }
     case Block: {
+        auto bl = Match(ast, Block);
+        if (bl->is_namespace) {
+            sss_type_t *ns_t = get_namespace_type(env, ast, false);
+            gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
+            gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, gcc_t, fresh("namespace"));
+            compile_namespace(env, block, lval, ast, NULL);
+            return gcc_rval(lval);
+        }
         // Create scope:
-        if (!Match(ast, Block)->keep_scope)
+        if (!bl->keep_scope)
             env = fresh_scope(env);
         return compile_block_expr(env, block, ast);
-    }
-    case Namespace: {
-        sss_type_t *ns_t = get_namespace_type(env, ast, false);
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
-        gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, gcc_t, fresh("namespace"));
-        compile_namespace(env, block, lval, ast, NULL);
-        return gcc_rval(lval);
     }
     case FunctionDef: {
         auto fn = Match(ast, FunctionDef);
@@ -1013,7 +1013,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         sss_type_t *t = get_type_by_name(env, Match(ast, TypeDef)->name);
         env = get_type_env(env, t);
 
-        auto members = Match(Match(ast, TypeDef)->namespace, Namespace)->statements;
+        auto members = Match(Match(ast, TypeDef)->namespace, Block)->statements;
 
         foreach (members, stmt, _)
             predeclare_def_funcs(env, *stmt);

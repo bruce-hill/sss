@@ -71,8 +71,8 @@ static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_suffix_while(parse_ctx_t *ctx, ast_t *body);
 static ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs);
-static ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed);
+static PARSER(parse_variant);
 static PARSER(parse_for);
 static PARSER(parse_while);
 static PARSER(parse_repeat);
@@ -536,7 +536,7 @@ PARSER(parse_type_name) {
     const char *start = pos;
     const char* id = get_id(&pos);
     if (!id) return NULL;
-    ast_t *ast = NewAST(ctx->file, start, pos, Var, .name=id);
+    ast_t *ast = NewAST(ctx->file, start, pos, TypeVar, .name=id);
     ast_t *fielded = parse_field_suffix(ctx, ast);
     return fielded ? fielded : ast;
 }
@@ -834,14 +834,15 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
 }
 
-ast_t *parse_variant_suffix(parse_ctx_t *ctx, ast_t *lhs) {
-    if (!lhs) return NULL;
-    const char *start = lhs->start;
-    const char *pos = lhs->end;
+PARSER(parse_variant) {
+    const char *start = pos;
+    ast_t *type_var = optional_ast(ctx, &pos, parse_type_name);
+    if (!type_var) return NULL;
+    spaces(&pos);
     if (!match(&pos, "::")) return NULL;
-    ast_t *obj = expect_ast(ctx, start, &pos, parse_term_no_suffix,
-                            "I expected to find an expression here to create a variant of");
-    return NewAST(ctx->file, start, pos, Variant, .type=lhs, .value=obj);
+    spaces(&pos);
+    ast_t *value = expect_ast(ctx, start, &pos, parse_term_no_suffix, "I expected a term for this variant");
+    return NewAST(ctx->file, start, pos, Variant, .type=type_var, .value=value);
 }
 
 ast_t *optional_suffix_condition(parse_ctx_t *ctx, ast_t *ast, const char **pos, ast_t *else_ast)
@@ -1444,6 +1445,7 @@ PARSER(parse_term_no_suffix) {
         || (term=parse_parens(ctx, pos))
         || (term=parse_table(ctx, pos))
         || (term=parse_struct(ctx, pos))
+        || (term=parse_variant(ctx, pos)) // This needs to come before 'var'
         || (term=parse_var(ctx, pos))
         || (term=parse_array(ctx, pos))
         || (term=parse_reduction(ctx, pos))
@@ -1468,7 +1470,6 @@ PARSER(parse_term) {
         ast_t *new_term;
         progress = (false
             || (new_term=parse_index_suffix(ctx, term))
-            || (new_term=parse_variant_suffix(ctx, term))
             || (new_term=parse_field_suffix(ctx, term))
             || (new_term=parse_fncall_suffix(ctx, term, NEEDS_PARENS, NORMAL_FUNCTION))
             );
@@ -1565,7 +1566,7 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
         if (match(&pos, ":"))
             extern_return_type = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the return type of this external function call");
         else
-            extern_return_type = NewAST(ctx->file, pos, pos, Var, .name="Void");
+            extern_return_type = NewAST(ctx->file, pos, pos, TypeVar, .name="Void");
     }
     return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=args, .extern_return_type=extern_return_type);
 }
@@ -1902,7 +1903,7 @@ PARSER(parse_namespace) {
             break;
         }
     }
-    return NewAST(ctx->file, start, pos, Namespace, .statements=statements);
+    return NewAST(ctx->file, start, pos, Block, .statements=statements, .is_namespace=true);
 }
 
 PARSER(parse_type_def) {
@@ -1928,7 +1929,7 @@ PARSER(parse_type_def) {
         namespace = optional_ast(ctx, &pos, parse_namespace);
     }
     if (!namespace)
-        namespace = NewAST(ctx->file, pos, pos, Namespace, .statements=EMPTY_ARRAY(ast_t*));
+        namespace = NewAST(ctx->file, pos, pos, Block, .statements=EMPTY_ARRAY(ast_t*), .is_namespace=true);
     return NewAST(ctx->file, start, pos, TypeDef, .name=name, .type=type_ast, .namespace=namespace);
 }
 

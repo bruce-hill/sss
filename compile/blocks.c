@@ -114,7 +114,7 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
     } else if (def->tag == TypeDef) {
         sss_type_t *t = get_type_by_name(env, Match(def, TypeDef)->name);
         env = get_type_env(env, t);
-        auto members = Match(Match(def, TypeDef)->namespace, Namespace)->statements;
+        auto members = Match(Match(def, TypeDef)->namespace, Block)->statements;
         for (int64_t i = 0; members && i < LENGTH(members); i++) {
             ast_t *member = ith(members, i);
             if (member->tag == FunctionDef) {

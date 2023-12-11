@@ -21,8 +21,8 @@ static table_t tuple_types = {0};
 sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
-    case Var: {
-        const char *name = Match(ast, Var)->name;
+    case TypeVar: {
+        const char *name = Match(ast, TypeVar)->name;
         sss_type_t *t = get_type_by_name(env, name);
         if (t) return t;
         compiler_err(env, ast, "I don't know a type with the name '%s'", name);
@@ -362,7 +362,7 @@ static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
         auto struct_type = Match(t, StructType);
         auto pat_struct = Match(pattern, Struct);
         if (pat_struct->type) {
-            sss_type_t *pat_t = get_type(env, pat_struct->type);
+            sss_type_t *pat_t = parse_type_ast(env, pat_struct->type);
             if (!type_eq(t, pat_t)) return;
         }
 
@@ -1066,9 +1066,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto variant = Match(ast, Variant);
         return parse_type_ast(env, variant->type);
     }
-    case Namespace: {
-        return get_namespace_type(env, ast, NULL);
-    }
     case Extend: return Type(VoidType);
     default: break;
     }
@@ -1079,7 +1076,7 @@ bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case Assign: case Declare: case FunctionDef: case TypeDef: case Use: case Namespace:
+    case Assign: case Declare: case FunctionDef: case TypeDef: case Use:
         return true;
     default: break;
     }
@@ -1240,7 +1237,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
 
 sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *type)
 {
-    auto statements = Match(namespace_ast, Namespace)->statements;
+    auto statements = Match(namespace_ast, Block)->statements;
 
     // Function defs are visible in the entire block (allowing corecursive funcs)
     foreach (statements, stmt, _) {

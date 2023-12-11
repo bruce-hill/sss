@@ -18,7 +18,7 @@
 
 typedef enum {
     Unknown = 0,
-    Nil, Bool, Var, Wildcard,
+    Nil, Bool, Var, Wildcard, TypeVar,
     Int, Num, Range, Char,
     StringLiteral, StringJoin, Interp,
     Declare, Assign,
@@ -35,7 +35,7 @@ typedef enum {
     Array, Table, TableEntry,
     FunctionDef, Lambda,
     FunctionCall, KeywordArg,
-    Block, Namespace,
+    Block,
     Do, For, While, Repeat, If,
     Skip, Stop, Pass,
     Return,
@@ -87,6 +87,11 @@ struct ast_s {
         struct {
             const char *name;
         } Var, Wildcard;
+        struct {
+            const char *name;
+            struct sss_type_s *type;
+            table_t *subtypes;
+        } TypeVar;
         struct {
             int64_t i;
             uint8_t precision;
@@ -167,11 +172,8 @@ struct ast_s {
         struct {
             ARRAY_OF(ast_t*) statements;
             // Whether to keep using the existing scope instead of creating a new one:
-            bool keep_scope;
+            bool keep_scope, is_namespace;
         } Block;
-        struct {
-            ARRAY_OF(ast_t*) statements;
-        } Namespace;
         struct {
             const char *label;
             ast_t *body, *else_body;

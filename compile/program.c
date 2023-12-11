@@ -34,11 +34,6 @@ void predeclare_types(env_t *env, ast_t *ast)
         predeclare_types(get_type_env(env, t), def->namespace);
         break;
     }
-    case Namespace: {
-        foreach (Match(ast, Namespace)->statements, stmt, _)
-            predeclare_types(env, *stmt);
-        break;
-    }
     case Block: {
         foreach (Match(ast, Block)->statements, stmt, _)
             predeclare_types(env, *stmt);
@@ -73,8 +68,8 @@ void populate_type_placeholders(env_t *env, ast_t *ast)
         populate_type_placeholders(get_type_env(env, placeholder_t), def->namespace);
         break;
     }
-    case Namespace: {
-        foreach (Match(ast, Namespace)->statements, stmt, _)
+    case Block: {
+        foreach (Match(ast, Block)->statements, stmt, _)
             populate_type_placeholders(env, *stmt);
         break;
     }
