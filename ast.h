@@ -20,7 +20,6 @@ typedef enum {
     OP_UNKNOWN,
     // Unary ops:
     OP_NOT, OP_NEGATIVE,
-
     // Binary ops:
     OP_POWER, OP_MULT, OP_DIVIDE, OP_MOD, OP_MOD1, OP_PLUS, OP_MINUS, OP_CONCAT,
     OP_LSHIFT, OP_RSHIFT, OP_MIN, OP_MAX, OP_MIX, OP_RANGE, OP_BY, OP_AS,
