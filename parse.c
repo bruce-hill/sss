@@ -25,21 +25,22 @@ typedef ast_t* (parser_t)(parse_ctx_t*,const char*);
 
 #define STUB_PARSER(name) PARSER(name) { (void)ctx; (void)pos; return NULL; }
 
-#define RANGE_STEP NUM_AST_TAGS
+int op_tightness[] = {
+    [OP_UNKNOWN]=0,
+    [OP_POWER]=1,
+    [OP_MULT]=2, [OP_DIVIDE]=2, [OP_MOD]=2, [OP_MOD1]=2,
+    [OP_PLUS]=3, [OP_MINUS]=3,
+    [OP_CONCAT]=4,
+    [OP_LSHIFT]=5, [OP_RSHIFT]=5,
+    [OP_MIN]=6, [OP_MAX]=6, [OP_MIX]=6,
+    [OP_RANGE]=7,
+    [OP_BY]=8,
+    [OP_AS]=9,
+    [OP_IN]=10, [OP_NOT_IN]=10,
+    [OP_EQ]=11, [OP_NE]=11,
+    [OP_LT]=11, [OP_LE]=11, [OP_GT]=11, [OP_GE]=11,
+    [OP_AND]=12, [OP_OR]=12, [OP_XOR]=12,
 
-static int op_tightness[NUM_AST_TAGS+1] = {
-    [Power]=1,
-    [Multiply]=2, [Divide]=2, [Modulus]=2, [Modulus1]=2,
-    [Add]=3, [Subtract]=3, [Concatenate]=3,
-    [LeftShift]=4, [RightShift]=4,
-    [Min]=5, [Max]=5, [Mix]=5,
-    [Range]=6,
-    [RANGE_STEP]=7,
-    [Cast]=7,
-    [Greater]=8, [GreaterEqual]=8, [Less]=8, [LessEqual]=8,
-    [In]=9, [NotIn]=9,
-    [Equal]=10, [NotEqual]=10,
-    [And]=11, [Or]=11, [Xor]=11,
 };
 
 static const char *keywords[] = {
@@ -65,7 +66,7 @@ static inline const char* get_word(const char **pos);
 static inline const char* get_id(const char **pos);
 static inline bool comment(const char **pos);
 static inline bool indent(parse_ctx_t *ctx, const char **pos);
-static inline ast_tag_e match_binary_operator(const char **pos);
+static inline operator_e match_binary_operator(const char **pos);
 static ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool is_extern);
 static ast_t *parse_field_suffix(parse_ctx_t *ctx, ast_t *lhs);
 static ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body);
@@ -776,10 +777,10 @@ PARSER(parse_reduction) {
 
     spaces(&pos);
     const char *combo_start = pos;
-    ast_tag_e binop = match_binary_operator(&pos);
+    operator_e op = match_binary_operator(&pos);
     ast_t *combination;
-    if (binop == Min || binop == Max) {
-        ast_t *key = NewAST(ctx->file, pos, pos, Var, binop == Min ? "_min_" : "_max_");
+    if (op == OP_MIN || op == OP_MAX) {
+        ast_t *key = NewAST(ctx->file, pos, pos, Var, op == OP_MIN ? "_min_" : "_max_");
         for (bool progress = true; progress; ) {
             ast_t *new_term;
             progress = (false
@@ -791,20 +792,20 @@ PARSER(parse_reduction) {
         }
         if (key->tag == Var) key = NULL;
         else pos = key->end;
-        combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Min={
+        combination = new(ast_t, .tag=op == OP_MIN ? Min : Max, .file=ctx->file, .start=combo_start, .end=pos, .__data.Min={
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"),
                              .key=key});
-    } else if (binop == Mix) {
+    } else if (op == OP_MIX) {
         ast_t *key = expect_ast(ctx, start, &pos, parse_expr, "I expected an amount to mix by");
         if (!match_word(&pos, "of"))
             parser_err(ctx, pos, pos, "I expected the word 'of' here");
         combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
                              .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"), .key=key);
-    } else if (binop != Unknown) {
-        combination = new(ast_t, .tag=binop, .file=ctx->file, .start=combo_start, .end=pos, .__data.Add={
+    } else if (op != OP_UNKNOWN) {
+        combination = NewAST(ctx->file, combo_start, pos, BinaryOp, .op=op,
                              .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0")});
+                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"));
     } else {
         return NULL;
     }
@@ -1139,15 +1140,29 @@ ast_t *parse_unary(parse_ctx_t *ctx, const char *pos, ast_tag_e tag, const char 
     if (!val) return NULL;
     // Unsafe: all the unary ops have a '.value' field in the same spot, so this is a hack
     return new(ast_t, .file=ctx->file, .start=start, .end=val->end,
-               .tag=tag, .__data.Not.value=val);
+               .tag=tag, .__data.HeapAllocate.value=val);
     // End unsafe area
 }
-#define parse_negative(...) parse_unary(__VA_ARGS__, Negative, "-", false)
 #define parse_heap_alloc(...) parse_unary(__VA_ARGS__, HeapAllocate, "@", false)
 #define parse_stack_reference(...) parse_unary(__VA_ARGS__, StackReference, "&", false)
-#define parse_not(...) parse_unary(__VA_ARGS__, Not, "not", true)
 #define parse_typeinfo(...) parse_unary(__VA_ARGS__, GetTypeInfo, "_typeinfo_", true)
 #define parse_sizeof(...) parse_unary(__VA_ARGS__, SizeOf, "sizeof", true)
+
+PARSER(parse_not) {
+    const char *start = pos;
+    if (!match_word(&pos, "not")) return NULL;
+    spaces(&pos);
+    ast_t *val = expect_ast(ctx, start, &pos, parse_expr, "I expected an expression for this 'not'");
+    return NewAST(ctx->file, start, pos, UnaryOp, .op=OP_NOT, .value=val);
+}
+
+PARSER(parse_negative) {
+    const char *start = pos;
+    if (!match(&pos, "-")) return NULL;
+    spaces(&pos);
+    ast_t *val = expect_ast(ctx, start, &pos, parse_term, "I expected an expression for this '-'");
+    return NewAST(ctx->file, start, pos, UnaryOp, .op=OP_NEGATIVE, .value=val);
+}
 
 PARSER(parse_wildcard) {
     const char *start = pos;
@@ -1421,7 +1436,7 @@ PARSER(parse_bitcast) {
     ast_t *expr = expect_ast(ctx, start, &pos, parse_term, "I expected an expression here");
     if (!match_word(&pos, "as")) parser_err(ctx, start, pos, "I expected a 'as' and type for this bitcast");
     ast_t *t = expect_ast(ctx, start, &pos, parse_type, "I couldn't parse the type for this bitcast");
-    return NewAST(ctx->file, start, pos, Bitcast, .value=expr, .type=t);
+    return NewAST(ctx->file, start, pos, Cast, .value=expr, .type=t, .bitcast=true);
 }
 
 PARSER(parse_term_no_suffix) {
@@ -1571,41 +1586,41 @@ ast_t *parse_fncall_suffix(parse_ctx_t *ctx, ast_t *fn, bool needs_parens, bool 
     return NewAST(ctx->file, start, pos, FunctionCall, .fn=fn, .args=args, .extern_return_type=extern_return_type);
 }
 
-ast_tag_e match_binary_operator(const char **pos)
+operator_e match_binary_operator(const char **pos)
 {
     switch (**pos) {
     case '+': {
         *pos += 1;
-        return match(pos, "+") ? Concatenate : Add;
+        return match(pos, "+") ? OP_CONCAT : OP_PLUS;
     }
     case '-': {
         *pos += 1;
         if ((*pos)[0] != ' ' && (*pos)[-2] == ' ') // looks like `fn -5`
-            return Unknown;
-        return Subtract;
+            return OP_UNKNOWN;
+        return OP_MINUS;
     }
-    case '*': *pos += 1; return Multiply;
-    case '/': *pos += 1; return Divide;
-    case '^': *pos += 1; return Power;
-    case '<': *pos += 1; return match(pos, "=") ? LessEqual : (match(pos, "<") ? LeftShift : Less);
-    case '>': *pos += 1; return match(pos, "=") ? GreaterEqual : (match(pos, ">") ? RightShift : Greater);
+    case '*': *pos += 1; return OP_MULT;
+    case '/': *pos += 1; return OP_DIVIDE;
+    case '^': *pos += 1; return OP_POWER;
+    case '<': *pos += 1; return match(pos, "=") ? OP_LE : (match(pos, "<") ? OP_LSHIFT : OP_LT);
+    case '>': *pos += 1; return match(pos, "=") ? OP_GE : (match(pos, ">") ? OP_RSHIFT : OP_GT);
     default: {
-        if (match(pos, "!=")) return NotEqual;
-        else if (match(pos, "==") && **pos != '=') return Equal;
-        else if (match_word(pos, "and")) return And;
-        else if (match_word(pos, "or")) return Or;
-        else if (match_word(pos, "xor")) return Xor;
-        else if (match_word(pos, "mod1")) return Modulus1;
-        else if (match_word(pos, "mod")) return Modulus;
-        else if (match_word(pos, "as")) return Cast;
-        else if (match_word(pos, "by")) return RANGE_STEP;
-        else if (match_word(pos, "not in")) return NotIn;
-        else if (match_word(pos, "in")) return In;
-        else if (match_word(pos, "_min_")) return Min;
-        else if (match_word(pos, "_max_")) return Max;
-        else if (match_word(pos, "_mix_")) return Mix;
-        else if (match(pos, "..")) return Range;
-        else return Unknown;
+        if (match(pos, "!=")) return OP_NE;
+        else if (match(pos, "==") && **pos != '=') return OP_EQ;
+        else if (match_word(pos, "and")) return OP_AND;
+        else if (match_word(pos, "or")) return OP_OR;
+        else if (match_word(pos, "xor")) return OP_XOR;
+        else if (match_word(pos, "mod1")) return OP_MOD1;
+        else if (match_word(pos, "mod")) return OP_MOD;
+        else if (match_word(pos, "as")) return OP_AS;
+        else if (match_word(pos, "by")) return OP_BY;
+        else if (match_word(pos, "not in")) return OP_NOT_IN;
+        else if (match_word(pos, "in")) return OP_IN;
+        else if (match_word(pos, "_min_")) return OP_MIN;
+        else if (match_word(pos, "_max_")) return OP_MAX;
+        else if (match_word(pos, "_mix_")) return OP_MIX;
+        else if (match(pos, "..")) return OP_RANGE;
+        else return OP_UNKNOWN;
     }
     }
 }
@@ -1617,16 +1632,16 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
     pos = term->end;
 
     auto terms = ARRAY(term);
-    auto binops = EMPTY_ARRAY(ast_tag_e);
+    auto binops = EMPTY_ARRAY(operator_e);
     auto minmax_keys = EMPTY_ARRAY(ast_t*);
     for (;;) {
         spaces(&pos);
-        ast_tag_e tag = match_binary_operator(&pos);
-        if (tag == Unknown) break;
+        operator_e op = match_binary_operator(&pos);
+        if (op == OP_UNKNOWN) break;
 
         ast_t *key = NULL;
-        if (tag == Min || tag == Max) {
-            key = NewAST(ctx->file, pos, pos, Var, tag == Min ? "_min_" : "_max_");
+        if (op == OP_MIN || op == OP_MAX) {
+            key = NewAST(ctx->file, pos, pos, Var, op == OP_MIN ? "_min_" : "_max_");
             for (bool progress = true; progress; ) {
                 ast_t *new_term;
                 progress = (false
@@ -1638,20 +1653,20 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             }
             if (key->tag == Var) key = NULL;
             else pos = key->end;
-        } else if (tag == Mix) {
+        } else if (op == OP_MIX) {
             key = expect_ast(ctx, pos, &pos, parse_expr, "I expected an amount to mix by");
             if (!match_word(&pos, "of"))
                 parser_err(ctx, pos, pos, "I expected the word 'of' here");
         }
 
-        assert(op_tightness[tag]);
+        assert(op_tightness[op]);
         const char *next = pos;
-        if (tag == Range)
+        if (op == OP_RANGE)
             spaces(&next);
         else
             whitespace(&next);
-        ast_t *rhs = tag == Cast ? parse_type(ctx, next) : parse_term(ctx, next);
-        if (!rhs && tag == Range) {
+        ast_t *rhs = op == OP_AS ? parse_type(ctx, next) : parse_term(ctx, next);
+        if (!rhs && op == OP_RANGE) {
             ast_t **prev_addr = ith_addr(terms, LENGTH(terms)-1);
             *prev_addr = NewAST(ctx->file, next, next, Range, .first=*prev_addr);
             continue;
@@ -1659,7 +1674,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         if (!rhs) break;
         pos = rhs->end;
         append(terms, rhs);
-        append(binops, tag);
+        append(binops, op);
         append(minmax_keys, key);
     }
 
@@ -1674,7 +1689,7 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
             }
         }
 
-        auto tag = ith(binops, tightest_op);
+        auto op = ith(binops, tightest_op);
         ast_t *key = ith(minmax_keys, tightest_op);
         // Bind two terms into one:
         remove(binops, tightest_op);
@@ -1683,7 +1698,14 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
         ast_t *rhs = ith(terms, tightest_op + 1);
 
         ast_t *merged;
-        if (tag == RANGE_STEP) {
+        switch (op) {
+        case OP_RANGE:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Range, .first=lhs, .last=rhs);
+            break;
+        case OP_AS:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Cast, .value=lhs, .type=rhs);
+            break;
+        case OP_BY: {
             if (lhs->tag != Range)
                 parser_err(ctx, lhs->start, rhs->end, "This 'by' is not attached to a Range");
 
@@ -1691,16 +1713,23 @@ ast_t *parse_expr(parse_ctx_t *ctx, const char *pos) {
                             .first=Match(lhs, Range)->first,
                             .last=Match(lhs, Range)->last,
                             .step=rhs);
-        } else {
-            // Unsafe, relies on these having the same type:
-            merged = new(
-                ast_t,
-                .file=ctx->file, .start=lhs->start, .end=rhs->end,
-                .tag=tag,
-                .__data.Min.lhs=lhs,
-                .__data.Min.rhs=rhs,
-                .__data.Min.key=key);
-            // End unsafe
+            break;
+        }
+        case OP_MIN:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Min, .lhs=lhs, .rhs=rhs, .key=key);
+            break;
+        case OP_MAX:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Max, .lhs=lhs, .rhs=rhs, .key=key);
+            break;
+        case OP_MIX:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Mix, .lhs=lhs, .rhs=rhs, .key=key);
+            break;
+        case OP_EQ: case OP_NE: case OP_LT: case OP_LE: case OP_GT: case OP_GE:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, Comparison, .lhs=lhs, .rhs=rhs, .op=op);
+            break;
+        default:
+            merged = NewAST(ctx->file, lhs->start, rhs->end, BinaryOp, .lhs=lhs, .rhs=rhs, .op=op);
+            break;
         }
 
         remove(terms, tightest_op);
@@ -1731,28 +1760,18 @@ PARSER(parse_update) {
     ast_t *lhs = optional_ast(ctx, &pos, parse_expr);
     if (!lhs) return NULL;
     spaces(&pos);
-    ast_tag_e tag;
-    if (match(&pos, "+=")) tag = AddUpdate;
-    else if (match(&pos, "++=")) tag = ConcatenateUpdate;
-    else if (match(&pos, "-=")) tag = SubtractUpdate;
-    else if (match(&pos, "*=")) tag = MultiplyUpdate;
-    else if (match(&pos, "/=")) tag = DivideUpdate;
-    else if (match(&pos, "and=")) tag = AndUpdate;
-    else if (match(&pos, "or=")) tag = OrUpdate;
-    else if (match(&pos, "xor=")) tag = XorUpdate;
+    operator_e op;
+    if (match(&pos, "+=")) op = OP_PLUS;
+    else if (match(&pos, "++=")) op = OP_CONCAT;
+    else if (match(&pos, "-=")) op = OP_MINUS;
+    else if (match(&pos, "*=")) op = OP_MULT;
+    else if (match(&pos, "/=")) op = OP_DIVIDE;
+    else if (match(&pos, "and=")) op = OP_AND;
+    else if (match(&pos, "or=")) op = OP_OR;
+    else if (match(&pos, "xor=")) op = OP_XOR;
     else return NULL;
     ast_t *rhs = expect_ast(ctx, start, &pos, parse_extended_expr, "I expected an expression here");
-    switch (tag) {
-    case AddUpdate: return NewAST(ctx->file, start, pos, AddUpdate, .lhs=lhs, .rhs=rhs);
-    case SubtractUpdate: return NewAST(ctx->file, start, pos, SubtractUpdate, .lhs=lhs, .rhs=rhs);
-    case MultiplyUpdate: return NewAST(ctx->file, start, pos, MultiplyUpdate, .lhs=lhs, .rhs=rhs);
-    case DivideUpdate: return NewAST(ctx->file, start, pos, DivideUpdate, .lhs=lhs, .rhs=rhs);
-    case AndUpdate: return NewAST(ctx->file, start, pos, AndUpdate, .lhs=lhs, .rhs=rhs);
-    case OrUpdate: return NewAST(ctx->file, start, pos, OrUpdate, .lhs=lhs, .rhs=rhs);
-    case XorUpdate: return NewAST(ctx->file, start, pos, XorUpdate, .lhs=lhs, .rhs=rhs);
-    case ConcatenateUpdate: return NewAST(ctx->file, start, pos, ConcatenateUpdate, .lhs=lhs, .rhs=rhs);
-    default: return NULL;
-    }
+    return NewAST(ctx->file, start, pos, UpdateAssign, .lhs=lhs, .rhs=rhs, .op=op);
 }
 
 PARSER(parse_assignment) {

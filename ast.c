@@ -6,6 +6,17 @@
 
 #include "ast.h"
 
+static const char *OP_NAMES[] = {
+    [OP_UNKNOWN]="unknown",
+    [OP_NOT]="not", [OP_NEGATIVE]="negative",
+    [OP_POWER]="^", [OP_MULT]="*", [OP_DIVIDE]="/",
+    [OP_MOD]="mod", [OP_MOD1]="mod1", [OP_PLUS]="+", [OP_MINUS]="minus",
+    [OP_CONCAT]="++", [OP_LSHIFT]="<<", [OP_RSHIFT]=">>", [OP_MIN]="min",
+    [OP_MAX]="max", [OP_MIX]="mix", [OP_RANGE]="..", [OP_BY]="by", [OP_AS]="as",
+    [OP_IN]="in", [OP_NOT_IN]="not in", [OP_EQ]="==", [OP_NE]="!=", [OP_LT]="<",
+    [OP_LE]="<=", [OP_GT]=">", [OP_GE]=">=", [OP_AND]="and", [OP_OR]="or", [OP_XOR]="xor",
+};
+
 static inline CORD CORD_asprintf(const char *fmt, ...)
 {
     va_list args;
@@ -130,14 +141,11 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(Interp, F(value), data->labelled ? "labeled=true" : "labelled=false")
         T(Declare, F(var), F(value), F(is_public))
         T(Assign, F(targets), F(values))
-        BINOP(AddUpdate) BINOP(SubtractUpdate) BINOP(MultiplyUpdate) BINOP(DivideUpdate) BINOP(AndUpdate) BINOP(XorUpdate)
-        BINOP(OrUpdate) BINOP(Add) BINOP(Subtract) BINOP(Multiply) BINOP(Divide) BINOP(Power) BINOP(Modulus) BINOP(Modulus1)
-        BINOP(And) BINOP(Or) BINOP(Xor) BINOP(Equal) BINOP(NotEqual) BINOP(Greater) BINOP(GreaterEqual)
-        BINOP(Less) BINOP(LessEqual) BINOP(LeftShift) BINOP(RightShift)
-        T(In, F(member), F(container))
-        T(NotIn, F(member), F(container))
-        BINOP(Concatenate) BINOP(ConcatenateUpdate)
-        UNOP(Not) UNOP(Negative) UNOP(GetTypeInfo) UNOP(SizeOf) UNOP(HeapAllocate) UNOP(StackReference)
+        T(BinaryOp, F(lhs), OP_NAMES[data->op], F(rhs))
+        T(UpdateAssign, F(lhs), OP_NAMES[data->op], F(rhs))
+        T(UnaryOp, OP_NAMES[data->op], F(value))
+        T(Comparison, F(lhs), OP_NAMES[data->op], F(rhs))
+        UNOP(GetTypeInfo) UNOP(SizeOf) UNOP(HeapAllocate) UNOP(StackReference)
         T(Min, F(lhs), F(rhs), F(key))
         T(Max, F(lhs), F(rhs), F(key))
         T(Mix, F(lhs), F(rhs), F(key))
@@ -167,8 +175,7 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(TypeFunction, F(args), F(ret_type))
         T(TypePointer, F(pointed), F(is_optional), F(is_stack))
         T(Variant, F(type), F(value))
-        T(Cast, F(value), F(type))
-        T(Bitcast, F(value), F(type))
+        T(Cast, F(value), F(type), F(bitcast))
         T(Struct, F(type), F(members))
         T(TypeTaggedUnion, F(tag_names), "tag_values=...", F(tag_args))
         T(TaggedUnionField, F(name), F(value))

@@ -17,19 +17,25 @@
 #define StringAST(ast, _str) WrapAST(ast, StringLiteral, .str=heap_str(_str))
 
 typedef enum {
+    OP_UNKNOWN,
+    // Unary ops:
+    OP_NOT, OP_NEGATIVE,
+
+    // Binary ops:
+    OP_POWER, OP_MULT, OP_DIVIDE, OP_MOD, OP_MOD1, OP_PLUS, OP_MINUS, OP_CONCAT,
+    OP_LSHIFT, OP_RSHIFT, OP_MIN, OP_MAX, OP_MIX, OP_RANGE, OP_BY, OP_AS,
+    OP_IN, OP_NOT_IN, OP_EQ, OP_NE, OP_LT, OP_LE, OP_GT, OP_GE,
+    OP_AND, OP_OR, OP_XOR,
+} operator_e;
+
+typedef enum {
     Unknown = 0,
     Nil, Bool, Var, Wildcard, TypeVar,
     Int, Num, Range, Char,
     StringLiteral, StringJoin, Interp,
     Declare, Assign,
-    AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-    AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
-    Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
-    LeftShift, RightShift,
-    And, Or, Xor, Min, Max, Mix, Concatenate,
-    Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual,
-    In, NotIn,
-    Not, Negative,
+    BinaryOp, UnaryOp, Comparison, UpdateAssign,
+    Min, Max, Mix,
     GetTypeInfo, SizeOf,
     HeapAllocate, StackReference,
     Array, Table, TableEntry,
@@ -44,7 +50,7 @@ typedef enum {
     TypeArray, TypeTable, TypeStruct,
     TypeFunction, TypePointer,
     TypeTaggedUnion,
-    Cast, Bitcast,
+    Cast,
     Struct,
     TaggedUnionField,
     TypeDef,
@@ -123,20 +129,25 @@ struct ast_s {
         struct {
             ARRAY_OF(ast_t*) targets;
             ARRAY_OF(ast_t*) values;
-        } Assign; 
+        } Assign;
         struct {
             ast_t *lhs, *rhs;
-        } AddUpdate, SubtractUpdate, MultiplyUpdate, DivideUpdate,
-            AndUpdate, OrUpdate, XorUpdate, ConcatenateUpdate,
-            Add, Subtract, Multiply, Divide, Power, Modulus, Modulus1,
-            LeftShift, RightShift, And, Or, Xor, Concatenate,
-            Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual;
+            operator_e op;
+        } BinaryOp, UpdateAssign;
+        struct {
+            ast_t *value;
+            operator_e op;
+        } UnaryOp;
+        struct {
+            ast_t *lhs, *rhs;
+            operator_e op;
+        } Comparison;
         struct {
             ast_t *lhs, *rhs, *key;
         } Min, Max, Mix;
         struct {
             ast_t *value;
-        } Not, Negative, GetTypeInfo, SizeOf, HeapAllocate, StackReference;
+        } GetTypeInfo, SizeOf, HeapAllocate, StackReference;
         struct {
             ast_t *type;
             ARRAY_OF(ast_t*) items;
@@ -229,7 +240,8 @@ struct ast_s {
         } TypeTypeAST;
         struct {
             ast_t *value, *type;
-        } Cast, Bitcast;
+            bool bitcast;
+        } Cast;
         struct {
             ast_t *type;
             ARRAY_OF(ast_t *) members;
@@ -281,9 +293,6 @@ struct ast_s {
             sss_file_t *file;
             bool main_program;
         } Use;
-        struct {
-            ast_t *member, *container;
-        } In, NotIn;
         struct {
             ARRAY_OF(const char*) directives;
         } LinkerDirective;

@@ -13,7 +13,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast);
 sss_type_t *get_type(env_t *env, ast_t *ast);
 sss_type_t *get_doctest_type(env_t *env, ast_t *ast);
 sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name);
-sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e tag, sss_type_t *rhs_t);
+sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, operator_e op, sss_type_t *rhs_t);
 bool is_discardable(env_t *env, ast_t *ast);
 const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);
 sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *type);

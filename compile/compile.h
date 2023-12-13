@@ -98,7 +98,7 @@ gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast);
 gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast);
 void math_update_rec(
     env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *lhs_t, gcc_lvalue_t *lhs,
-    gcc_binary_op_e op, sss_type_t *rhs_t, gcc_rvalue_t *rhs);
+    operator_e op, sss_type_t *rhs_t, gcc_rvalue_t *rhs);
 
 // ============================== arrays.c ==============================
 // Copy on write behavior:

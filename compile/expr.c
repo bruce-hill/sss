@@ -206,12 +206,12 @@ static void compile_doctest(env_t *env, gcc_block_t **block, ast_t *ast, gcc_rva
         }
         return;
     }
-    case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
-    case XorUpdate: case ConcatenateUpdate: case Declare: {
-        // UNSAFE: this assumes all these types have the same layout:
-        ast_t *lhs_ast = ast->__data.AddUpdate.lhs;
-        // END UNSAFE
-        DOCTEST(heap_strf("%#W =", lhs_ast), expr_t);
+    case UpdateAssign: {
+        DOCTEST(heap_strf("%#W =", Match(ast, UpdateAssign)->lhs), expr_t);
+        break;
+    }
+    case Declare: {
+        DOCTEST(heap_strf("%#W :=", Match(ast, Declare)->var), expr_t);
         break;
     }
     case Assign: {
@@ -1497,55 +1497,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, ast, "I only know how to index Arrays and Tables, not %T", t);
         }
     }
-    case In: case NotIn: {
-        auto in = ast->tag == In ? Match(ast, In) : Match(ast, NotIn);
-        sss_type_t *member_t = get_type(env, in->member);
-        sss_type_t *container_t = get_type(env, in->container);
-
-        sss_type_t *container_value_t = container_t;
-        for (;;) {
-            if (container_value_t->tag == PointerType)
-                container_value_t = Match(container_value_t, PointerType)->pointed;
-            else if (container_value_t->tag == VariantType)
-                container_value_t = Match(container_value_t, VariantType)->variant_of;
-            else break;
-        }
-
-        gcc_rvalue_t *ret;
-        if (container_value_t->tag == TableType) {
-            if (!type_is_a(member_t, Match(container_value_t, TableType)->key_type))
-                compiler_err(env, ast, "This is checking for the presence of a key with type %T, but the table has type %T",
-                            member_t, container_value_t);
-
-            gcc_rvalue_t *val_opt = table_lookup_optional(env, block, in->container, in->member, NULL, true);
-            gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_value_t, TableType)->value_type)));
-            ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
-        } else if (container_value_t->tag == ArrayType) {
-            return compile_expr(env, block, WrapAST(
-                    ast, FunctionCall,
-                    .fn=WrapAST(in->container, FieldAccess, .fielded=in->container, .field="contains"),
-                    .args=ARRAY(in->member)));
-        } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
-            gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
-            gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
-            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-            gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
-            gcc_rvalue_t *member_val = compile_expr(env, block, in->member);
-            gcc_rvalue_t *container_val = compile_expr(env, block, in->container);
-            ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE,
-                                 gcc_zero(env->ctx, tag_gcc_t),
-                                 gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, tag_gcc_t,
-                                               gcc_rvalue_access_field(member_val, loc, tag_field),
-                                               gcc_rvalue_access_field(container_val, loc, tag_field)));
-        } else if (container_value_t->tag == RangeType) {
-            ret = range_contains(env, block, in->container, in->member);
-        } else {
-            compiler_err(env, ast, "'in' membership testing is only supported for Arrays, Tables and Enums, not %T", container_t);
-        }
-        if (ast->tag == NotIn)
-            ret = gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), ret);
-        return ret;
-    }
     case GetTypeInfo: {
         auto value = Match(ast, GetTypeInfo)->value;
         sss_type_t *t = get_type(env, value);
@@ -1559,11 +1510,18 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     }
     case Cast: {
         auto cast = Match(ast, Cast);
+        sss_type_t *cast_t = parse_type_ast(env, cast->type);
         gcc_rvalue_t *val = compile_expr(env, block, cast->value);
+
         sss_type_t *src_t = get_type(env, cast->value);
-        sss_type_t *cast_t = get_type(env, ast);
         if (type_eq(src_t, cast_t))
             return val;
+
+        if (cast->bitcast) {
+            if (gcc_sizeof(env, src_t) != gcc_sizeof(env, cast_t))
+                compiler_err(env, ast, "This value can't be cast to the given type, because it has a different size."); 
+            return gcc_bitcast(env->ctx, loc, val, sss_type_to_gcc(env, cast_t));
+        }
 
         binding_t *convert_b = get_from_namespace(env, cast_t, heap_strf("#convert-from:%s", type_to_string(src_t)));
         if (convert_b)
@@ -1622,14 +1580,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                         src_t, cast_t, src_t, cast_t);
         return gcc_cast(env->ctx, loc, val, sss_type_to_gcc(env, cast_t));
     }
-    case Bitcast: {
-        auto bitcast = Match(ast, Bitcast);
-        sss_type_t *t = get_type(env, ast);
-        if (gcc_sizeof(env, get_type(env, bitcast->value)) != gcc_sizeof(env, t))
-            compiler_err(env, ast, "This value can't be cast to the given type, because it has a different size."); 
-        gcc_rvalue_t *val = compile_expr(env, block, bitcast->value);
-        return gcc_bitcast(env->ctx, loc, val, sss_type_to_gcc(env, t));
-    }
     case Nil: {
         sss_type_t *t = get_type(env, ast);
         if (t->tag == VoidType)
@@ -1640,66 +1590,71 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         else
             compiler_err(env, ast, "There is no nil value for %T", t);
     }
-    case Not: {
+    case UnaryOp: {
         if (env->should_mark_cow) {
             env = fresh_scope(env);
             env->should_mark_cow = false;
         }
-        auto value = Match(ast, Not)->value;
-        sss_type_t *t = get_type(env, value);
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_rvalue_t *val = compile_expr(env, block, value);
-        if (t->tag == BoolType) {
-            return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
-        } else if (is_integral(t)) {
-            return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
-        } else if (t->tag == PointerType && Match(t, PointerType)->is_optional) {
-            return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
-        } else if (base_variant(t)->tag == TaggedUnionType) {
-            gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
-            gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
-            gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
-            gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
-            int64_t all_tags = 0;
-            auto members = Match(base_variant(t), TaggedUnionType)->members;
-            for (int64_t i = 0; i < LENGTH(members); i++) {
-                if (ith(members, i).type && LENGTH(Match(ith(members, i).type, StructType)->field_types) > 0)
-                    compiler_err(env, ast, "%T tagged union values can't be negated because some tags have data attached to them.", t);
-                all_tags |= ith(members, i).tag_value;
+        auto value = Match(ast, UnaryOp)->value;
+        if (Match(ast, UnaryOp)->op == OP_NOT) {
+            sss_type_t *t = get_type(env, value);
+            gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+            gcc_rvalue_t *val = compile_expr(env, block, value);
+            if (t->tag == BoolType) {
+                return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_LOGICAL_NEGATE, gcc_t, val);
+            } else if (is_integral(t)) {
+                return gcc_unary_op(env->ctx, ast_loc(env, ast), GCC_UNOP_BITWISE_NEGATE, gcc_t, val);
+            } else if (t->tag == PointerType && Match(t, PointerType)->is_optional) {
+                return gcc_comparison(env->ctx, loc, GCC_COMPARISON_EQ, val, gcc_null(env->ctx, gcc_t));
+            } else if (base_variant(t)->tag == TaggedUnionType) {
+                gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
+                gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
+                gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+                gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
+                int64_t all_tags = 0;
+                auto members = Match(base_variant(t), TaggedUnionType)->members;
+                for (int64_t i = 0; i < LENGTH(members); i++) {
+                    if (ith(members, i).type && LENGTH(Match(ith(members, i).type, StructType)->field_types) > 0)
+                        compiler_err(env, ast, "%T tagged union values can't be negated because some tags have data attached to them.", t);
+                    all_tags |= ith(members, i).tag_value;
+                }
+                gcc_rvalue_t *result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, tag_gcc_t,
+                                                         gcc_rvalue_access_field(val, loc, tag_field),
+                                                         gcc_rvalue_from_long(env->ctx, tag_gcc_t, all_tags));
+                return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
+            } else {
+                compiler_err(env, ast, "The 'not' operator isn't supported for values with type %T", t);
             }
-            gcc_rvalue_t *result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, tag_gcc_t,
-                                                     gcc_rvalue_access_field(val, loc, tag_field),
-                                                     gcc_rvalue_from_long(env->ctx, tag_gcc_t, all_tags));
-            return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
-        } else {
-            compiler_err(env, ast, "The 'not' operator isn't supported for values with type %T", t);
+        } else if (Match(ast, UnaryOp)->op == OP_NEGATIVE) {
+            sss_type_t *t = get_type(env, value);
+            if (!is_numeric(t))
+                compiler_err(env, ast, "I only know how to get negative numbers, not %T", t);
+            gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+            gcc_rvalue_t *rval = compile_expr(env, block, value);
+            return gcc_unary_op(env->ctx, loc, GCC_UNOP_MINUS, gcc_t, rval);
         }
+        break;
     }
-    case Equal: case NotEqual:
-    case Less: case LessEqual: case Greater: case GreaterEqual: {
+    case Comparison: {
         if (env->should_mark_cow) {
             env = fresh_scope(env);
             env->should_mark_cow = false;
         }
-        // Unsafe! This is a hack to avoid duplicate code, based on the assumption that each of these types
-        // has the same struct layout:
-        ast_t *lhs = ast->__data.Less.lhs,
-              *rhs = ast->__data.Less.rhs;
-        // End of unsafe
+        auto comp = Match(ast, Comparison);
         gcc_comparison_e cmp;
         bool is_ordered;
-        switch (ast->tag) {
-        case Equal: cmp = GCC_COMPARISON_EQ; is_ordered = false; break;
-        case NotEqual: cmp = GCC_COMPARISON_NE; is_ordered = false; break;
-        case Less: cmp = GCC_COMPARISON_LT; is_ordered = true; break;
-        case LessEqual: cmp = GCC_COMPARISON_LE; is_ordered = true; break;
-        case Greater: cmp = GCC_COMPARISON_GT; is_ordered = true; break;
-        case GreaterEqual: cmp = GCC_COMPARISON_GE; is_ordered = true; break;
-        default: assert(false);
+        switch (comp->op) {
+        case OP_EQ: cmp = GCC_COMPARISON_EQ; is_ordered = false; break;
+        case OP_NE: cmp = GCC_COMPARISON_NE; is_ordered = false; break;
+        case OP_LT: cmp = GCC_COMPARISON_LT; is_ordered = true; break;
+        case OP_LE: cmp = GCC_COMPARISON_LE; is_ordered = true; break;
+        case OP_GT: cmp = GCC_COMPARISON_GT; is_ordered = true; break;
+        case OP_GE: cmp = GCC_COMPARISON_GE; is_ordered = true; break;
+        default: compiler_err(env, ast, "Unknown comparison type: %W", ast);
         }
 
-        sss_type_t *lhs_t = get_type(env, lhs);
-        sss_type_t *rhs_t = get_type(env, rhs);
+        sss_type_t *lhs_t = get_type(env, comp->lhs);
+        sss_type_t *rhs_t = get_type(env, comp->rhs);
 
         sss_type_t *comparison_type;
         if (can_promote(lhs_t, rhs_t))
@@ -1712,8 +1667,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         if (is_ordered && !is_orderable(comparison_type))
             compiler_err(env, ast, "I can't do ordered comparisons between values with type %T", comparison_type);
 
-        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, comparison_type);
-        gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, comparison_type);
+        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, comp->lhs, comparison_type);
+        gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, comp->rhs, comparison_type);
         assert(lhs_val && rhs_val);
 
         if (is_numeric(comparison_type) || comparison_type->tag == PointerType)
@@ -1725,14 +1680,14 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *rhs_var = gcc_local(func, loc, sss_type_to_gcc(env, comparison_type), "_rhs");
         gcc_assign(*block, loc, rhs_var, rhs_val);
 
-        switch (ast->tag) {
-        case Equal: case NotEqual: {
+        switch (comp->op) {
+        case OP_EQ: case OP_NE: {
             gcc_func_t *generic_equal = get_function(env, "generic_equal");
             gcc_rvalue_t *result = gcc_callx(env->ctx, loc, generic_equal,
                                              gcc_cast(env->ctx, loc, gcc_lvalue_address(lhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                              gcc_cast(env->ctx, loc, gcc_lvalue_address(rhs_var, loc), gcc_type(env->ctx, VOID_PTR)),
                                              get_typeinfo_pointer(env, comparison_type));
-            if (ast->tag == NotEqual)
+            if (comp->op == OP_NE)
                 return gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), result);
             else
                 return result;
@@ -1748,232 +1703,239 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         }
     }
-    case Negative: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
+
+    case UpdateAssign: {
+        auto update = Match(ast, UpdateAssign);
+        if (update->op == OP_CONCAT) {
+            sss_type_t *t_lhs = get_type(env, update->lhs);
+            sss_type_t *array_t = t_lhs;
+            while (array_t->tag == PointerType) array_t = Match(array_t, PointerType)->pointed;
+            binding_t *b = get_from_namespace(env, array_t, "insert_all");
+            assert(b);
+            gcc_type_t *i64 = gcc_type(env->ctx, INT64);
+            sss_type_t *item_type = Match(base_variant(array_t), ArrayType)->item_type;
+            gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, item_type));
+            if (base_variant(t_lhs)->tag == ArrayType) {
+                gcc_lvalue_t *lval = get_lvalue(env, block, update->lhs, false);
+                gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, update->rhs, 0);
+                gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, gcc_rval(lval)));
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_lvalue_address(lval, loc), rhs_rval, index_rval, item_size));
+                return gcc_rval(lval);
+            } else if (t_lhs->tag == PointerType) {
+                gcc_rvalue_t *lhs_rval = set_pointer_level(env, block, update->lhs, 1);
+                gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, update->rhs, 0);
+                gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, lhs_rval));
+                gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, lhs_rval, rhs_rval, index_rval, item_size));
+                return lhs_rval;
+            } else {
+                compiler_err(env, ast, "Concatenation update is only defined for array types and pointers to array types.");
+            }
         }
-        ast_t *value = Match(ast, Negative)->value;
-        sss_type_t *t = get_type(env, value);
-        if (!is_numeric(t))
-            compiler_err(env, ast, "I only know how to get negative numbers, not %T", t);
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        gcc_rvalue_t *rval = compile_expr(env, block, value);
-        return gcc_unary_op(env->ctx, loc, GCC_UNOP_MINUS, gcc_t, rval);
-    }
-    case And: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
-        }
-        ast_t *lhs = Match(ast, And)->lhs,
-              *rhs = Match(ast, And)->rhs;
-        sss_type_t *t = get_type(env, ast);
-        sss_type_t *lhs_t = get_type(env, lhs);
-        sss_type_t *rhs_t = get_type(env, rhs);
-
-        if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
-            return math_binop(env, block, ast);
-
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
-        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
-        gcc_assign(*block, NULL, result, lhs_val);
-        lhs_val = gcc_rval(result);
-        if (is_integral(t)) {
-            gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
-            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, sss_type_to_gcc(env, t), lhs_val, rhs_val);
-        }
-        gcc_block_t *if_truthy = gcc_new_block(func, fresh("and_truthy"));
-        gcc_block_t *done = gcc_new_block(func, fresh("and_done"));
-
-        gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
-        gcc_rvalue_t *bool_val = lhs_val;
-        if (t->tag != BoolType) {
-            gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
-            bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
-        }
-        gcc_jump_condition(*block, loc, bool_val, if_truthy, done);
-
-        if (rhs_t->tag == AbortType) {
-            compile_statement(env, &if_truthy, rhs);
-        } else {
-            gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, rhs);
-            if (if_truthy)
-                gcc_assign(if_truthy, loc, result, rhs_val);
-        }
-        if (if_truthy)
-            gcc_jump(if_truthy, loc, done);
-
-        *block = done;
-        return gcc_rval(result);
-    }
-    case Or: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
-        }
-        ast_t *lhs = Match(ast, Or)->lhs,
-              *rhs = Match(ast, Or)->rhs;
-        sss_type_t *t = get_type(env, ast);
-        sss_type_t *lhs_t = get_type(env, lhs);
-        sss_type_t *rhs_t = get_type(env, rhs);
-
-        if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
-            return math_binop(env, block, ast);
-
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
-        gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-        gcc_assign(*block, loc, result, lhs_val);
-        lhs_val = gcc_rval(result);
-        if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
-            return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, sss_type_to_gcc(env, t), lhs_val, rhs_val);
-        }
-        gcc_block_t *if_falsey = gcc_new_block(func, fresh("or_falsey"));
-        gcc_block_t *done = gcc_new_block(func, fresh("or_done"));
-
-        gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
-        gcc_rvalue_t *bool_val = lhs_val;
-        if (t->tag != BoolType) {
-            gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
-            bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
-        }
-        gcc_jump_condition(*block, loc, bool_val, done, if_falsey);
-
-        if (rhs_t->tag == AbortType) {
-            compile_statement(env, &if_falsey, rhs);
-        } else {
-            gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, rhs);
-            if (if_falsey)
-                gcc_assign(if_falsey, loc, result, rhs_val);
-        }
-        if (if_falsey)
-            gcc_jump(if_falsey, loc, done);
-
-        *block = done;
-        return gcc_rval(result);
-    }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case OrUpdate: case AndUpdate: case XorUpdate: {
         return math_update(env, block, ast);
     }
-    case Add: case Subtract: case Divide: case Multiply: case LeftShift: case RightShift: case Xor: {
+
+    case BinaryOp: {
         if (env->should_mark_cow) {
             env = fresh_scope(env);
             env->should_mark_cow = false;
         }
-        return math_binop(env, block, ast);
-    }
-    case Concatenate: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
-        }
-        auto concat = Match(ast, Concatenate);
-        (void)get_type(env, ast);
-        ast_t *lhs_loop = WrapAST(concat->lhs, For, .iter=concat->lhs,
-                                  .value=WrapAST(concat->lhs, Var, .name="x.0"),
-                                  .body=WrapAST(concat->lhs, Var, .name="x.0"));
-        ast_t *rhs_loop = WrapAST(concat->rhs, For, .iter=concat->rhs,
-                                  .value=WrapAST(concat->rhs, Var, .name="x.0"),
-                                  .body=WrapAST(concat->rhs, Var, .name="x.0"));
-        ast_t *concat_ast = WrapAST(ast, Array, .items=ARRAY(lhs_loop, rhs_loop));
-        return compile_expr(env, block, concat_ast);
-    }
-    case ConcatenateUpdate: {
-        auto concat = Match(ast, ConcatenateUpdate);
-        sss_type_t *t_lhs = get_type(env, concat->lhs);
-        sss_type_t *array_t = t_lhs;
-        while (array_t->tag == PointerType) array_t = Match(array_t, PointerType)->pointed;
-        binding_t *b = get_from_namespace(env, array_t, "insert_all");
-        assert(b);
-        gcc_type_t *i64 = gcc_type(env->ctx, INT64);
-        sss_type_t *item_type = Match(base_variant(array_t), ArrayType)->item_type;
-        gcc_rvalue_t *item_size = gcc_rvalue_int64(env->ctx, gcc_sizeof(env, item_type));
-        if (base_variant(t_lhs)->tag == ArrayType) {
-            gcc_lvalue_t *lval = get_lvalue(env, block, concat->lhs, false);
-            gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);
-            gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, gcc_rval(lval)));
-            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, gcc_lvalue_address(lval, loc), rhs_rval, index_rval, item_size));
-            return gcc_rval(lval);
-        } else if (t_lhs->tag == PointerType) {
-            gcc_rvalue_t *lhs_rval = set_pointer_level(env, block, concat->lhs, 1);
-            gcc_rvalue_t *rhs_rval = set_pointer_level(env, block, concat->rhs, 0);
-            gcc_rvalue_t *index_rval = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, i64, gcc_one(env->ctx, i64), compile_len(env, block, t_lhs, lhs_rval));
-            gcc_eval(*block, loc, gcc_callx(env->ctx, loc, b->func, lhs_rval, rhs_rval, index_rval, item_size));
-            return lhs_rval;
-        } else {
-            compiler_err(env, ast, "Concatenation update is only defined for array types and pointers to array types.");
-        }
-    }
-    case Modulus: case Modulus1: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
-        }
-        // UNSAFE: this works because the two tags have the same layout:
-        ast_t *lhs = ast->__data.Modulus.lhs, *rhs = ast->__data.Modulus.rhs;
-        // END UNSAFE
+
+        auto binop = Match(ast, BinaryOp);
         sss_type_t *t = get_type(env, ast);
-        sss_type_t *lhs_t = get_type(env, lhs);
-        sss_type_t *rhs_t = get_type(env, rhs);
-        gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, lhs, t);
-        gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, rhs, t);
-        if (!lhs_val || !rhs_val)
-            compiler_err(env, ast, "The left hand side of this modulus has type %T, but the right hand side has type %T and I can't figure out how to combine them.",
-                         lhs_t, rhs_t);
+        sss_type_t *lhs_t = get_type(env, binop->lhs);
+        sss_type_t *rhs_t = get_type(env, binop->rhs);
 
-        if (ast->tag == Modulus1)
-            lhs_val = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, sss_type_to_gcc(env, t), lhs_val, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
+        switch (binop->op) {
+        case OP_IN: case OP_NOT_IN: {
+            sss_type_t *member_t = get_type(env, binop->lhs);
+            sss_type_t *container_t = get_type(env, binop->rhs);
 
-        sss_type_t *base_t = base_variant(t);
-        if (base_t->tag == NumType) {
-            gcc_rvalue_t *mod_func_rval = get_from_namespace(env, base_t, "mod")->rval;
-            gcc_rvalue_t *result = gcc_callx_ptr(env->ctx, loc, mod_func_rval, lhs_val, rhs_val);
-            if (ast->tag == Modulus1)
-                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
-            return result;
-        } else {
-            gcc_rvalue_t *result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, sss_type_to_gcc(env, t), lhs_val, rhs_val);
-            // Ensure modulus result is positive (i.e. (-1 mod 10) == 9)
-            result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, rhs_val);
-            result = gcc_binary_op(env->ctx, loc, GCC_BINOP_MODULO, sss_type_to_gcc(env, t), result, rhs_val);
-            if (ast->tag == Modulus1)
-                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
-            return result;
+            sss_type_t *container_value_t = container_t;
+            for (;;) {
+                if (container_value_t->tag == PointerType)
+                    container_value_t = Match(container_value_t, PointerType)->pointed;
+                else if (container_value_t->tag == VariantType)
+                    container_value_t = Match(container_value_t, VariantType)->variant_of;
+                else break;
+            }
+
+            gcc_rvalue_t *ret;
+            if (container_value_t->tag == TableType) {
+                if (!type_is_a(member_t, Match(container_value_t, TableType)->key_type))
+                    compiler_err(env, ast, "This is checking for the presence of a key with type %T, but the table has type %T",
+                                 member_t, container_value_t);
+
+                gcc_rvalue_t *val_opt = table_lookup_optional(env, block, binop->rhs, binop->lhs, NULL, true);
+                gcc_rvalue_t *missing = gcc_null(env->ctx, gcc_get_ptr_type(sss_type_to_gcc(env, Match(container_value_t, TableType)->value_type)));
+                ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, val_opt, missing);
+            } else if (container_value_t->tag == ArrayType) {
+                return compile_expr(env, block, WrapAST(
+                        ast, FunctionCall,
+                        .fn=WrapAST(binop->rhs, FieldAccess, .fielded=binop->rhs, .field="contains"),
+                        .args=ARRAY(binop->lhs)));
+            } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
+                gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
+                gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
+                gcc_field_t *tag_field = gcc_get_field(gcc_tagged_s, 0);
+                gcc_type_t *tag_gcc_t = gcc_type(env->ctx, INT32);
+                gcc_rvalue_t *member_val = compile_expr(env, block, binop->lhs);
+                gcc_rvalue_t *container_val = compile_expr(env, block, binop->rhs);
+                ret = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE,
+                                     gcc_zero(env->ctx, tag_gcc_t),
+                                     gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, tag_gcc_t,
+                                                   gcc_rvalue_access_field(member_val, loc, tag_field),
+                                                   gcc_rvalue_access_field(container_val, loc, tag_field)));
+            } else if (container_value_t->tag == RangeType) {
+                ret = range_contains(env, block, binop->rhs, binop->lhs);
+            } else {
+                compiler_err(env, ast, "'in' membership testing is only supported for Arrays, Tables and Enums, not %T", container_t);
+            }
+            if (binop->op == OP_NOT_IN)
+                ret = gcc_unary_op(env->ctx, loc, GCC_UNOP_LOGICAL_NEGATE, gcc_type(env->ctx, BOOL), ret);
+            return ret;
+        }
+        case OP_AND: {
+            if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
+                return math_binop(env, block, ast);
+
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
+            gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, binop->lhs, t);
+            gcc_assign(*block, NULL, result, lhs_val);
+            lhs_val = gcc_rval(result);
+            if (is_integral(t)) {
+                gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, binop->rhs, t);
+                return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_AND, sss_type_to_gcc(env, t), lhs_val, rhs_val);
+            }
+            gcc_block_t *if_truthy = gcc_new_block(func, fresh("and_truthy"));
+            gcc_block_t *done = gcc_new_block(func, fresh("and_done"));
+
+            gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
+            gcc_rvalue_t *bool_val = lhs_val;
+            if (t->tag != BoolType) {
+                gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
+                bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
+            }
+            gcc_jump_condition(*block, loc, bool_val, if_truthy, done);
+
+            if (rhs_t->tag == AbortType) {
+                compile_statement(env, &if_truthy, binop->rhs);
+            } else {
+                gcc_rvalue_t *rhs_val = compile_expr(env, &if_truthy, binop->rhs);
+                if (if_truthy)
+                    gcc_assign(if_truthy, loc, result, rhs_val);
+            }
+            if (if_truthy)
+                gcc_jump(if_truthy, loc, done);
+
+            *block = done;
+            return gcc_rval(result);
+        }
+        case OP_OR: {
+            if (!((lhs_t->tag == BoolType && rhs_t->tag == BoolType) || lhs_t->tag == AbortType || rhs_t->tag == AbortType || lhs_t->tag == PointerType || rhs_t->tag == PointerType))
+                return math_binop(env, block, ast);
+
+            gcc_func_t *func = gcc_block_func(*block);
+            gcc_lvalue_t *result = gcc_local(func, loc, sss_type_to_gcc(env, t), "_and_result");
+            gcc_rvalue_t *lhs_val = compile_expr(env, block, binop->lhs);
+            gcc_assign(*block, loc, result, lhs_val);
+            lhs_val = gcc_rval(result);
+            if (is_integral(lhs_t) && is_integral(rhs_t)) {
+                gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, binop->rhs, t);
+                return gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_BITWISE_OR, sss_type_to_gcc(env, t), lhs_val, rhs_val);
+            }
+            gcc_block_t *if_falsey = gcc_new_block(func, fresh("or_falsey"));
+            gcc_block_t *done = gcc_new_block(func, fresh("or_done"));
+
+            gcc_type_t *lhs_gcc_t = sss_type_to_gcc(env, lhs_t);
+            gcc_rvalue_t *bool_val = lhs_val;
+            if (t->tag != BoolType) {
+                gcc_rvalue_t *zero = gcc_type_if_pointer(lhs_gcc_t) ? gcc_null(env->ctx, lhs_gcc_t) : gcc_zero(env->ctx, lhs_gcc_t);
+                bool_val = gcc_comparison(env->ctx, loc, GCC_COMPARISON_NE, lhs_val, zero);
+            }
+            gcc_jump_condition(*block, loc, bool_val, done, if_falsey);
+
+            if (rhs_t->tag == AbortType) {
+                compile_statement(env, &if_falsey, binop->rhs);
+            } else {
+                gcc_rvalue_t *rhs_val = compile_expr(env, &if_falsey, binop->rhs);
+                if (if_falsey)
+                    gcc_assign(if_falsey, loc, result, rhs_val);
+            }
+            if (if_falsey)
+                gcc_jump(if_falsey, loc, done);
+
+            *block = done;
+            return gcc_rval(result);
+        }
+        case OP_CONCAT: {
+            (void)get_type(env, ast);
+            ast_t *lhs_loop = WrapAST(binop->lhs, For, .iter=binop->lhs,
+                                      .value=WrapAST(binop->lhs, Var, .name="x.0"),
+                                      .body=WrapAST(binop->lhs, Var, .name="x.0"));
+            ast_t *rhs_loop = WrapAST(binop->rhs, For, .iter=binop->rhs,
+                                      .value=WrapAST(binop->rhs, Var, .name="x.0"),
+                                      .body=WrapAST(binop->rhs, Var, .name="x.0"));
+            ast_t *concat_ast = WrapAST(ast, Array, .items=ARRAY(lhs_loop, rhs_loop));
+            return compile_expr(env, block, concat_ast);
+        }
+        case OP_MOD: case OP_MOD1: {
+            gcc_rvalue_t *lhs_val = compile_ast_to_type(env, block, binop->lhs, t);
+            gcc_rvalue_t *rhs_val = compile_ast_to_type(env, block, binop->rhs, t);
+            if (!lhs_val || !rhs_val)
+                compiler_err(env, ast, "The left hand side of this modulus has type %T, but the right hand side has type %T and I can't figure out how to combine them.",
+                             lhs_t, rhs_t);
+
+            if (binop->op == OP_MOD1)
+                lhs_val = gcc_binary_op(env->ctx, loc, GCC_BINOP_MINUS, sss_type_to_gcc(env, t), lhs_val, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
+
+            sss_type_t *base_t = base_variant(t);
+            if (base_t->tag == NumType) {
+                gcc_rvalue_t *mod_func_rval = get_from_namespace(env, base_t, "mod")->rval;
+                gcc_rvalue_t *result = gcc_callx_ptr(env->ctx, loc, mod_func_rval, lhs_val, rhs_val);
+                if (binop->op == OP_MOD1)
+                    result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
+                return result;
+            } else {
+                gcc_rvalue_t *result = gcc_binary_op(env->ctx, ast_loc(env, ast), GCC_BINOP_MODULO, sss_type_to_gcc(env, t), lhs_val, rhs_val);
+                // Ensure modulus result is positive (i.e. (-1 mod 10) == 9)
+                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, rhs_val);
+                result = gcc_binary_op(env->ctx, loc, GCC_BINOP_MODULO, sss_type_to_gcc(env, t), result, rhs_val);
+                if (binop->op == OP_MOD1)
+                    result = gcc_binary_op(env->ctx, loc, GCC_BINOP_PLUS, sss_type_to_gcc(env, t), result, gcc_one(env->ctx, sss_type_to_gcc(env, t)));
+                return result;
+            }
+        }
+        case OP_POWER: {
+            ast_t *base = binop->lhs, *exponent = binop->rhs;
+            gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+            sss_type_t *base_t = get_type(env, base);
+            sss_type_t *rhs_t = get_type(env, exponent);
+            gcc_rvalue_t *base_val = compile_ast_to_type(env, block, base, t);
+            gcc_rvalue_t *exponent_val = compile_ast_to_type(env, block, exponent, t);
+            if (!base_val || !exponent_val)
+                compiler_err(env, ast, "The base of this operation has type %T, but the exponent has type %T and I can't figure out how to combine them.",
+                             base_t, rhs_t);
+
+            gcc_type_t *double_t = gcc_type(env->ctx, DOUBLE);
+            if (t->tag != NumType) {
+                base_val = gcc_cast(env->ctx, loc, base_val, double_t);
+                exponent_val = gcc_cast(env->ctx, loc, exponent_val, double_t);
+            }
+            gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, double_t,
+                                            "pow", 2, (gcc_param_t*[]){
+                                            gcc_new_param(env->ctx, NULL, double_t, "base"),
+                                            gcc_new_param(env->ctx, NULL, double_t, "exponent")}, 0);
+            gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, func, base_val, exponent_val);
+            if (t->tag != NumType)
+                ret = gcc_cast(env->ctx, loc, ret, gcc_t);
+            return ret;
+        }
+        default:
+            return math_binop(env, block, ast);
         }
     }
-    case Power: {
-        if (env->should_mark_cow) {
-            env = fresh_scope(env);
-            env->should_mark_cow = false;
-        }
-        ast_t *base = Match(ast, Power)->lhs, *exponent = Match(ast, Power)->rhs;
-        sss_type_t *t = get_type(env, ast);
-        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
-        sss_type_t *base_t = get_type(env, base);
-        sss_type_t *rhs_t = get_type(env, exponent);
-        gcc_rvalue_t *base_val = compile_ast_to_type(env, block, base, t);
-        gcc_rvalue_t *exponent_val = compile_ast_to_type(env, block, exponent, t);
-        if (!base_val || !exponent_val)
-            compiler_err(env, ast, "The base of this operation has type %T, but the exponent has type %T and I can't figure out how to combine them.",
-                         base_t, rhs_t);
-
-        gcc_type_t *double_t = gcc_type(env->ctx, DOUBLE);
-        if (t->tag != NumType) {
-            base_val = gcc_cast(env->ctx, loc, base_val, double_t);
-            exponent_val = gcc_cast(env->ctx, loc, exponent_val, double_t);
-        }
-        gcc_func_t *func = gcc_new_func(env->ctx, NULL, GCC_FUNCTION_IMPORTED, double_t,
-                                        "pow", 2, (gcc_param_t*[]){
-                                        gcc_new_param(env->ctx, NULL, double_t, "base"),
-                                        gcc_new_param(env->ctx, NULL, double_t, "exponent")}, 0);
-        gcc_rvalue_t *ret = gcc_callx(env->ctx, loc, func, base_val, exponent_val);
-        if (t->tag != NumType)
-            ret = gcc_cast(env->ctx, loc, ret, gcc_t);
-        return ret;
-    }
+    
     case If: {
         auto if_ = Match(ast, If);
         sss_type_t *subject_t = if_->subject->tag == Declare ? get_type(env, Match(if_->subject, Declare)->value) : get_type(env, if_->subject);
@@ -2199,11 +2161,11 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, Var, "Num32"));
         ast_t *mix_equation = WrapAST(ast, Block, ARRAY(
             WrapAST(mix->key, Declare, amount_var, amount),
-            WrapAST(ast, Add,
-                WrapAST(mix->lhs, Multiply,
-                    WrapAST(mix->lhs, Subtract, WrapAST(mix->lhs, Num, .n=1.0, .precision=32), amount_var),
-                    mix->lhs),
-                WrapAST(mix->rhs, Multiply, amount_var, mix->rhs))));
+            WrapAST(ast, BinaryOp, .op=OP_PLUS,
+                .lhs=WrapAST(mix->lhs, BinaryOp, .op=OP_MULT,
+                    .lhs=WrapAST(mix->lhs, BinaryOp, .op=OP_MINUS, .lhs=WrapAST(mix->lhs, Num, .n=1.0, .precision=32), .rhs=amount_var),
+                    .rhs=mix->lhs),
+                .rhs=WrapAST(mix->rhs, BinaryOp, .op=OP_MULT, .lhs=amount_var, .rhs=mix->rhs))));
         return compile_expr(env, block, mix_equation);
     }
     case Reduction: {

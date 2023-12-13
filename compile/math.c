@@ -1,4 +1,5 @@
 // Math operations
+#include <err.h>
 #include <libgccjit.h>
 #include <stdint.h>
 
@@ -9,10 +10,23 @@
 #include "../types.h"
 #include "../util.h"
 
+static gcc_binary_op_e gcc_binop_for_operator(operator_e op) {
+    switch (op) {
+    case OP_PLUS: return GCC_BINOP_PLUS;
+    case OP_MINUS: return GCC_BINOP_MINUS;
+    case OP_MULT: return GCC_BINOP_MULT;
+    case OP_DIVIDE: return GCC_BINOP_DIVIDE;
+    case OP_AND: return GCC_BINOP_BITWISE_AND;
+    case OP_OR: return GCC_BINOP_BITWISE_OR;
+    case OP_XOR: return GCC_BINOP_BITWISE_XOR;
+    default: errx(1, "I don't know the GCC binop for: %d", op);
+    }
+}
+
 static gcc_rvalue_t *math_binop_rec(
     env_t *env, gcc_block_t **block, ast_t *ast,
     sss_type_t *lhs_t, gcc_rvalue_t *lhs,
-    gcc_binary_op_e op,
+    operator_e op,
     sss_type_t *rhs_t, gcc_rvalue_t *rhs)
 {
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -41,7 +55,7 @@ static gcc_rvalue_t *math_binop_rec(
         // for (i = 0; i < len; i++)
         //     result->data[i] = lhs->data[i] {OP} &rhs->data[i]
 
-        sss_type_t *result_t = get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+        sss_type_t *result_t = get_math_type(env, ast, lhs_t, op, rhs_t);
         gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_as_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
@@ -122,7 +136,7 @@ static gcc_rvalue_t *math_binop_rec(
             array = lhs, scalar = rhs;
             array_t = lhs_t, scalar_t = rhs_t;
         }
-        sss_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, ast->tag, array_t) : get_math_type(env, ast, array_t, ast->tag, scalar_t);
+        sss_type_t *result_t = scalar_left ? get_math_type(env, ast, scalar_t, op, array_t) : get_math_type(env, ast, array_t, op, scalar_t);
         gcc_type_t *result_gcc_t = sss_type_to_gcc(env, result_t);
         gcc_struct_t *result_array_struct = gcc_type_as_struct(result_gcc_t);
         gcc_lvalue_t *result = gcc_local(func, loc, result_gcc_t, "_result");
@@ -202,19 +216,19 @@ static gcc_rvalue_t *math_binop_rec(
                 compiler_err(env, ast, "%T tagged union values can't be combined because some tags have data attached to them.", lhs_t);
         }
         gcc_rvalue_t *result_tag;
-        if (op == GCC_BINOP_PLUS || op == GCC_BINOP_BITWISE_OR) {
+        if (op == OP_PLUS || op == OP_OR) {
             result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_OR, tag_gcc_t,
                                        gcc_rvalue_access_field(lhs, loc, tag_field),
                                        gcc_rvalue_access_field(rhs, loc, tag_field));
-        } else if (op == GCC_BINOP_MINUS) {
+        } else if (op == OP_MINUS) {
             result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
                                        gcc_rvalue_access_field(lhs, loc, tag_field),
                                        gcc_unary_op(env->ctx, loc, GCC_UNOP_BITWISE_NEGATE, tag_gcc_t, gcc_rvalue_access_field(rhs, loc, tag_field)));
-        } else if (op == GCC_BINOP_BITWISE_XOR) {
+        } else if (op == OP_XOR) {
             result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, tag_gcc_t,
                                        gcc_rvalue_access_field(lhs, loc, tag_field),
                                        gcc_rvalue_access_field(rhs, loc, tag_field));
-        } else if (op == GCC_BINOP_BITWISE_AND) {
+        } else if (op == OP_AND) {
             result_tag = gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_AND, tag_gcc_t,
                                        gcc_rvalue_access_field(lhs, loc, tag_field),
                                        gcc_rvalue_access_field(rhs, loc, tag_field));
@@ -224,9 +238,9 @@ static gcc_rvalue_t *math_binop_rec(
         return gcc_struct_constructor(env->ctx, NULL, gcc_tagged_t, 1, (gcc_field_t*[]){tag_field}, &result_tag);
     } else if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
         switch (op) {
-        case GCC_BINOP_BITWISE_AND: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, sss_type_to_gcc(env, lhs_t), lhs, rhs);
-        case GCC_BINOP_BITWISE_OR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_OR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
-        case GCC_BINOP_BITWISE_XOR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        case OP_AND: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_AND, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        case OP_OR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_LOGICAL_OR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
+        case OP_XOR: return gcc_binary_op(env->ctx, loc, GCC_BINOP_BITWISE_XOR, sss_type_to_gcc(env, lhs_t), lhs, rhs);
         default: compiler_err(env, ast, "I don't know how to do math operations on boolean values.");
         }
     } else {
@@ -241,7 +255,7 @@ static gcc_rvalue_t *math_binop_rec(
         else
             compiler_err(env, ast, "The result of a math operation between %T and %T can't always fit in either type.", lhs_t, rhs_t);
 
-        return gcc_binary_op(env->ctx, loc, op, sss_type_to_gcc(env, result_t), lhs, rhs);
+        return gcc_binary_op(env->ctx, loc, gcc_binop_for_operator(op), sss_type_to_gcc(env, result_t), lhs, rhs);
     }
 
     auto struct_ = Match(struct_t, StructType);
@@ -283,32 +297,15 @@ static gcc_rvalue_t *math_binop_rec(
 
 gcc_rvalue_t *math_binop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    gcc_binary_op_e op;
-    switch (ast->tag) {
-    case Add: op = GCC_BINOP_PLUS; break;
-    case Subtract: op = GCC_BINOP_MINUS; break;
-    case Multiply: op = GCC_BINOP_MULT; break;
-    case Divide: op = GCC_BINOP_DIVIDE; break;
-    case And: op = GCC_BINOP_BITWISE_AND; break;
-    case Or: op = GCC_BINOP_BITWISE_OR; break;
-    case Xor: op = GCC_BINOP_BITWISE_XOR; break;
-    case LeftShift: op = GCC_BINOP_LSHIFT; break;
-    case RightShift: op = GCC_BINOP_RSHIFT; break;
-    default: compiler_err(env, ast, "Unsupported math operation");
-    }
-
-    // Unsafe! This assumes each of these types has the same tagged union struct layout. It saves some duplicated code.
-    ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
-    // End unsafe
-
-    gcc_rvalue_t *lhs_val = compile_expr(env, block, lhs);
-    gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-    return math_binop_rec(env, block, ast, get_type(env, lhs), lhs_val, op, get_type(env, rhs), rhs_val);
+    auto binop = Match(ast, BinaryOp);
+    gcc_rvalue_t *lhs_val = compile_expr(env, block, binop->lhs);
+    gcc_rvalue_t *rhs_val = compile_expr(env, block, binop->rhs);
+    return math_binop_rec(env, block, ast, get_type(env, binop->lhs), lhs_val, binop->op, get_type(env, binop->rhs), rhs_val);
 }
 
 void math_update_rec(
     env_t *env, gcc_block_t **block, ast_t *ast, sss_type_t *lhs_t, gcc_lvalue_t *lhs,
-    gcc_binary_op_e op, sss_type_t *rhs_t, gcc_rvalue_t *rhs)
+    operator_e op, sss_type_t *rhs_t, gcc_rvalue_t *rhs)
 {
     gcc_type_t *gcc_t = sss_type_to_gcc(env, lhs_t);
     gcc_loc_t *loc = ast_loc(env, ast);
@@ -432,14 +429,14 @@ void math_update_rec(
     } else if (is_numeric(lhs_t) && is_numeric(rhs_t)) {
         if (!promote(env, rhs_t, &rhs, lhs_t))
             compiler_err(env, ast, "I can't automatically convert from %T to %T without losing precision", rhs_t, lhs_t);
-        if ((op == GCC_BINOP_BITWISE_AND || op == GCC_BINOP_BITWISE_OR || op == GCC_BINOP_BITWISE_XOR) && lhs_t->tag == NumType)
+        if ((op == OP_AND || op == OP_OR || op == OP_XOR) && lhs_t->tag == NumType)
             compiler_err(env, ast, "Bitwise operations cannot be performed in floating point numbers.");
-        return gcc_update(*block, loc, lhs, op, rhs);
+        return gcc_update(*block, loc, lhs, gcc_binop_for_operator(op), rhs);
     } else if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
         switch (op) {
-        case GCC_BINOP_BITWISE_AND: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_AND, rhs);
-        case GCC_BINOP_BITWISE_OR: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_OR, rhs);
-        case GCC_BINOP_BITWISE_XOR: return gcc_update(*block, loc, lhs, GCC_BINOP_BITWISE_XOR, rhs);
+        case OP_AND: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_AND, rhs);
+        case OP_OR: return gcc_update(*block, loc, lhs, GCC_BINOP_LOGICAL_OR, rhs);
+        case OP_XOR: return gcc_update(*block, loc, lhs, GCC_BINOP_BITWISE_XOR, rhs);
         default: compiler_err(env, ast, "I don't know how to do math operations on boolean values.");
         }
     } else {
@@ -449,26 +446,10 @@ void math_update_rec(
 
 gcc_rvalue_t *math_update(env_t *env, gcc_block_t **block, ast_t *ast)
 {
-    // Unsafe! This assumes each of these types has the same tagged union struct layout. It saves some duplicated code.
-    ast_t *lhs = ast->__data.AddUpdate.lhs, *rhs = ast->__data.AddUpdate.rhs;
-    // End unsafe
-
-    gcc_lvalue_t *lhs_val = get_lvalue(env, block, lhs, true);
-    gcc_rvalue_t *rhs_val = compile_expr(env, block, rhs);
-
-    gcc_binary_op_e op;
-    switch (ast->tag) {
-    case AddUpdate: op = GCC_BINOP_PLUS; break;
-    case SubtractUpdate: op = GCC_BINOP_MINUS; break;
-    case MultiplyUpdate: op = GCC_BINOP_MULT; break;
-    case DivideUpdate: op = GCC_BINOP_DIVIDE; break;
-    case AndUpdate: op = GCC_BINOP_BITWISE_AND; break;
-    case OrUpdate: op = GCC_BINOP_BITWISE_OR; break;
-    case XorUpdate: op = GCC_BINOP_BITWISE_XOR; break;
-    default: compiler_err(env, ast, "Unsupported math operation");
-    }
-
-    math_update_rec(env, block, ast, get_type(env, lhs), lhs_val, op, get_type(env, rhs), rhs_val);
+    auto update = Match(ast, UpdateAssign);
+    gcc_lvalue_t *lhs_val = get_lvalue(env, block, update->lhs, true);
+    gcc_rvalue_t *rhs_val = compile_expr(env, block, update->rhs);
+    math_update_rec(env, block, ast, get_type(env, update->lhs), lhs_val, update->op, get_type(env, update->rhs), rhs_val);
     return gcc_rval(lhs_val);
 }
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -161,7 +161,7 @@ sss_type_t *get_iter_type(env_t *env, ast_t *iter)
     }
 }
 
-sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e tag, sss_type_t *rhs_t)
+sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, operator_e op, sss_type_t *rhs_t)
 {
     // Dereference:
     while (lhs_t->tag == PointerType)
@@ -175,10 +175,10 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         sss_type_t *t = type_or_type(lhs_t, rhs_t);
         if (lhs_t->tag == VariantType && rhs_t->tag == VariantType)
             compiler_err(env, ast, "The two operands in this math operation have different types: %T vs %T", lhs_t, rhs_t);
-        else if (lhs_t->tag == VariantType && rhs_t->tag != VariantType && (tag == Multiply || tag == Divide)
+        else if (lhs_t->tag == VariantType && rhs_t->tag != VariantType && (op == OP_MULT || op == OP_DIVIDE)
                  && (compare_precision(lhs_t, rhs_t) == NUM_PRECISION_EQUAL || compare_precision(lhs_t, rhs_t) == NUM_PRECISION_MORE))
             t = lhs_t;
-        else if (rhs_t->tag == VariantType && lhs_t->tag != VariantType && tag == Multiply
+        else if (rhs_t->tag == VariantType && lhs_t->tag != VariantType && op == OP_MULT
                  && (compare_precision(rhs_t, lhs_t) == NUM_PRECISION_EQUAL || compare_precision(rhs_t, lhs_t) == NUM_PRECISION_MORE))
             t = rhs_t;
 
@@ -193,9 +193,9 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, ast_tag_e t
         return rhs_t;
     } else if (is_numeric(rhs_t) && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType)) {
         return lhs_t;
-    } else if (lhs_t->tag == BoolType && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+    } else if (lhs_t->tag == BoolType && (base_variant(rhs_t)->tag == StructType || base_variant(rhs_t)->tag == ArrayType) && (op == OP_AND || op == OP_OR || op == OP_XOR)) {
         return rhs_t;
-    } else if (rhs_t->tag == BoolType && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType) && (tag == And || tag == Or || tag == Xor)) {
+    } else if (rhs_t->tag == BoolType && (base_variant(lhs_t)->tag == StructType || base_variant(lhs_t)->tag == ArrayType) && (op == OP_AND || op == OP_OR || op == OP_XOR)) {
         return lhs_t;
     } else {
         compiler_err(env, ast, "I don't know how to do math operations between %T and %T", lhs_t, rhs_t);
@@ -304,6 +304,9 @@ sss_type_t *get_doctest_type(env_t *env, ast_t *ast)
         auto ret = Match(ast, Return);
         return ret->value ? get_doctest_type(env, ret->value) : Type(VoidType);
     }
+    case Declare: {
+        return get_doctest_type(env, Match(ast, Declare)->value);
+    }
     case Assign: {
         auto assign = Match(ast, Assign);
         auto members = EMPTY_ARRAY(ast_t*);
@@ -314,12 +317,8 @@ sss_type_t *get_doctest_type(env_t *env, ast_t *ast)
         }
         return get_doctest_type(env, WrapAST(ast, Struct, .members=members));
     }
-    case AddUpdate: case SubtractUpdate: case MultiplyUpdate: case DivideUpdate: case AndUpdate: case OrUpdate:
-    case XorUpdate: case ConcatenateUpdate: case Declare: {
-        // UNSAFE: this assumes all these types have the same layout:
-        ast_t *lhs_ast = ast->__data.AddUpdate.lhs;
-        // END UNSAFE
-        return get_doctest_type(env, lhs_ast);
+    case UpdateAssign: {
+        return get_doctest_type(env, Match(ast, UpdateAssign)->lhs);
     }
     default:
         return get_type(env, ast);
@@ -617,9 +616,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         ast_t *last = ith(block->statements, LENGTH(block->statements)-1);
         // Early out if the type is knowable without any context from the block:
         switch (last->tag) {
-        case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-        case AndUpdate: case OrUpdate: case XorUpdate:
-        case Assign: case Declare: case FunctionDef: case TypeDef:
+        case UpdateAssign: case Assign: case Declare: case FunctionDef: case TypeDef:
             return Type(VoidType);
         default: break;
         }
@@ -687,126 +684,134 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     case Cast: {
         return parse_type_ast(env, Match(ast, Cast)->type);
     }
-    case Bitcast: {
-        return parse_type_ast(env, Match(ast, Bitcast)->type);
-    }
     case TypeArray: case TypeTable: case TypeStruct: case TypePointer: case TypeFunction:
     case TypeTaggedUnion: {
         compiler_err(env, ast, "Attempt to get the type of this term, which is already a type annotation");
     }
-    case Negative: {
-        sss_type_t *t = get_type(env, Match(ast, Negative)->value);
-        if (!is_numeric(t))
-            compiler_err(env, ast, "I only know how to get negatives of numeric types, not %T", t);
-        return t;
-    }
-    case And: {
-        auto and_ = Match(ast, And);
-        sss_type_t *lhs_t = get_type(env, and_->lhs),
-                  *rhs_t = get_type(env, and_->rhs);
-
-        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
-            return lhs_t;
-        } else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType) {
-            return lhs_t;
-        } else if (rhs_t->tag == AbortType) {
-            return lhs_t;
-        } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
-            return lhs_t;
-        } else if (lhs_t->tag == PointerType && rhs_t->tag == PointerType) {
-            auto lhs_ptr = Match(lhs_t, PointerType);
-            auto rhs_ptr = Match(rhs_t, PointerType);
-            if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
-                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional,
-                            .is_readonly=lhs_ptr->is_readonly || rhs_ptr->is_readonly);
-        } else {
-            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
-        }
-        compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %T, but the right side is a %T",
-                     lhs_t, rhs_t);
-    }
-    case Or: {
-        auto or_ = Match(ast, Or);
-        sss_type_t *lhs_t = get_type(env, or_->lhs),
-                  *rhs_t = get_type(env, or_->rhs);
-
-        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
-            return lhs_t;
-        else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType)
-            return lhs_t;
-        else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t))
-            return lhs_t;
-        else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            sss_type_t *t = type_or_type(lhs_t, rhs_t);
-            if (!t)
-                compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
+    case UnaryOp: {
+        auto unop = Match(ast, UnaryOp);
+        sss_type_t *t = get_type(env, unop->value);
+        if (unop->op == OP_NEGATIVE) {
+            if (!is_numeric(t))
+                compiler_err(env, ast, "I only know how to get negatives of numeric types, not %T", t);
             return t;
+        } else if (unop->op == OP_NOT) {
+            if (base_variant(t)->tag == TaggedUnionType)
+                return t;
+            else if (base_variant(t)->tag == BoolType || is_integral(t))
+                return t;
+            else if (base_variant(t)->tag == PointerType && Match(base_variant(t), PointerType)->is_optional)
+                return Type(BoolType);
+            compiler_err(env, ast, "I only know what `not` means for Bools, Ints, and Enums, but this is a %T", t); 
         }
+        break;
+    }
+    case BinaryOp: {
+        auto binop = Match(ast, BinaryOp);
+        sss_type_t *lhs_t = get_type(env, binop->lhs),
+                  *rhs_t = get_type(env, binop->rhs);
 
-        if (lhs_t->tag == PointerType) {
-            auto lhs_ptr = Match(lhs_t, PointerType);
-            if (rhs_t->tag == AbortType) {
-                return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false, .is_readonly=lhs_ptr->is_readonly);
-            } else if (rhs_t->tag == PointerType) {
+        switch (binop->op) {
+        case OP_AND: {
+            if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
+                return lhs_t;
+            } else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType) {
+                return lhs_t;
+            } else if (rhs_t->tag == AbortType) {
+                return lhs_t;
+            } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
+                return lhs_t;
+            } else if (lhs_t->tag == PointerType && rhs_t->tag == PointerType) {
+                auto lhs_ptr = Match(lhs_t, PointerType);
                 auto rhs_ptr = Match(rhs_t, PointerType);
-                if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
-                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional,
+                if (type_eq(lhs_ptr->pointed, rhs_ptr->pointed))
+                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional || rhs_ptr->is_optional,
                                 .is_readonly=lhs_ptr->is_readonly || rhs_ptr->is_readonly);
+            } else {
+                return get_math_type(env, ast, lhs_t, binop->op, rhs_t);
             }
-        } else {
-            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+            compiler_err(env, ast, "I can't figure out the type of this `and` expression because the left side is a %T, but the right side is a %T",
+                         lhs_t, rhs_t);
         }
-        compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %T, but the right side is a %T",
-                     lhs_t, rhs_t);
-    }
-    case Xor: {
-        auto xor = Match(ast, Xor);
-        sss_type_t *lhs_t = get_type(env, xor->lhs),
-                  *rhs_t = get_type(env, xor->rhs);
+        case OP_OR: {
+            if (lhs_t->tag == BoolType && rhs_t->tag == BoolType)
+                return lhs_t;
+            else if (lhs_t->tag == BoolType && rhs_t->tag == AbortType)
+                return lhs_t;
+            else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t))
+                return lhs_t;
+            else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+                sss_type_t *t = type_or_type(lhs_t, rhs_t);
+                if (!t)
+                    compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
+                return t;
+            }
 
-        if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
-            return lhs_t;
-        } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
-            return lhs_t;
-        } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
-            sss_type_t *t = type_or_type(lhs_t, rhs_t);
-            if (!t)
-                compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
-            return t;
-        } else {
-            return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
+            if (lhs_t->tag == PointerType) {
+                auto lhs_ptr = Match(lhs_t, PointerType);
+                if (rhs_t->tag == AbortType) {
+                    return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=false, .is_readonly=lhs_ptr->is_readonly);
+                } else if (rhs_t->tag == PointerType) {
+                    auto rhs_ptr = Match(rhs_t, PointerType);
+                    if (type_eq(rhs_ptr->pointed, lhs_ptr->pointed))
+                        return Type(PointerType, .pointed=lhs_ptr->pointed, .is_optional=lhs_ptr->is_optional && rhs_ptr->is_optional,
+                                    .is_readonly=lhs_ptr->is_readonly || rhs_ptr->is_readonly);
+                }
+            } else {
+                return get_math_type(env, ast, lhs_t, binop->op, rhs_t);
+            }
+            compiler_err(env, ast, "I can't figure out the type of this `or` expression because the left side is a %T, but the right side is a %T",
+                         lhs_t, rhs_t);
         }
+        case OP_XOR: {
+            if (lhs_t->tag == BoolType && rhs_t->tag == BoolType) {
+                return lhs_t;
+            } else if (lhs_t->tag == TaggedUnionType && type_eq(lhs_t, rhs_t)) {
+                return lhs_t;
+            } else if (is_integral(lhs_t) && is_integral(rhs_t)) {
+                sss_type_t *t = type_or_type(lhs_t, rhs_t);
+                if (!t)
+                    compiler_err(env, ast, "I can't have a type that is either %T or %T", lhs_t, rhs_t);
+                return t;
+            } else {
+                return get_math_type(env, ast, lhs_t, binop->op, rhs_t);
+            }
 
-        compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %T, but the right side is a %T",
-                     lhs_t, rhs_t);
+            compiler_err(env, ast, "I can't figure out the type of this `xor` expression because the left side is a %T, but the right side is a %T",
+                         lhs_t, rhs_t);
+        }
+        case OP_CONCAT: {
+            if (!type_eq(lhs_t, rhs_t))
+                compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %T vs. %T",
+                             lhs_t, rhs_t);
+            sss_type_t *base_t = lhs_t;
+            while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
+            if (base_t->tag != ArrayType)
+                compiler_err(env, ast, "Only array/string value types support concatenation, not %T", lhs_t);
+            return lhs_t;
+        }
+        case OP_IN: case OP_NOT_IN: {
+            return Type(BoolType);
+        }
+        default: {
+            return get_math_type(env, ast, lhs_t, binop->op, rhs_t);
+        }
+        }
     }
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case AndUpdate: case OrUpdate: case XorUpdate:
+    case UpdateAssign:
         return Type(VoidType);
 
-    case Add: case Subtract: case Divide: case Multiply: case Power: case Modulus: case Modulus1: case LeftShift: case RightShift: {
-        // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
-        ast_t *lhs = ast->__data.Add.lhs, *rhs = ast->__data.Add.rhs;
-        // Okay safe again
-
-        sss_type_t *lhs_t = get_type(env, lhs), *rhs_t = get_type(env, rhs);
-        return get_math_type(env, ast, lhs_t, ast->tag, rhs_t);
-    }
-    case Concatenate: {
-        auto concat = Match(ast, Concatenate);
-        sss_type_t *lhs_t = get_type(env, concat->lhs),
-                  *rhs_t = get_type(env, concat->rhs);
-        if (!type_eq(lhs_t, rhs_t))
-            compiler_err(env, ast, "The type on the left side of this concatenation doesn't match the right side: %T vs. %T",
+    case Comparison: {
+        auto comparison = Match(ast, Comparison);
+        sss_type_t *lhs_t = get_type(env, comparison->lhs);
+        sss_type_t *rhs_t = get_type(env, comparison->rhs);
+        if (type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t))
+            return Type(BoolType);
+        else if (is_numeric(lhs_t) && is_numeric(rhs_t))
+            return Type(BoolType);
+        else
+            compiler_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between %T and %T",
                          lhs_t, rhs_t);
-        sss_type_t *base_t = lhs_t;
-        while (base_t->tag == VariantType) base_t = Match(base_t, VariantType)->variant_of;
-        if (base_t->tag != ArrayType)
-            compiler_err(env, ast, "Only array/string value types support concatenation, not %T", lhs_t);
-        return lhs_t;
-    }
-    case Less: case LessEqual: case Greater: case GreaterEqual: case In: case NotIn: {
-        return Type(BoolType);
     }
     case Min: case Max: case Mix: {
         // Unsafe! These types *should* have the same fields and this saves a lot of duplicate code:
@@ -818,35 +823,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         if (!t)
             compiler_err(env, ast, "The two sides of this operation are not compatible: %T vs %T", lhs_t, rhs_t);
         return t;
-    }
-
-    case Not: {
-        sss_type_t *t = get_type(env, Match(ast, Not)->value);
-        if (base_variant(t)->tag == TaggedUnionType)
-            return t;
-        else if (base_variant(t)->tag == BoolType || is_integral(t))
-            return t;
-        else if (base_variant(t)->tag == PointerType && Match(base_variant(t), PointerType)->is_optional)
-            return Type(BoolType);
-        compiler_err(env, ast, "I only know what `not` means for Bools, Ints, and Enums, but this is a %T", t); 
-    }
-
-    case Equal: case NotEqual: {
-        ast_t *lhs, *rhs;
-        if (ast->tag == Equal) {
-            lhs = Match(ast, Equal)->lhs, rhs = Match(ast, Equal)->rhs;
-        } else {
-            lhs = Match(ast, NotEqual)->lhs, rhs = Match(ast, NotEqual)->rhs;
-        }
-        sss_type_t *lhs_t = get_type(env, lhs);
-        sss_type_t *rhs_t = get_type(env, rhs);
-        if (type_is_a(lhs_t, rhs_t) || type_is_a(rhs_t, lhs_t))
-            return Type(BoolType);
-        else if (is_numeric(lhs_t) && is_numeric(rhs_t))
-            return Type(BoolType);
-        else
-            compiler_err(env, ast, "I only know how to compare values that have the same type, but this comparison is between %T and %T",
-                         lhs_t, rhs_t);
     }
 
     case Lambda: {
@@ -1075,8 +1051,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 bool is_discardable(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
-    case AddUpdate: case SubtractUpdate: case DivideUpdate: case MultiplyUpdate: case ConcatenateUpdate:
-    case Assign: case Declare: case FunctionDef: case TypeDef: case Use:
+    case UpdateAssign: case Assign: case Declare: case FunctionDef: case TypeDef: case Use:
         return true;
     default: break;
     }
