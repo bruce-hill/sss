@@ -16,6 +16,8 @@
 #define WrapAST(ast, ast_tag, ...) (new(ast_t, .file=(ast)->file, .start=(ast)->start, .end=(ast)->end, .tag=ast_tag, .__data.ast_tag={__VA_ARGS__}))
 #define StringAST(ast, _str) WrapAST(ast, StringLiteral, .str=heap_str(_str))
 
+struct binding_s;
+
 typedef enum {
     OP_UNKNOWN,
     // Unary ops:
@@ -59,7 +61,6 @@ typedef enum {
     DocTest,
     Defer,
     With,
-    Extend,
     Use,
     LinkerDirective,
     Variant,
@@ -91,7 +92,11 @@ struct ast_s {
         } Bool;
         struct {
             const char *name;
-        } Var, Wildcard;
+            struct binding_s *binding;
+        } Var;
+        struct {
+            const char *name;
+        } Wildcard;
         struct {
             const char *name;
             struct sss_type_s *type;
@@ -285,9 +290,6 @@ struct ast_s {
             ast_t *var, *expr, *cleanup, *body;
         } With;
         struct {
-            ast_t *type, *body;
-        } Extend;
-        struct {
             const char *path;
             sss_file_t *file;
             bool main_program;
@@ -307,5 +309,6 @@ struct ast_s {
 
 const char *ast_to_str(ast_t *ast);
 int printf_ast(FILE *stream, const struct printf_info *info, const void *const args[]);
+ARRAY_OF(ast_t*) get_ast_children(ast_t *ast);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

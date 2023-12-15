@@ -186,7 +186,6 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(DocTest, F(expr), F(output), F(skip_source))
         T(Defer, F(body))
         T(With, F(var), F(expr), F(cleanup), F(body))
-        T(Extend, F(type), F(body))
         T(Use, F(path), F(main_program))
         T(LinkerDirective, F(directives))
         T(Using, F(used), F(body))
@@ -213,6 +212,227 @@ int printf_ast(FILE *stream, const struct printf_info *info, const void *const a
             return fprintf(stream, "%s", ast_to_str(ast));
     } else {
         return fputs("(null)", stream);
+    }
+}
+
+#define maybe_append(arr, item) do { if (item) append(arr, item); } while (0)
+#define extend(arr, items) do { if (items) foreach (items, _item_, _) maybe_append(arr, *_item_); } while (0)
+
+ARRAY_OF(ast_t*) get_ast_children(ast_t *ast)
+{
+    switch (ast->tag) {
+    case Range: {
+        auto range = Match(ast, Range);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, range->first);
+        maybe_append(children, range->step);
+        maybe_append(children, range->last);
+        return children;
+    }
+    case StringJoin: return Match(ast, StringJoin)->children;
+    case Interp: return ARRAY(Match(ast, Interp)->value);
+    case Declare: return ARRAY(Match(ast, Declare)->var, Match(ast, Declare)->value);
+    case Assign: {
+        auto assign = Match(ast, Assign);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, assign->targets);
+        extend(children, assign->values);
+        return children;
+    }
+    case BinaryOp: return ARRAY(Match(ast, BinaryOp)->lhs, Match(ast, BinaryOp)->rhs);
+    case UnaryOp: return ARRAY(Match(ast, UnaryOp)->value);
+    case Comparison: return ARRAY(Match(ast, Comparison)->lhs, Match(ast, Comparison)->rhs);
+    case UpdateAssign: return ARRAY(Match(ast, UpdateAssign)->lhs, Match(ast, UpdateAssign)->rhs);
+    case Min: case Max: case Mix: {
+        // UNSAFE: this assumes the same layout for each of these AST types:
+        auto triop = ast->__data.Min;
+        // END UNSAFE
+        auto children = ARRAY(triop.lhs, triop.rhs);
+        maybe_append(children, triop.key);
+        return children;
+    }
+    case GetTypeInfo: case SizeOf: case HeapAllocate: case StackReference: {
+        // UNSAFE: this assumes the same layout for each of these AST types:
+        auto unop = ast->__data.GetTypeInfo;
+        // END UNSAFE
+        return ARRAY(unop.value);
+    }
+    case Array: {
+        auto arr = Match(ast, Array);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, arr->type);
+        extend(children, arr->items);
+        return children;
+    }
+    case Table: {
+        auto table = Match(ast, Table);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, table->key_type);
+        maybe_append(children, table->value_type);
+        maybe_append(children, table->fallback);
+        maybe_append(children, table->default_value);
+        extend(children, table->entries);
+        return children;
+    }
+    case TableEntry: return ARRAY(Match(ast, TableEntry)->key, Match(ast, TableEntry)->value);
+    case FunctionDef: {
+        auto fn = Match(ast, FunctionDef);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, fn->args.types);
+        extend(children, fn->args.defaults);
+        maybe_append(children, fn->ret_type);
+        maybe_append(children, fn->body);
+        maybe_append(children, fn->cache);
+        return children;
+    }
+    case Lambda: {
+        auto lambda = Match(ast, Lambda);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, lambda->args.types);
+        extend(children, lambda->args.defaults);
+        maybe_append(children, lambda->body);
+        return children;
+    }
+    case FunctionCall: {
+        auto call = Match(ast, FunctionCall);
+        auto children = ARRAY(call->fn);
+        extend(children, call->args);
+        maybe_append(children, call->extern_return_type);
+        return children;
+    }
+    case KeywordArg: return ARRAY(Match(ast, KeywordArg)->arg);
+    case Block: return Match(ast, Block)->statements;
+    case Do: {
+        auto do_ = Match(ast, Do);
+        auto children = ARRAY(do_->body);
+        maybe_append(children, do_->else_body);
+        return children;
+    }
+    case For: {
+        auto for_ = Match(ast, For);
+        auto children = ARRAY(for_->iter);
+        maybe_append(children, for_->index);
+        maybe_append(children, for_->value);
+        maybe_append(children, for_->first);
+        maybe_append(children, for_->body);
+        maybe_append(children, for_->between);
+        maybe_append(children, for_->empty);
+        return children;
+    }
+    case While: {
+        auto while_ = Match(ast, While);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, while_->condition);
+        maybe_append(children, while_->body);
+        maybe_append(children, while_->between);
+        return children;
+    }
+    case Repeat: {
+        auto repeat = Match(ast, Repeat);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, repeat->body);
+        maybe_append(children, repeat->between);
+        return children;
+    }
+    case If: {
+        auto if_ = Match(ast, If);
+        auto children = ARRAY(if_->subject);
+        extend(children, if_->patterns);
+        extend(children, if_->blocks);
+        return children;
+    }
+    case Return: {
+        auto ret = Match(ast, Return);
+        return ret->value ? ARRAY(ret->value) : EMPTY_ARRAY(ast_t*);
+    }
+    case Fail: {
+        auto fail = Match(ast, Fail);
+        return fail->message ? ARRAY(fail->message) : EMPTY_ARRAY(ast_t*);
+    }
+    case Extern: {
+        auto ext = Match(ast, Extern);
+        return ext->type ? ARRAY(ext->type) : EMPTY_ARRAY(ast_t*);
+    }
+    case TypeArray: return ARRAY(Match(ast, TypeArray)->item_type);
+    case TypeTable: return ARRAY(Match(ast, TypeTable)->key_type, Match(ast, TypeTable)->value_type);
+    case TypeStruct: {
+        auto struct_ = Match(ast, TypeStruct);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, struct_->members.types);
+        extend(children, struct_->members.defaults);
+        return children;
+    }
+    case TypeFunction: {
+        auto fn = Match(ast, TypeFunction);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, fn->args.types);
+        extend(children, fn->args.defaults);
+        maybe_append(children, fn->ret_type);
+        return children;
+    }
+    case TypePointer: return ARRAY(Match(ast, TypePointer)->pointed);
+    case TypeTaggedUnion: {
+        auto tu = Match(ast, TypeTaggedUnion);
+        auto children = EMPTY_ARRAY(ast_t*);
+        foreach (tu->tag_args, args, _) {
+            extend(children, args->types);
+            extend(children, args->defaults);
+        }
+        return children;
+    }
+    case Cast: return ARRAY(Match(ast, Cast)->value, Match(ast, Cast)->type);
+    case Struct: {
+        auto struct_ = Match(ast, Struct);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, struct_->type);
+        extend(children, struct_->members);
+        return children;
+    }
+    case TaggedUnionField: {
+        auto tuf = Match(ast, TaggedUnionField);
+        return tuf->value ? ARRAY(tuf->value) : EMPTY_ARRAY(ast_t*);
+    }
+    case TypeDef: {
+        auto children = ARRAY(Match(ast, TypeDef)->type);
+        maybe_append(children, Match(ast, TypeDef)->namespace);
+        return children;
+    }
+    case Index: {
+        auto children = ARRAY(Match(ast, Index)->indexed);
+        maybe_append(children, Match(ast, Index)->index);
+        return children;
+    }
+    case FieldAccess: return ARRAY(Match(ast, FieldAccess)->fielded);
+    case ConvertDef: {
+        auto def = Match(ast, ConvertDef);
+        return ARRAY(def->source_type, def->target_type, def->body);
+    }
+    case Reduction: {
+        auto reduction = Match(ast, Reduction);
+        auto children = ARRAY(reduction->iter, reduction->combination);
+        maybe_append(children, reduction->fallback);
+        return children;
+    }
+    case DocTest: return ARRAY(Match(ast, DocTest)->expr);
+    case Defer: return ARRAY(Match(ast, Defer)->body);
+    case With: {
+        auto with = Match(ast, With);
+        auto children = EMPTY_ARRAY(ast_t*);
+        maybe_append(children, with->var);
+        maybe_append(children, with->expr);
+        maybe_append(children, with->cleanup);
+        maybe_append(children, with->body);
+        return children;
+    }
+    case Variant: return ARRAY(Match(ast, Variant)->type, Match(ast, Variant)->value);
+    case Using: {
+        auto using = Match(ast, Using);
+        auto children = EMPTY_ARRAY(ast_t*);
+        extend(children, using->used);
+        maybe_append(children, using->body);
+        return children;
+    }
+    default: return EMPTY_ARRAY(ast_t*);
     }
 }
 

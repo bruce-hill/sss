@@ -27,7 +27,7 @@ typedef struct loop_label_s {
     defer_t *deferred;
 } loop_label_t;
 
-typedef struct {
+typedef struct binding_s {
     gcc_jit_rvalue *rval;
     gcc_jit_lvalue *lval;
     sss_type_t *type;
@@ -46,6 +46,7 @@ typedef struct {
 
 typedef struct {
     table_t bindings; // name -> binding_t*
+    table_t types; // name -> sss_type_t*
     table_t funcs; // name -> func
     table_t type_namespaces; // type_string -> member_name -> binding_t*
     table_t typeinfos; // type_string -> typeinfo_lval_t*

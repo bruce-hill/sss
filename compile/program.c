@@ -9,6 +9,7 @@
 
 #include "../ast.h"
 #include "../args.h"
+#include "../bindings.h"
 #include "../environment.h"
 #include "../typecheck.h"
 #include "../parse.h"
@@ -79,6 +80,10 @@ void populate_type_placeholders(env_t *env, ast_t *ast)
 
 static gcc_lvalue_t *make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
 {
+    table_t *type_bindings = new(table_t, .fallback=&env->global->types);
+    bind_types(env, type_bindings, ast);
+    populate_types(env, type_bindings, ast);
+    bind_variables(env, new(table_t, .fallback=&env->global->bindings), ast);
     sss_type_t *ns_t = get_namespace_type(env, ast, NULL);
     gcc_type_t *ns_gcc_t = sss_type_to_gcc(env, ns_t);
     gcc_lvalue_t *mod_lval = gcc_global(env->ctx, NULL, GCC_GLOBAL_INTERNAL, ns_gcc_t, "mod");

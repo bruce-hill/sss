@@ -1042,7 +1042,6 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         auto variant = Match(ast, Variant);
         return parse_type_ast(env, variant->type);
     }
-    case Extend: return Type(VoidType);
     default: break;
     }
     compiler_err(env, ast, "I can't figure out the type of: %s", ast_to_str(ast));

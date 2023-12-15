@@ -27,8 +27,8 @@ ALL_FLAGS=$(CFLAGS) $(EXTRA) $(CWARN) $(G) $(O) $(OSFLAGS) -DSSS_VERSION=\"$(VER
 LIBFILE=libsss.so.$(VERSION)
 CFILES=files.c parse.c ast.c environment.c args.c types.c typecheck.c compile/math.c compile/blocks.c compile/expr.c \
 			 compile/functions.c compile/helpers.c compile/arrays.c compile/tables.c compile/loops.c compile/program.c compile/ranges.c \
-			 compile/match.c compile/types.c util.c SipHash/halfsiphash.c
-HFILES=files.h parse.h ast.h environment.h types.h typecheck.h compile/compile.h compile/libgccjit_abbrev.h util.h \
+			 compile/match.c compile/types.c util.c SipHash/halfsiphash.c bindings.c
+HFILES=files.h parse.h ast.h environment.h bindings.h types.h typecheck.h compile/compile.h compile/libgccjit_abbrev.h util.h \
 			 builtins/array.h builtins/functions.h builtins/range.h builtins/string.h builtins/table.h builtins/types.h
 OBJFILES=$(CFILES:.c=.o)
 

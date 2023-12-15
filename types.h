@@ -6,7 +6,7 @@
 #include "ast.h"
 #include "builtins/array.h"
 
-typedef const struct sss_type_s sss_type_t;
+typedef struct sss_type_s sss_type_t;
 
 typedef struct {
     const char *name;

@@ -21,7 +21,7 @@ typedef struct {
     const char *name, *type;
 } builtin_binding_t;
 
-static sss_type_t sss_str_t = {
+static const sss_type_t sss_str_t = {
     .tag=VariantType,
     .__data.VariantType={
         .name="Str", .variant_of=(sss_type_t[]){{
@@ -33,7 +33,7 @@ static sss_type_t sss_str_t = {
     },
 };
 
-static sss_type_t sss_c_str_t = {
+static const sss_type_t sss_c_str_t = {
     .tag=VariantType,
     .__data.VariantType={
         .name="CString", .variant_of=(sss_type_t[]){{
@@ -46,7 +46,7 @@ static sss_type_t sss_c_str_t = {
     },
 };
 
-static sss_type_t sss_cord_t = {
+static const sss_type_t sss_cord_t = {
     .tag=VariantType,
     .__data.VariantType={
         .name="Cord", .variant_of=(sss_type_t[]){{
@@ -317,6 +317,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     // Declare types first:
     for (size_t i = 0; i < num_builtin_types; i++) {
         sss_type_t *t = &builtin_types[i].sss_type;
+        Table_str_set(&env->global->types, builtin_types[i].type_name, t);
         Table_str_set(&env->global->bindings, heap_strf("#type:%s", builtin_types[i].type_name), t);
         namespace_types[i] = Type(StructType, .field_names=ARRAY("type"), .field_types=ARRAY(Type(TypeInfoType)));
     }
