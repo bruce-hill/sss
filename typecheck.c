@@ -25,6 +25,8 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
     case TypeVar: {
         sss_type_t *t = Match(ast, TypeVar)->type;
         if (t) return t;
+        t = Table_str_get(&env->global->types, Match(ast, TypeVar)->name);
+        if (t) return t;
         compiler_err(env, ast, "I don't know a type with the name '%s'", Match(ast, TypeVar)->name);
     }
     // case FieldAccess: {

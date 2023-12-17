@@ -2063,6 +2063,7 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
         ast_t *type = NULL;
         for (;;) {
             whitespace(pos);
+            const char *name_start = *pos;
             ast_t *name = optional_ast(ctx, pos, parse_var);
             whitespace(pos);
             if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
@@ -2074,7 +2075,7 @@ args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
                 append(args.args, name);
                 break;
             } else if (allow_unnamed) {
-                *pos = name->start;
+                *pos = name_start;
                 type = optional_ast(ctx, pos, parse_type);
                 if (type)
                     append(args.args, NULL);
