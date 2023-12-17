@@ -57,13 +57,13 @@ gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_r
     gcc_lvalue_t *dest = gcc_local(func, NULL, gcc_get_ptr_type(value_gcc_t), "_dest");
     gcc_rvalue_t *typeinfo_ptr = get_typeinfo_pointer(env, t);
     if (autocreate) {
-        gcc_func_t *set_fn = get_from_namespace(env, t, "reserve")->func;
+        gcc_func_t *set_fn = get_table_method(env, t, "reserve");
         gcc_assign(*block, NULL, dest,
                    gcc_callx(env->ctx, NULL, set_fn, table, gcc_lvalue_address(key_lval, NULL),
                              gcc_null(env->ctx, gcc_get_ptr_type(value_gcc_t)), typeinfo_ptr));
         return gcc_rvalue_dereference(gcc_rval(dest), NULL);
     } else {
-        gcc_func_t *get_raw_fn = get_from_namespace(env, t, "get_raw")->func;
+        gcc_func_t *get_raw_fn = get_table_method(env, t, "get_raw");
         gcc_assign(*block, NULL, dest,
                    gcc_callx(env->ctx, NULL, get_raw_fn, table, gcc_lvalue_address(key_lval, NULL), typeinfo_ptr));
         gcc_block_t *if_missing = gcc_new_block(func, fresh("if_missing")),
@@ -111,8 +111,8 @@ static void add_table_entry(env_t *env, gcc_block_t **block, ast_t *entry, table
     gcc_assign(*block, NULL, key_lval, key_val);
     gcc_assign(*block, NULL, value_lval, value_val);
 
-    binding_t *set_fn_binding = get_from_namespace(env, info->table_type, "set");
-    gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, set_fn_binding->func,
+    gcc_func_t *table_set_fn = get_table_method(env, info->table_type, "set");
+    gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, table_set_fn,
                                      info->table_ptr,
                                      gcc_lvalue_address(key_lval, NULL),
                                      gcc_lvalue_address(value_lval, NULL),
@@ -140,7 +140,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     sss_type_t *key_t = Match(table_t, TableType)->key_type;
     sss_type_t *value_t = Match(table_t, TableType)->value_type;
 
-    binding_t *get_fn_binding = get_from_namespace(env, table_t, raw ? "get_raw" : "get");
+    gcc_func_t *get_fn = get_table_method(env, table_t, raw ? "get_raw" : "get");
 
     sss_type_t *raw_key_t = get_type(env, key_ast);
     gcc_rvalue_t *key_val = compile_expr(env, block, key_ast);
@@ -150,7 +150,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
     gcc_assign(*block, loc, key_lval, key_val);
     if (key_rval_out) *key_rval_out = gcc_rval(key_lval);
     gcc_rvalue_t *val_ptr = gcc_callx(
-        env->ctx, loc, get_fn_binding->func,
+        env->ctx, loc, get_fn,
         gcc_lvalue_address(table_var, loc),
         gcc_lvalue_address(key_lval, loc),
         get_typeinfo_pointer(env, table_t));
@@ -238,6 +238,21 @@ gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast)
     }
 
     return gcc_rval(table_var);
+}
+
+gcc_func_t *get_table_method(env_t *env, sss_type_t *t, const char *name)
+{
+    t = base_value_type(t);
+    struct {const char *name, *symbol;} symbols[] = {
+        {"remove", "Table_remove"}, {"set", "Table_set"}, {"reserve", "Table_reserve"},
+        {"get", "Table_get"}, {"get_raw", "Table_get_raw"}, {"clear", "Table_clear"},
+        {"mark_copy_on_write", "Table_mark_copy_on_write"},
+    };
+    for (int64_t i = 0; i < (int64_t)(sizeof(symbols)/sizeof(symbols[0])); i++) {
+        if (streq(name, symbols[i].name))
+            return import_function(env, symbols[i].symbol, get_field_type(env, t, name), false);
+    }
+    return NULL;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

@@ -41,7 +41,6 @@ void compile_statement(env_t *env, gcc_block_t **block, ast_t *ast)
 
 void populate_tagged_union_constructors(env_t *env, gcc_block_t **block, gcc_struct_t *ns_struct, gcc_lvalue_t *ns_lval, sss_type_t *t)
 {
-    env = get_type_env(env, t);
     auto members = Match(base_variant(t), TaggedUnionType)->members;
     gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, t);
     gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
@@ -59,7 +58,6 @@ void populate_tagged_union_constructors(env_t *env, gcc_block_t **block, gcc_str
             gcc_type_t *member_gcc_t = sss_type_to_gcc(env, member.type);
             auto names = Match(member.type, StructType)->field_names;
             auto types = Match(member.type, StructType)->field_types;
-            auto defaults = Match(member.type, StructType)->field_defaults;
             gcc_param_t *params[LENGTH(names)] = {};
             gcc_field_t *fields[LENGTH(names)] = {};
             gcc_rvalue_t *field_rvals[LENGTH(names)] = {};
@@ -82,17 +80,12 @@ void populate_tagged_union_constructors(env_t *env, gcc_block_t **block, gcc_str
                         gcc_union_constructor(env->ctx, NULL, union_gcc_t, gcc_get_union_field(union_gcc_t, i), struct_val),
                     }));
             gcc_assign(*block, NULL, field_lval, gcc_get_func_address(func, NULL));
-            Table_str_set(env->bindings, member.name,
-                 new(binding_t, .type=Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=t),
-                     .visible_in_closures=true,
-                     .func=func, .rval=gcc_get_func_address(func, NULL)));
         } else {
             gcc_rvalue_t *val = gcc_struct_constructor(
                 env->ctx, NULL, gcc_tagged_t, 1, &tag_field, (gcc_rvalue_t*[]){
                     gcc_rvalue_from_long(env->ctx, tag_gcc_t, member.tag_value),
                 });
             gcc_assign(*block, NULL, field_lval, val);
-            Table_str_set(env->bindings, member.name, new(binding_t, .type=t, .rval=gcc_rval(field_lval), .visible_in_closures=true));
         }
     }
 }
@@ -101,29 +94,28 @@ void predeclare_def_funcs(env_t *env, ast_t *def)
 {
     if (def->tag == FunctionDef) {
         auto fndef = Match(def, FunctionDef);
-        gcc_func_t *func = get_function_def(env, def, fresh(fndef->name));
-        binding_t *b = get_binding(env, fndef->name);
+        gcc_func_t *func = get_function_def(env, def, fresh(Match(fndef->name, Var)->name));
+        binding_t *b = Match(fndef->name, Var)->binding;
         if (b) {
             b->func = func;
         } else {
             binding_t *b = new(binding_t, .type=get_type(env, def),
                                .func=func, .rval=gcc_get_func_address(func, NULL),
                                .visible_in_closures=true);
-            Table_str_set(env->bindings, fndef->name, b);
+            Match(fndef->name, Var)->binding = b;
         }
     } else if (def->tag == TypeDef) {
-        sss_type_t *t = get_type_by_name(env, Match(def, TypeDef)->name);
-        env = get_type_env(env, t);
         auto members = Match(Match(def, TypeDef)->namespace, Block)->statements;
         for (int64_t i = 0; members && i < LENGTH(members); i++) {
             ast_t *member = ith(members, i);
             if (member->tag == FunctionDef) {
                 auto fndef = Match(member, FunctionDef);
-                gcc_func_t *func = get_function_def(env, member, fresh(fndef->name));
-                binding_t *b =  new(binding_t, .type=get_type(env, member),
-                                    .func=func, .rval=gcc_get_func_address(func, NULL),
-                                    .visible_in_closures=true);
-                Table_str_set(env->bindings, fndef->name, b);
+                auto fn_var = Match(fndef->name, Var);
+                gcc_func_t *func = get_function_def(env, member, fresh(fn_var->name));
+                assert(fn_var->binding);
+                fn_var->binding->func = func;
+                fn_var->binding->rval = gcc_get_func_address(func, NULL);
+                fn_var->binding->visible_in_closures = true;
             } else {
                 predeclare_def_funcs(env, member);
             }

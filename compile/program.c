@@ -20,64 +20,6 @@
 #include "libgccjit_abbrev.h"
 #include "../SipHash/halfsiphash.h"
 
-// This function only cares about typedefs and making sure types can be
-// referenced when defining other types.
-void predeclare_types(env_t *env, ast_t *ast)
-{
-    switch (ast->tag) {
-    case TypeDef: {
-        auto def = Match(ast, TypeDef);
-        sss_type_t *t = Type(PlaceholderType, .filename=env->file->filename, .name=def->name);
-        Table_str_set(env->bindings, heap_strf("#type:%s", def->name), t);
-
-        table_t *namespace = new(table_t, .fallback=env->bindings);
-        Table_str_set(&env->global->type_namespaces, def->name, namespace);
-        predeclare_types(get_type_env(env, t), def->namespace);
-        break;
-    }
-    case Block: {
-        foreach (Match(ast, Block)->statements, stmt, _)
-            predeclare_types(env, *stmt);
-        break;
-    }
-    case Declare: {
-        auto decl = Match(ast, Declare);
-        if (decl->value->tag == Use) {
-            const char *name = Match(decl->var, Var)->name;
-            load_file_types(env, name, Match(decl->value, Use)->path);
-        }
-        break;
-    }
-    case DocTest: {
-        predeclare_types(env, Match(ast, DocTest)->expr);
-        break;
-    }
-    default: break;
-    }
-}
-
-void populate_type_placeholders(env_t *env, ast_t *ast)
-{
-    switch (ast->tag) {
-    case TypeDef: {
-        auto def = Match(ast, TypeDef);
-        sss_type_t *placeholder_t = Table_str_get(env->bindings, heap_strf("#type:%s", def->name));
-        assert(placeholder_t);
-        // Mutate placeholder type to hold resolved type: 
-        sss_type_t *resolved_t = parse_type_ast(env, def->type);
-        *(struct sss_type_s*)placeholder_t = *Type(VariantType, .filename=env->file->filename, .name=def->name, .variant_of=resolved_t);
-        populate_type_placeholders(get_type_env(env, placeholder_t), def->namespace);
-        break;
-    }
-    case Block: {
-        foreach (Match(ast, Block)->statements, stmt, _)
-            populate_type_placeholders(env, *stmt);
-        break;
-    }
-    default: break;
-    }
-}
-
 static gcc_lvalue_t *make_module_struct(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     table_t *type_bindings = new(table_t, .fallback=&env->global->types);
@@ -94,10 +36,7 @@ static gcc_lvalue_t *make_module_struct(env_t *env, gcc_block_t **block, ast_t *
 main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls, gcc_jit_result **result)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
-    predeclare_types(env, ast);
-    populate_type_placeholders(env, ast);
-
-    sss_type_t *str_t = get_type_by_name(env, "Str");
+    sss_type_t *str_t = Table_str_get(&env->global->types, "Str");
     gcc_type_t *gcc_string_t = sss_type_to_gcc(env, str_t);
 
     // Set up `USE_COLOR` and `IS_MAIN_PROGRAM`
@@ -161,9 +100,6 @@ main_func_t compile_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *
 void compile_object_file(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, ast_t *ast, bool tail_calls)
 {
     env_t *env = new_environment(ctx, on_err, f, tail_calls);
-    predeclare_types(env, ast);
-    populate_type_placeholders(env, ast);
-
     // Set up `USE_COLOR` and `IS_MAIN_PROGRAM`
     Table_str_set(&env->global->bindings, "USE_COLOR",
          new(binding_t, .rval=gcc_rvalue_bool(ctx, true), .type=Type(BoolType), .visible_in_closures=true));

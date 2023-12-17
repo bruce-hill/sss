@@ -111,6 +111,7 @@ void mark_array_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *arr_ptr);
 void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t *arr);
 gcc_rvalue_t *compile_array(env_t *env, gcc_block_t **block, ast_t *ast, bool mark_cow);
 void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *array);
+gcc_func_t *get_array_method(env_t *env, sss_type_t *t, const char *name);
 
 // ============================== tables.c ==============================
 gcc_rvalue_t *table_entry_value_offset(env_t *env, sss_type_t *t);
@@ -118,6 +119,7 @@ gcc_rvalue_t *table_lookup_optional(env_t *env, gcc_block_t **block, ast_t *tabl
 gcc_lvalue_t *table_lvalue(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *table, ast_t *key_ast, bool autocreate);
 gcc_rvalue_t *compile_table(env_t *env, gcc_block_t **block, ast_t *ast);
 void mark_table_cow(env_t *env, gcc_block_t **block, gcc_rvalue_t *table_ptr);
+gcc_func_t *get_table_method(env_t *env, sss_type_t *t, const char *name);
 
 // ============================== ranges.c ==============================
 gcc_rvalue_t *compile_range(env_t *env, gcc_block_t **block, ast_t *ast);
@@ -127,7 +129,6 @@ gcc_rvalue_t *range_contains(env_t *env, gcc_block_t **block, ast_t *range, ast_
 // ============================== match.c ===============================
 typedef struct {
     gcc_block_t *match_block, *no_match_block;
-    env_t *match_env;
 } match_outcomes_t;
 match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t *val, ast_t *pattern);
 const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patterns);

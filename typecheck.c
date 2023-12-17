@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "args.h"
+#include "bindings.h"
 #include "ast.h"
 #include "environment.h"
 #include "parse.h"
@@ -22,19 +23,18 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
 {
     switch (ast->tag) {
     case TypeVar: {
-        const char *name = Match(ast, TypeVar)->name;
-        sss_type_t *t = get_type_by_name(env, name);
+        sss_type_t *t = Match(ast, TypeVar)->type;
         if (t) return t;
-        compiler_err(env, ast, "I don't know a type with the name '%s'", name);
+        compiler_err(env, ast, "I don't know a type with the name '%s'", Match(ast, TypeVar)->name);
     }
-    case FieldAccess: {
-        auto access = Match(ast, FieldAccess);
-        sss_type_t *fielded_t = parse_type_ast(env, access->fielded);
-        sss_type_t *t = (sss_type_t*)get_from_namespace(env, fielded_t, heap_strf("#type:%s", access->field));
-        if (!t)
-            compiler_err(env, ast, "I don't know any type with this name.");
-        return t;
-    }
+    // case FieldAccess: {
+    //     auto access = Match(ast, FieldAccess);
+    //     sss_type_t *fielded_t = parse_type_ast(env, access->fielded);
+    //     sss_type_t *t = (sss_type_t*)get_from_namespace(env, fielded_t, heap_strf("#type:%s", access->field));
+    //     if (!t)
+    //         compiler_err(env, ast, "I don't know any type with this name.");
+    //     return t;
+    // }
     case TypeArray: {
         ast_t *item_type = Match(ast, TypeArray)->item_type;
         sss_type_t *item_t = parse_type_ast(env, item_type);
@@ -68,26 +68,23 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         sss_type_t *ret_t = parse_type_ast(env, fn->ret_type);
         if (has_stack_memory(ret_t))
             compiler_err(env, fn->ret_type, "Functions are not allowed to return stack references, because the reference may no longer exist on the stack.");
-        auto arg_names = EMPTY_ARRAY(const char*);
+        auto args = EMPTY_ARRAY(ast_t*);
         auto arg_defaults = EMPTY_ARRAY(ast_t*);
         auto arg_types = EMPTY_ARRAY(sss_type_t*);
-        env_t *default_arg_env = file_scope(env);
-        default_arg_env->bindings = new(table_t, .fallback=default_arg_env->bindings);
         for (int64_t i = 0; i < LENGTH(fn->args.types); i++) {
-            append(arg_names, ith(fn->args.names, i));
+            append(args, ith(fn->args.args, i));
             sss_type_t *arg_t;
             if (ith(fn->args.types, i)) {
-                arg_t = parse_type_ast(default_arg_env, ith(fn->args.types, i));
+                arg_t = parse_type_ast(env, ith(fn->args.types, i));
                 append(arg_types, arg_t);
                 append(arg_defaults, NULL);
             } else {
-                arg_t = get_type(default_arg_env, ith(fn->args.defaults, i));
+                arg_t = get_type(env, ith(fn->args.defaults, i));
                 append(arg_types, arg_t);
                 append(arg_defaults, ith(fn->args.defaults, i));
             }
-            Table_str_set(default_arg_env->bindings, ith(fn->args.names, i), new(binding_t, .type=arg_t));
         }
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t, .env=file_scope(env));
+        return Type(FunctionType, .args=args, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret_t);
     }
     case TypeStruct: {
         auto struct_ = Match(ast, TypeStruct);
@@ -95,7 +92,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto member_types = EMPTY_ARRAY(sss_type_t*);
         sss_type_t *t = Type(StructType, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
         for (int64_t i = 0, len = LENGTH(struct_->members.types); i < len; i++) {
-            const char *member_name = ith(struct_->members.names, i);
+            const char *member_name = Match(ith(struct_->members.args, i), Var)->name;
             append(member_names, member_name);
             ast_t *type_ast = ith(struct_->members.types, i);
             sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
@@ -202,15 +199,129 @@ sss_type_t *get_math_type(env_t *env, ast_t *ast, sss_type_t *lhs_t, operator_e 
     }
 }
 
-sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
+static ARRAY_OF(ast_t*) _names_to_args(ARRAY_OF(const char*) names)
 {
-    sss_type_t *original_t = t;
-    for (;;) {
-        if (t->tag == PointerType) t = Match(t, PointerType)->pointed;
-        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
-        else break;
-    }
+    auto args = EMPTY_ARRAY(ast_t*);
+    foreach (names, name, _)
+        append(args, FakeAST(Var, .name=*name));
+    return args;
+}
 
+static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *name)
+{
+    (void)env;
+#define REF(x) Type(PointerType, .is_stack=true, .pointed=x)
+#define RO_REF(x) Type(PointerType, .is_stack=true, .is_readonly=true, .pointed=x)
+#define OPT(x) Type(PointerType, .is_optional=true, .pointed=x)
+#define FN(names, types, defaults, ret_type) Type(FunctionType, .args=_names_to_args(names), .arg_types=types, .arg_defaults=defaults, .ret=ret_type)
+#define TYPEINFO_DEREF(var) FakeAST(GetTypeInfo, FakeAST(Index, FakeAST(Var, var)))
+#define NAMES(...) ARRAY((const char*)__VA_ARGS__)
+#define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
+#define DEFAULTS(...) ARRAY((ast_t*)__VA_ARGS__)
+    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *i64 = Type(IntType, .bits=64);
+    sss_type_t *void_t = Type(VoidType);
+    sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
+    ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array"), .index=FakeAST(Int, .precision=64, .i=1)));
+
+    if (streq(name, "insert")) {
+        return FN(NAMES("array", "item", "index", "_item_size"),
+                  TYPES(REF(t), RO_REF(item_t), i64, i64),
+                  DEFAULTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
+                  void_t);
+    } else if (streq(name, "insert_all")) {
+        return FN(NAMES("array", "to_insert", "index", "_item_size"),
+                  TYPES(REF(t), t, i64, i64),
+                  DEFAULTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
+                  void_t);
+    } else if (streq(name, "remove")) {
+        return FN(NAMES("array", "index", "count", "_item_size"),
+                  TYPES(REF(t), i64, i64, i64),
+                  DEFAULTS(NULL, FakeAST(Int, .precision=64, .i=-1), FakeAST(Int, .precision=64, .i=1), item_size),
+                  void_t);
+    } else if (streq(name, "contains")) {
+        return FN(NAMES("array", "item", "_type"),
+                  TYPES(RO_REF(t), RO_REF(item_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("array")),
+                  Type(BoolType));
+    } else if (streq(name, "compact")) {
+        return FN(NAMES("array", "item_size"), TYPES(REF(t), i64), DEFAULTS(NULL, item_size), t);
+    } else if (streq(name, "sort")) {
+        return FN(NAMES("array", "_type"),
+                  TYPES(REF(t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, TYPEINFO_DEREF("array")),
+                  void_t);
+    } else if (streq(name, "shuffle")) {
+        return FN(NAMES("array", "_item_size"),
+                  TYPES(REF(t), i64),
+                  DEFAULTS(NULL, item_size),
+                  void_t);
+    } else if (streq(name, "clear")) {
+        return FN(NAMES("array"), TYPES(REF(t)), DEFAULTS(NULL), void_t);
+    } else if (streq(name, "slice")) {
+        return FN(NAMES("array", "range", "readonly", "_type"),
+                  TYPES(REF(t), Type(RangeType), Type(BoolType), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, FakeAST(Bool, false), TYPEINFO_DEREF("array")),
+                  t);
+    }
+    return NULL;
+}
+
+static sss_type_t *get_table_field_type(env_t *env, sss_type_t *t, const char *name)
+{
+    (void)env;
+    sss_type_t *key_t = Match(t, TableType)->key_type;
+    sss_type_t *value_t = Match(t, TableType)->value_type;
+    sss_type_t *void_t = Type(VoidType);
+    sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
+    if (streq(name, "entries")) {
+        return Type(ArrayType, .item_type=table_entry_type(t));
+    } else if (streq(name, "length")) {
+        return INT_TYPE;
+    } else if (streq(name, "default")) {
+        return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_readonly=true);
+    } else if (streq(name, "fallback")) {
+        return Type(PointerType, .pointed=t, .is_optional=true, .is_readonly=true);
+    } else if (streq(name, "keys")) {
+        return Type(ArrayType, .item_type=Match(t, TableType)->key_type);
+    } else if (streq(name, "values")) {
+        return Type(ArrayType, .item_type=Match(t, TableType)->value_type);
+    } else if (streq(name, "remove")) {
+        return FN(NAMES("t", "key", "_type"),
+                  TYPES(REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  void_t);
+    } else if (streq(name, "set")) {
+        return FN(NAMES("t", "key", "value", "_type"),
+                  TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
+                  void_t);
+    } else if (streq(name, "reserve")) {
+        return FN(NAMES("t", "key", "value", "_type"),
+                  TYPES(REF(t), RO_REF(key_t), OPT(value_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
+                  Type(PointerType, value_t));
+    } else if (streq(name, "get")) {
+        return FN(NAMES("t", "key", "_type"),
+                  TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  OPT(value_t));
+    } else if (streq(name, "get_raw")) {
+        return FN(NAMES("t", "key", "_type"),
+                  TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  OPT(value_t));
+    } else if (streq(name, "clear")) {
+        return FN(NAMES("t"), TYPES(REF(t)), DEFAULTS(NULL), void_t);
+    } else if (streq(name, "mark_copy_on_write")) {
+        return FN(NAMES("t"), TYPES(REF(t)), DEFAULTS(NULL), void_t);
+    }
+    return NULL;
+}
+
+static sss_type_t *get_value_field_type(env_t *env, sss_type_t *t, const char *field_name)
+{
+    t = base_value_type(t);
     switch (t->tag) {
     case StructType: {
         auto struct_t = Match(t, StructType);
@@ -221,7 +332,7 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
                 return ith(struct_t->field_types, i);
             }
         }
-        goto class_lookup;
+        return NULL;
     }
     case TaggedUnionType: {
         auto tagged = Match(t, TaggedUnionType);
@@ -229,62 +340,36 @@ sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
             if (streq(field_name, member->name))
                 return member->type;
         }
-        goto class_lookup;
+        return NULL;
     }
     case ArrayType: {
-        if (streq(field_name, "length"))
-            return INT_TYPE;
-
-        auto array = Match(t, ArrayType);
-        sss_type_t *item_t = array->item_type;
-
-        // TODO: support other things like pointers
-        if (base_variant(item_t)->tag == StructType) {
-            // vecs.x ==> [v.x for v in vecs]
-            auto struct_ = Match(base_variant(item_t), StructType);
-            for (int64_t i = 0, len = LENGTH(struct_->field_names); i < len; i++) {
-                const char *struct_field = ith(struct_->field_names, i);
-                if (!struct_field) struct_field = heap_strf("_%ld", i+1);
-                if (streq(struct_field, field_name)) {
-                    return Type(ArrayType, .item_type=ith(struct_->field_types, i));
-                }
-            }
-        }
-        goto class_lookup;
+        return get_array_field_type(env, t, field_name);
     }
     case RangeType: {
         if (streq(field_name, "first") || streq(field_name, "last") || streq(field_name, "step") || streq(field_name, "length"))
             return INT_TYPE;
-        goto class_lookup;
+        return NULL;
     }
     case TableType: {
-        if (streq(field_name, "entries"))
-            return Type(ArrayType, .item_type=table_entry_type(t));
-        else if (streq(field_name, "length"))
-            return INT_TYPE;
-        else if (streq(field_name, "default"))
-            return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_readonly=true);
-        else if (streq(field_name, "fallback"))
-            return Type(PointerType, .pointed=t, .is_optional=true, .is_readonly=true);
-        else if (streq(field_name, "keys"))
-            return Type(ArrayType, .item_type=Match(t, TableType)->key_type);
-        else if (streq(field_name, "values"))
-            return Type(ArrayType, .item_type=Match(t, TableType)->value_type);
-
-        goto class_lookup;
+        return get_table_field_type(env, t, field_name);
     }
-    default: break;
+    default: return NULL;
     }
+}
 
-  class_lookup:;
-    t = original_t;
+sss_type_t *get_field_type(env_t *env, sss_type_t *t, const char *field_name)
+{
+    sss_type_t *field_t = get_value_field_type(env, t, field_name);
+    if (field_t) return field_t;
     for (;;) {
         binding_t *b = get_from_namespace(env, t, field_name);
         if (b) return b->type;
 
-        if (t->tag == PointerType) t = Match(t, PointerType)->pointed;
-        else if (t->tag == VariantType) t = Match(t, VariantType)->variant_of;
-        else break;
+        switch (t->tag) {
+        case PointerType: t = Match(t, PointerType)->pointed; break;
+        case VariantType: t = Match(t, VariantType)->variant_of; break;
+        default: return NULL;
+        }
     }
     return NULL;
 }
@@ -322,84 +407,6 @@ sss_type_t *get_doctest_type(env_t *env, ast_t *ast)
     }
     default:
         return get_type(env, ast);
-    }
-}
-
-static void bind_match_patterns(env_t *env, sss_type_t *t, ast_t *pattern)
-{
-    while (t->tag == VariantType)
-        t = Match(t, VariantType)->variant_of;
-
-    switch (pattern->tag) {
-    case Wildcard: {
-        const char *name = Match(pattern, Wildcard)->name;
-        if (!name) return;
-        binding_t *b = get_binding(env, name);
-        if (!b)
-            set_binding(env, name, new(binding_t, .type=t));
-        return;
-    }
-    case Var: {
-        const char *name = Match(pattern, Var)->name;
-        if (t->tag == TaggedUnionType) {
-            auto tu_t = Match(t, TaggedUnionType);
-            foreach (tu_t->members, member, _) {
-                if (streq(member->name, name))
-                    return;
-            }
-        }
-        return;
-    }
-    case HeapAllocate: {
-        if (t->tag != PointerType) return;
-        bind_match_patterns(env, Match(t, PointerType)->pointed, Match(pattern, HeapAllocate)->value);
-        return;
-    }
-    case Struct: {
-        if (t->tag != StructType)
-            return;
-        auto struct_type = Match(t, StructType);
-        auto pat_struct = Match(pattern, Struct);
-        if (pat_struct->type) {
-            sss_type_t *pat_t = parse_type_ast(env, pat_struct->type);
-            if (!type_eq(t, pat_t)) return;
-        }
-
-        auto arg_infos = bind_arguments(env, pat_struct->members, struct_type->field_names,
-                                        struct_type->field_types, struct_type->field_defaults);
-        foreach (arg_infos, arg_info, _) {
-            if (arg_info->ast)
-                bind_match_patterns(env, arg_info->type, arg_info->ast);
-        }
-        return;
-    }
-    case FunctionCall: {
-        auto call = Match(pattern, FunctionCall);
-        if (call->fn->tag != Var) return;
-
-        const char *fn_name = Match(call->fn, Var)->name;
-        if (t->tag != TaggedUnionType) return;
-
-        // Tagged Union Constructor:
-        auto tu_t = Match(t, TaggedUnionType);
-        int64_t tag_index = -1;
-        for (int64_t i = 0; i < LENGTH(tu_t->members); i++) {
-            if (streq(ith(tu_t->members, i).name, fn_name)) {
-                tag_index = i;
-                break;
-            }
-        }
-        if (tag_index < 0) return;
-
-        auto member = ith(tu_t->members, tag_index);
-        if (!member.type)
-            compiler_err(env, pattern, "This tagged union member doesn't have any value");
-
-        ast_t *m_pat = WrapAST(pattern, Struct, .members=call->args);
-        bind_match_patterns(env, member.type, m_pat);
-        return;
-    }
-    default: return;
     }
 }
 
@@ -466,20 +473,18 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(RangeType);
     }
     case StringJoin: case Interp: case StringLiteral: {
-        return get_type_by_name(env, "Str");
+        return Table_str_get(&env->global->types, "Str");
     }
     case Var: {
-        const char* name = Match(ast, Var)->name;
-        binding_t *binding = get_binding(env, name);
-        if (!binding) {
-            const char *suggestion = spellcheck(env->bindings, name);
-            if (suggestion)
-                compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
-            else
-                compiler_err(env, ast, "I don't know what this variable is referring to."); 
-            compiler_err(env, ast, "I don't know what \"%s\" refers to", name);
-        }
-        return binding->type;
+        auto var = Match(ast, Var);
+        if (var->binding) return var->binding->type;
+
+            // const char *suggestion = spellcheck(env->bindings, name);
+            // if (suggestion)
+            //     compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
+            // else
+            //     compiler_err(env, ast, "I don't know what this variable is referring to."); 
+        compiler_err(env, ast, "I don't know what \"%s\" refers to", var->name);
     }
     case Wildcard: {
         compiler_err(env, ast, "Wildcards can only be used inside 'matches' expressions, they can't be used as values");
@@ -621,34 +626,11 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         default: break;
         }
 
-        env = fresh_scope(env);
-
         // Function defs are visible in the entire block (allowing corecursive funcs)
         foreach (block->statements, stmt, _) {
             predeclare_def_funcs(env, *stmt);
         }
 
-        for (int64_t i = 0, len = LENGTH(block->statements); i < len-1; i++) {
-            ast_t *stmt = ith(block->statements, i);
-            switch (stmt->tag) {
-            case Declare: {
-                auto decl = Match(stmt, Declare);
-                sss_type_t *t;
-                if (decl->value->tag == Use) {
-                    sss_type_t *file_t = get_file_type(env, Match(decl->value, Use)->path);
-                    Table_str_set(env->bindings, heap_strf("#type:%s", Match(decl->var, Var)->name), file_t);
-                    t = Type(PointerType, .pointed=file_t);                                                                     
-                } else {
-                    t = get_type(env, decl->value);
-                }
-                Table_str_set(env->bindings, Match(decl->var, Var)->name, new(binding_t, .type=t, .visible_in_closures=decl->is_public));
-                break;
-            }
-            default:
-                // TODO: bind structs/tagged unions in block typechecking
-                break;
-            }
-        }
         return get_type(env, last);
     }
     case Do: {
@@ -827,48 +809,31 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
 
     case Lambda: {
         auto lambda = Match(ast, Lambda);
-        auto arg_names = EMPTY_ARRAY(const char*);
+        auto args = EMPTY_ARRAY(ast_t*);
         auto arg_types = EMPTY_ARRAY(sss_type_t*);
         for (int64_t i = 0; i < LENGTH(lambda->args.types); i++) {
             ast_t *arg_def = ith(lambda->args.types, i);
             sss_type_t *t = parse_type_ast(env, arg_def);
-            const char* arg_name = ith(lambda->args.names, i);
-            append(arg_names, arg_name);
             append(arg_types, t);
+            append(args, ith(lambda->args.args, i));
         }
 
-        // Include only global bindings:
-        env_t *lambda_env = file_scope(env);
-        for (int64_t i = 0; i < LENGTH(lambda->args.types); i++) {
-            Table_str_set(lambda_env->bindings, ith(arg_names, i), new(binding_t, .type=ith(arg_types, i)));
-        }
-        sss_type_t *ret = get_type(lambda_env, lambda->body);
+        sss_type_t *ret = get_type(env, lambda->body);
         if (has_stack_memory(ret))
             compiler_err(env, ast, "Functions can't return stack references because the reference may outlive its stack frame.");
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .ret=ret);
+        return Type(FunctionType, .args=args, .arg_types=arg_types, .ret=ret);
     }
 
     case FunctionDef: {
         auto def = Match(ast, FunctionDef);
-        auto arg_names = EMPTY_ARRAY(const char*);
+        auto args = EMPTY_ARRAY(ast_t*);
         auto arg_types = EMPTY_ARRAY(sss_type_t*);
         auto arg_defaults = EMPTY_ARRAY(ast_t*);
 
-        // In order to allow default values to reference other arguments (e.g. `def foo(x:Foo, y=x)`)
-        // we need to create scoped bindings for them here:
-        env_t *default_arg_env = file_scope(env);
-        default_arg_env->bindings = new(table_t, .fallback=default_arg_env->bindings);
-        for (int64_t i = 0; i < LENGTH(def->args.types); i++) {
-            ast_t *arg_type_def = ith(def->args.types, i);
-            if (!arg_type_def) continue;
-            sss_type_t *arg_type = parse_type_ast(env, arg_type_def);
-            Table_str_set(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
-        }
-        
         for (int64_t i = 0; i < LENGTH(def->args.types); i++) {
             ast_t *arg_def = ith(def->args.types, i);
-            const char* arg_name = ith(def->args.names, i);
-            append(arg_names, arg_name);
+            ast_t *arg = ith(def->args.args, i);
+            append(args, arg);
             if (arg_def) {
                 sss_type_t *arg_type = parse_type_ast(env, arg_def);
                 append(arg_types, arg_type);
@@ -876,17 +841,16 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
                 append(arg_defaults, default_val);
             } else {
                 ast_t *default_val = ith(def->args.defaults, i);
-                sss_type_t *arg_type = get_type(default_arg_env, default_val);
+                sss_type_t *arg_type = get_type(env, default_val);
                 append(arg_types, arg_type);
                 append(arg_defaults, default_val);
-                Table_str_set(default_arg_env->bindings, ith(def->args.names, i), new(binding_t, .type=arg_type));
             }
         }
 
         sss_type_t *ret = def->ret_type ? parse_type_ast(env, def->ret_type) : Type(VoidType);
         if (has_stack_memory(ret))
             compiler_err(env, def->ret_type, "Functions can't return stack references because the reference may outlive its stack frame.");
-        return Type(FunctionType, .arg_names=arg_names, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret, .env=default_arg_env);
+        return Type(FunctionType, .args=args, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
     case TypeDef: case ConvertDef: {
@@ -931,15 +895,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         sss_type_t *subject_t;
         if (if_->subject->tag == Declare) {
             subject_t = get_type(env, Match(if_->subject, Declare)->value);
-            env = fresh_scope(env);
         } else {
             subject_t = get_type(env, if_->subject);
         }
         sss_type_t *t = NULL;
         for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
-            env_t *case_env = fresh_scope(env);
-            bind_match_patterns(case_env, subject_t, ith(if_->patterns, i));
-            sss_type_t *case_t = get_type(case_env, ith(if_->blocks, i));
+            sss_type_t *case_t = get_type(env, ith(if_->blocks, i));
             sss_type_t *t2 = type_or_type(t, case_t);
             if (!t2)
                 compiler_err(env, ith(if_->blocks, i),
@@ -960,34 +921,20 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case For: {
         auto for_loop = Match(ast, For);
-        sss_type_t *index_type = INT_TYPE,
-                  *value_type = get_iter_type(env, for_loop->iter);
-
-        env_t *loop_env = fresh_scope(env);
-        if (for_loop->index) {
-            Table_str_set(loop_env->bindings, Match(for_loop->index, Var)->name, new(binding_t, .type=index_type));
-        }
-        if (for_loop->value) {
-            Table_str_set(loop_env->bindings, Match(for_loop->value, Var)->name, new(binding_t, .type=value_type));
-        }
-        
         if (for_loop->first)
-            return generate(get_type(loop_env, for_loop->first));
+            return generate(get_type(env, for_loop->first));
         else if (for_loop->body)
-            return generate(get_type(loop_env, for_loop->body));
+            return generate(get_type(env, for_loop->body));
         else if (for_loop->between)
-            return generate(get_type(loop_env, for_loop->between));
+            return generate(get_type(env, for_loop->between));
         else if (for_loop->empty)
-            return generate(get_type(loop_env, for_loop->empty));
+            return generate(get_type(env, for_loop->empty));
         else
             compiler_err(env, ast, "I can't figure out the type of this 'for' loop");
     }
     case Reduction: {
-        env = fresh_scope(env);
         auto reduction = Match(ast, Reduction);
         sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        Table_str_set(env->bindings, "x.0", new(binding_t, .type=item_type));
-        Table_str_set(env->bindings, "y.0", new(binding_t, .type=item_type));
         sss_type_t *combo_t = get_type(env, reduction->combination);
         if (!can_promote(item_type, combo_t))
             compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",
@@ -1005,36 +952,12 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case With: {
         auto with = Match(ast, With);
-        if (with->var) {
-            env = fresh_scope(env);
-            Table_str_set(env->bindings, Match(with->var, Var)->name, new(binding_t, .type=get_type(env, with->expr)));
-        }
         return get_type(env, with->body);
     }
     case Using: { // using expr *[; expr] body
         auto using = Match(ast, Using);
-        env = fresh_scope(env);
         foreach (using->used, used, _) {
-            sss_type_t *t = get_type(env, *used);
-            auto fields = EMPTY_ARRAY(const char*);
-            for (;;) {
-                if (t->tag == PointerType) {
-                    if (Match(t, PointerType)->is_optional)
-                        compiler_err(env, *used, "This value might be null, so it's not safe to use its fields");
-                    t = Match(t, PointerType)->pointed;
-                } else if (t->tag == VariantType) {
-                    t = Match(t, VariantType)->variant_of;
-                } else if (t->tag == StructType) {
-                    fields = Match(t, StructType)->field_names;
-                    break;
-                } else {
-                    compiler_err(env, *used, "I'm sorry, but 'using' isn't supported for %T types yet", t);
-                }
-            }
-            foreach (fields, field, _) {
-                ast_t *shim = WrapAST(*used, FieldAccess, .fielded=*used, .field=*field);
-                Table_str_set(env->bindings, *field, new(binding_t, .type=get_type(env, shim)));
-            }
+            compiler_err(env, ast, "'using' is not implemented right now");
         }
         return get_type(env, using->body);
     }
@@ -1128,8 +1051,7 @@ const char *get_missing_pattern(env_t *env, sss_type_t *t, ARRAY_OF(ast_t*) patt
         if (ptr->is_optional) {
             bool handled_null = false;
             foreach (patterns, pat, _) {
-                if ((*pat)->tag == Nil
-                    || ((*pat)->tag == Var && !get_binding(env, Match(*pat, Var)->name))) {
+                if ((*pat)->tag == Nil || (*pat)->tag == Wildcard) {
                     handled_null = true;
                     break;
                 }
@@ -1221,8 +1143,6 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
     auto field_names = EMPTY_ARRAY(const char*);
     auto field_types = EMPTY_ARRAY(sss_type_t*);
 
-    env = fresh_scope(env);
-
     if (type) {
         append(field_names, "type");
         append(field_types, Type(TypeInfoType));
@@ -1236,9 +1156,13 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
                 if (LENGTH(fields->field_types) == 0) {
                     append(field_types, type);
                 } else {
-                    sss_type_t *constructor_t = Type(FunctionType, .arg_names=fields->field_names,
+                    auto args = EMPTY_ARRAY(ast_t*);
+                    for (int64_t i = 0; i < LENGTH(fields->field_names); i++) {
+                        append(args, FakeAST(Var, .name=ith(fields->field_names, i), .binding=new(binding_t, .type=ith(fields->field_types, i))));
+                    }
+                    sss_type_t *constructor_t = Type(FunctionType, .args=args,
                                                      .arg_types=fields->field_types, .arg_defaults=fields->field_defaults,
-                                                     .ret=type, .env=env);
+                                                     .ret=type);
                     append(field_types, constructor_t);
                 }
             }
@@ -1255,24 +1179,22 @@ sss_type_t *get_namespace_type(env_t *env, ast_t *namespace_ast, sss_type_t *typ
             sss_type_t *t = get_type(env, decl->value);
             append(field_names, name);
             append(field_types, t);
-            set_binding(env, name, new(binding_t, .type=t, .visible_in_closures=true));
             break;
         }
         case TypeDef: {
             auto def = Match(stmt, TypeDef);
-            append(field_names, def->name);
-            sss_type_t *def_type = get_type_by_name(env, def->name);
+            const char *name = Match(def->name, TypeVar)->name;
+            append(field_names, name);
+            sss_type_t *def_type = Match(def->name, TypeVar)->type;
             sss_type_t *ns_t = get_namespace_type(env, def->namespace, def_type);
-            set_binding(env, def->name, new(binding_t, .type=ns_t, .visible_in_closures=true));
             append(field_types, ns_t);
             break;
         }
         case FunctionDef: {
             auto def = Match(stmt, FunctionDef);
-            append(field_names, def->name);
-            sss_type_t *t = get_binding(env, def->name)->type;
-            append(field_types, t);
-            set_binding(env, def->name, new(binding_t, .type=t, .visible_in_closures=true));
+            auto var = Match(def->name, Var);
+            append(field_names, var->name);
+            append(field_types, var->binding->type);
             break;
         }
         case DocTest: {
@@ -1324,14 +1246,16 @@ static parsed_file_info_t *get_file_info(env_t *env, const char *path)
     sss_file_t *f = sss_load_file(sss_path);
     file_info = new(parsed_file_info_t, .file=f);
     Table_str_set(&cache, path, file_info);
-    file_info->env = new_environment(env->ctx, env->on_err, f, env->tail_calls);
+    file_info->env = new(env_t);
+    *file_info->env = *env;
+    file_info->env->file = f;
 
-    file_info->ast = parse_file(f, file_info->env->on_err);
-    predeclare_types(file_info->env, file_info->ast);
-    populate_type_placeholders(file_info->env, file_info->ast);
-    Table_str_set(&file_info->env->global->bindings, "USE_COLOR", new(binding_t, .type=Type(BoolType), .visible_in_closures=true));
-    Table_str_set(&file_info->env->global->bindings, "IS_MAIN_PROGRAM",
-         new(binding_t, .rval=gcc_rvalue_bool(env->ctx, false), .type=Type(BoolType), .visible_in_closures=true));
+    file_info->ast = parse_file(f, env->on_err);
+    table_t *type_bindings = new(table_t, .fallback=&env->global->types);
+    bind_types(env, type_bindings, file_info->ast);
+    populate_types(env, type_bindings, file_info->ast);
+    bind_variables(env, new(table_t, .fallback=&env->global->bindings), file_info->ast);
+    // sss_type_t *ns_t = get_namespace_type(env, ast, NULL);
     return file_info;
 }
 
@@ -1341,27 +1265,27 @@ sss_type_t *get_file_type(env_t *env, const char *path)
     return get_namespace_type(info->env, info->ast, NULL);
 }
 
-static void _load_file_types(env_t *src_env, table_t *src_bindings, env_t *dest_env, table_t *dest_namespace)
-{
-    for (int64_t i = 1; i <= Table_length(src_bindings); i++) {
-        struct {const char *key; sss_type_t *type;} *entry = Table_str_entry(src_bindings, i);
-        if (strncmp(entry->key, "#type:", strlen("#type:")) != 0)
-            continue;
-        Table_str_set(dest_namespace, entry->key, entry->type);
-        _load_file_types(src_env, get_namespace(src_env, entry->type),
-                         dest_env, get_namespace(dest_env, entry->type));
-    }
-}
+// static void _load_file_types(env_t *src_env, table_t *src_bindings, env_t *dest_env, table_t *dest_namespace)
+// {
+//     for (int64_t i = 1; i <= Table_length(src_bindings); i++) {
+//         struct {const char *key; sss_type_t *type;} *entry = Table_str_entry(src_bindings, i);
+//         if (strncmp(entry->key, "#type:", strlen("#type:")) != 0)
+//             continue;
+//         Table_str_set(dest_namespace, entry->key, entry->type);
+//         _load_file_types(src_env, get_namespace(src_env, entry->type),
+//                          dest_env, get_namespace(dest_env, entry->type));
+//     }
+// }
 
-void load_file_types(env_t *env, const char *name, const char *path)
-{
-    sss_type_t *t = Type(VariantType, .variant_of=Type(VoidType), .name=name);
-    Table_str_set(env->bindings, heap_strf("#type:%s", name), t);
-    table_t *namespace = get_namespace(env, t);
-    namespace->fallback = NULL;
+// void load_file_types(env_t *env, const char *name, const char *path)
+// {
+//     sss_type_t *t = Type(VariantType, .variant_of=Type(VoidType), .name=name);
+//     Table_str_set(env->bindings, heap_strf("#type:%s", name), t);
+//     table_t *namespace = get_namespace(env, t);
+//     namespace->fallback = NULL;
 
-    auto info = get_file_info(env, path);
-    _load_file_types(info->env, info->env->bindings, env, namespace);
-}
+    // auto info = get_file_info(env, path);
+    // _load_file_types(info->env, info->env->bindings, env, namespace);
+// }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

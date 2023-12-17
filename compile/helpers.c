@@ -300,10 +300,10 @@ gcc_type_t *sss_type_to_gcc(env_t *env, sss_type_t *t)
         }
     }
     case VariantType: {
-        if (type_eq(t, get_type_by_name(env, "CString"))) {
+        if (type_eq(t, Table_str_get(&env->global->types, "CString"))) {
             gcc_t = gcc_type(env->ctx, STRING);
             break;
-        } else if (type_eq(t, get_type_by_name(env, "Cord"))) {
+        } else if (type_eq(t, Table_str_get(&env->global->types, "Cord"))) {
             gcc_t = gcc_type(env->ctx, STRING);
             break;
         }
@@ -451,7 +451,7 @@ bool can_be_lvalue(env_t *env, ast_t *ast, bool allow_slices)
 {
     switch (ast->tag) {
     case Var: {
-        binding_t *binding = get_binding(env, Match(ast, Var)->name);
+        binding_t *binding = Match(ast, Var)->binding;
         return binding->lval != NULL;
     }
     case FieldAccess: {
@@ -532,16 +532,16 @@ gcc_lvalue_t *get_lvalue(env_t *env, gcc_block_t **block, ast_t *ast, bool allow
     gcc_loc_t *loc = ast_loc(env, ast);
     switch (ast->tag) {
     case Var: {
-        binding_t *binding = get_binding(env, Match(ast, Var)->name);
+        binding_t *binding = Match(ast, Var)->binding;
         if (binding) {
             if (!binding->lval)
                 compiler_err(env, ast, "This variable can't be assigned to. You can try declaring a new variable with the same name, though.");
             return binding->lval;
         } else {
-            const char *suggestion = spellcheck(env->bindings, Match(ast, Var)->name);
-            if (suggestion)
-                compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
-            else
+            // const char *suggestion = spellcheck(env->bindings, Match(ast, Var)->name);
+            // if (suggestion)
+            //     compiler_err(env, ast, "I don't know what this variable is referring to. Did you mean '%s'?", suggestion); 
+            // else
                 compiler_err(env, ast, "I don't know what this variable is referring to."); 
         }
     }
@@ -736,7 +736,8 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
     gcc_block_t *use_color = gcc_new_block(func, fresh("use_color")),
                 *no_color = gcc_new_block(func, fresh("no_color")),
                 *carry_on = gcc_new_block(func, fresh("fmt_set"));
-    gcc_jump_condition(*block, NULL, get_binding(env, "USE_COLOR")->rval, use_color, no_color);
+    binding_t *use_color_b = Table_str_get(&env->global->bindings, "USE_COLOR");
+    gcc_jump_condition(*block, NULL, use_color_b->rval, use_color, no_color);
 
     if (file && start && end) {
         gcc_assign(no_color, NULL, fmt_var, gcc_str(
@@ -778,11 +779,11 @@ void insert_failure(env_t *env, gcc_block_t **block, sss_file_t *file, const cha
             gcc_rvalue_t *rval = va_arg(ap, gcc_rvalue_t*);
 
             // Insert strings directly:
-            sss_type_t *str_type = get_type_by_name(env, "Str");
+            sss_type_t *str_type = Table_str_get(&env->global->types, "Str");
+            sss_type_t *c_str_type = Table_str_get(&env->global->types, "CString");
             if (type_eq(t, str_type)) {
-                binding_t *b = get_from_namespace(env, t, "c_string");
-                assert(b);
-                append(args, b->func ? gcc_callx(env->ctx, NULL, b->func, rval) : gcc_callx_ptr(env->ctx, NULL, b->rval, rval));
+                gcc_func_t *c_str_fn = import_function(env, "Str__c_string", Type(FunctionType, .arg_types=ARRAY(str_type), .ret=c_str_type), true);
+                append(args, gcc_callx(env->ctx, NULL, c_str_fn, rval));
                 continue;
             }
 

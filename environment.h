@@ -60,7 +60,6 @@ typedef struct env_s {
     gcc_ctx_t *ctx;
     sss_file_t *file;
     jmp_buf *on_err;
-    table_t *bindings; // name -> binding_t
     sss_type_t *return_type;
     loop_label_t *loop_label;
     void (*comprehension_callback)(struct env_s *env, gcc_block_t **block, ast_t *item, void *userdata);
@@ -78,20 +77,9 @@ __attribute__((noreturn, format(printf,3,4)))
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...);
 
 env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail_calls);
-env_t *fresh_scope(env_t *env);
-env_t *scope_with_type(env_t *env, sss_type_t *t);
-env_t *file_scope(env_t *env);
-env_t *scope_with_type(env_t *env, sss_type_t *t);
-binding_t *get_binding(env_t *env, const char *name);
-#define set_binding(env, key, binding) Table_str_set((env)->bindings, (key), (binding))
-sss_type_t *get_type_by_name(env_t *env, const char *name);
-binding_t *get_local_binding(env_t *env, const char *name);
 gcc_func_t *get_function(env_t *env, const char *name);
 gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t, bool keep);
-env_t *get_type_env(env_t *env, sss_type_t *t);
-table_t *get_namespace(env_t *env, sss_type_t *t);
 binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name);
-void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value);
 const char *spellcheck(table_t *ns, const char *word);
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

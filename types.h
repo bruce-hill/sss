@@ -2,6 +2,7 @@
 #include <libgccjit.h>
 #include <printf.h>
 #include <stdlib.h>
+#include <libgccjit.h>
 
 #include "ast.h"
 #include "builtins/array.h"
@@ -50,11 +51,10 @@ struct sss_type_s {
             sss_type_t *key_type, *value_type;
         } TableType;
         struct {
-            ARRAY_OF(const char*) arg_names;
+            ARRAY_OF(ast_t*) args;
             ARRAY_OF(sss_type_t*) arg_types;
             ARRAY_OF(ast_t*) arg_defaults;
             sss_type_t *ret;
-            void *env;
         } FunctionType;
         struct {
             sss_type_t *pointed;
@@ -74,6 +74,8 @@ struct sss_type_s {
         struct {
             const char *name, *filename;
             sss_type_t *variant_of;
+            sss_type_t *namespace_type;
+            gcc_lvalue_t *lval;
         } VariantType;
         struct {} TypeInfoType;
         struct {

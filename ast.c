@@ -82,10 +82,10 @@ static CORD label_double(const char *name, double d) { return CORD_asprintf("%s=
 static CORD label_bool(const char *name, bool b) { return CORD_asprintf("%s=\x1b[35m%s\x1b[m", name, b ? "yes" : "no"); }
 static CORD label_args(const char *name, args_t args) {
     CORD c = CORD_asprintf("%s={", name ? name : "(NULL)");
-    for (int64_t i = 0; i < LENGTH(args.names); i++) {
+    for (int64_t i = 0; i < LENGTH(args.args); i++) {
         if (i > 0) c = CORD_cat(c, ", ");
-        if (args.names && ith(args.names, i))
-            c = CORD_cat(c, ith(args.names, i));
+        if (args.args && ith(args.args, i))
+            c = CORD_cat(c, Match(ith(args.args, i), Var)->name);
         if (args.types && ith(args.types, i))
             CORD_sprintf(&c, "%r:%s", c, ast_to_cord(NULL, ith(args.types, i)));
         if (args.defaults && ith(args.defaults, i))

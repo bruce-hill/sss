@@ -26,14 +26,10 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
     match_outcomes_t outcomes = {
         .match_block = gcc_new_block(func, fresh("match_success")),
         .no_match_block = gcc_new_block(func, fresh("match_failure")),
-        .match_env = fresh_scope(env),
     };
 
     switch (pattern->tag) {
     case Wildcard: {
-        const char *name = Match(pattern, Wildcard)->name;
-        if (name)
-            Table_str_set(outcomes.match_env->bindings, name, new(binding_t, .type=t, .rval=val));
         gcc_jump(*block, loc, outcomes.match_block);
         *block = NULL;
         return outcomes;
@@ -82,7 +78,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         return (match_outcomes_t){
             submatch_outcomes.match_block,
             outcomes.no_match_block,
-            submatch_outcomes.match_env,
         };
     }
     case Struct: {
@@ -109,9 +104,8 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
             if (!arg) continue;
             if (arg->tag == KeywordArg) arg = Match(arg, KeywordArg)->arg;
             gcc_rvalue_t *member_val = gcc_rvalue_access_field(val, loc, gcc_get_field(gcc_struct, arg_info->position));
-            auto submatch_outcomes = perform_conditional_match(outcomes.match_env, &outcomes.match_block, arg_info->type, member_val, arg);
+            auto submatch_outcomes = perform_conditional_match(env, &outcomes.match_block, arg_info->type, member_val, arg);
             outcomes.match_block = submatch_outcomes.match_block;
-            outcomes.match_env = submatch_outcomes.match_env;
             gcc_jump(submatch_outcomes.no_match_block, loc, outcomes.no_match_block);
         }
         return outcomes;
@@ -166,7 +160,6 @@ match_outcomes_t perform_conditional_match(env_t *env, gcc_block_t **block, sss_
         return (match_outcomes_t){
             submatch_outcomes.match_block,
             outcomes.no_match_block,
-            submatch_outcomes.match_env,
         };
     }
     default: {

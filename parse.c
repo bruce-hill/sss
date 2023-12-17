@@ -323,7 +323,7 @@ const char *get_word(const char **inout) {
 
 const char *get_id(const char **inout) {
     const char *pos = *inout;
-    const char* word = get_word(&pos);
+    const char *word = get_word(&pos);
     if (!word) return word;
     for (int i = 0; keywords[i]; i++)
         if (strcmp(word, keywords[i]) == 0)
@@ -535,8 +535,17 @@ PARSER(parse_pointer_type) {
 
 PARSER(parse_type_name) {
     const char *start = pos;
-    const char* id = get_id(&pos);
+    const char *id = get_id(&pos);
     if (!id) return NULL;
+    for (;;) {
+        const char *next = pos;
+        spaces(&next);
+        if (!match(&next, ".")) break;
+        const char *next_id = get_id(&next);
+        if (!next_id) break;
+        id = heap_strf("%s.%s", id, next_id);
+        pos = next;
+    }
     ast_t *ast = NewAST(ctx->file, start, pos, TypeVar, .name=id);
     ast_t *fielded = parse_field_suffix(ctx, ast);
     return fielded ? fielded : ast;
@@ -779,6 +788,8 @@ PARSER(parse_reduction) {
     const char *combo_start = pos;
     operator_e op = match_binary_operator(&pos);
     ast_t *combination;
+    ast_t *lhs = NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0");
+    ast_t *rhs = NewAST(ctx->file, pos, pos, Var, .name="y.0");
     if (op == OP_MIN || op == OP_MAX) {
         ast_t *key = NewAST(ctx->file, pos, pos, Var, op == OP_MIN ? "_min_" : "_max_");
         for (bool progress = true; progress; ) {
@@ -792,20 +803,16 @@ PARSER(parse_reduction) {
         }
         if (key->tag == Var) key = NULL;
         else pos = key->end;
-        combination = new(ast_t, .tag=op == OP_MIN ? Min : Max, .file=ctx->file, .start=combo_start, .end=pos, .__data.Min={
-                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"),
-                             .key=key});
+        combination = op == OP_MIN ?
+            NewAST(ctx->file, combo_start, pos, Min, .lhs=lhs, .rhs=rhs, .key=key)
+            : NewAST(ctx->file, combo_start, pos, Max, .lhs=lhs, .rhs=rhs, .key=key);
     } else if (op == OP_MIX) {
         ast_t *key = expect_ast(ctx, start, &pos, parse_expr, "I expected an amount to mix by");
         if (!match_word(&pos, "of"))
             parser_err(ctx, pos, pos, "I expected the word 'of' here");
-        combination = NewAST(ctx->file, start, pos, Mix, .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"), .key=key);
+        combination = NewAST(ctx->file, start, pos, Mix, .lhs=lhs, .rhs=rhs, .key=key);
     } else if (op != OP_UNKNOWN) {
-        combination = NewAST(ctx->file, combo_start, pos, BinaryOp, .op=op,
-                             .lhs=NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0"),
-                             .rhs=NewAST(ctx->file, pos, pos, Var, .name="y.0"));
+        combination = NewAST(ctx->file, combo_start, pos, BinaryOp, .op=op, .lhs=lhs, .rhs=rhs);
     } else {
         return NULL;
     }
@@ -828,8 +835,19 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char *start = lhs->start;
     const char *pos = lhs->end;
     if (!match(&pos, "[")) return NULL;
-    ast_t *index = optional_ast(ctx, &pos, parse_extended_expr);
-    spaces(&pos);
+    whitespace(&pos);
+    ast_t *index;
+    if (match(&pos, ".")) {
+        // array[.field]
+        const char *field_start = pos-1;
+        const char *field = get_id(&pos);
+        if (!field) parser_err(ctx, field_start, pos, "I expected a field name here");
+        index = NewAST(ctx->file, field_start, pos, FieldAccess, .field=field);
+    } else {
+        // obj[expr]
+        index = optional_ast(ctx, &pos, parse_extended_expr);
+    }
+    whitespace(&pos);
     bool unchecked = match(&pos, ";") && (spaces(&pos), match_word(&pos, "unchecked") != 0);
     expect_closing(ctx, &pos, "]", "I wasn't able to parse the rest of this index");
     return NewAST(ctx->file, start, pos, Index, .indexed=lhs, .index=index, .unchecked=unchecked);
@@ -1932,7 +1950,7 @@ PARSER(parse_type_def) {
 
     int64_t starting_indent = sss_get_indent(ctx->file, pos);
 
-    const char *name = get_id(&pos);
+    ast_t *name = optional_ast(ctx, &pos, parse_type_name);
     if (!name) return NULL;
     spaces(&pos);
 
@@ -1982,7 +2000,7 @@ PARSER(parse_enum_type) {
             *dest = '\0';
             append(tag_names, name);
             append(tag_values, next_value);
-            args_t args = (args_t){ARRAY("value"), ARRAY(type_ast), ARRAY((ast_t*)NULL)};
+            args_t args = (args_t){ARRAY(FakeAST(Var, .name="value")), ARRAY(type_ast), ARRAY((ast_t*)NULL)};
             append(tag_args, args);
             pos = type_ast->end;
             goto carry_on;
@@ -1999,7 +2017,7 @@ PARSER(parse_enum_type) {
             whitespace(&pos);
             expect_closing(ctx, &pos, ")", "I wasn't able to parse the rest of this tagged union member");
         } else {
-            args = (args_t){EMPTY_ARRAY(const char*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
+            args = (args_t){EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
         }
 
         spaces(&pos);
@@ -2037,45 +2055,44 @@ PARSER(parse_enum_type) {
 
 args_t parse_args(parse_ctx_t *ctx, const char **pos, bool allow_unnamed)
 {
-    args_t args = {EMPTY_ARRAY(const char*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
+    args_t args = {EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*), EMPTY_ARRAY(ast_t*)};
     for (;;) {
         const char *batch_start = *pos;
-        int64_t first = LENGTH(args.names);
+        int64_t first = LENGTH(args.args);
         ast_t *default_val = NULL;
         ast_t *type = NULL;
         for (;;) {
             whitespace(pos);
-            const char *arg_start = *pos;
-            const char *name = get_id(pos);
+            ast_t *name = optional_ast(ctx, pos, parse_var);
             whitespace(pos);
             if (strncmp(*pos, "==", 2) != 0 && match(pos, "=")) {
                 default_val = expect_ast(ctx, *pos-1, pos, parse_term, "I expected a value after this '='");
-                append(args.names, name);
+                append(args.args, name);
                 break;
             } else if (match(pos, ":")) {
                 type = expect_ast(ctx, *pos-1, pos, parse_type, "I expected a type here");
-                append(args.names, name);
+                append(args.args, name);
                 break;
             } else if (allow_unnamed) {
-                *pos = arg_start;
+                *pos = name->start;
                 type = optional_ast(ctx, pos, parse_type);
                 if (type)
-                    append(args.names, NULL);
+                    append(args.args, NULL);
                 break;
             } else if (name) {
-                append(args.names, name);
+                append(args.args, name);
                 spaces(pos);
                 if (!match(pos, ",")) break;
             } else {
                 break;
             }
         }
-        if (LENGTH(args.names) == first) break;
+        if (LENGTH(args.args) == first) break;
         if (!default_val && !type)
             parser_err(ctx, batch_start, *pos, "I expected a ':' and type, or '=' and a default value after this parameter (%s)",
-                       ith(args.names, first));
+                       Match(ith(args.args, first), Var)->name);
 
-        for (int64_t i = first; i < LENGTH(args.names); i++) {
+        for (int64_t i = first; i < LENGTH(args.args); i++) {
             append(args.defaults, default_val);
             append(args.types, type);
         }
@@ -2090,7 +2107,7 @@ PARSER(parse_func_def) {
     const char *start = pos;
     if (!match_word(&pos, "func")) return NULL;
 
-    const char* name = get_id(&pos);
+    ast_t *name = optional_ast(ctx, &pos, parse_var);
     if (!name) return NULL;
 
     spaces(&pos);
@@ -2133,7 +2150,7 @@ PARSER(parse_convert_def) {
     const char *start = pos;
     if (!match_word(&pos, "convert")) return NULL;
 
-    const char* name = get_id(&pos);
+    ast_t *name = optional_ast(ctx, &pos, parse_var);
     if (!name) return NULL;
 
     spaces(&pos);

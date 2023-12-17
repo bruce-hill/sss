@@ -289,7 +289,7 @@ gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t, bool
     auto fn = Match(fn_t, FunctionType);
     for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
         gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
-        const char *arg_name = ith(fn->arg_names, i);
+        const char *arg_name = Match(ith(fn->args, i), Var)->name;
         append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
     }
     gcc_type_t *t_ret = sss_type_to_gcc(env, fn->ret);
@@ -307,7 +307,6 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         .global=global,
         .on_err = on_err,
         .file = f,
-        .bindings = new(table_t, .fallback=&global->bindings),
         .tail_calls = tail_calls,
     );
 
@@ -351,17 +350,17 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         Table_str_set(&env->global->typeinfos, type_to_string_concise(t), new(typeinfo_lval_t, .type=t, .lval=info_lval));
         mark_typeinfo_lvalue_initialized(env, t, gcc_rval(info_lval));
 
-        gcc_struct_t *ns_gcc_struct = gcc_type_as_struct(ns_gcc_t);
+        // gcc_struct_t *ns_gcc_struct = gcc_type_as_struct(ns_gcc_t);
 
-        // For each namespace struct member, bind its lval inside that type's namespace:
-        auto ns_struct = Match(ns_t, StructType);
-        for (int f = 1 /* skip 'type' */; f < LENGTH(ns_struct->field_names); f++) {
-            const char *name = ith(ns_struct->field_names, f);
-            sss_type_t *field_type = ith(ns_struct->field_types, f);
-            gcc_field_t *field = gcc_get_field(ns_gcc_struct, f);
-            gcc_lvalue_t *field_lval = gcc_lvalue_access_field(type_lval, NULL, field);
-            set_in_namespace(env, t, name, new(binding_t, .type=field_type, .lval=field_lval, .rval=gcc_rval(field_lval)));
-        }
+        // // For each namespace struct member, bind its lval inside that type's namespace:
+        // auto ns_struct = Match(ns_t, StructType);
+        // for (int f = 1 /* skip 'type' */; f < LENGTH(ns_struct->field_names); f++) {
+        //     const char *name = ith(ns_struct->field_names, f);
+        //     sss_type_t *field_type = ith(ns_struct->field_types, f);
+        //     gcc_field_t *field = gcc_get_field(ns_gcc_struct, f);
+        //     gcc_lvalue_t *field_lval = gcc_lvalue_access_field(type_lval, NULL, field);
+        //     set_in_namespace(env, t, name, new(binding_t, .type=field_type, .lval=field_lval, .rval=gcc_rval(field_lval)));
+        // }
     }
 
     // Load global functions:
@@ -371,8 +370,7 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         if (!type_ast)
             compiler_err(env, NULL, "Couldn't parse builtin type for %s: `%s`", fn.symbol, fn.type);
         sss_type_t *fn_type = parse_type_ast(env, type_ast);
-        gcc_func_t *func = import_function(env, fn.symbol, fn_type, true);
-        Table_str_set(&env->global->funcs, fn.symbol, func);
+        import_function(env, fn.symbol, fn_type, true);
     }
 
     Table_str_set(&env->global->bindings, "say",
@@ -383,46 +381,35 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
     return env;
 }
 
-env_t *fresh_scope(env_t *env)
+binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
 {
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    fresh->bindings = new(table_t, .fallback=env->bindings);
-    return fresh;
-}
-
-env_t *scope_with_type(env_t *env, sss_type_t *t)
-{
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    fresh->bindings = new(table_t, .fallback=env->bindings);
-    table_t *ns = get_namespace(env, t);
-    for (int64_t i = 1; i <= Table_length(ns); i++) {
-        struct { const char *key; binding_t *value; } *entry = Table_entry(ns, i);
-        if (!Table_str_get(fresh->bindings, entry->key))
-            Table_str_set(fresh->bindings, entry->key, entry->value);
-    }
-    return fresh;
-}
-
-static void copy_global_bindings(table_t *dest, table_t *src)
-{
-    for (; src; src = src->fallback) {
-        for (int64_t i = 1; i <= Table_length(src); i++) {
-            struct { const char *key; binding_t *value;} *entry = Table_str_entry(src, i);
-            if (strncmp(entry->key, "#type:", strlen("#type:")) == 0 || entry->value->visible_in_closures)
-                Table_str_set(dest, entry->key, entry->value);
+    switch (t->tag) {
+    case VariantType: {
+        auto variant = Match(t, VariantType);
+        assert(variant->lval && variant->namespace_type);
+        auto ns = Match(variant->namespace_type, StructType);
+        for (int64_t i = 0; i < LENGTH(ns->field_names); i++) {
+            if (streq(ith(ns->field_names, i), name)) {
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+                gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
+                gcc_field_t *field = gcc_get_field(gcc_struct, i);
+                gcc_lvalue_t *lval = gcc_lvalue_access_field(variant->lval, NULL, field);
+                return new(binding_t, .type=ith(ns->field_types, i), .lval=lval, .rval=gcc_rval(lval));
+            }
         }
+        return get_from_namespace(env, variant->variant_of, name);
     }
-}
-
-env_t *file_scope(env_t *env)
-{
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    fresh->bindings = new(table_t, .fallback=&env->global->bindings);
-    copy_global_bindings(fresh->bindings, env->bindings);
-    return fresh;
+    case ArrayType: {
+        gcc_func_t *fn = get_array_method(env, t, name);
+        return fn ? new(binding_t, .type=get_field_type(env, t, name), .func=fn, .rval=gcc_get_func_address(fn, NULL)) : NULL;
+    }
+    case TableType: {
+        gcc_func_t *fn = get_table_method(env, t, name);
+        return fn ? new(binding_t, .type=get_field_type(env, t, name), .func=fn, .rval=gcc_get_func_address(fn, NULL)) : NULL;
+    }
+    case PointerType: return get_from_namespace(env, Match(t, PointerType)->pointed, name);
+    default: return NULL;
+    }
 }
 
 void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
@@ -449,194 +436,12 @@ void compiler_err(env_t *env, ast_t *ast, const char *fmt, ...)
     exit(1);
 }
 
-binding_t *get_binding(env_t *env, const char *name)
-{
-    return Table_str_get(env->bindings, name);
-}
-
-sss_type_t *get_type_by_name(env_t *env, const char *name)
-{
-    sss_type_t *t = Table_str_get(env->bindings, heap_strf("#type:%s", name));
-    return t;
-}
-
-binding_t *get_local_binding(env_t *env, const char *name)
-{
-    table_t *fallback = env->bindings->fallback;
-    binding_t *b = Table_str_get(env->bindings, name);
-    env->bindings->fallback = fallback;
-    return b;
-}
-
 gcc_func_t *get_function(env_t *env, const char *name)
 {
     gcc_func_t *func = Table_str_get(&env->global->funcs, name);
     if (!func)
         compiler_err(env, NULL, "Couldn't find function: %s", name);
     return func;
-}
-
-static inline void _load_method(env_t *env, table_t *ns, const char *name, const char *symbol, sss_type_t *t)
-{
-    gcc_func_t *func = import_function(env, symbol, t, false);
-    Table_str_set(ns, name, new(binding_t, .type=t, .func=func, .rval=gcc_get_func_address(func, NULL)));
-}
-
-table_t *get_namespace(env_t *env, sss_type_t *t)
-{
-    while (t->tag == PointerType)
-        t = Match(t, PointerType)->pointed;
-
-    table_t *ns = Table_str_get(&env->global->type_namespaces, type_to_string(t));
-    if (!ns) {
-        ns = new(table_t, .fallback=env->bindings);
-        Table_str_set(&env->global->type_namespaces, type_to_string(t), ns);
-
-#define REF(x) Type(PointerType, .is_stack=true, .pointed=x)
-#define RO_REF(x) Type(PointerType, .is_stack=true, .is_readonly=true, .pointed=x)
-#define OPT(x) Type(PointerType, .is_optional=true, .pointed=x)
-#define FN(names, types, defaults, ret_type) Type(FunctionType, .arg_names=names, .arg_types=types, .arg_defaults=defaults, .ret=ret_type)
-#define TYPEINFO_DEREF(var) FakeAST(GetTypeInfo, FakeAST(Index, FakeAST(Var, var)))
-#define NAMES(...) ARRAY((const char*)__VA_ARGS__)
-#define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
-#define DEFTS(...) ARRAY((ast_t*)__VA_ARGS__)
-        sss_type_t *void_t = Type(VoidType);
-        sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
-        if (t->tag == TableType) {
-            sss_type_t *key_t = Match(t, TableType)->key_type;
-            sss_type_t *value_t = Match(t, TableType)->value_type;
-            _load_method(env, ns, "remove", "Table_remove",
-                         FN(NAMES("t", "key", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
-                            void_t));
-            _load_method(env, ns, "set", "Table_set",
-                         FN(NAMES("t", "key", "value", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
-                            void_t));
-            _load_method(env, ns, "reserve", "Table_reserve",
-                         FN(NAMES("t", "key", "value", "_type"),
-                            TYPES(REF(t), RO_REF(key_t), OPT(value_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
-                            Type(PointerType, value_t)));
-            _load_method(env, ns, "get", "Table_get",
-                         FN(NAMES("t", "key", "_type"),
-                            TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
-                            OPT(value_t)));
-            _load_method(env, ns, "get_raw", "Table_get_raw",
-                         FN(NAMES("t", "key", "_type"),
-                            TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, TYPEINFO_DEREF("t")),
-                            OPT(value_t)));
-            _load_method(env, ns, "clear", "Table_get_clear",
-                         FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
-            _load_method(env, ns, "mark_copy_on_write", "Table_mark_copy_on_write",
-                         FN(NAMES("t"), TYPES(REF(t)), DEFTS(NULL), void_t));
-        } else if (t->tag == ArrayType) {
-            sss_type_t *item_t = Match(t, ArrayType)->item_type;
-            sss_type_t *i64 = Type(IntType, .bits=64);
-            ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array"), .index=FakeAST(Int, .precision=64, .i=1)));
-            _load_method(env, ns, "insert", "Array_insert",
-                         FN(NAMES("array", "item", "index", "_item_size"),
-                            TYPES(REF(t), RO_REF(item_t), i64, i64),
-                            DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
-                            void_t));
-            _load_method(env, ns, "insert_all", "Array_insert_all",
-                         FN(NAMES("array", "to_insert", "index", "_item_size"),
-                            TYPES(REF(t), t, i64, i64),
-                            DEFTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
-                            void_t));
-            _load_method(env, ns, "remove", "Array_remove",
-                         FN(NAMES("array", "index", "count", "_item_size"),
-                            TYPES(REF(t), i64, i64, i64),
-                            DEFTS(NULL, FakeAST(Int, .precision=64, .i=-1), FakeAST(Int, .precision=64, .i=1), item_size),
-                            void_t));
-            _load_method(env, ns, "contains", "Array_contains",
-                         FN(NAMES("array", "item", "_type"),
-                            TYPES(RO_REF(t), RO_REF(item_t), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, TYPEINFO_DEREF("array")),
-                            Type(BoolType)));
-            _load_method(env, ns, "compact", "Array_compact",
-                         FN(NAMES("array", "item_size"), TYPES(REF(t), i64), DEFTS(NULL, item_size),
-                            t));
-            _load_method(env, ns, "sort", "Array_sort",
-                         FN(NAMES("array", "_type"),
-                            TYPES(REF(t), typeinfo_ptr_t),
-                            DEFTS(NULL, TYPEINFO_DEREF("array")),
-                            void_t));
-            _load_method(env, ns, "shuffle", "Array_shuffle",
-                         FN(NAMES("array", "_item_size"),
-                            TYPES(REF(t), i64),
-                            DEFTS(NULL, item_size),
-                            void_t));
-            _load_method(env, ns, "clear", "Array_clear",
-                         FN(NAMES("array"),
-                            TYPES(REF(t)),
-                            DEFTS(NULL),
-                            void_t));
-            _load_method(env, ns, "slice", "Array_slice",
-                         FN(NAMES("array", "range", "readonly", "_type"),
-                            TYPES(REF(t), Type(RangeType), Type(BoolType), typeinfo_ptr_t),
-                            DEFTS(NULL, NULL, FakeAST(Bool, false), TYPEINFO_DEREF("array")),
-                            t));
-        }
-#undef REF
-#undef RO_REF
-#undef OPT
-#undef FN
-#undef TYPEINFO_DEREF
-#undef NAMES
-#undef TYPES
-#undef DEFTS
-    }
-    return ns;
-}
-
-env_t *get_type_env(env_t *env, sss_type_t *t)
-{
-    env_t *fresh = GC_MALLOC(sizeof(env_t));
-    *fresh = *env;
-    fresh->bindings = get_namespace(env, t);
-    return fresh;
-}
-
-binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
-{
-    table_t *ns = get_namespace(env, t);
-    // Do lookup without fallbacks
-    // (we don't want module.Struct.__cord to return module.__cord, even
-    // though the namespace may have that set as a fallback so that code
-    // module.Struct can reference things inside the module's namespace)
-    binding_t *b = Table_str_get_raw(ns, name);
-
-    // If value isn't found, look up the value on the thing this type is a
-    // variant of and convert that type to the variant type (e.g. on a DSL
-    // variant of Str, bind "uppercased" to Str.uppercased, but with the type
-    // `func(s:DSL)->DSL`)
-    if (!b && t->tag == VariantType) {
-        sss_type_t *base = Match(t, VariantType)->variant_of;
-      next_base:;
-        binding_t *base_b = get_from_namespace(env, base, name);
-        if (base_b) {
-            // If this is a variant of a type with a method, lazily include its methods
-            // For example, `type DSL := Str` should get the method: uppercased:func(s:DSL)->DSL
-            b = new(binding_t);
-            *b = *base_b;
-            b->type = replace_type(b->type, base, t);
-            set_in_namespace(env, t, name, b);
-        } else if (base->tag == VariantType) {
-            base = Match(base, VariantType)->variant_of;
-            goto next_base;
-        }
-    }
-    return b;
-}
-
-void set_in_namespace(env_t *env, sss_type_t *t, const char *name, void *value)
-{
-    Table_str_set(get_namespace(env, t), heap_str(name), value);
 }
 
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))

@@ -105,7 +105,7 @@ void check_cow(env_t *env, gcc_block_t **block, sss_type_t *arr_t, gcc_rvalue_t 
     gcc_jump_condition(*block, NULL, should_cow, needs_cow, done);
     *block = needs_cow;
     // Copy array contents:
-    gcc_func_t *cow_fn = get_from_namespace(env, arr_t, "compact")->func;
+    gcc_func_t *cow_fn = get_array_method(env, arr_t, "compact");
     gcc_eval(*block, NULL, gcc_callx(env->ctx, NULL, cow_fn,
                                      arr, gcc_rvalue_int64(env->ctx, gcc_sizeof(env, get_item_type(arr_t)))));
     gcc_jump(*block, NULL, done);
@@ -215,11 +215,11 @@ gcc_rvalue_t *array_slice(env_t *env, gcc_block_t **block, ast_t *arr_ast, ast_t
     }
 
     // If we're not in the optimized case, fall back to the array.slice(range, readonly, _type) method
-    binding_t *slice_binding = get_from_namespace(env, arr_t, "slice");
-    assert(slice_binding);
+    gcc_func_t *slice_fn = get_array_method(env, arr_t, "slice");
+    assert(slice_fn);
     gcc_rvalue_t *range_val = compile_expr(env, block, index);
     return gcc_callx(
-        env->ctx, loc, slice_binding->func,
+        env->ctx, loc, slice_fn,
         gcc_lvalue_address(arr_var, loc),
         range_val,
         gcc_rvalue_bool(env->ctx, (access == ACCESS_READ) || !env->should_mark_cow),
@@ -236,11 +236,6 @@ gcc_rvalue_t *array_field_slice(env_t *env, gcc_block_t **block, ast_t *ast, con
             compiler_err(env, ast, "This value can't be sliced, because it may or may not be null.");
         return array_field_slice(env, block, WrapAST(ast, Index, .indexed=ast), field_name, access);
     }
-
-    // Methods take priority over field slices (e.g. if your array has structs
-    // with a .insert, array.insert should still be the method, not a field slice)
-    if (streq(field_name, "length") || get_from_namespace(env, array_type, field_name))
-        return NULL;
 
     sss_type_t *item_t = get_item_type(array_type);
     if (!item_t || base_variant(item_t)->tag != StructType)
@@ -505,6 +500,20 @@ void flatten_arrays(env_t *env, gcc_block_t **block, sss_type_t *t, gcc_rvalue_t
 
     gcc_jump(*block, NULL, already_flat);
     *block = already_flat;
+}
+
+gcc_func_t *get_array_method(env_t *env, sss_type_t *t, const char *name)
+{
+    struct {const char *name, *symbol;} symbols[] = {
+        {"insert", "Array_insert"}, {"insert_all", "Array_insert_all"}, {"remove", "Array_remove"},
+        {"contains", "Array_contains"}, {"compact", "Array_compact"}, {"sort", "Array_sort"},
+        {"shuffle", "Array_shuffle"}, {"clear", "Array_clear"}, {"slice", "Array_slice"},
+    };
+    for (int64_t i = 0; i < (int64_t)(sizeof(symbols)/sizeof(symbols[0])); i++) {
+        if (streq(name, symbols[i].name))
+            return import_function(env, symbols[i].symbol, get_field_type(env, t, name), false);
+    }
+    return NULL;
 }
 
 // vim: ts=4 sw=0 et cino=L2,l1,(0,W4,m1,\:0

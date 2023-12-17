@@ -72,7 +72,7 @@ typedef enum {
 typedef struct ast_s ast_t;
 
 typedef struct {
-    ARRAY_OF(const char*) names;
+    ARRAY_OF(ast_t*) args;
     ARRAY_OF(ast_t*) types;
     ARRAY_OF(ast_t*) defaults;
 } args_t;
@@ -100,7 +100,7 @@ struct ast_s {
         struct {
             const char *name;
             struct sss_type_s *type;
-            table_t *subtypes;
+            struct binding_s *binding;
         } TypeVar;
         struct {
             int64_t i;
@@ -164,7 +164,7 @@ struct ast_s {
             ast_t *key, *value;
         } TableEntry;
         struct {
-            const char *name;
+            ast_t *name;
             args_t args;
             ast_t *ret_type;
             ast_t *body;
@@ -260,8 +260,7 @@ struct ast_s {
             ast_t *value;
         } TaggedUnionField;
         struct {
-            const char *name;
-            ast_t *type, *namespace;
+            ast_t *name, *type, *namespace;
         } TypeDef;
         struct {
             ast_t *indexed, *index;
@@ -272,8 +271,7 @@ struct ast_s {
             const char *field;
         } FieldAccess;
         struct {
-            const char *var;
-            ast_t *source_type, *target_type, *body;
+            ast_t *var, *source_type, *target_type, *body;
         } ConvertDef;
         struct {
             ast_t *iter, *combination, *fallback;

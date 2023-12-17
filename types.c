@@ -57,7 +57,7 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
             if (!(flags & EXPAND_ARGS)) expanded = NULL;
             for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
                 if (i > 0) c = CORD_cat(c, ", ");
-                if ((flags & ARG_NAMES) && fn->arg_names) c = CORD_cat(c, ith(fn->arg_names, i));
+                if ((flags & ARG_NAMES) && fn->args) c = CORD_cat(c, Match(ith(fn->args, i), Var)->name);
                 if ((flags & ARG_NAMES) && fn->arg_defaults) {
                     ast_t *def = ith(fn->arg_defaults, i);
                     if (def) {
@@ -65,7 +65,7 @@ static CORD type_to_cord(sss_type_t *t, table_t *expanded, stringify_flags_e fla
                         continue;
                     }
                 }
-                if ((flags & ARG_NAMES) && fn->arg_names) c = CORD_cat(c, ":");
+                if ((flags & ARG_NAMES) && fn->args) c = CORD_cat(c, ":");
                 c = CORD_cat(c, type_to_cord(ith(fn->arg_types, i), expanded, flags));
             }
             c = CORD_cat(c, ")->");

@@ -236,15 +236,14 @@ int run_repl(gcc_jit_context *ctx)
         gcc_func_t *repl_func = gcc_new_func(ctx, NULL, GCC_FUNCTION_EXPORTED, gcc_type(ctx, VOID), repl_name, 0, NULL, 0);
         block = gcc_new_block(repl_func, fresh("repl_body"));
 
-        env_t *fresh_env = fresh_scope(env);
-        compile_statement(fresh_env, &block, ast);
+        compile_statement(env, &block, ast);
         if (block) {
             gcc_return_void(block, NULL);
             block = NULL;
         }
 
-        for (int64_t i = 1; i <= Table_length(&fresh_env->global->ast_functions); i++) {
-            struct { const char *key; func_context_t *value; } *entry = Table_str_entry(&fresh_env->global->ast_functions, i);
+        for (int64_t i = 1; i <= Table_length(&env->global->ast_functions); i++) {
+            struct { const char *key; func_context_t *value; } *entry = Table_str_entry(&env->global->ast_functions, i);
             const char *func_addr = heap_strf("%p", entry->value->func);
             if (Table_str_get(&compiled_functions, func_addr))
                 continue;
@@ -255,7 +254,7 @@ int run_repl(gcc_jit_context *ctx)
 
         result = gcc_compile(ctx);
         if (result == NULL)
-            compiler_err(fresh_env, NULL, "Compilation failed");
+            compiler_err(env, NULL, "Compilation failed");
 
         // Extract the generated code from "result".   
         void (*run_line)(void) = (void (*)(void))gcc_jit_result_get_code(result, repl_name);
@@ -268,25 +267,25 @@ int run_repl(gcc_jit_context *ctx)
             fputs("\x1b[m", stdout);
         fflush(stdout);
 
-        // Copy out the variables to GC memory
-        for (table_t *bindings = fresh_env->bindings; bindings; bindings = bindings->fallback) {
-            for (int64_t i = 1; i <= Table_length(bindings); i++) {
-                struct {const char *key; binding_t *value;} *entry = Table_str_entry(bindings, i);
-                binding_t *b = entry->value;
-                if (Table_str_get(env->bindings, entry->key) == b)
-                    continue;
+        // // Copy out the variables to GC memory
+        // for (table_t *bindings = env->bindings; bindings; bindings = bindings->fallback) {
+        //     for (int64_t i = 1; i <= Table_length(bindings); i++) {
+        //         struct {const char *key; binding_t *value;} *entry = Table_str_entry(bindings, i);
+        //         binding_t *b = entry->value;
+        //         if (Table_str_get(env->bindings, entry->key) == b)
+        //             continue;
 
-                // Update the binding so it points to the global memory:
-                // TODO: get public value properly
-                void *global = gcc_jit_result_get_global(result, entry->key);
-                assert(global);
-                gcc_type_t *gcc_t = sss_type_to_gcc(fresh_env, b->type);
-                gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(fresh_env->ctx, gcc_get_ptr_type(gcc_t), global);
-                b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
-                b->rval = gcc_rval(b->lval);
-                Table_str_set(env->bindings, entry->key, b);
-            }
-        }
+        //         // Update the binding so it points to the global memory:
+        //         // TODO: get public value properly
+        //         void *global = gcc_jit_result_get_global(result, entry->key);
+        //         assert(global);
+        //         gcc_type_t *gcc_t = sss_type_to_gcc(env, b->type);
+        //         gcc_rvalue_t *ptr = gcc_jit_context_new_rvalue_from_ptr(env->ctx, gcc_get_ptr_type(gcc_t), global);
+        //         b->lval = gcc_jit_rvalue_dereference(ptr, NULL);
+        //         b->rval = gcc_rval(b->lval);
+        //         Table_str_set(env->bindings, entry->key, b);
+        //     }
+        // }
 
         CLEANUP();
 #undef CLEANUP

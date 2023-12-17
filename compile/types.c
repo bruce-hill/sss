@@ -146,7 +146,7 @@ gcc_rvalue_t *get_typeinfo_rvalue(env_t *env, sss_type_t *t)
                 (gcc_rvalue_t*[]){__VA_ARGS__})); } while (0)
 
     // From here out, all the initialization of variants is the same as the underlying type
-    sss_type_t *str_t = get_type_by_name(env, "Str");
+    sss_type_t *str_t = Table_str_get(&env->global->types, "Str");
     while (t->tag == VariantType) {
         t = Match(t, VariantType)->variant_of;
 
