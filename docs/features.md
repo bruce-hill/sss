@@ -6,29 +6,42 @@ from other languages, some of them are original.
 ## Value Semantics
 
 SSS offers well-defined value semantics for all types in the language. What
-does this mean? It means that for every type in the language except for pointer
-types, the following axioms hold:
+does this mean? It means that for every type in the language, the following
+axioms hold:
 
 - **Axiom 1: Immutability** if `a == b`, then it will always be the case that
-  `a == b`, unless a new value is assigned to either variable.
+  `a == b`, unless a new value is assigned to either variable. The only
+  exception to this rule is floating point NaN values, as specified by IEEE754
 - **Axiom 2: Hashing** if `a == b` and `table` is a table, then `table[a] ==
-  table[b]`.
+  table[b]` (`a` and `b` can be used interchangeably as keys in a hash table).
 - **Axiom 3: Memoization** if `a == b` and `fn` is a function that has
-  memoization, then `fn(a) == fn(b)`, provided that `fn` has an unlimited cache
-  size or the return value for `a` is still in the cache when `fn(b)` is
-  called.
-- **Axiom 4: Arrays** if `a` and `b` are both arrays of the same type, then `a
-  == b` if and only if `a` and `b` are the same length and `a[i] == b[i]` for
-  all indices `i`.
-- **Axiom 5: Structs** if `a` and `b` are both structs of the same type, then
-  `a == b` if and only if `a.member == b.member` for all struct members.
-- **Axiom 6: Tagged Unions** if `a` and `b` are both tagged unions of the same
-  type, then `a == b` if and only if both have the same tag, and the same
+  memoization, then `fn(a) == fn(b)`, provided that the return value for `a`
+  hasn't been evicted from the cache.
+- **Axiom 4: Arrays** if `a` and `b` are both array values of the same type,
+  then `a == b` if and only if `a` and `b` are the same length and `a[i] ==
+  b[i]` for all indices `i`.
+- **Axiom 5: Structs** if `a` and `b` are both struct values of the same type,
+  then `a == b` if and only if `a.member == b.member` for all struct members.
+- **Axiom 6: Tagged Unions** if `a` and `b` are both tagged union values of the
+  same type, then `a == b` if and only if both have the same tag, and the same
   tagged value (if any).
-- **Axiom 7: Tables** if `a` and `b` are both tables of the same type, then `a
-  == b` if and only if `a` and `b` have the same keys and `a[key] == b[key]`
-  for all keys.
-- **Axiom 8: Ordered Comparisons** for all types except tables (which do not
+- **Axiom 7: Tables** if `a` and `b` are both table values of the same type,
+  then `a == b` if and only if `a` and `b` have the same keys, `a[key] ==
+  b[key]` for all keys, and `a` and `b` have the equal fallbacks and default
+  values (if any).
+- **Axiom 8: Pointers** pointers are numeric values that represent memory
+  addresses, so comparisons between pointers or hashing pointers means
+  comparing or hasing the _address_, not the content of the memory that resides
+  there. `a == b` if and only if the location of the memory pointed to by `a`
+  is the same location as the memory pointed to by `b`. In other words, `a == b`
+  if and only if mutating data pointed to by `a` has the same effect as
+  mutating data pointed to by `b`. Structural equality can be checked by
+  dereferencing the pointers thusly: `a[] == b[]`. If `a == b`, this implies
+  that `a[] == b[]`, but the converse is not guaranteed.
+- **Axiom 9: Floating Point** in order to comply with IEEE754, floating point
+  NaN values are always *not* equal any value, even themselves. In the absence
+  of NaN values, floating point numbers follow sensible semantics.
+- **Axiom 10: Ordered Comparisons** for all types except tables (which do not
   support ordered comparisons), all statements that are true for `==` are also
   true for ordered comparison operators (`<`, `<=`, `>`, `>=`). Ordered
   comparisons for structs, tagged unions, and arrays are performed elementwise,
@@ -39,27 +52,6 @@ types, the following axioms hold:
 These axioms are meant to empower you to be able to reason about your programs
 more easily. Each one of these statements is a promise from the language to
 you, the programmer, which will allow you to more easily write correct programs.
-
-### Pointers
-
-Pointers, unlike the types mentioned above, use reference semantics. That is to
-say, pointers are a numeric value that represents a memory address, and
-comparisons between pointers or hashing pointers means comparing or hashing the
-_address_, not the content of the memory that resides there. Two pointers are
-equal if and only if they refer to the same location in memory. This means that
-if `a` and `b` point to the same location in memory, assigning a new value to
-`*a` is equivalent to assigning a new value to `*b`. If you want to check for
-structural equality between two pointers, you can access the underlying values
-by dereferencing the pointers: `*a == *b`.
-
-### Floating Point NaN Values
-
-The one exception to the above rules is that floating point numbers (`Num` and
-`Num32`) comply with the IEEE-754 specification for handling NaN (not-a-number)
-values, which require that if `x` is NaN, then all comparisons with `x` must
-return `no`. However, hashing and memoization work for NaN values:
-`table[Num.NaN] == table[Num.NaN]` and `fn(Num.NaN) == fn(Num.NaN)`
-
 
 ## Language-level Function Memoization
 
@@ -257,9 +249,9 @@ enemies := @[
   Enemy{456, "Bad Bob"},
 ]
 
->>> enemies.id
+>>> enemies[.id]
 === [123, 456]
->>> enemies.name
+>>> enemies[.name]
 === ["Evil Ed", "Bad Bob"]
 ```
 

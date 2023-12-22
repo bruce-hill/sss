@@ -11,10 +11,18 @@ A SSS array of `Foo` items is equivalent to the following C structure:
 
 ```c
 struct {
-    Foo *items;
-    int32_t length; // Number of items in the array
-    int16_t stride; // Increment to step over the array by
-    int16_t capacity; // Free capacity (or negative for Copy-on-Write)
+    // A pointer to the array items:
+    Foo *data;
+    // The length of the array:
+    int64_t length:42;
+    // Number of extra items that can fit after the end of the array:
+    uint8_t free:4;
+    // Whether to the array must be copied before writing:
+    bool copy_on_write:1;
+    // Whether or not the item type holds references to memory:
+    bool atomic:1;
+    // The address difference between items (can be negative):
+    int16_t stride:16;
 }
 ```
 
@@ -40,14 +48,20 @@ for (in64_t x = 4; x <= 7; x++)
 ## Indexing
 
 Array accesses in SSS are 1-indexed and fully bounds-checked. Accessing an
-array index below 1 or above the length of the array results in a runtime
-failure with an informative message. So `val := nums[i]` is roughly equivalent
-to the following C code:
+array index of zero or above the length of the array results in a runtime
+failure with an informative message.
+
+Negative array indices are treated as back-indexed. In other words, -1 refers
+to the last item, -2 refers to the second-to-last, and so on. Negative indices
+below the negative length of the array will cause a runtime error.
+
+So `val := nums[i]` is roughly equivalent to the following C code:
 
 ```c
-if (i < 1 || i > nums.len)
-    fail("%ld is not a valid array index. Valid indices are 1..%d", i, nums.len);
-int64_t val = nums.items[(i-1)*nums.stride];
+int64_t effective_index = i >= 0 ? i : (nums.len + i + 1);
+if (effective_index < 1 || effective_index > nums.len)
+    fail("%ld is not a valid array index. Valid indices are +/-1..%d", i, nums.len);
+int64_t val = nums.items[(effective_index-1)*nums.stride];
 ```
 
 However, 1-indexing and bounds-checking do not incur any overhead or chance of
@@ -95,44 +109,41 @@ sliced.
 
 ### Iteration and Mutability
 
-Modifying an array while iterating over its contents is allowed and
-memory-safe, but not recommended (because it's easy to get confused and end up
-with bugs). Under the hood, SSS arrays maintain the following guarantees:
+To avoid bugs caused by mutation during iteration, SSS does not allow iterating
+over mutable arrays. However, it is very simple to get an immutable value
+"snapshot" of a mutable array by dereferencing or slicing it. Here is an example:
 
-- Loop iterators retain a reference to a snapshot of the *original* array
-  contents at the start of the iteration and the *original* length of the array
-  at the start of iteration.
+```sss
+my_arr := @[1,2,3]
 
-- Items may be inserted into or appended to an array during iteration, but this 
-  will not change which items are iterated over. Inserting an item into the
-  middle of an array will always trigger a reallocation. Appending an item to
-  the end of an array may or may not trigger a reallocation.
+// Compiler error:
+// for x in my_arr
 
-- Items may be removed from an array during iteration, but removals will not
-  change which items are iterated over, or in which order this happens.
-  Removing an item from the middle of an array will always trigger a
-  reallocation. Removing an item from the end of an array will never trigger a
-  reallocation.
+// Safe:
+for x in my_arr[]
+    say "$x"
+```
 
-- If a new value is _assigned_ to an array entry (i.e. `array[i] = new_val`),
-  the iteration will see the new value if and only if the underlying memory
-  has not been reallocated.
+Because arrays work as copy-on-write, this operation does not create a copy of
+the mutable array unless the array is mutated.
 
-As a rule of thumb, it's always better to avoid mutating an array during
-iteration, but sometimes it's unavoidable. SSS strives to mitigate the risks
-in such cases.
+In general, it's much less bug-prone to avoid appending or removing from arrays
+during iteration and instead use array comprehensions:
 
 ```SSS
 all_things := @[....]
 // Bad! This is a bug!
-for i,thing in *all_things
+for i,thing in all_things[]
+    thing.update()
     if needs_removal(thing)
         // First removal is fine, but second
         // removal is off by an index
         all_things.remove(i)
 
 // Better:
-*all_things = [t for t in all_things
-               unless needs_removal(t)]
+for thing in all_things[]
+    thing.update()
+all_things[] = [t for t in all_things[]
+                unless needs_removal(t)]
 
 ```
