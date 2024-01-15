@@ -1398,7 +1398,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         auto indexing = Match(ast, Index);
 
         // Field slice: array[.field] --> [x.field for x in array]
-        if (indexing->index->tag == FieldAccess && Match(indexing->index, FieldAccess)->fielded == NULL) {
+        if (indexing->index && indexing->index->tag == FieldAccess && Match(indexing->index, FieldAccess)->fielded == NULL) {
             const char *field = Match(indexing->index, FieldAccess)->field;
             gcc_rvalue_t *slice = array_field_slice(env, block, indexing->indexed, field, ACCESS_READ);
             if (!slice)
