@@ -836,14 +836,18 @@ ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
     const char *pos = lhs->end;
     if (!match(&pos, "[")) return NULL;
     whitespace(&pos);
-    ast_t *index;
+    ast_t *index = NULL;
     if (match(&pos, ".")) {
         // array[.field]
         const char *field_start = pos-1;
         const char *field = get_id(&pos);
-        if (!field) parser_err(ctx, field_start, pos, "I expected a field name here");
-        index = NewAST(ctx->file, field_start, pos, FieldAccess, .field=field);
-    } else {
+        if (field)
+            index = NewAST(ctx->file, field_start, pos, FieldAccess, .field=field);
+        else
+            --pos;
+    }
+
+    if (!index) {
         // obj[expr]
         index = optional_ast(ctx, &pos, parse_extended_expr);
     }
