@@ -94,7 +94,10 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
         auto member_types = EMPTY_ARRAY(sss_type_t*);
         sss_type_t *t = Type(StructType, .field_names=member_names, .field_types=member_types, .field_defaults=struct_->members.defaults);
         for (int64_t i = 0, len = LENGTH(struct_->members.types); i < len; i++) {
-            const char *member_name = Match(ith(struct_->members.args, i), Var)->name;
+            auto arg = ith(struct_->members.args, i);
+            const char *member_name = arg ? Match(arg, Var)->name : NULL;
+            if (!member_name)
+                member_name = heap_strf("_%ld", i);
             append(member_names, member_name);
             ast_t *type_ast = ith(struct_->members.types, i);
             sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
