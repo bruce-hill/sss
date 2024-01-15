@@ -143,6 +143,7 @@ static void bind_match_patterns(env_t *env, table_t *bindings, sss_type_t *t, as
 
 void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
 {
+    if (!ast) return;
     switch (ast->tag) {
     case Var: {
         auto var = Match(ast, Var);

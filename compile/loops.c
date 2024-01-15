@@ -141,6 +141,11 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_assign(for_first, NULL, index_shadow, gcc_rval(index_var));
     gcc_update(for_next, NULL, index_var, GCC_BINOP_PLUS, gcc_one(env->ctx, i64));
 
+    if (for_->index) {
+        Match(for_->index, Var)->binding->lval = index_var;
+        Match(for_->index, Var)->binding->rval = gcc_rval(index_var);
+    }
+
     gcc_lvalue_t *item_shadow;
     sss_type_t *item_t;
     switch (base_variant(iter_t)->tag) {
@@ -172,6 +177,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         // item = *item_ptr (or item = item_ptr)
         gcc_rvalue_t *item_rval = gcc_rval(gcc_jit_rvalue_dereference(gcc_rval(item_ptr), NULL));
         gcc_assign(for_body, NULL, item_shadow, item_rval);
+        if (for_->value) {
+            Match(for_->value, Var)->binding->lval = item_shadow;
+            Match(for_->value, Var)->binding->rval = gcc_rval(item_shadow);
+        }
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, item_rval);
 
@@ -245,6 +254,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         item_t = Type(IntType, .bits=64);
         item_shadow = gcc_local(func, NULL, i64, "_x");
         gcc_assign(for_body, NULL, item_shadow, x);
+        if (for_->value) {
+            Match(for_->value, Var)->binding->lval = item_shadow;
+            Match(for_->value, Var)->binding->rval = gcc_rval(item_shadow);
+        }
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, x);
 
@@ -301,6 +314,10 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_rvalue_t *to_assign = type_eq(item_t, iter_var_t) ? gcc_rval(iter_var)
             : gcc_rval(gcc_rvalue_dereference(gcc_rval(iter_var), NULL));
         gcc_assign(for_body, NULL, item_shadow, to_assign);
+        if (for_->value) {
+            Match(for_->value, Var)->binding->lval = item_shadow;
+            Match(for_->value, Var)->binding->rval = gcc_rval(item_shadow);
+        }
         if (for_first)
             gcc_assign(for_first, NULL, item_shadow, to_assign);
 
