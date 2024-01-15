@@ -202,6 +202,8 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
             }
         }
         binding_t *fn_binding = new(binding_t, .type=get_type(env, ast));
+        gcc_func_t *func = get_function_def(env, ast, Match(fndef->name, Var)->name);
+        fn_binding->func = func;
         Table_str_set(bindings, Match(fndef->name, Var)->name, fn_binding);
         break;
     }

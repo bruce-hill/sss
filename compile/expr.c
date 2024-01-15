@@ -296,9 +296,8 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
             ++field_index;
             auto var = Match(fn->name, Var);
-            gcc_func_t *func = get_function_def(env, stmt, var->name);
-            gcc_assign(*block, loc, field_lval, gcc_get_func_address(func, NULL));
-            var->binding->func = func;
+            assert(var->binding->func);
+            gcc_assign(*block, loc, field_lval, gcc_get_func_address(var->binding->func, NULL));
             var->binding->lval = field_lval;
             var->binding->rval = gcc_rval(field_lval);
             var->binding->visible_in_closures = true;
@@ -422,6 +421,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 return gcc_rval(binding->lval);
             if (binding->func)
                 return gcc_get_func_address(binding->func, loc);
+            compiler_err(env, ast, "This variable has a binding, but no value attached to it");
         }
         compiler_err(env, ast, "I can't find a definition for this variable"); 
     }
