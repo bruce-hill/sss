@@ -97,7 +97,7 @@ sss_type_t *parse_type_ast(env_t *env, ast_t *ast)
             auto arg = ith(struct_->members.args, i);
             const char *member_name = arg ? Match(arg, Var)->name : NULL;
             if (!member_name)
-                member_name = heap_strf("_%ld", i);
+                member_name = heap_strf("_%ld", i+1);
             append(member_names, member_name);
             ast_t *type_ast = ith(struct_->members.types, i);
             sss_type_t *member_t = type_ast ? parse_type_ast(env, type_ast) : get_type(env, ith(struct_->members.defaults, i));
