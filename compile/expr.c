@@ -1743,7 +1743,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 return compile_expr(env, block, WrapAST(
                         ast, FunctionCall,
                         .fn=WrapAST(binop->rhs, FieldAccess, .fielded=binop->rhs, .field="contains"),
-                        .args=ARRAY(binop->lhs)));
+                        .args=ARRAY(binop->rhs, binop->lhs)));
             } else if (base_variant(member_t)->tag == TaggedUnionType && type_eq(member_t, container_t)) {
                 gcc_type_t *gcc_tagged_t = sss_type_to_gcc(env, member_t);
                 gcc_struct_t *gcc_tagged_s = gcc_type_as_struct(gcc_tagged_t);
