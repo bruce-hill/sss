@@ -350,6 +350,11 @@ env_t *new_environment(gcc_ctx_t *ctx, jmp_buf *on_err, sss_file_t *f, bool tail
         Table_str_set(&env->global->typeinfos, type_to_string_concise(t), new(typeinfo_lval_t, .type=t, .lval=info_lval));
         mark_typeinfo_lvalue_initialized(env, t, gcc_rval(info_lval));
 
+        if (t->tag == VariantType) {
+            Match(t, VariantType)->lval = type_lval;
+            Match(t, VariantType)->namespace_type = ns_t;
+        }
+
         // gcc_struct_t *ns_gcc_struct = gcc_type_as_struct(ns_gcc_t);
 
         // // For each namespace struct member, bind its lval inside that type's namespace:

@@ -912,20 +912,19 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             // Safe string interpolation:
             if (!type_eq(interp_t, string_t)) {
-                compiler_err(env, ast, "Automatic string interp is not implemented");
-                // binding_t *interp_binding = get_from_namespace(env, interp_t, heap_strf("#convert-to:%s", type_to_string(string_t)));
-                // if (!interp_binding)
-                //     interp_binding = get_from_namespace(env, string_t, heap_strf("#convert-from:%s", type_to_string(interp_t)));
+                binding_t *interp_binding = get_from_namespace(env, interp_t, heap_strf("as_%s", type_to_string(string_t)));
+                if (!interp_binding)
+                    interp_binding = get_from_namespace(env, string_t, heap_strf("from_%s", type_to_string(interp_t)));
 
-                // if (interp_binding && interp_binding->func) {
-                //     gcc_lvalue_t *converted = gcc_local(func, loc, gcc_t, "_converted");
-                //     gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, interp_binding->func, obj));
-                //     obj = gcc_rval(converted);
-                //     interp_t = string_t;
-                // } else if (!type_eq(string_t, Table_str_get(&env->global->types, "Str"))) {
-                //     compiler_err(env, *chunk, "You are trying to interpolate a %T value, but you didn't define a conversion function to convert those to %T",
-                //                  interp_t, string_t);
-                // }
+                if (interp_binding && interp_binding->func) {
+                    gcc_lvalue_t *converted = gcc_local(func, loc, gcc_t, "_converted");
+                    gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, interp_binding->func, obj));
+                    obj = gcc_rval(converted);
+                    interp_t = string_t;
+                } else if (!type_eq(string_t, Table_str_get(&env->global->types, "Str"))) {
+                    compiler_err(env, *chunk, "You are trying to interpolate a %T value, but you didn't define a conversion function to convert those to %T",
+                                 interp_t, string_t);
+                }
             }
 
             if (!interp->quote_string && type_eq(interp_t, string_t)) {
