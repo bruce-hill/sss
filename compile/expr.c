@@ -1841,12 +1841,16 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         }
         case OP_CONCAT: {
             (void)get_type(env, ast);
+            sss_type_t *lhs_iter_t = get_iter_type(env, binop->lhs);
+            binding_t *lhs_binding = new(binding_t, .type=lhs_iter_t);
             ast_t *lhs_loop = WrapAST(binop->lhs, For, .iter=binop->lhs,
-                                      .value=WrapAST(binop->lhs, Var, .name="x.0"),
-                                      .body=WrapAST(binop->lhs, Var, .name="x.0"));
+                                      .value=WrapAST(binop->lhs, Var, .name="lhs.0", .binding=lhs_binding),
+                                      .body=WrapAST(binop->lhs, Var, .name="lhs.0", .binding=lhs_binding));
+            sss_type_t *rhs_iter_t = get_iter_type(env, binop->rhs);
+            binding_t *rhs_binding = new(binding_t, .type=rhs_iter_t);
             ast_t *rhs_loop = WrapAST(binop->rhs, For, .iter=binop->rhs,
-                                      .value=WrapAST(binop->rhs, Var, .name="x.0"),
-                                      .body=WrapAST(binop->rhs, Var, .name="x.0"));
+                                      .value=WrapAST(binop->rhs, Var, .name="rhs.0", .binding=rhs_binding),
+                                      .body=WrapAST(binop->rhs, Var, .name="rhs.0", .binding=rhs_binding));
             ast_t *concat_ast = WrapAST(ast, Array, .items=ARRAY(lhs_loop, rhs_loop));
             return compile_expr(env, block, concat_ast);
         }
