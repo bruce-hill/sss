@@ -226,7 +226,9 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
     sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
     ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array", .binding=new(binding_t, .type=t)), .index=FakeAST(Int, .precision=64, .i=1)));
 
-    if (streq(name, "insert")) {
+    if (streq(name, "length")) {
+        return INT_TYPE;
+    } else if (streq(name, "insert")) {
         return FN(NAMES("array", "item", "index", "_item_size"),
                   TYPES(REF(t), RO_REF(item_t), i64, i64),
                   DEFAULTS(NULL, NULL, FakeAST(Int, .precision=64, .i=0), item_size),
