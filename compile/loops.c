@@ -40,6 +40,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         switch (for_->iter->tag) {
         case For: {
             auto inner = Match(for_->iter, For);
+            compiler_err(env, ast, "Generator iteration is not currently implemented");
             if (inner->between)
                 compiler_err(env, inner->between, "The language doesn't support iterating over inner loops with a 'between' block");
 
@@ -52,7 +53,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             if (for_->first) {
                 auto stmts = EMPTY_ARRAY(ast_t*);
                 if (inner->index && for_->index)
-                    append(stmts, WrapAST(ast, Declare, for_->index, inner->index));
+                    Match(inner->index, Var)->binding = Match(for_->index, Var)->binding;
                 append(stmts, WrapAST(ast, Declare, for_->value, inner->first ? inner->first : inner->body));
                 append(stmts, for_->first);
                 first = WrapAST(ast, Block, stmts);

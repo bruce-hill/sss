@@ -216,7 +216,7 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
 #define RO_REF(x) Type(PointerType, .is_stack=true, .is_readonly=true, .pointed=x)
 #define OPT(x) Type(PointerType, .is_optional=true, .pointed=x)
 #define FN(names, types, defaults, ret_type) Type(FunctionType, .args=_names_to_args(names), .arg_types=types, .arg_defaults=defaults, .ret=ret_type)
-#define TYPEINFO_DEREF(var) FakeAST(GetTypeInfo, FakeAST(Index, FakeAST(Var, var)))
+#define TYPEINFO_DEREF(var, t) FakeAST(GetTypeInfo, FakeAST(Index, FakeAST(Var, var, .binding=new(binding_t, .type=t))))
 #define NAMES(...) ARRAY((const char*)__VA_ARGS__)
 #define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
 #define DEFAULTS(...) ARRAY((ast_t*)__VA_ARGS__)
@@ -224,7 +224,7 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
     sss_type_t *i64 = Type(IntType, .bits=64);
     sss_type_t *void_t = Type(VoidType);
     sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
-    ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array"), .index=FakeAST(Int, .precision=64, .i=1)));
+    ast_t *item_size = FakeAST(SizeOf, FakeAST(Index, .indexed=FakeAST(Var, "array", .binding=new(binding_t, .type=t)), .index=FakeAST(Int, .precision=64, .i=1)));
 
     if (streq(name, "insert")) {
         return FN(NAMES("array", "item", "index", "_item_size"),
@@ -244,14 +244,14 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
     } else if (streq(name, "contains")) {
         return FN(NAMES("array", "item", "_type"),
                   TYPES(RO_REF(t), RO_REF(item_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("array")),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("array", t)),
                   Type(BoolType));
     } else if (streq(name, "compact")) {
         return FN(NAMES("array", "item_size"), TYPES(REF(t), i64), DEFAULTS(NULL, item_size), t);
     } else if (streq(name, "sort")) {
         return FN(NAMES("array", "_type"),
                   TYPES(REF(t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, TYPEINFO_DEREF("array")),
+                  DEFAULTS(NULL, TYPEINFO_DEREF("array", t)),
                   void_t);
     } else if (streq(name, "shuffle")) {
         return FN(NAMES("array", "_item_size"),
@@ -263,7 +263,7 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
     } else if (streq(name, "slice")) {
         return FN(NAMES("array", "range", "readonly", "_type"),
                   TYPES(REF(t), Type(RangeType), Type(BoolType), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, FakeAST(Bool, false), TYPEINFO_DEREF("array")),
+                  DEFAULTS(NULL, NULL, FakeAST(Bool, false), TYPEINFO_DEREF("array", t)),
                   t);
     }
     return NULL;
@@ -291,27 +291,27 @@ static sss_type_t *get_table_field_type(env_t *env, sss_type_t *t, const char *n
     } else if (streq(name, "remove")) {
         return FN(NAMES("t", "key", "_type"),
                   TYPES(REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t", t)),
                   void_t);
     } else if (streq(name, "set")) {
         return FN(NAMES("t", "key", "value", "_type"),
                   TYPES(REF(t), RO_REF(key_t), RO_REF(value_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
+                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t", t)),
                   void_t);
     } else if (streq(name, "reserve")) {
         return FN(NAMES("t", "key", "value", "_type"),
                   TYPES(REF(t), RO_REF(key_t), OPT(value_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t")),
+                  DEFAULTS(NULL, NULL, NULL, TYPEINFO_DEREF("t", t)),
                   Type(PointerType, value_t));
     } else if (streq(name, "get")) {
         return FN(NAMES("t", "key", "_type"),
                   TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t", t)),
                   OPT(value_t));
     } else if (streq(name, "get_raw")) {
         return FN(NAMES("t", "key", "_type"),
                   TYPES(RO_REF(t), RO_REF(key_t), typeinfo_ptr_t),
-                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t")),
+                  DEFAULTS(NULL, NULL, TYPEINFO_DEREF("t", t)),
                   OPT(value_t));
     } else if (streq(name, "clear")) {
         return FN(NAMES("t"), TYPES(REF(t)), DEFAULTS(NULL), void_t);
