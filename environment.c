@@ -289,7 +289,7 @@ gcc_func_t *import_function(env_t *env, const char *name, sss_type_t *fn_t, bool
     auto fn = Match(fn_t, FunctionType);
     for (int64_t i = 0; i < LENGTH(fn->arg_types); i++) {
         gcc_type_t *arg_t = sss_type_to_gcc(env, ith(fn->arg_types, i));
-        const char *arg_name = Match(ith(fn->args, i), Var)->name;
+        const char *arg_name = fn->args ? Match(ith(fn->args, i), Var)->name : heap_strf("_%ld", i);
         append(params, gcc_new_param(env->ctx, NULL, arg_t, arg_name));
     }
     gcc_type_t *t_ret = sss_type_to_gcc(env, fn->ret);
