@@ -22,7 +22,6 @@ void bind_types(env_t *env, table_t *bindings, ast_t *ast)
         auto var = Match(def->name, TypeVar);
         sss_type_t *t = Type(PlaceholderType, .filename=env->file->filename, .name=var->name);
         Table_str_set(bindings, var->name, t);
-        bind_types(env, bindings, def->type);
         bind_types(env, bindings, def->namespace);
         break;
     }
@@ -49,11 +48,12 @@ void populate_types(env_t *env, table_t *bindings, ast_t *ast)
     case TypeDef: {
         auto def = Match(ast, TypeDef);
         auto var = Match(def->name, TypeVar);
-        sss_type_t *t = Table_str_get(bindings, var->name);
+        bind_types(env, bindings, def->type);
+        populate_types(env, bindings, def->namespace);
         // Mutate placeholder type to hold resolved type: 
         sss_type_t *resolved_t = parse_type_ast(env, def->type);
+        sss_type_t *t = Table_str_get(bindings, var->name);
         *(struct sss_type_s*)t = *Type(VariantType, .filename=env->file->filename, .name=var->name, .variant_of=resolved_t);
-        populate_types(env, bindings, def->namespace);
         break;
     }
     default: {
