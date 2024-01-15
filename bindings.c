@@ -230,6 +230,7 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
             bindings = new(table_t, .fallback=bindings);
             bind_variables(env, bindings, if_->subject);
         } else {
+            bind_variables(env, bindings, if_->subject);
             subject_t = get_type(env, if_->subject);
         }
         for (int64_t i = 0; i < LENGTH(if_->patterns); i++) {
