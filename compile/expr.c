@@ -309,7 +309,6 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
             auto var = Match(def->name, TypeVar);
             sss_type_t *t = var->type;
             field_lval = gcc_lvalue_access_field(lval, loc, gcc_get_field(gcc_struct, field_index));
-            printf("Got lval\n");
             ++field_index;
             Match(t, VariantType)->lval = field_lval;
             sss_type_t *ns_t = compile_namespace(env, block, field_lval, def->namespace, t);
