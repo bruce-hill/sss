@@ -730,7 +730,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
     case Block: {
         auto bl = Match(ast, Block);
         if (bl->is_namespace) {
-            sss_type_t *ns_t = get_namespace_type(env, ast, false);
+            sss_type_t *ns_t = get_namespace_type(env, ast, NULL);
             gcc_type_t *gcc_t = sss_type_to_gcc(env, ns_t);
             gcc_lvalue_t *lval = gcc_global(env->ctx, loc, GCC_GLOBAL_INTERNAL, gcc_t, fresh("namespace"));
             compile_namespace(env, block, lval, ast, NULL);

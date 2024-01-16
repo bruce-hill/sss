@@ -54,6 +54,7 @@ void populate_types(env_t *env, table_t *bindings, ast_t *ast)
         sss_type_t *resolved_t = parse_type_ast(env, def->type);
         sss_type_t *t = Table_str_get(bindings, var->name);
         *(struct sss_type_s*)t = *Type(VariantType, .filename=env->file->filename, .name=var->name, .variant_of=resolved_t);
+        var->type = t;
         break;
     }
     default: {
@@ -217,6 +218,7 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
         auto var = Match(def->name, TypeVar);
         bind_variables(env, bindings, def->namespace);
         sss_type_t *def_t = var->type;
+        assert(def_t);
         sss_type_t *ns_t = get_namespace_type(env, def->namespace, def_t);
         binding_t *b = new(binding_t, .type=ns_t);
         var->binding = b;
