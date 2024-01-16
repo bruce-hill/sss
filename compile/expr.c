@@ -266,6 +266,7 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
         }
     }
 
+    defer_t *prev_defers = env->deferred;
     foreach (ns->statements, _stmt, _) {
         ast_t *stmt = *_stmt;
         while (stmt->tag == DocTest)
@@ -330,6 +331,7 @@ sss_type_t *compile_namespace(env_t *env, gcc_block_t **block, gcc_lvalue_t *lva
                             doctest->output, !doctest->skip_source);
         }
     }
+    insert_defers(env, block, prev_defers);
     return ns_t;
 }
 
@@ -407,6 +409,24 @@ static gcc_rvalue_t *compile_struct(env_t *env, gcc_block_t **block, ast_t *ast,
     gcc_rvalue_t *rval = gcc_struct_constructor(env->ctx, loc, gcc_t, num_populated, fields, populated_rvals);
     assert(rval);
     return rval;
+}
+
+static void cache_defer_vars(env_t *env, table_t *deferred, ast_t *ast)
+{
+    if (ast->tag == Var) {
+        auto var = Match(ast, Var);
+        binding_t *b = Table_str_get(deferred, var->name);
+        if (!b) {
+            b = new(binding_t);
+            *b = *var->binding;
+            Table_str_set(deferred, var->name, b);
+        }
+        var->binding = b;
+    }
+
+    auto children = get_ast_children(ast);
+    foreach (children, child, _)
+        cache_defer_vars(env, deferred, *child);
 }
 
 gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
@@ -664,25 +684,20 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         //     f = open(file2)
         //     defer f.close() // close file2
         //
-        // TODO: we don't technically need to copy *all* local variables, since
-        // some aren't referenced inside the defer block, but this is a pretty
-        // small amount of extra work that should hopefully be elided by GCC
-        compiler_err(env, ast, "Defer is not implemented right now");
+        ast_t *body = Match(ast, Defer)->body;
+        table_t deferred = {};
+        cache_defer_vars(env, &deferred, body);
 
-        // gcc_func_t *func = gcc_block_func(*block);
-        // for (int64_t i = 1; i <= Table_length(env->bindings); i++) {
-        //     struct {const char *key; binding_t *value;} *entry = Table_str_entry(env->bindings, i);
-        //     gcc_lvalue_t *cached = gcc_local(func, loc, sss_type_to_gcc(env, entry->value->type), entry->key);
-        //     if (!entry->value->rval) continue;
-        //     gcc_assign(*block, loc, cached, entry->value->rval);
-        //     binding_t *cached_binding = new(binding_t);
-        //     *cached_binding = *entry->value;
-        //     cached_binding->lval = cached;
-        //     cached_binding->rval = gcc_rval(cached);
-        //     Table_str_set(defer_env->bindings, entry->key, cached_binding);
-        // }
-        // defer_env->is_deferred = true;
-        // env->deferred = new(defer_t, .next=env->deferred, .body=Match(ast, Defer)->body, .environment=defer_env);
+        gcc_func_t *func = gcc_block_func(*block);
+        for (int64_t i = 1; i <= Table_length(&deferred); i++) {
+            struct {const char *name; binding_t *binding;} *entry = Table_str_entry(&deferred, i);
+            if (!entry->binding->rval) continue;
+            gcc_lvalue_t *cached = gcc_local(func, loc, sss_type_to_gcc(env, entry->binding->type), entry->name);
+            gcc_assign(*block, loc, cached, entry->binding->rval);
+            entry->binding->lval = cached;
+            entry->binding->rval = gcc_rval(cached);
+        }
+        env->deferred = new(defer_t, .next=env->deferred, .body=body, .environment=env);
         return NULL;
     }
     case With: { // with var := expr, cleanup(var) ...
@@ -2146,7 +2161,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         gcc_lvalue_t *ret = gcc_local(func, loc, sss_type_to_gcc(env, t), fresh("reduction"));
 
         ast_t *incoming_var = NULL, *accum_var = NULL;
-        foreach (get_ast_children(reduction->combination), child, _) {
+        auto children = get_ast_children(reduction->combination);
+        foreach (children, child, _) {
             if ((*child)->tag != Var) continue;
             auto var = Match(*child, Var);
             if (streq(var->name, "x.0")) {
