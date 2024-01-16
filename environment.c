@@ -395,7 +395,7 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
         auto ns = Match(variant->namespace_type, StructType);
         for (int64_t i = 0; i < LENGTH(ns->field_names); i++) {
             if (streq(ith(ns->field_names, i), name)) {
-                gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+                gcc_type_t *gcc_t = sss_type_to_gcc(env, variant->namespace_type);
                 gcc_struct_t *gcc_struct = gcc_type_as_struct(gcc_t);
                 gcc_field_t *field = gcc_get_field(gcc_struct, i);
                 gcc_lvalue_t *lval = gcc_lvalue_access_field(variant->lval, NULL, field);
