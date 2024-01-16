@@ -108,7 +108,7 @@ typedef enum gcc_jit_types gcc_types_e;
 #define gcc_opaque_struct gcc_jit_context_new_opaque_struct
 #define gcc_struct_as_type gcc_jit_struct_as_type
 #define gcc_set_fields gcc_jit_struct_set_fields
-#define gcc_get_field gcc_jit_struct_get_field
+#define gcc_get_field(...) ({ auto __field = gcc_jit_struct_get_field(__VA_ARGS__); assert(__field); __field; })
 // HACK!!! libgccjit doesn't provide this method but it should.
 // Since the data layout of structs and unions are identical, this works fine:
 #define gcc_get_union_field(gcc_t, i) gcc_jit_struct_get_field((gcc_struct_t*)gcc_t, i)
