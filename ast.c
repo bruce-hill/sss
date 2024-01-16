@@ -251,6 +251,7 @@ ARRAY_OF(ast_t*) get_ast_children(ast_t *ast)
         maybe_append(children, triop.key);
         return children;
     }
+    case Nil: return ARRAY(Match(ast, Nil)->type);
     case GetTypeInfo: case SizeOf: case HeapAllocate: case StackReference: {
         // UNSAFE: this assumes the same layout for each of these AST types:
         auto unop = ast->__data.GetTypeInfo;
