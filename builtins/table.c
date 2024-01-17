@@ -394,54 +394,34 @@ public void Table_clear(table_t *t)
 
 public bool Table_equal(const table_t *x, const table_t *y, const TypeInfo *type)
 {
-    printf("Comparing %p vs %p\n");
     assert(type->tag == TableInfo);
     if (Table_length(x) != Table_length(y))
-    {
-        printf("Different lens\n");
         return false;
-    }
     
     if ((x->default_value != NULL) != (y->default_value != NULL))
-    {
-        printf("Different defaults\n");
         return false;
-    }
     
     if ((x->fallback != NULL) != (y->fallback != NULL))
-    {
-        printf("Different fallbacks\n");
         return false;
-    }
 
     const TypeInfo *value_type = type->TableInfo.value;
     for (int64_t i = 0, length = Table_length(x); i < length; i++) {
         void *x_key = GET_ENTRY(x, i);
         void *x_value = x_key + VALUE_OFFSET;
         void *y_value = Table_get_raw(y, x_key, type);
-        if (!y_value) {
-            printf("No y val\n");
+        if (!y_value)
             return false;
-        }
-        if (!generic_equal(x_value, y_value, value_type)) {
-            printf("x val != y val\n");
+        if (!generic_equal(x_value, y_value, value_type))
             return false;
-        }
     }
 
     if (x->default_value && y->default_value
         && !generic_equal(x->default_value, y->default_value, value_type))
-    {
-        printf("Nonequal defaults\n");
         return false;
-    }
 
     if (x->fallback && y->fallback
         && !Table_equal(x->fallback, y->fallback, type))
-    {
-        printf("Nonequal fallbacks\n");
         return false;
-    }
     
     return true;
 }
@@ -500,7 +480,6 @@ public uint32_t Table_hash(const table_t *t, const TypeInfo *type)
     };
     uint32_t hash;
     halfsiphash(&components, sizeof(components), SSS_HASH_VECTOR, (uint8_t*)&hash, sizeof(hash));
-    printf("Hash of %ld %u %u %u %u -> %u\n", Table_length(t), key_hashes, value_hashes, fallback_hash, default_hash, hash);
     return hash;
 }
 
