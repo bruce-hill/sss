@@ -700,16 +700,17 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case With: { // with var := expr, cleanup(var) ...
-        auto with = Match(ast, With);
-        auto statements = EMPTY_ARRAY(ast_t*);
-        ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name="with");
-        append(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
-        ast_t *cleanup = with->cleanup;
-        if (!cleanup)
-            cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field="close"), .args=EMPTY_ARRAY(ast_t*));
-        append(statements, WrapAST(ast, Defer, .body=cleanup));
-        append(statements, with->body);
-        return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
+        compiler_err(env, ast, "'with' is not currently implemented");
+        // auto with = Match(ast, With);
+        // auto statements = EMPTY_ARRAY(ast_t*);
+        // ast_t *var = with->var ? with->var : WrapAST(ast, Var, .name="with");
+        // append(statements, WrapAST(ast, Declare, .var=var, .value=with->expr));
+        // ast_t *cleanup = with->cleanup;
+        // if (!cleanup)
+        //     cleanup = WrapAST(ast, FunctionCall, .fn=WrapAST(ast, FieldAccess, .fielded=var, .field="close"), .args=EMPTY_ARRAY(ast_t*));
+        // append(statements, WrapAST(ast, Defer, .body=cleanup));
+        // append(statements, with->body);
+        // return compile_expr(env, block, WrapAST(ast, Block, .statements=statements));
     }
     case Using: { // using expr *[; expr] body
         compiler_err(env, ast, "'using' is not implemented right now");
@@ -929,13 +930,13 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
 
             // Safe string interpolation:
             if (!type_eq(interp_t, string_t)) {
-                binding_t *interp_binding = get_from_namespace(env, interp_t, heap_strf("as_%s", type_to_string(string_t)));
+                binding_t *interp_binding = get_from_namespace(env, interp_t, heap_strf("as_%s", type_to_string_concise(string_t)));
                 if (!interp_binding)
-                    interp_binding = get_from_namespace(env, string_t, heap_strf("from_%s", type_to_string(interp_t)));
+                    interp_binding = get_from_namespace(env, string_t, heap_strf("from_%s", type_to_string_concise(interp_t)));
 
-                if (interp_binding && interp_binding->func) {
+                if (interp_binding && interp_binding->rval) {
                     gcc_lvalue_t *converted = gcc_local(func, loc, gcc_t, "_converted");
-                    gcc_assign(*block, loc, converted, gcc_callx(env->ctx, loc, interp_binding->func, obj));
+                    gcc_assign(*block, loc, converted, gcc_callx_ptr(env->ctx, loc, interp_binding->rval, obj));
                     obj = gcc_rval(converted);
                     interp_t = string_t;
                 } else if (!type_eq(string_t, Table_str_get(&env->global->types, "Str"))) {
@@ -2142,8 +2143,8 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
             compiler_err(env, mix->key, "The mix amount here is not a numeric value.");
 
         // (1-amount)*lhs + amount*rhs
-        ast_t *amount_var = WrapAST(mix->key, Var, "$mix_amount");
-        ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, Var, "Num32"));
+        ast_t *amount_var = WrapAST(mix->key, Var, "$mix_amount", .binding=new(binding_t, .type=NUM_TYPE));
+        ast_t *amount = WrapAST(mix->key, Cast, mix->key, WrapAST(mix->key, TypeVar, "Num32", .type=NUM_TYPE));
         ast_t *mix_equation = WrapAST(ast, Block, ARRAY(
             WrapAST(mix->key, Declare, amount_var, amount),
             WrapAST(ast, BinaryOp, .op=OP_PLUS,

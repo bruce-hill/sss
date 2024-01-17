@@ -223,7 +223,7 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
 #define NAMES(...) ARRAY((const char*)__VA_ARGS__)
 #define TYPES(...) ARRAY((sss_type_t*)__VA_ARGS__)
 #define DEFAULTS(...) ARRAY((ast_t*)__VA_ARGS__)
-    sss_type_t *item_t = Match(t, ArrayType)->item_type;
+    sss_type_t *item_t = Match(base_value_type(t), ArrayType)->item_type;
     sss_type_t *i64 = Type(IntType, .bits=64);
     sss_type_t *void_t = Type(VoidType);
     sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
@@ -277,22 +277,23 @@ static sss_type_t *get_array_field_type(env_t *env, sss_type_t *t, const char *n
 static sss_type_t *get_table_field_type(env_t *env, sss_type_t *t, const char *name)
 {
     (void)env;
-    sss_type_t *key_t = Match(t, TableType)->key_type;
-    sss_type_t *value_t = Match(t, TableType)->value_type;
+    sss_type_t *base_t = base_value_type(t);
+    sss_type_t *key_t = Match(base_t, TableType)->key_type;
+    sss_type_t *value_t = Match(base_t, TableType)->value_type;
     sss_type_t *void_t = Type(VoidType);
     sss_type_t *typeinfo_ptr_t = Type(PointerType, .pointed=Type(TypeInfoType));
     if (streq(name, "entries")) {
-        return Type(ArrayType, .item_type=table_entry_type(t));
+        return Type(ArrayType, .item_type=table_entry_type(base_t));
     } else if (streq(name, "length")) {
         return INT_TYPE;
     } else if (streq(name, "default")) {
-        return Type(PointerType, .pointed=Match(t, TableType)->value_type, .is_optional=true, .is_readonly=true);
+        return Type(PointerType, .pointed=value_t, .is_optional=true, .is_readonly=true);
     } else if (streq(name, "fallback")) {
         return Type(PointerType, .pointed=t, .is_optional=true, .is_readonly=true);
     } else if (streq(name, "keys")) {
-        return Type(ArrayType, .item_type=Match(t, TableType)->key_type);
+        return Type(ArrayType, .item_type=key_t);
     } else if (streq(name, "values")) {
-        return Type(ArrayType, .item_type=Match(t, TableType)->value_type);
+        return Type(ArrayType, .item_type=value_t);
     } else if (streq(name, "remove")) {
         return FN(NAMES("t", "key", "_type"),
                   TYPES(REF(t), RO_REF(key_t), typeinfo_ptr_t),
@@ -328,6 +329,7 @@ static sss_type_t *get_table_field_type(env_t *env, sss_type_t *t, const char *n
 
 static sss_type_t *get_value_field_type(env_t *env, sss_type_t *t, const char *field_name)
 {
+    sss_type_t *original_value_t = value_type(t);
     t = base_value_type(t);
     switch (t->tag) {
     case StructType: {
@@ -350,7 +352,7 @@ static sss_type_t *get_value_field_type(env_t *env, sss_type_t *t, const char *f
         return NULL;
     }
     case ArrayType: {
-        return get_array_field_type(env, t, field_name);
+        return get_array_field_type(env, original_value_t, field_name);
     }
     case RangeType: {
         if (streq(field_name, "first") || streq(field_name, "last") || streq(field_name, "step") || streq(field_name, "length"))
@@ -358,7 +360,7 @@ static sss_type_t *get_value_field_type(env_t *env, sss_type_t *t, const char *f
         return NULL;
     }
     case TableType: {
-        return get_table_field_type(env, t, field_name);
+        return get_table_field_type(env, original_value_t, field_name);
     }
     default: return NULL;
     }

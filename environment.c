@@ -257,7 +257,7 @@ struct {
         {"from_c_string", "func(c:CString)->Str"},
         {"find", "func(s:Str, target:Str)->Str"},
         {"replace", "func(s:Str, target:Str, replacement:Str, limit=0x7fffffffffffffff)->Str"},
-        {"quoted", "func(s:Str)->Str"},
+        {"quoted", "func(s:Str,dsl=!CString,colorize=no)->Str"},
         {"split", "func(s:Str, split_chars=[\\x2C, \\x20, \\n, \\r, \\t, \\v])->[Str]"},
         {"join", "func(glue:Str, pieces:[Str])->Str"},
 

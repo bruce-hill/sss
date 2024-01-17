@@ -42,7 +42,7 @@ s := SQL::"SELECT * FROM students WHERE name = $name AND age > $age"
 say (bitcast s as Str)
 
 type Quoted := Str
-    func as_Quoted(s:Str)->Quoted
+    func from_Str(s:Str)->Quoted
         return bitcast "\x1b[0;35m\"$(s.replace('\','\\').replace('"','\"'))\"\x1b[m" as Quoted
 
 str := "one two"

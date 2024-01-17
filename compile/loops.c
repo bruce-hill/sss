@@ -35,7 +35,6 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
         iter = WrapAST(iter, FieldAccess, .fielded=iter, .field="entries");
         iter_t = get_type(env, iter);
     }
-
     if (iter_t->tag == GeneratorType) {
         switch (for_->iter->tag) {
         case For: {

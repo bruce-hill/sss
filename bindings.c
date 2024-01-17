@@ -190,7 +190,8 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
     }
     case FunctionDef: {
         auto fndef = Match(ast, FunctionDef);
-        gcc_func_t *func = get_function_def(env, ast, Match(fndef->name, Var)->name);
+        const char *fn_name = Match(fndef->name, Var)->name;
+        gcc_func_t *func = get_function_def(env, ast, fn_name);
         table_t fn_bindings = {0};
         if (fndef->args.defaults) {
             for (int64_t i = 0; i < LENGTH(fndef->args.args); i++) {
@@ -208,8 +209,9 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
         }
         binding_t *fn_binding = new(binding_t, .type=get_type(env, ast));
         fn_binding->func = func;
-        Table_str_set(bindings, Match(fndef->name, Var)->name, fn_binding);
-        Table_str_set(&fn_bindings, Match(fndef->name, Var)->name, fn_binding);
+        Table_str_set(bindings, fn_name, fn_binding);
+        if (!Table_str_get(&fn_bindings, fn_name))
+            Table_str_set(&fn_bindings, fn_name, fn_binding);
         bind_variables(env, &fn_bindings, fndef->body);
         break;
     }
