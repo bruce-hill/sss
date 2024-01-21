@@ -208,7 +208,7 @@ gcc_func_t *get_function_def(env_t *env, ast_t *def, const char *name)
     bool is_inline = def->tag == FunctionDef && Match(def, FunctionDef)->is_inline;
     gcc_func_t *func = gcc_new_func(
         env->ctx, ast_loc(env, def), is_inline ? GCC_FUNCTION_ALWAYS_INLINE : GCC_FUNCTION_EXPORTED,
-        sss_type_to_gcc(env, t->ret), name, LENGTH(params), params[0], 0);
+        sss_type_to_gcc(env, t->ret), fresh(name), LENGTH(params), params[0], 0);
     func_context = new(func_context_t, .func=func, .env=*env);
     Table_str_set(&env->global->ast_functions, key, func_context);
     return func;
