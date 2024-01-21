@@ -443,7 +443,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                 return gcc_rval(binding->lval);
             if (binding->func)
                 return gcc_get_func_address(binding->func, loc);
-            compiler_err(env, ast, "This variable has a binding, but no value attached to it");
+            compiler_err(env, ast, "This variable (%s) has a binding, but no value attached to it", var->name);
         }
         compiler_err(env, ast, "I can't find a definition for this variable"); 
     }

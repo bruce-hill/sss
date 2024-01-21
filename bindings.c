@@ -7,6 +7,7 @@
 
 #include "ast.h"
 #include "args.h"
+#include "bindings.h"
 #include "typecheck.h"
 #include "types.h"
 #include "util.h"
@@ -142,20 +143,78 @@ static void bind_match_patterns(env_t *env, table_t *bindings, sss_type_t *t, as
     }
 }
 
+static table_t *bindings_in_closure(table_t *bindings)
+{
+    table_t *ret = new(table_t);
+    for (; bindings; bindings = bindings->fallback) {
+        for (int64_t i = 1; i <= Table_length(bindings); i++) {
+            struct {const char *name; binding_t *binding; } *entry = Table_entry(bindings, i);
+            Table_str_set(ret, entry->name, entry->binding);
+        }
+    }
+    return ret;
+}
+
+static void bind_function_signature(env_t *env, table_t *bindings, ast_t *ast)
+{
+    auto fndef = Match(ast, FunctionDef);
+    const char *fn_name = Match(fndef->name, Var)->name;
+    gcc_func_t *func = get_function_def(env, ast, fn_name);
+    table_t fn_bindings = {.fallback=bindings_in_closure(bindings)};
+    if (fndef->args.defaults) {
+        for (int64_t i = 0; i < LENGTH(fndef->args.args); i++) {
+            auto var = Match(ith(fndef->args.args, i), Var);
+            ast_t *def = ith(fndef->args.defaults, i);
+            ast_t *type = ith(fndef->args.types, i);
+            var->binding = new(binding_t);
+            if (def)
+                bind_variables(env, &fn_bindings, def);
+            var->binding->type = type ? parse_type_ast(env, type) : get_type(env, def);
+            var->binding->lval = gcc_param_as_lvalue(gcc_func_get_param(func, i));
+            var->binding->rval = gcc_rval(var->binding->lval);
+            Table_str_set(&fn_bindings, var->name, var->binding);
+        }
+    }
+    binding_t *fn_binding = new(binding_t, .type=get_type(env, ast), .visible_in_closures=true);
+    fn_binding->func = func;
+    Table_str_set(bindings, fn_name, fn_binding);
+}
+
+static void bind_function_body(env_t *env, table_t *bindings, ast_t *ast)
+{
+    auto fndef = Match(ast, FunctionDef);
+    const char *fn_name = Match(fndef->name, Var)->name;
+    gcc_func_t *func = get_function_def(env, ast, fn_name);
+    table_t fn_bindings = {.fallback=bindings_in_closure(bindings)};
+    if (fndef->args.defaults) {
+        for (int64_t i = 0; i < LENGTH(fndef->args.args); i++) {
+            auto var = Match(ith(fndef->args.args, i), Var);
+            Table_str_set(&fn_bindings, var->name, var->binding);
+        }
+    }
+    binding_t *fn_binding = new(binding_t, .type=get_type(env, ast));
+    fn_binding->func = func;
+    if (!Table_str_get(&fn_bindings, fn_name))
+        Table_str_set(&fn_bindings, fn_name, fn_binding);
+    bind_variables(env, &fn_bindings, fndef->body);
+}
+
 void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
 {
     if (!ast) return;
     switch (ast->tag) {
     case Var: {
         auto var = Match(ast, Var);
-        if (var->binding) return;
-        var->binding = Table_str_get(bindings, var->name);
+        binding_t *b = Table_str_get(bindings, var->name);
+        if (var->binding && !b) return;
+        var->binding = b;
         break;
     }
     case TypeVar: {
         auto var = Match(ast, TypeVar);
-        if (var->binding) return;
-        var->binding = Table_str_get(bindings, var->name);
+        binding_t *b = Table_str_get(bindings, var->name);
+        if (var->binding && !b) return;
+        var->binding = b;
         break;
     }
     case Block: {
@@ -170,12 +229,10 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
             ast_t *stmt = *_stmt;
             while (stmt->tag == DocTest)
                 stmt = Match(stmt, DocTest)->expr;
-
-            if (stmt->tag == FunctionDef) {
-                auto fndef = Match(stmt, FunctionDef);
-                bind_variables(env, bindings, fndef->body);
-            }
+            if (stmt->tag == FunctionDef)
+                bind_function_body(env, bindings, stmt);
         }
+
         break;
     }
     case Declare: {
@@ -189,30 +246,7 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
         break;
     }
     case FunctionDef: {
-        auto fndef = Match(ast, FunctionDef);
-        const char *fn_name = Match(fndef->name, Var)->name;
-        gcc_func_t *func = get_function_def(env, ast, fn_name);
-        table_t fn_bindings = {0};
-        if (fndef->args.defaults) {
-            for (int64_t i = 0; i < LENGTH(fndef->args.args); i++) {
-                auto var = Match(ith(fndef->args.args, i), Var);
-                ast_t *def = ith(fndef->args.defaults, i);
-                ast_t *type = ith(fndef->args.types, i);
-                var->binding = new(binding_t);
-                if (def)
-                    bind_variables(env, &fn_bindings, def);
-                var->binding->type = type ? parse_type_ast(env, type) : get_type(env, def);
-                var->binding->lval = gcc_param_as_lvalue(gcc_func_get_param(func, i));
-                var->binding->rval = gcc_rval(var->binding->lval);
-                Table_str_set(&fn_bindings, var->name, var->binding);
-            }
-        }
-        binding_t *fn_binding = new(binding_t, .type=get_type(env, ast));
-        fn_binding->func = func;
-        Table_str_set(bindings, fn_name, fn_binding);
-        if (!Table_str_get(&fn_bindings, fn_name))
-            Table_str_set(&fn_bindings, fn_name, fn_binding);
-        bind_variables(env, &fn_bindings, fndef->body);
+        bind_function_signature(env, bindings, ast);
         break;
     }
     case TypeDef: {
