@@ -402,7 +402,14 @@ binding_t *get_from_namespace(env_t *env, sss_type_t *t, const char *name)
                 return new(binding_t, .type=ith(ns->field_types, i), .lval=lval, .rval=gcc_rval(lval));
             }
         }
-        return get_from_namespace(env, variant->variant_of, name);
+        binding_t *b = get_from_namespace(env, variant->variant_of, name);
+        if (b) {
+            binding_t *b2 = new(binding_t);
+            *b2 = *b;
+            b2->type = replace_type(b->type, variant->variant_of, t);
+            b = b2;
+        }
+        return b;
     }
     case ArrayType: {
         gcc_func_t *fn = get_array_method(env, t, name);
