@@ -181,7 +181,6 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(TaggedUnionField, F(name), F(value))
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))
-        T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
         T(DocTest, F(expr), F(output), F(skip_source))
         T(Defer, F(body))
         T(With, F(var), F(expr), F(cleanup), F(body))
@@ -404,10 +403,6 @@ ARRAY_OF(ast_t*) get_ast_children(ast_t *ast)
         return children;
     }
     case FieldAccess: return ARRAY(Match(ast, FieldAccess)->fielded);
-    case ConvertDef: {
-        auto def = Match(ast, ConvertDef);
-        return ARRAY(def->source_type, def->target_type, def->body);
-    }
     case DocTest: return ARRAY(Match(ast, DocTest)->expr);
     case Defer: return ARRAY(Match(ast, Defer)->body);
     case With: {

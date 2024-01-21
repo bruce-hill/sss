@@ -46,7 +46,7 @@ int op_tightness[] = {
 static const char *keywords[] = {
     "yield", "yes", "xor", "with", "while", "using", "use", "unless", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
-    "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
+    "for", "fail", "extern", "enum", "else", "do", "defer", "by", "bitcast", "between", "as",
     "and", "alias", "_typeinfo_", "_mix_", "_min_", "_max_",
     NULL,
 };
@@ -95,7 +95,6 @@ static PARSER(parse_var);
 static PARSER(parse_type_def);
 static PARSER(parse_func_def);
 static PARSER(parse_enum_type);
-static PARSER(parse_convert_def);
 static PARSER(parse_extern);
 static PARSER(parse_declaration);
 static PARSER(parse_doctest);
@@ -1857,7 +1856,6 @@ PARSER(parse_statement) {
     if ((stmt=parse_declaration(ctx, pos))
         || (stmt=parse_doctest(ctx, pos))
         || (stmt=parse_func_def(ctx, pos))
-        || (stmt=parse_convert_def(ctx, pos))
         || (stmt=parse_use(ctx,pos)))
         return stmt;
 
@@ -2173,24 +2171,6 @@ PARSER(parse_func_def) {
     return NewAST(ctx->file, start, pos, FunctionDef,
                   .name=name, .args=args, .ret_type=ret_type, .body=body, .cache=cache_ast,
                   .is_inline=is_inline);
-}
-
-PARSER(parse_convert_def) {
-    // convert x:Foo as Baz
-    const char *start = pos;
-    if (!match_word(&pos, "convert")) return NULL;
-
-    ast_t *name = optional_ast(ctx, &pos, parse_var);
-    if (!name) return NULL;
-
-    spaces(&pos);
-    if (!match(&pos, ":")) return NULL;
-
-    ast_t *source_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion source type here");
-    expect_str(ctx, start, &pos, "as", "I expected an 'as' for a conversion definition");
-    ast_t *target_type = expect_ast(ctx, start, &pos, parse_type, "I expected a conversion target type here");
-    ast_t *body = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a function body for this conversion definition"); 
-    return NewAST(ctx->file, start, pos, ConvertDef, .var=name, .source_type=source_type, .target_type=target_type, .body=body);
 }
 
 PARSER(parse_extern) {

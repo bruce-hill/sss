@@ -862,7 +862,7 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
         return Type(FunctionType, .args=args, .arg_types=arg_types, .arg_defaults=arg_defaults, .ret=ret);
     }
 
-    case TypeDef: case ConvertDef: {
+    case TypeDef: {
         return Type(VoidType);
     }
 

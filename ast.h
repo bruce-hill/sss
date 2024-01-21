@@ -56,7 +56,6 @@ typedef enum {
     TaggedUnionField,
     TypeDef,
     Index, FieldAccess,
-    ConvertDef,
     DocTest,
     Defer,
     With,
@@ -269,9 +268,6 @@ struct ast_s {
             ast_t *fielded;
             const char *field;
         } FieldAccess;
-        struct {
-            ast_t *var, *source_type, *target_type, *body;
-        } ConvertDef;
         struct {
             ast_t *expr;
             const char *output;

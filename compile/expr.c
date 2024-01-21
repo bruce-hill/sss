@@ -1007,27 +1007,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         env->comprehension_callback(env, block, ast, env->comprehension_userdata);
         return NULL;
     }
-    case ConvertDef: {
-        compiler_err(env, ast, "'convert' defs not impl");
-        // auto convert = Match(ast, ConvertDef);
-        // sss_type_t *src_t = parse_type_ast(env, convert->source_type);
-        // sss_type_t *target_t = parse_type_ast(env, convert->target_type);
-
-        // ast_t *def = NewAST(
-        //     env->file, ast->start, ast->end,
-        //     FunctionDef,
-        //     .args=(args_t){.args=ARRAY(convert->var),
-        //                    .types=ARRAY(convert->source_type)},
-        //     .ret_type=convert->target_type,
-        //     .body=convert->body);
-        // gcc_func_t *func = get_function_def(env, def, fresh("convert"));
-        // // compile_function(env, func, def);
-        // const char *name = heap_strf("#convert-from:%s", type_to_string(src_t));
-        // table_t *ns = get_namespace(env, target_t);
-        // Table_str_set(ns, name, new(binding_t, .type=Type(FunctionType, .arg_types=ARRAY(src_t), .ret=target_t),
-        //                          .func=func, .rval=gcc_get_func_address(func, NULL), .visible_in_closures=true));
-        return NULL;
-    }
     case TypeDef: {
         auto members = Match(Match(ast, TypeDef)->namespace, Block)->statements;
 
