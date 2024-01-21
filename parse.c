@@ -44,7 +44,7 @@ int op_tightness[] = {
 };
 
 static const char *keywords[] = {
-    "yes", "xor", "with", "while", "using", "use", "unless", "then", "struct", "stop", "skip",
+    "yield", "yes", "xor", "with", "while", "using", "use", "unless", "then", "struct", "stop", "skip",
     "sizeof", "return", "repeat", "or", "of", "not", "no", "mod1", "mod", "matches", "in", "if", "func",
     "for", "fail", "extern", "enum", "else", "do", "defer", "convert", "by", "bitcast", "between", "as",
     "and", "alias", "_typeinfo_", "_mix_", "_min_", "_max_",
@@ -783,13 +783,19 @@ PARSER(parse_ellipsis) {
 PARSER(parse_reduction) {
     const char *start = pos;
     if (!match(&pos, "(")) return NULL;
+    
+    // Transform `(OP) nums [else ...]` into:
+    //   for item.0 in nums
+    //   first for.result := item.0
+    //   then for.result = for.result (OP) item.0
+    //   yield for.result else [fail | ...]
 
     spaces(&pos);
     const char *combo_start = pos;
     operator_e op = match_binary_operator(&pos);
     ast_t *combination;
-    ast_t *lhs = NewAST(ctx->file, combo_start, combo_start, Var, .name="x.0");
-    ast_t *rhs = NewAST(ctx->file, pos, pos, Var, .name="y.0");
+    ast_t *accum = NewAST(ctx->file, combo_start, combo_start, Var, .name="for.result");
+    ast_t *item = NewAST(ctx->file, pos, pos, Var, .name="item.0");
     if (op == OP_MIN || op == OP_MAX) {
         ast_t *key = NewAST(ctx->file, pos, pos, Var, op == OP_MIN ? "_min_" : "_max_");
         for (bool progress = true; progress; ) {
@@ -804,15 +810,15 @@ PARSER(parse_reduction) {
         if (key->tag == Var) key = NULL;
         else pos = key->end;
         combination = op == OP_MIN ?
-            NewAST(ctx->file, combo_start, pos, Min, .lhs=lhs, .rhs=rhs, .key=key)
-            : NewAST(ctx->file, combo_start, pos, Max, .lhs=lhs, .rhs=rhs, .key=key);
+            NewAST(ctx->file, combo_start, pos, Min, .lhs=accum, .rhs=item, .key=key)
+            : NewAST(ctx->file, combo_start, pos, Max, .lhs=accum, .rhs=item, .key=key);
     } else if (op == OP_MIX) {
         ast_t *key = expect_ast(ctx, start, &pos, parse_expr, "I expected an amount to mix by");
         if (!match_word(&pos, "of"))
             parser_err(ctx, pos, pos, "I expected the word 'of' here");
-        combination = NewAST(ctx->file, start, pos, Mix, .lhs=lhs, .rhs=rhs, .key=key);
+        combination = NewAST(ctx->file, start, pos, Mix, .lhs=accum, .rhs=item, .key=key);
     } else if (op != OP_UNKNOWN) {
-        combination = NewAST(ctx->file, combo_start, pos, BinaryOp, .op=op, .lhs=lhs, .rhs=rhs);
+        combination = NewAST(ctx->file, combo_start, pos, BinaryOp, .op=op, .lhs=accum, .rhs=item);
     } else {
         return NULL;
     }
@@ -826,8 +832,14 @@ PARSER(parse_reduction) {
     ast_t *fallback = NULL;
     if (match_word(&pos, "else"))
         fallback = optional_ast(ctx, &pos, parse_extended_expr);
+    else
+        fallback = NewAST(ctx->file, pos, pos, Fail, .message=NewAST(ctx->file, pos, pos, StringLiteral, "There were no values to iterate over"));
 
-    return NewAST(ctx->file, start, pos, Reduction, .iter=iter, .combination=combination, .fallback=fallback);
+    return NewAST(ctx->file, start, pos, For, .value=item, .iter=iter,
+                  .first=NewAST(ctx->file, start, start, Declare, .var=accum, .value=item),
+                  .body=WrapAST(combination, Assign, .targets=ARRAY(accum), .values=ARRAY(combination)),
+                  .result=accum,
+                  .empty=fallback);
 }
 
 ast_t *parse_index_suffix(parse_ctx_t *ctx, ast_t *lhs) {
@@ -1062,9 +1074,12 @@ PARSER(parse_for) {
     expect_str(ctx, start, &pos, "in", "I expected an 'in' for this 'for'");
     ast_t *iter = expect_ast(ctx, start, &pos, parse_expr, "I expected an iterable value for this 'for'");
 
-    ast_t *first = NULL, *empty = NULL;
-    if (match_word(&pos, "first")) {
-        first = expect_ast(ctx, start, &pos, parse_opt_indented_block, "I expected a body for this 'for'");
+    ast_t *first = NULL, *empty = NULL, *result = NULL;
+    const char *first_start = pos;
+    whitespace(&first_start);
+    if (match_word(&first_start, "first") && sss_get_indent(ctx->file, first_start) == starting_indent) {
+        first = expect_ast(ctx, start, &first_start, parse_opt_indented_block, "I expected a body for this 'for'");
+        pos = first->end;
         whitespace(&pos);
     }
 
@@ -1082,14 +1097,24 @@ PARSER(parse_for) {
         pos = body->end;
     }
 
-    const char *else_start = pos;
-    whitespace(&else_start);
-    if (sss_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
-        pos = else_start;
-        empty = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+    const char *result_start = pos;
+    whitespace(&result_start);
+    if (sss_get_indent(ctx->file, result_start) == starting_indent && match_word(&result_start, "yield")) {
+        pos = result_start;
+        result = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'yield'");
+        const char *else_start = pos;
+        whitespace(&else_start);
+        if (sss_get_indent(ctx->file, else_start) == starting_indent && match_word(&else_start, "else")) {
+            pos = else_start;
+            empty = expect_ast(ctx, pos, &pos, parse_opt_indented_block, "I expected a body for this 'else'");
+        }
     }
+
+    if (first && first->tag == Block)
+        Match(first, Block)->keep_scope = true;
+
     return NewAST(ctx->file, start, pos, For, .index=value ? index : NULL, .value=value ? value : index, .iter=iter,
-                  .first=first, .body=body, .between=between, .empty=empty);
+                  .first=first, .body=body, .between=between, .result=result, .empty=empty);
 }
 
 ast_t *parse_suffix_for(parse_ctx_t *ctx, ast_t *body) {

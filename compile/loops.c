@@ -24,7 +24,7 @@ static gcc_rvalue_t *rvalue_in_var(gcc_block_t **block, const char *name, gcc_ty
     return gcc_rval(var);
 }
 
-void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
+gcc_rvalue_t *compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 {
     auto for_ = Match(ast, For);
 
@@ -361,7 +361,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (for_->first) {
         *block = for_first;
-        if (loop_env.comprehension_callback)
+        if (loop_env.comprehension_callback && !for_->result)
             loop_env.comprehension_callback(&loop_env, block, for_->first, loop_env.comprehension_userdata);
         else
             compile_block_statement(&loop_env, block, for_->first);
@@ -372,7 +372,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     *block = for_body;
     if (for_->body) {
-        if (loop_env.comprehension_callback)
+        if (loop_env.comprehension_callback && !for_->result)
             loop_env.comprehension_callback(&loop_env, block, for_->body, loop_env.comprehension_userdata);
         else
             compile_block_statement(&loop_env, block, for_->body);
@@ -382,7 +382,7 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
 
     if (for_->between) {
         *block = for_between;
-        if (loop_env.comprehension_callback)
+        if (loop_env.comprehension_callback && !for_->result)
             loop_env.comprehension_callback(&loop_env, block, for_->between, loop_env.comprehension_userdata);
         else
             compile_block_statement(&loop_env, block, for_->between);
@@ -391,18 +391,40 @@ void compile_for_loop(env_t *env, gcc_block_t **block, ast_t *ast)
             gcc_jump(*block, NULL, for_body);
     }
 
+    gcc_lvalue_t *result = NULL;
+    if (for_->result) {
+        *block = for_end;
+        sss_type_t *t = get_type(env, for_->result);
+        gcc_type_t *gcc_t = sss_type_to_gcc(env, t);
+        result = gcc_local(func, ast_loc(env, for_->result), gcc_t, fresh("_for_result"));
+        gcc_rvalue_t *val = compile_expr(env, block, for_->result);
+        gcc_block_t *new_end = gcc_new_block(func, fresh("for_final"));
+        if (*block) {
+            gcc_assign(*block, ast_loc(env, for_->result), result, val);
+            gcc_jump(*block, NULL, new_end);
+        }
+        for_end = new_end;
+    }
+
     if (for_->empty) {
         *block = for_empty;
-        if (loop_env.comprehension_callback)
+        if (loop_env.comprehension_callback && !for_->result) {
             loop_env.comprehension_callback(&loop_env, block, for_->empty, loop_env.comprehension_userdata);
-        else
+        } else if (result) {
+            gcc_rvalue_t *val = compile_expr(env, block, for_->empty);
+            if (val && block) {
+                gcc_assign(*block, ast_loc(env, for_->empty), result, val);
+            }
+        } else {
             compile_block_statement(&loop_env, block, for_->empty);
+        }
 
         if (*block)
             gcc_jump(*block, NULL, for_end);
     }
 
     *block = for_end;
+    return result ? gcc_rval(result) : NULL;
 }
 
 void compile_while_loop(env_t *env, gcc_block_t **block, const char* loop_name, ast_t *condition, ast_t *body, ast_t *between)

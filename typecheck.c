@@ -930,31 +930,18 @@ sss_type_t *get_type(env_t *env, ast_t *ast)
     }
     case For: {
         auto for_loop = Match(ast, For);
-        if (for_loop->first)
+        if (for_loop->result) {
+            // assert(for_loop->empty);
+            return get_type(env, for_loop->result);
+        } else if (for_loop->first) {
             return generate(get_type(env, for_loop->first));
-        else if (for_loop->body)
+        } else if (for_loop->body) {
             return generate(get_type(env, for_loop->body));
-        else if (for_loop->between)
+        } else if (for_loop->between) {
             return generate(get_type(env, for_loop->between));
-        else if (for_loop->empty)
-            return generate(get_type(env, for_loop->empty));
-        else
+        } else {
             compiler_err(env, ast, "I can't figure out the type of this 'for' loop");
-    }
-    case Reduction: {
-        auto reduction = Match(ast, Reduction);
-        sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        sss_type_t *combo_t = get_type(env, reduction->combination);
-        if (!can_promote(item_type, combo_t))
-            compiler_err(env, ast, "This reduction expression has type %T, but it's iterating over %T values, so I wouldn't know what to produce if there was only one value.",
-                         combo_t, item_type);
-
-        if (reduction->fallback) {
-            sss_type_t *fallback_t = get_type(env, reduction->fallback);
-            if (!can_promote(fallback_t, combo_t))
-                compiler_err(env, ast, "This reduction expression has type %T, but the fallback has type %T", combo_t, fallback_t);
         }
-        return combo_t;
     }
     case Defer: {
         return Type(VoidType);

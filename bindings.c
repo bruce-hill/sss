@@ -264,19 +264,9 @@ void bind_variables(env_t *env, table_t *bindings, ast_t *ast)
         bind_variables(env, nonempty_bindings, for_->first);
         bind_variables(env, nonempty_bindings, for_->body);
         bind_variables(env, nonempty_bindings, for_->between);
+        bind_variables(env, nonempty_bindings, for_->result);
         table_t *empty_bindings = new(table_t, .fallback=for_bindings);
         bind_variables(env, empty_bindings, for_->empty);
-        break;
-    }
-    case Reduction: {
-        auto reduction = Match(ast, Reduction);
-        bindings = new(table_t, .fallback=bindings);
-        bind_variables(env, bindings, reduction->iter);
-        sss_type_t *item_type = get_iter_type(env, reduction->iter);
-        Table_str_set(bindings, "x.0", new(binding_t, .type=item_type));
-        Table_str_set(bindings, "y.0", new(binding_t, .type=item_type));
-        bind_variables(env, bindings, reduction->combination);
-        bind_variables(env, bindings, reduction->fallback);
         break;
     }
     case With: {

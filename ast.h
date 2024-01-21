@@ -57,7 +57,6 @@ typedef enum {
     TypeDef,
     Index, FieldAccess,
     ConvertDef,
-    Reduction,
     DocTest,
     Defer,
     With,
@@ -194,7 +193,7 @@ struct ast_s {
             ast_t *body, *else_body;
         } Do;
         struct {
-            ast_t *index, *value, *iter, *first, *body, *between, *empty;
+            ast_t *index, *value, *iter, *first, *body, *between, *result, *empty;
         } For;
         struct {
             ast_t *condition, *body, *between;
@@ -273,9 +272,6 @@ struct ast_s {
         struct {
             ast_t *var, *source_type, *target_type, *body;
         } ConvertDef;
-        struct {
-            ast_t *iter, *combination, *fallback;
-        } Reduction;
         struct {
             ast_t *expr;
             const char *output;

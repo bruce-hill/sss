@@ -158,7 +158,7 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(KeywordArg, F(name), F(arg))
         T(Block, F(statements), F(keep_scope), F(is_namespace))
         T(Do, F(label), F(body), F(else_body))
-        T(For, F(index), F(value), F(first), F(iter), F(body), F(between), F(empty))
+        T(For, F(index), F(value), F(first), F(iter), F(body), F(between), F(result), F(empty))
         T(While, F(condition), F(body), F(between))
         T(Repeat, F(body), F(between))
         T(If, F(subject), F(patterns), F(blocks))
@@ -182,7 +182,6 @@ CORD ast_to_cord(const char *name, ast_t *ast)
         T(Index, F(indexed), F(index))
         T(FieldAccess, F(fielded), F(field))
         T(ConvertDef, F(var), F(source_type), F(target_type), F(body))
-        T(Reduction, F(iter), F(combination), F(fallback))
         T(DocTest, F(expr), F(output), F(skip_source))
         T(Defer, F(body))
         T(With, F(var), F(expr), F(cleanup), F(body))
@@ -317,6 +316,7 @@ ARRAY_OF(ast_t*) get_ast_children(ast_t *ast)
         maybe_append(children, for_->first);
         maybe_append(children, for_->body);
         maybe_append(children, for_->between);
+        maybe_append(children, for_->result);
         maybe_append(children, for_->empty);
         return children;
     }
@@ -407,12 +407,6 @@ ARRAY_OF(ast_t*) get_ast_children(ast_t *ast)
     case ConvertDef: {
         auto def = Match(ast, ConvertDef);
         return ARRAY(def->source_type, def->target_type, def->body);
-    }
-    case Reduction: {
-        auto reduction = Match(ast, Reduction);
-        auto children = ARRAY(reduction->iter, reduction->combination);
-        maybe_append(children, reduction->fallback);
-        return children;
     }
     case DocTest: return ARRAY(Match(ast, DocTest)->expr);
     case Defer: return ARRAY(Match(ast, Defer)->body);

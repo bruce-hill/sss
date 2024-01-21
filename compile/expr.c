@@ -2001,8 +2001,7 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
         return NULL;
     }
     case For: {
-        compile_for_loop(env, block, ast);
-        return NULL;
+        return compile_for_loop(env, block, ast);
     }
     case Skip: case Stop: {
         if (env->is_deferred)
@@ -2153,47 +2152,6 @@ gcc_rvalue_t *compile_expr(env_t *env, gcc_block_t **block, ast_t *ast)
                     .rhs=mix->lhs),
                 .rhs=WrapAST(mix->rhs, BinaryOp, .op=OP_MULT, .lhs=amount_var, .rhs=mix->rhs))));
         return compile_expr(env, block, mix_equation);
-    }
-    case Reduction: {
-        auto reduction = Match(ast, Reduction);
-        sss_type_t *t = get_type(env, ast);
-        gcc_func_t *func = gcc_block_func(*block);
-        gcc_lvalue_t *ret = gcc_local(func, loc, sss_type_to_gcc(env, t), fresh("reduction"));
-
-        ast_t *incoming_var = NULL, *accum_var = NULL;
-        auto children = get_ast_children(reduction->combination);
-        foreach (children, child, _) {
-            if ((*child)->tag != Var) continue;
-            auto var = Match(*child, Var);
-            if (streq(var->name, "x.0")) {
-                var->binding->lval = ret;
-                var->binding->rval = gcc_rval(ret);
-                accum_var = *child;
-            } else if (streq(var->name, "y.0")) {
-                incoming_var = *child;
-            }
-        }
-        ast_t *index, *value, *iter, *first, *between, *empty;
-        if (reduction->iter->tag == For) {
-            auto loop = Match(reduction->iter, For);
-            if (loop->index) index = WrapAST(ast, Var, .name=fresh("#i"));
-            else index = NULL;
-        } else {
-            index = NULL;
-        }
-        value = incoming_var;
-        iter = reduction->iter;
-        first = WrapAST(reduction->combination, Assign, ARRAY(accum_var), ARRAY(value));
-        between = WrapAST(reduction->combination, Assign, ARRAY(accum_var), ARRAY(reduction->combination));
-
-        if (reduction->fallback)
-            empty = WrapAST(reduction->fallback, Assign, ARRAY(accum_var), ARRAY(reduction->fallback));
-        else
-            empty = WrapAST(reduction->iter, Fail, .message=StringAST(reduction->iter, "This collection was empty"));
-
-        ast_t *for_ast = WrapAST(ast, For, .index=index, .value=value, .iter=iter, .first=first, .between=between, .body=FakeAST(Skip), .empty=empty);
-        compile_statement(env, block, for_ast);
-        return gcc_rval(ret);
     }
     case Fail: {
         if (env->is_deferred)
